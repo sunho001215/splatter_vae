@@ -1,0 +1,19 @@
+Evaluated 2026-11-07T01:39:11.885070+09:00
+PUBLISH CHECK: 5 new rows; 9 refused rows
+Pinned commit c9fc448ac0926ea7c40f5cf53f960c6c7828547f; image sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a
+Manifest sha256 c28a91b4f66e09dc8c12409dfc216c445b9ef8f61cda1c1d4d661e5e2b7be0b7
+drawer-open: 100/100 ready; singleview=PASS, multiview=PASS, geometry=PASS; calibration_validated=0
+  reviwo: PASS
+  dynamo: PASS
+  fql_reviwo: PASS
+  e2e_cnn: PASS
+  New rows: {}; once all non-geometric gates pass: {"dataset": 3, "fql": 9, "pretrain": 2}
+mug-hanging: 100/100 ready; singleview=PASS, multiview=REFUSED, geometry=REFUSED; calibration_validated=0
+  reviwo: REFUSED: QA family multiview: 3 episodes failed ['mug-hanging/episode_000062.h5', 'mug-hanging/episode_000075.h5', 'mug-hanging/episode_000110.h5']
+  dynamo: PASS
+  fql_reviwo: PASS
+  e2e_cnn: PASS
+  New rows: {"dataset": 1, "fql": 3, "pretrain": 1}; once all non-geometric gates pass: {"dataset": 3, "fql": 9, "pretrain": 2}
+Geometry consumers are excluded from this registrar regardless of calibration status.
+Proposed release: /home/ws/ws/splatter4d/runs/setup/role-release.proposed.json; activation_required=false
+REGISTERED 5 rows; proof /home/ws/ws/splatter4d/runs/setup/rw-registration-nongeometric-20261106-cdd9b948fe53.json

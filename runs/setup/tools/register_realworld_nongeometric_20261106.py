@@ -36,10 +36,10 @@ import yaml  # noqa: E402
 from ops.jobs import host_roles, scheduler as jobs  # noqa: E402
 from s4d.rwlearn import gate, launch  # noqa: E402
 
-COMMIT = "e323513b7c0d5b48753fa2d7b4c0764a78aa71c8"
+COMMIT = "782f14080a25d0d62fbd8594662cdfdb512b5a7a"
 IMAGE = "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a"
 RELEASE = {"commit": COMMIT, "image": IMAGE}
-PREFIX = "rwng-20261106-"
+PREFIX = "rwng-20261107-"  # 2026-11-07: rows pinned to 782f140 (raw-provenance episode joins); rwng-20261106-* superseded (paused)
 STEM = "rw-registration-nongeometric-20261106"
 PLAN = ROOT / "docs/realworld_training_plan.yaml"
 ACCEPTANCE = ROOT / f"runs/remote/acceptance/{COMMIT[:7]}-cc/manifest.json"

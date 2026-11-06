@@ -1,0 +1,4536 @@
+{
+  "decisions": {
+    "alpha": 10,
+    "e2e": "random-init CNN trained jointly with FQL",
+    "encoders": "task-specific",
+    "fql_budget": {
+      "alpha": 10.0,
+      "batch_size": 256,
+      "eval_interval": 100000,
+      "log_interval": 5000,
+      "offline_steps": 1000000
+    },
+    "fql_seeds": [
+      0,
+      1,
+      2
+    ],
+    "gripper": "continuous",
+    "pretraining_budgets": "unchanged release configs (seed 42)"
+  },
+  "disk_note": "plan GPU/RAM preserved; added output-growth allowances",
+  "disk_reservations_gb": {
+    "dataset": 20,
+    "fql": 10,
+    "pretrain": 20
+  },
+  "eligible_counts_per_task": {
+    "drawer-open": {
+      "dataset": 3,
+      "fql": 9,
+      "pretrain": 2
+    },
+    "mug-hanging": {
+      "dataset": 1,
+      "fql": 3,
+      "pretrain": 1
+    }
+  },
+  "gate_evaluation": {
+    "calibration_hold": {
+      "drawer-open": {
+        "episodes": {},
+        "passed": false,
+        "problem_count": 100,
+        "problems": [
+          "drawer-open/episode_000000.h5: no calibration_validated record",
+          "drawer-open/episode_000001.h5: no calibration_validated record",
+          "drawer-open/episode_000003.h5: no calibration_validated record",
+          "drawer-open/episode_000007.h5: no calibration_validated record",
+          "drawer-open/episode_000008.h5: no calibration_validated record",
+          "drawer-open/episode_000009.h5: no calibration_validated record",
+          "drawer-open/episode_000010.h5: no calibration_validated record",
+          "drawer-open/episode_000011.h5: no calibration_validated record",
+          "drawer-open/episode_000012.h5: no calibration_validated record",
+          "drawer-open/episode_000013.h5: no calibration_validated record",
+          "drawer-open/episode_000014.h5: no calibration_validated record",
+          "drawer-open/episode_000015.h5: no calibration_validated record",
+          "drawer-open/episode_000016.h5: no calibration_validated record",
+          "drawer-open/episode_000017.h5: no calibration_validated record",
+          "drawer-open/episode_000018.h5: no calibration_validated record",
+          "drawer-open/episode_000019.h5: no calibration_validated record",
+          "drawer-open/episode_000020.h5: no calibration_validated record",
+          "drawer-open/episode_000021.h5: no calibration_validated record",
+          "drawer-open/episode_000022.h5: no calibration_validated record",
+          "drawer-open/episode_000023.h5: no calibration_validated record",
+          "drawer-open/episode_000024.h5: no calibration_validated record",
+          "drawer-open/episode_000025.h5: no calibration_validated record",
+          "drawer-open/episode_000026.h5: no calibration_validated record",
+          "drawer-open/episode_000027.h5: no calibration_validated record",
+          "drawer-open/episode_000028.h5: no calibration_validated record",
+          "drawer-open/episode_000029.h5: no calibration_validated record",
+          "drawer-open/episode_000030.h5: no calibration_validated record",
+          "drawer-open/episode_000031.h5: no calibration_validated record",
+          "drawer-open/episode_000032.h5: no calibration_validated record",
+          "drawer-open/episode_000033.h5: no calibration_validated record",
+          "drawer-open/episode_000034.h5: no calibration_validated record",
+          "drawer-open/episode_000036.h5: no calibration_validated record",
+          "drawer-open/episode_000037.h5: no calibration_validated record",
+          "drawer-open/episode_000038.h5: no calibration_validated record",
+          "drawer-open/episode_000039.h5: no calibration_validated record",
+          "drawer-open/episode_000040.h5: no calibration_validated record",
+          "drawer-open/episode_000041.h5: no calibration_validated record",
+          "drawer-open/episode_000042.h5: no calibration_validated record",
+          "drawer-open/episode_000044.h5: no calibration_validated record",
+          "drawer-open/episode_000045.h5: no calibration_validated record",
+          "drawer-open/episode_000048.h5: no calibration_validated record",
+          "drawer-open/episode_000050.h5: no calibration_validated record",
+          "drawer-open/episode_000051.h5: no calibration_validated record",
+          "drawer-open/episode_000052.h5: no calibration_validated record",
+          "drawer-open/episode_000053.h5: no calibration_validated record",
+          "drawer-open/episode_000055.h5: no calibration_validated record",
+          "drawer-open/episode_000056.h5: no calibration_validated record",
+          "drawer-open/episode_000057.h5: no calibration_validated record",
+          "drawer-open/episode_000058.h5: no calibration_validated record",
+          "drawer-open/episode_000059.h5: no calibration_validated record"
+        ],
+        "validated": 0
+      },
+      "mug-hanging": {
+        "episodes": {},
+        "passed": false,
+        "problem_count": 100,
+        "problems": [
+          "mug-hanging/episode_000001.h5: no calibration_validated record",
+          "mug-hanging/episode_000003.h5: no calibration_validated record",
+          "mug-hanging/episode_000004.h5: no calibration_validated record",
+          "mug-hanging/episode_000005.h5: no calibration_validated record",
+          "mug-hanging/episode_000007.h5: no calibration_validated record",
+          "mug-hanging/episode_000009.h5: no calibration_validated record",
+          "mug-hanging/episode_000010.h5: no calibration_validated record",
+          "mug-hanging/episode_000011.h5: no calibration_validated record",
+          "mug-hanging/episode_000012.h5: no calibration_validated record",
+          "mug-hanging/episode_000014.h5: no calibration_validated record",
+          "mug-hanging/episode_000015.h5: no calibration_validated record",
+          "mug-hanging/episode_000016.h5: no calibration_validated record",
+          "mug-hanging/episode_000017.h5: no calibration_validated record",
+          "mug-hanging/episode_000018.h5: no calibration_validated record",
+          "mug-hanging/episode_000020.h5: no calibration_validated record",
+          "mug-hanging/episode_000021.h5: no calibration_validated record",
+          "mug-hanging/episode_000022.h5: no calibration_validated record",
+          "mug-hanging/episode_000023.h5: no calibration_validated record",
+          "mug-hanging/episode_000024.h5: no calibration_validated record",
+          "mug-hanging/episode_000025.h5: no calibration_validated record",
+          "mug-hanging/episode_000026.h5: no calibration_validated record",
+          "mug-hanging/episode_000028.h5: no calibration_validated record",
+          "mug-hanging/episode_000029.h5: no calibration_validated record",
+          "mug-hanging/episode_000030.h5: no calibration_validated record",
+          "mug-hanging/episode_000031.h5: no calibration_validated record",
+          "mug-hanging/episode_000032.h5: no calibration_validated record",
+          "mug-hanging/episode_000033.h5: no calibration_validated record",
+          "mug-hanging/episode_000034.h5: no calibration_validated record",
+          "mug-hanging/episode_000035.h5: no calibration_validated record",
+          "mug-hanging/episode_000036.h5: no calibration_validated record",
+          "mug-hanging/episode_000037.h5: no calibration_validated record",
+          "mug-hanging/episode_000038.h5: no calibration_validated record",
+          "mug-hanging/episode_000039.h5: no calibration_validated record",
+          "mug-hanging/episode_000040.h5: no calibration_validated record",
+          "mug-hanging/episode_000041.h5: no calibration_validated record",
+          "mug-hanging/episode_000042.h5: no calibration_validated record",
+          "mug-hanging/episode_000043.h5: no calibration_validated record",
+          "mug-hanging/episode_000044.h5: no calibration_validated record",
+          "mug-hanging/episode_000045.h5: no calibration_validated record",
+          "mug-hanging/episode_000046.h5: no calibration_validated record",
+          "mug-hanging/episode_000047.h5: no calibration_validated record",
+          "mug-hanging/episode_000048.h5: no calibration_validated record",
+          "mug-hanging/episode_000049.h5: no calibration_validated record",
+          "mug-hanging/episode_000050.h5: no calibration_validated record",
+          "mug-hanging/episode_000051.h5: no calibration_validated record",
+          "mug-hanging/episode_000052.h5: no calibration_validated record",
+          "mug-hanging/episode_000053.h5: no calibration_validated record",
+          "mug-hanging/episode_000054.h5: no calibration_validated record",
+          "mug-hanging/episode_000055.h5: no calibration_validated record",
+          "mug-hanging/episode_000056.h5: no calibration_validated record"
+        ],
+        "validated": 0
+      }
+    },
+    "calibration_stage": "calibration_validated",
+    "checked_at_unix": 1793986122.6024976,
+    "consumer_families": {
+      "dynamo": [
+        "singleview"
+      ],
+      "e2e_cnn": [
+        "singleview"
+      ],
+      "fql_reviwo": [
+        "singleview"
+      ],
+      "fql_sincro": [
+        "singleview",
+        "geometry"
+      ],
+      "mvp3d": [
+        "singleview",
+        "multiview",
+        "geometry"
+      ],
+      "mvp3d_single": [
+        "singleview",
+        "geometry"
+      ],
+      "ours": [
+        "singleview",
+        "multiview",
+        "geometry"
+      ],
+      "reviwo": [
+        "singleview",
+        "multiview"
+      ],
+      "sincro": [
+        "singleview",
+        "multiview",
+        "geometry"
+      ],
+      "snerl": [
+        "singleview",
+        "multiview",
+        "geometry"
+      ]
+    },
+    "consumers": {
+      "dynamo": {
+        "geometry_dependent": false,
+        "reason": "no camera pose, depth or track enters inputs or targets",
+        "uses": "single-camera RGB videos"
+      },
+      "e2e_cnn": {
+        "geometry_dependent": false,
+        "reason": "pixels, the robot's own kinematics and the sent commands only",
+        "uses": "single-view RGB history + proprioception + recorded commands"
+      },
+      "fql_reviwo": {
+        "geometry_dependent": false,
+        "reason": "no camera pose, depth or track enters inputs or targets",
+        "uses": "synchronised multi-view RGB (timestamps only)"
+      },
+      "fql_sincro": {
+        "geometry_dependent": true,
+        "reason": "the rendering targets are cast along rays from the extrinsics (sincro_forward_per_sample_cameras); its encoder is therefore trained on calibration-dependent targets",
+        "uses": "RGB windows + per-sample K / c2w rays for its rendering loss"
+      },
+      "mvp3d": {
+        "geometry_dependent": true,
+        "reason": "the fused point cloud and its bounds are built with the extrinsics",
+        "uses": "RGB-D back-projected into the robot base frame, base-frame scene bounds"
+      },
+      "mvp3d_single": {
+        "geometry_dependent": true,
+        "reason": "the fused point cloud and its bounds are built with the extrinsics",
+        "uses": "RGB-D back-projected into the robot base frame, base-frame scene bounds"
+      },
+      "ours": {
+        "geometry_dependent": true,
+        "reason": "tracks are lifted to the base frame and depth is fused with the camera-to-robot extrinsics (pretraining deferred until the architecture is final)",
+        "uses": "dynamic 3D tracks in the robot base frame, depth fused across cameras, camera poses"
+      },
+      "reviwo": {
+        "geometry_dependent": false,
+        "reason": "no camera pose, depth or track enters inputs or targets",
+        "uses": "synchronised multi-view RGB (timestamps only)"
+      },
+      "sincro": {
+        "geometry_dependent": true,
+        "reason": "the rendering targets are cast along rays from the extrinsics (sincro_forward_per_sample_cameras); its encoder is therefore trained on calibration-dependent targets",
+        "uses": "RGB windows + per-sample K / c2w rays for its rendering loss"
+      },
+      "snerl": {
+        "geometry_dependent": true,
+        "reason": "the encoder input poses and every rendered ray come from the extrinsics; a wrong calibration changes inputs and targets",
+        "uses": "3 RGB views + normalised camera poses (encoder input); RGB / semantic / DINO targets rendered along rays"
+      }
+    },
+    "families": {
+      "drawer-open": {
+        "geometry": {
+          "failed_count": 0,
+          "failed_episodes": [],
+          "passed": true
+        },
+        "multiview": {
+          "failed_count": 0,
+          "failed_episodes": [],
+          "passed": true
+        },
+        "singleview": {
+          "failed_count": 0,
+          "failed_episodes": [],
+          "passed": true
+        }
+      },
+      "mug-hanging": {
+        "geometry": {
+          "failed_count": 3,
+          "failed_episodes": [
+            "mug-hanging/episode_000062.h5",
+            "mug-hanging/episode_000075.h5",
+            "mug-hanging/episode_000110.h5"
+          ],
+          "passed": false
+        },
+        "multiview": {
+          "failed_count": 3,
+          "failed_episodes": [
+            "mug-hanging/episode_000062.h5",
+            "mug-hanging/episode_000075.h5",
+            "mug-hanging/episode_000110.h5"
+          ],
+          "passed": false
+        },
+        "singleview": {
+          "failed_count": 0,
+          "failed_episodes": [],
+          "passed": true
+        }
+      }
+    },
+    "geometry_passed": false,
+    "manifest": {
+      "path": "/home/ws/ws/realworld-ops/ingest/manifest.json",
+      "sha256": "2fb5343046f4f85004a81ae31e2a5df67a9c018e8bf173392d82203b2afa98d0"
+    },
+    "passed": true,
+    "required_stages": [
+      "normalized",
+      "calibrate",
+      "foundation_stereo_depth",
+      "sam3_masks",
+      "qa",
+      "train_data"
+    ],
+    "schema": "rw-ingest-manifest",
+    "target": 100,
+    "tasks": {
+      "drawer-open": {
+        "episode_identities": {
+          "drawer-open/episode_000000.h5": {
+            "raw_recording": "episode_000000.h5",
+            "raw_sha256": "82ea8044391647ef3ba3dc7eb010654236c96836097a3db296de6d73b148664e",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000001.h5": {
+            "raw_recording": "episode_000001.h5",
+            "raw_sha256": "3e8680663219f9b35b53337924d0a9c27bdf0100a820b77e49aaeb4607c1f426",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000003.h5": {
+            "raw_recording": "episode_000003.h5",
+            "raw_sha256": "12943fac901fc5351b77d161174a0b5e7118ed7e2adb4c92ca34047924450ac7",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000007.h5": {
+            "raw_recording": "episode_000007.h5",
+            "raw_sha256": "7e36ad3003d5f4bec2c1babe4257aaf44529cdfcfe0c0e9833840a8a0a919ee8",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000008.h5": {
+            "raw_recording": "episode_000008.h5",
+            "raw_sha256": "73c2c2b72d89c0553d5672d018cadc1d0b422d0385c47ef11f86d2b3720a4d6b",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000009.h5": {
+            "raw_recording": "episode_000009.h5",
+            "raw_sha256": "8d30c6c461a39a7e0e398a45cd6aae7d07b55517c31a0036b619916c821109f2",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000010.h5": {
+            "raw_recording": "episode_000010.h5",
+            "raw_sha256": "34282490ea681e74e3a92a3c10a5bab4eb546d2d4caee7031a329b070e60e014",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000011.h5": {
+            "raw_recording": "episode_000011.h5",
+            "raw_sha256": "5ed51193b550175361458bad91f57dcfb20976ec226cbdb1d1ad904168c95c8e",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000012.h5": {
+            "raw_recording": "episode_000012.h5",
+            "raw_sha256": "ee47c30e727c93bc76ff07f2c7f9c64611e9be39c460ea5d212c237003614a04",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000013.h5": {
+            "raw_recording": "episode_000013.h5",
+            "raw_sha256": "9191a8cd14d0a9fce891fe4435bcaff89575915711339ebaf022c81bde8a874f",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000014.h5": {
+            "raw_recording": "episode_000014.h5",
+            "raw_sha256": "0d1dd510140c67f299ac17f7086c93130830fa6a4d03a876b7271302c1b0ef17",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000015.h5": {
+            "raw_recording": "episode_000015.h5",
+            "raw_sha256": "b6eea311c8c4b2d1023153c2569cd964382dc8efde510f214ba48bfbf915ef43",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000016.h5": {
+            "raw_recording": "episode_000016.h5",
+            "raw_sha256": "c3ab0ec949e23690f5afa2df50965006bb255f38e7a97af35bf9f938e4d2fbb4",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000017.h5": {
+            "raw_recording": "episode_000017.h5",
+            "raw_sha256": "a5de743e3620a62d25ddfa273516fd8253424bf86b75f7ff08ed2dd17fc016e1",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000018.h5": {
+            "raw_recording": "episode_000018.h5",
+            "raw_sha256": "2ca885e507b4a41188ba6c93757890ab3bde431fbed2a4a584fbd0a78d5c4ad2",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000019.h5": {
+            "raw_recording": "episode_000019.h5",
+            "raw_sha256": "eae01a4f47e46e9ee03c3d2cb5d796865c0f1e73f139e06fc51ffcd9665da08f",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000020.h5": {
+            "raw_recording": "episode_000020.h5",
+            "raw_sha256": "b9213cd949f1c54c4b830b378753eb9e70094dff8cd7c20e9f195f3c4a154ccd",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000021.h5": {
+            "raw_recording": "episode_000021.h5",
+            "raw_sha256": "992f8122a6cff5f1f686340c2deeb6880c05f73723103a5e481f5a4ac7c34065",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000022.h5": {
+            "raw_recording": "episode_000022.h5",
+            "raw_sha256": "9bd4517e885de14e83cbb3e199719bf6b2d6b778d17b3dadaa58321c4210fe98",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000023.h5": {
+            "raw_recording": "episode_000023.h5",
+            "raw_sha256": "9bdb2b083ed372876e515cd989fc41d4a0d0a0d997456d653e93136e28f3e9ad",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000024.h5": {
+            "raw_recording": "episode_000024.h5",
+            "raw_sha256": "36d5a6d3f3a9b5560d186c1f487e7c5194566a159b35a50c83917568228d3283",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000025.h5": {
+            "raw_recording": "episode_000025.h5",
+            "raw_sha256": "f28a6e27933f1290eb7b874d2db8d573aecb38451a7c4dbc0228ef36f8c2fc6d",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000026.h5": {
+            "raw_recording": "episode_000026.h5",
+            "raw_sha256": "ba0c893da8e0bf26a9fa93b70882468d8ebb9fe2c3825ccc8293f99ce343f8b3",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000027.h5": {
+            "raw_recording": "episode_000027.h5",
+            "raw_sha256": "19ec6a73a06309396b117ffff441135027c6b710da26f056b89d8a47e0445baf",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000028.h5": {
+            "raw_recording": "episode_000028.h5",
+            "raw_sha256": "242e948e35a8e1d24a73bcc4e8f40ead8df15721c71fb73d21be8dfb010eb4a1",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000029.h5": {
+            "raw_recording": "episode_000029.h5",
+            "raw_sha256": "cba1d84eca80e265149155dea0e3eb983a252a53aa6a929a2db620ed7b0a4c5a",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000030.h5": {
+            "raw_recording": "episode_000030.h5",
+            "raw_sha256": "0ca945b1e7be4835a2c4d079726f32bd952fb348faa9cafc6d323a98b7c7852c",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000031.h5": {
+            "raw_recording": "episode_000031.h5",
+            "raw_sha256": "9187d8d741e1ffb691c83e6eb2ed25236232f4f9abe04d0c121b6d1f1b1c489a",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000032.h5": {
+            "raw_recording": "episode_000032.h5",
+            "raw_sha256": "f3a1a3b4b49353402e99ff3bdb5469b27ba52cb9b9d544f9375adfe74da273e8",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000033.h5": {
+            "raw_recording": "episode_000033.h5",
+            "raw_sha256": "46c0f345959e359faa284036b2407dab9156ef492afd4e5275cfa38f9b4af2e6",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000034.h5": {
+            "raw_recording": "episode_000034.h5",
+            "raw_sha256": "914d327118289eb65c6221f748f0ef3375e2e067f4f469671bc37795a725982b",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000036.h5": {
+            "raw_recording": "episode_000036.h5",
+            "raw_sha256": "4bd559e9880356a7ea00238abcb51a66f4b9247926fd5052700d5fda81b55dc2",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000037.h5": {
+            "raw_recording": "episode_000037.h5",
+            "raw_sha256": "c83fbc82e4e896d72afdae009515cef680e683a7dcf5edcfe2fabdadfebd87eb",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000038.h5": {
+            "raw_recording": "episode_000038.h5",
+            "raw_sha256": "3c5d3deab0f2b3fbac458d633f078caccc2b5b496e4bcdc41cdcbe3d1dacf60f",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000039.h5": {
+            "raw_recording": "episode_000039.h5",
+            "raw_sha256": "6ea66db24dd9477022e9628fc29343d449862028caef8f40b45203fdac9cb675",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000040.h5": {
+            "raw_recording": "episode_000040.h5",
+            "raw_sha256": "0430456b48135167a18cbc85162fd87bd8bc6305ace9486cf673730b06299842",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000041.h5": {
+            "raw_recording": "episode_000041.h5",
+            "raw_sha256": "8bfede9fe925519bc15fc1cf5daff08f8629224a02f9c127978030eabc5f960d",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000042.h5": {
+            "raw_recording": "episode_000042.h5",
+            "raw_sha256": "a251d99bf74aee1636573dcf41b6d09bcaf5956e087a6c9eacaf364051da61c9",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000044.h5": {
+            "raw_recording": "episode_000044.h5",
+            "raw_sha256": "863912af9d82c3b6e9dcd3722f0cfc2c69226f98b47dd04fcdf5fa4ce75d099a",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000045.h5": {
+            "raw_recording": "episode_000045.h5",
+            "raw_sha256": "803407c4ca811d108f7d0e5a5d391d45e42292671f16efe818bae0a224ca2dfe",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000048.h5": {
+            "raw_recording": "episode_000048.h5",
+            "raw_sha256": "f8e24ffdfce9eb15c5d8cc58f0e3083bea4344d10889fc4901cf6d0791d879ff",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000050.h5": {
+            "raw_recording": "episode_000050.h5",
+            "raw_sha256": "c468fdc1293e096ddc5b2d236c938b32a23bf1b048a42b64cb7199c4088886c3",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000051.h5": {
+            "raw_recording": "episode_000051.h5",
+            "raw_sha256": "a066ffd4ed81fe616360193af3a875a17ea16f40c1061d7e977ee79d40db9b55",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000052.h5": {
+            "raw_recording": "episode_000052.h5",
+            "raw_sha256": "384be7c6ab2eef38892c40d71c65cb09490d63915039713b9339556a708921b2",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000053.h5": {
+            "raw_recording": "episode_000053.h5",
+            "raw_sha256": "54883beb8e4fd6d881934006a3db0b68fc2602d59996490f4908dcadfa78fbf6",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000055.h5": {
+            "raw_recording": "episode_000055.h5",
+            "raw_sha256": "f922e2f98c06a064fc2ef04b8cbf4bde46da5d2c4abc307c9da4294b934b6c35",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000056.h5": {
+            "raw_recording": "episode_000056.h5",
+            "raw_sha256": "7481a8daae8cd4370d413e939061fc8815e5d16f38bdab745d4dff10040163c9",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000057.h5": {
+            "raw_recording": "episode_000057.h5",
+            "raw_sha256": "de93202a8ceb0ef1ad4f1eb4d07fa045ca153309c0d2e33827e2c7477ea8d807",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000058.h5": {
+            "raw_recording": "episode_000058.h5",
+            "raw_sha256": "c3e6703ab63dccc346dd97342033ddaac709008d2b4e7af91d590b43141e051b",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000059.h5": {
+            "raw_recording": "episode_000059.h5",
+            "raw_sha256": "0daaf425cb7941581e5dbed2c432dd4bf127139309f8614b8a2c2390bc89742d",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000060.h5": {
+            "raw_recording": "episode_000060.h5",
+            "raw_sha256": "47a31668a5c84bccffccc783ff74c8cd5c0bb001ea3e6b093eaf73b7832d023d",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000061.h5": {
+            "raw_recording": "episode_000061.h5",
+            "raw_sha256": "fd5ff8dbd995c1c4472cd7ddbf9c6a946e956816475ea7561dfbaefbb078116c",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000063.h5": {
+            "raw_recording": "episode_000063.h5",
+            "raw_sha256": "42f0590df6001f31676f80ccaa57ec92d65e61d1013a61b9eed856d39a485c43",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000065.h5": {
+            "raw_recording": "episode_000065.h5",
+            "raw_sha256": "dd10368cb462519fe9442d3005685e25771b846b8a460e774c1b16995dbbce8d",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000066.h5": {
+            "raw_recording": "episode_000066.h5",
+            "raw_sha256": "1cf9029963b6e939f04ca086cafdd414d1a596f2581927dba43c8c831bea3927",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000067.h5": {
+            "raw_recording": "episode_000067.h5",
+            "raw_sha256": "98a01a0eb58ef503c1e1a1776a5d9862ffcf8c18a6265b30335e70f3ba0ef5bd",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000068.h5": {
+            "raw_recording": "episode_000068.h5",
+            "raw_sha256": "66031e24ab2fc52501c47c05d3d9ca53f1ae03dde42eacab028c0617c1f5d6da",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000069.h5": {
+            "raw_recording": "episode_000069.h5",
+            "raw_sha256": "ae2dc59ec40a483452e307d541ea22adf3564f4844d3ced5c4039e98d4087005",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000070.h5": {
+            "raw_recording": "episode_000070.h5",
+            "raw_sha256": "8464e9efe8a4410f41128b2fb50ceefa35ed87ad2fda776ab2069883a970ba7b",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000071.h5": {
+            "raw_recording": "episode_000071.h5",
+            "raw_sha256": "ca06ac6905b716fd8c8aaaf402431af926de288d8d3f476843c74f3b422eebb3",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000074.h5": {
+            "raw_recording": "episode_000074.h5",
+            "raw_sha256": "db89ada2e517b4ce65f5dce84ed389ad9c1f212ebfb6a80aa6ab36349c740a5b",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000075.h5": {
+            "raw_recording": "episode_000075.h5",
+            "raw_sha256": "7a7b4c88ddebd04da65b5ca9bad45fc338dcc0a8df3ca1728329662807243e48",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000077.h5": {
+            "raw_recording": "episode_000077.h5",
+            "raw_sha256": "161ff3b2000206a6a76acb4ee129c58806663307082f4a2549c2792022a2e14f",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000078.h5": {
+            "raw_recording": "episode_000078.h5",
+            "raw_sha256": "d006f096f1db7ec3bbc68b802047c1605836d1558412745b336c2aa25f4d512e",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000080.h5": {
+            "raw_recording": "episode_000080.h5",
+            "raw_sha256": "1ed51516f0b820a4dd9849233def8edf2b1d5867673775f542870e56901f197a",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000082.h5": {
+            "raw_recording": "episode_000082.h5",
+            "raw_sha256": "b8002bebdc9f5ded009369cf0dfb502b614d30fa35af00e6c20ce1eb7352c4bd",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000083.h5": {
+            "raw_recording": "episode_000083.h5",
+            "raw_sha256": "d278c991c40904800cb7b3dd6cb06433c3daeecae7ad5d362d704cd7b7d39805",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000086.h5": {
+            "raw_recording": "episode_000086.h5",
+            "raw_sha256": "8b0ff9d8db735c7a9afd508dbbf53bd72063ec0213950dabb0487ec3fee66edb",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000088.h5": {
+            "raw_recording": "episode_000088.h5",
+            "raw_sha256": "1d1a790887daf7c660ee1fa61c6267c506eb019d3fae4c43f922e39c26e77d1d",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000090.h5": {
+            "raw_recording": "episode_000090.h5",
+            "raw_sha256": "170cd07c7929ad0826cb8fac7a435317812259639da9313b31bdfb967ec9cca0",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000092.h5": {
+            "raw_recording": "episode_000092.h5",
+            "raw_sha256": "7fc1dec740711f4c27952f496eea4276ebb6309af69e0ba9a24fbe400af70c52",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000094.h5": {
+            "raw_recording": "episode_000094.h5",
+            "raw_sha256": "5bcc648fe6dbae7cf54bbbe04b611452717a06f0ed807714e1fc3524bc69b084",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000096.h5": {
+            "raw_recording": "episode_000096.h5",
+            "raw_sha256": "6c91abd5fc3e10152e12ccde045a97557bf5920dcb842a8a47e3a108dc4eb987",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000097.h5": {
+            "raw_recording": "episode_000097.h5",
+            "raw_sha256": "c1ee1d4e7459e33f34c249fd3923aef44c2457cb753786b68ffb373667434406",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000098.h5": {
+            "raw_recording": "episode_000098.h5",
+            "raw_sha256": "abebb93af1f52228fc28f65b1ad00636a6fc279ebe5f459c03fb16044433c641",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000100.h5": {
+            "raw_recording": "episode_000100.h5",
+            "raw_sha256": "c1bd4429bd4b6db9d54cdd2ca8873974193e152acc637f33a8e48082cac1697c",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000101.h5": {
+            "raw_recording": "episode_000101.h5",
+            "raw_sha256": "5096fd91d3d2eaa2fe4168abf79795f9a970658a02d04873f1fe48787df4be78",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000102.h5": {
+            "raw_recording": "episode_000102.h5",
+            "raw_sha256": "2597559da7e69997d7e2fae343d5122e240d1ffc07090db89049ffc99ba923a4",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000103.h5": {
+            "raw_recording": "episode_000103.h5",
+            "raw_sha256": "ca94a8ccf9c4ef15f48eb104259fdb43e9027a10dae9180fce6fd468254a49d4",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000104.h5": {
+            "raw_recording": "episode_000104.h5",
+            "raw_sha256": "a6a076d99f8814a5ad237e9aafee0ff37dc62d90d8ab4aa17c2f6223155684e1",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000105.h5": {
+            "raw_recording": "episode_000105.h5",
+            "raw_sha256": "db8e69a80b832e645e42a7550aca07b228b135d9379bfe067f17fcb95bcc9791",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000106.h5": {
+            "raw_recording": "episode_000106.h5",
+            "raw_sha256": "914614a88ad229d25218f202bd17b2196bbfa9db63e0bfe0335a25a17e0b8d19",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000107.h5": {
+            "raw_recording": "episode_000107.h5",
+            "raw_sha256": "fc453a9516ba2d2dd50b6024faf17b41b2d6f0e85cdd2caf37715926132c3dd4",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000108.h5": {
+            "raw_recording": "episode_000108.h5",
+            "raw_sha256": "199808e5453082d6daa55a8537f4dfefdc752d1402cf021abf4f2c0d5d5c4a16",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000110.h5": {
+            "raw_recording": "episode_000110.h5",
+            "raw_sha256": "ae4a7d321eda33c1c7811c348adf36dd662db896f472c7fce46f80d7019cf7a3",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000111.h5": {
+            "raw_recording": "episode_000111.h5",
+            "raw_sha256": "584bdc67e3a7a71079871781a7c9877a5255ef7eea3c22587d55de83aa1afa5b",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000112.h5": {
+            "raw_recording": "episode_000112.h5",
+            "raw_sha256": "75bc81c6331e9ef6130359db1f03f9b9d461c41d592aa4bec15579e9055b9931",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000113.h5": {
+            "raw_recording": "episode_000113.h5",
+            "raw_sha256": "9d4e349108ac8dfe246446d5f256f9c4be6d7ed37c1fea462a25820e35cb0a09",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000114.h5": {
+            "raw_recording": "episode_000114.h5",
+            "raw_sha256": "c288e9634928cd7641287c263bc2fb15858bef661dc57ba978e714b7e59f072d",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000116.h5": {
+            "raw_recording": "episode_000116.h5",
+            "raw_sha256": "ab1ef6ede55e82b367c26bea046a705825edc110b0db7cea5d060256a53f17cc",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000117.h5": {
+            "raw_recording": "episode_000117.h5",
+            "raw_sha256": "23d54bfe2167a08fbc7a116cede822a695e3492fb63c9f16fdbdff169117db46",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000118.h5": {
+            "raw_recording": "episode_000118.h5",
+            "raw_sha256": "cb1dafee21ed121316fe264fb9be4f35c4fa212a34b30e0b986e7d102eb5aec3",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000119.h5": {
+            "raw_recording": "episode_000119.h5",
+            "raw_sha256": "ca936e81d13597508d974b1a9ce0683bef124d2f18d964056f161599f49b90b3",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000120.h5": {
+            "raw_recording": "episode_000120.h5",
+            "raw_sha256": "bf124ac4168c95bc9efd2ecf87243ce4c14304d563f89112caa5e25d215c6384",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000121.h5": {
+            "raw_recording": "episode_000121.h5",
+            "raw_sha256": "e4d198fa2e138ab5c2cc04130c3123d2e0de8b0f19ee79544dadbd32ca3407c9",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000122.h5": {
+            "raw_recording": "episode_000122.h5",
+            "raw_sha256": "5d144a344dde4a6c76053901e3bc81249cc2796a811333d4a1e7bacff8bc0046",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000123.h5": {
+            "raw_recording": "episode_000123.h5",
+            "raw_sha256": "3f556952501d59ed509c72cfc703161bdbb4ff3119a6a9aaa5fb4856342a447d",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000124.h5": {
+            "raw_recording": "episode_000124.h5",
+            "raw_sha256": "d6165c7e5e9a1a2142241486591e00fc32a2b0707aef40d54cbc51d44d28c99c",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000126.h5": {
+            "raw_recording": "episode_000126.h5",
+            "raw_sha256": "35db015d9a6949a044a602a98d41d163ee8b887ff7da87455b2adccf14890733",
+            "store_episode": null,
+            "task": "drawer-open"
+          },
+          "drawer-open/episode_000128.h5": {
+            "raw_recording": "episode_000128.h5",
+            "raw_sha256": "d4fdd3c8dc9366a8d5e5e9d71e0a0838b7f602919255fa1cdea2621180891962",
+            "store_episode": null,
+            "task": "drawer-open"
+          }
+        },
+        "episodes": [
+          "drawer-open/episode_000000.h5",
+          "drawer-open/episode_000001.h5",
+          "drawer-open/episode_000003.h5",
+          "drawer-open/episode_000007.h5",
+          "drawer-open/episode_000008.h5",
+          "drawer-open/episode_000009.h5",
+          "drawer-open/episode_000010.h5",
+          "drawer-open/episode_000011.h5",
+          "drawer-open/episode_000012.h5",
+          "drawer-open/episode_000013.h5",
+          "drawer-open/episode_000014.h5",
+          "drawer-open/episode_000015.h5",
+          "drawer-open/episode_000016.h5",
+          "drawer-open/episode_000017.h5",
+          "drawer-open/episode_000018.h5",
+          "drawer-open/episode_000019.h5",
+          "drawer-open/episode_000020.h5",
+          "drawer-open/episode_000021.h5",
+          "drawer-open/episode_000022.h5",
+          "drawer-open/episode_000023.h5",
+          "drawer-open/episode_000024.h5",
+          "drawer-open/episode_000025.h5",
+          "drawer-open/episode_000026.h5",
+          "drawer-open/episode_000027.h5",
+          "drawer-open/episode_000028.h5",
+          "drawer-open/episode_000029.h5",
+          "drawer-open/episode_000030.h5",
+          "drawer-open/episode_000031.h5",
+          "drawer-open/episode_000032.h5",
+          "drawer-open/episode_000033.h5",
+          "drawer-open/episode_000034.h5",
+          "drawer-open/episode_000036.h5",
+          "drawer-open/episode_000037.h5",
+          "drawer-open/episode_000038.h5",
+          "drawer-open/episode_000039.h5",
+          "drawer-open/episode_000040.h5",
+          "drawer-open/episode_000041.h5",
+          "drawer-open/episode_000042.h5",
+          "drawer-open/episode_000044.h5",
+          "drawer-open/episode_000045.h5",
+          "drawer-open/episode_000048.h5",
+          "drawer-open/episode_000050.h5",
+          "drawer-open/episode_000051.h5",
+          "drawer-open/episode_000052.h5",
+          "drawer-open/episode_000053.h5",
+          "drawer-open/episode_000055.h5",
+          "drawer-open/episode_000056.h5",
+          "drawer-open/episode_000057.h5",
+          "drawer-open/episode_000058.h5",
+          "drawer-open/episode_000059.h5",
+          "drawer-open/episode_000060.h5",
+          "drawer-open/episode_000061.h5",
+          "drawer-open/episode_000063.h5",
+          "drawer-open/episode_000065.h5",
+          "drawer-open/episode_000066.h5",
+          "drawer-open/episode_000067.h5",
+          "drawer-open/episode_000068.h5",
+          "drawer-open/episode_000069.h5",
+          "drawer-open/episode_000070.h5",
+          "drawer-open/episode_000071.h5",
+          "drawer-open/episode_000074.h5",
+          "drawer-open/episode_000075.h5",
+          "drawer-open/episode_000077.h5",
+          "drawer-open/episode_000078.h5",
+          "drawer-open/episode_000080.h5",
+          "drawer-open/episode_000082.h5",
+          "drawer-open/episode_000083.h5",
+          "drawer-open/episode_000086.h5",
+          "drawer-open/episode_000088.h5",
+          "drawer-open/episode_000090.h5",
+          "drawer-open/episode_000092.h5",
+          "drawer-open/episode_000094.h5",
+          "drawer-open/episode_000096.h5",
+          "drawer-open/episode_000097.h5",
+          "drawer-open/episode_000098.h5",
+          "drawer-open/episode_000100.h5",
+          "drawer-open/episode_000101.h5",
+          "drawer-open/episode_000102.h5",
+          "drawer-open/episode_000103.h5",
+          "drawer-open/episode_000104.h5",
+          "drawer-open/episode_000105.h5",
+          "drawer-open/episode_000106.h5",
+          "drawer-open/episode_000107.h5",
+          "drawer-open/episode_000108.h5",
+          "drawer-open/episode_000110.h5",
+          "drawer-open/episode_000111.h5",
+          "drawer-open/episode_000112.h5",
+          "drawer-open/episode_000113.h5",
+          "drawer-open/episode_000114.h5",
+          "drawer-open/episode_000116.h5",
+          "drawer-open/episode_000117.h5",
+          "drawer-open/episode_000118.h5",
+          "drawer-open/episode_000119.h5",
+          "drawer-open/episode_000120.h5",
+          "drawer-open/episode_000121.h5",
+          "drawer-open/episode_000122.h5",
+          "drawer-open/episode_000123.h5",
+          "drawer-open/episode_000124.h5",
+          "drawer-open/episode_000126.h5",
+          "drawer-open/episode_000128.h5"
+        ],
+        "excluded": [],
+        "passed": true,
+        "problem_count": 0,
+        "problems": [],
+        "store_episodes": [],
+        "valid_and_preprocessed": 100
+      },
+      "mug-hanging": {
+        "episode_identities": {
+          "mug-hanging/episode_000001.h5": {
+            "raw_recording": "episode_000001.h5",
+            "raw_sha256": "def246e216aaf6ef81e7d9554c30c360962b49978f436271183c6da9aa4e73e2",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000003.h5": {
+            "raw_recording": "episode_000003.h5",
+            "raw_sha256": "f44928f9c7160314fc4f6885131a03dbac658d0275ae30a10a507cb380f37f1b",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000004.h5": {
+            "raw_recording": "episode_000004.h5",
+            "raw_sha256": "28b385d8204d2ecdc6b6deb9fcae0ad97f1413a5414d2f64a76eccca7cd28379",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000005.h5": {
+            "raw_recording": "episode_000005.h5",
+            "raw_sha256": "66d181a67231dc128b1235f229659004521b0ba3852cc63e5a90fc5d5a8e7fee",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000007.h5": {
+            "raw_recording": "episode_000007.h5",
+            "raw_sha256": "9da2a1b99a0fdc2ce873e47398f2d86bac796e462c376b22e12a71e345a0c1f6",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000009.h5": {
+            "raw_recording": "episode_000009.h5",
+            "raw_sha256": "f6c5234056214a5adba03957ead82162215a914ef9bbe409172dd2178aa21691",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000010.h5": {
+            "raw_recording": "episode_000010.h5",
+            "raw_sha256": "bf8fd361d60afc3d16b7ad3e81338d42def6d6ed4d8222385aed13121d7dee4f",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000011.h5": {
+            "raw_recording": "episode_000011.h5",
+            "raw_sha256": "7777a69af2eee7a785fb698dd171e95a0d28e62086898fd99c51bdabc2b54cc7",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000012.h5": {
+            "raw_recording": "episode_000012.h5",
+            "raw_sha256": "4c27e437f49c5036e8cd5957b8d89c035539791d66ce38a14a1ae0379a11564b",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000014.h5": {
+            "raw_recording": "episode_000014.h5",
+            "raw_sha256": "45b1fc370b0f67412f8358b0b08eaeefb240fde182d81cd505d87c9c0fb85892",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000015.h5": {
+            "raw_recording": "episode_000015.h5",
+            "raw_sha256": "bdbe125805184e3764f4fff697a1c9335b03134af7fb42004c79674910c3a389",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000016.h5": {
+            "raw_recording": "episode_000016.h5",
+            "raw_sha256": "3671c2c041db39b1c14ffdbc3973490c5f323eaecf4e2e5d97514b25fe761516",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000017.h5": {
+            "raw_recording": "episode_000017.h5",
+            "raw_sha256": "cdfd912e031f842dab6829c6ca17f2d2492f71db738d68766bf1e244ad786011",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000018.h5": {
+            "raw_recording": "episode_000018.h5",
+            "raw_sha256": "b6b2e7cc5933e013be6dd1d57165b5f27fb8bc0d190016dc31b72d58b3e44f98",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000020.h5": {
+            "raw_recording": "episode_000020.h5",
+            "raw_sha256": "5ea748075cf6548d37123520d075430e996ea3e548d6c0b3b6cb504cec789807",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000021.h5": {
+            "raw_recording": "episode_000021.h5",
+            "raw_sha256": "c2ecb5df2d00d335f39f5e1aba54867df09f47b1d4558448a075370f2999f964",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000022.h5": {
+            "raw_recording": "episode_000022.h5",
+            "raw_sha256": "d93bbe7dfafbcc5222a797ab7877038d8254c365fd1c489c2d7f1e4c54c28f36",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000023.h5": {
+            "raw_recording": "episode_000023.h5",
+            "raw_sha256": "c6a4b0e0e4593dfbdbdcc11ece8f62425b64b284c83f72355d710a4d194e69f5",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000024.h5": {
+            "raw_recording": "episode_000024.h5",
+            "raw_sha256": "1efa29224addc7b756ae69d7a71883c19195bfe1f10382840a3f8617ad29113e",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000025.h5": {
+            "raw_recording": "episode_000025.h5",
+            "raw_sha256": "4e1d878e64a9450db010e82291d04adac490f712afbd6c75752213891936c514",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000026.h5": {
+            "raw_recording": "episode_000026.h5",
+            "raw_sha256": "ffc9cfce75bdadac409d7e79cafdf6a15efd4b325d754e31ec2047b3697cfa50",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000028.h5": {
+            "raw_recording": "episode_000028.h5",
+            "raw_sha256": "384f9c8f249683d935eddac2573b61f58c00100ef98b1e69a1267d78b032add6",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000029.h5": {
+            "raw_recording": "episode_000029.h5",
+            "raw_sha256": "be63820eb3faf7fb4fba748a030f6da11d73d1fb18d31c31c979e1443314518d",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000030.h5": {
+            "raw_recording": "episode_000030.h5",
+            "raw_sha256": "db50e93de9d03fca919505fb91acd7864006038a47201d3f9892a9aa514a2605",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000031.h5": {
+            "raw_recording": "episode_000031.h5",
+            "raw_sha256": "846d4715fea6ed3bf8d2cc60733887cce4f8d208649032dd2c1daa68615af9e9",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000032.h5": {
+            "raw_recording": "episode_000032.h5",
+            "raw_sha256": "8f334d2097be6838bb687931ac98a7df0f3e8d89561e1f5f9b76429d77e3d363",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000033.h5": {
+            "raw_recording": "episode_000033.h5",
+            "raw_sha256": "b2556ab618dbea24b3e3aa560bd319218600e6f8c75b2a9e45001a60037b99ed",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000034.h5": {
+            "raw_recording": "episode_000034.h5",
+            "raw_sha256": "2b977191bb4d8809f270945f0f4b611203466f7e101f7be84ba95b49c7466aa7",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000035.h5": {
+            "raw_recording": "episode_000035.h5",
+            "raw_sha256": "a6619c1bda3140235774a9bc4494b22b6fe2a85a6265983a8cadd151bb190054",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000036.h5": {
+            "raw_recording": "episode_000036.h5",
+            "raw_sha256": "456d88139c065f0c64d26a26f6ae2e20173f7667d310710b185acbf86c47eae7",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000037.h5": {
+            "raw_recording": "episode_000037.h5",
+            "raw_sha256": "005ff9e74928595e023a9d7a633032be2e89efcd6045cc7ec467af3cfebb0cef",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000038.h5": {
+            "raw_recording": "episode_000038.h5",
+            "raw_sha256": "7390b409481bd5840acf9ffe2a658178acd6dd954a74fa7047c6add05a91e063",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000039.h5": {
+            "raw_recording": "episode_000039.h5",
+            "raw_sha256": "e574025092a159560a08ac68e6128a1b96ee5cce75c861213b3496322ad82699",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000040.h5": {
+            "raw_recording": "episode_000040.h5",
+            "raw_sha256": "4dc540e8f8053f644833f5e287ab8ae6bd2a3452feb57f3e9deb2c55ac331a06",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000041.h5": {
+            "raw_recording": "episode_000041.h5",
+            "raw_sha256": "c14238306163119187cc080b2ce215ca53cf7effdecd3f4b3face9af655d6b92",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000042.h5": {
+            "raw_recording": "episode_000042.h5",
+            "raw_sha256": "dc19245b759e3472a7104a6e950b8a29eb47df8f00b2a712b53d9a7338fc1d77",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000043.h5": {
+            "raw_recording": "episode_000043.h5",
+            "raw_sha256": "c9990df030676ba40be9146d4b7d8eb472dd8100161d103328d32b3f420fc694",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000044.h5": {
+            "raw_recording": "episode_000044.h5",
+            "raw_sha256": "49d8f02f4e1e032003951d2d0608b01729b30fecd6159b309f39ea01fdd50332",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000045.h5": {
+            "raw_recording": "episode_000045.h5",
+            "raw_sha256": "423f587249f72bd7c7d2826086e5cbde87b19626b99253f4d74cfffb8e878bc1",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000046.h5": {
+            "raw_recording": "episode_000046.h5",
+            "raw_sha256": "e8f24bfd81c1767dc9ca60e2ba18c138bb615eae9e01c422fd11424004d3e9f6",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000047.h5": {
+            "raw_recording": "episode_000047.h5",
+            "raw_sha256": "de8fb305b5c4c2c049c793ebe35d38ca1236bc1347a089408a202f0341e74efd",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000048.h5": {
+            "raw_recording": "episode_000048.h5",
+            "raw_sha256": "6f1b0af4201e8fa255e27e585c9efd1b27584464927a943bb4d31df4edb8038b",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000049.h5": {
+            "raw_recording": "episode_000049.h5",
+            "raw_sha256": "6a96a609409b9318970750ace006325e6f5584dc9d3cd49a940c74b080fe6ba3",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000050.h5": {
+            "raw_recording": "episode_000050.h5",
+            "raw_sha256": "b637e5bea188de73c1d362a30ba6a44c2ee9823f583e5aabf6de174b5c2aab67",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000051.h5": {
+            "raw_recording": "episode_000051.h5",
+            "raw_sha256": "4bb3b4618c180590bc45457eb4dc7bdf6935387ac2dc622563e66e5b0e62b786",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000052.h5": {
+            "raw_recording": "episode_000052.h5",
+            "raw_sha256": "7becb865938e5e7c4498c7481acc831e9d0cc3b5be4529aa409e10e69dad059a",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000053.h5": {
+            "raw_recording": "episode_000053.h5",
+            "raw_sha256": "7b7d67eefcb07fe772b16e0c7dcad2bed74ce5daa1367e8e5f844b9017c597b7",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000054.h5": {
+            "raw_recording": "episode_000054.h5",
+            "raw_sha256": "587721b223c6ffdfcabb34dec7ffd4b7d6ad35697741cffaec8bc8a5421a0294",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000055.h5": {
+            "raw_recording": "episode_000055.h5",
+            "raw_sha256": "4979c786ce404f3efa7577475b620cb51ca0161c945d8f2220fe8b2bff1f9db3",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000056.h5": {
+            "raw_recording": "episode_000056.h5",
+            "raw_sha256": "1ba575df62287f24c4d291857d5bd5bab6d7606d2fcdf83a064a8d7948f4b3e8",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000057.h5": {
+            "raw_recording": "episode_000057.h5",
+            "raw_sha256": "9b46c92b18b17d1b2363a9e14b091d373c8c882c8b9c109ad4654e0f87724316",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000058.h5": {
+            "raw_recording": "episode_000058.h5",
+            "raw_sha256": "0ca00ce6ebe88d53ac8b9e02a1453f01dc608e7507825642b43c6385dbb5f4ad",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000059.h5": {
+            "raw_recording": "episode_000059.h5",
+            "raw_sha256": "c8251f813e1707339645c6a1da6619ac22511b72c3d48e2c7aea991012ca121d",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000060.h5": {
+            "raw_recording": "episode_000060.h5",
+            "raw_sha256": "028006548138a38d4a164ba051cb1c8e90fd7fc13ef8197555dd2fd614c5f1ff",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000061.h5": {
+            "raw_recording": "episode_000061.h5",
+            "raw_sha256": "c4e35f06d06690dbfbf5527d873e19086a63211816534f5510c05df90c5e7815",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000062.h5": {
+            "raw_recording": "episode_000062.h5",
+            "raw_sha256": "ad3ce42ba6baa451a269111ecd9e959c4fa06054b96020fd8d8c17ff3e562216",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000063.h5": {
+            "raw_recording": "episode_000063.h5",
+            "raw_sha256": "25c3f87bfb59dce10ef2a8514d703aefa75b17a1028fa29cf9b0eba5bfe3ad15",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000064.h5": {
+            "raw_recording": "episode_000064.h5",
+            "raw_sha256": "1fd5b9ceccef9bedcde2eaeda9c8aae8b7ef89b54f067500de546a1667367195",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000065.h5": {
+            "raw_recording": "episode_000065.h5",
+            "raw_sha256": "267db8345ebe53beeae3a744bd23c105c392d7b810ad1d67c7f0a7a993c0e99f",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000066.h5": {
+            "raw_recording": "episode_000066.h5",
+            "raw_sha256": "b15ef5edd7462dd4c5cf270a748bf96447a1b3fffbcf486fe184946203a4465e",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000068.h5": {
+            "raw_recording": "episode_000068.h5",
+            "raw_sha256": "780beebd5451f6ef3c0b1723e8b88694eccf167bcd0808db498598d9ec92bff9",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000069.h5": {
+            "raw_recording": "episode_000069.h5",
+            "raw_sha256": "798ed23464d258ed2f9b9ae15f83b281c4caa0b736b9fef3b3a78c1cefa76f5a",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000070.h5": {
+            "raw_recording": "episode_000070.h5",
+            "raw_sha256": "e2f8701bb91ad7176c33808e5d82a406041dc8b504f56b600a234d8194717906",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000071.h5": {
+            "raw_recording": "episode_000071.h5",
+            "raw_sha256": "903fe3694772e62d2274ed9ba431bae2aeb7fd01cf145aa97c51d28021927daf",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000072.h5": {
+            "raw_recording": "episode_000072.h5",
+            "raw_sha256": "a8a474512c6b60a190e24c01a253711ced2704c3494c6059830b846d0aa2ec42",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000073.h5": {
+            "raw_recording": "episode_000073.h5",
+            "raw_sha256": "ff02802e5b50fcc027403eb1f50e6566da8cda0dcb364289d17396039e596b4f",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000074.h5": {
+            "raw_recording": "episode_000074.h5",
+            "raw_sha256": "dcaa0ec65e39f04e9b3a98f4ceed0c1f7fb8f01f39e0cea325a2f0f9fcb4ed10",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000075.h5": {
+            "raw_recording": "episode_000075.h5",
+            "raw_sha256": "ec58ad8e1de680c2d7309eec37e4c8bedcd95e9149be401ef64c2a7e966be628",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000076.h5": {
+            "raw_recording": "episode_000076.h5",
+            "raw_sha256": "fc9212b377b28a4c506355dc98e37f409362ad3976414af521802ed358e59458",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000077.h5": {
+            "raw_recording": "episode_000077.h5",
+            "raw_sha256": "8eb7e21f03b03279b4181adfb4f4900e35e7a0ae157619463bbc10e92b79c487",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000078.h5": {
+            "raw_recording": "episode_000078.h5",
+            "raw_sha256": "50b5abd29a27bb88a27c4ff125d5e897d459b7af16ec5cd50a93b26e0e361e7a",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000079.h5": {
+            "raw_recording": "episode_000079.h5",
+            "raw_sha256": "3aadfb44c54d7617332eb959b81ce5d483ff4d42d3e92a59ed47eab67f6388a5",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000080.h5": {
+            "raw_recording": "episode_000080.h5",
+            "raw_sha256": "9c5fb755343840e06768bd2eac30a5bdc44ca17432809aaaa181f8eb46077ce7",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000082.h5": {
+            "raw_recording": "episode_000082.h5",
+            "raw_sha256": "6d0f83188ae11736485bde1724d39b0c0ccfd424bceec731accb62f6093680c9",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000083.h5": {
+            "raw_recording": "episode_000083.h5",
+            "raw_sha256": "e6181cf92ca264d88f541686e98e1a7b9b6e838de4b570501bdae79a5ce05043",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000084.h5": {
+            "raw_recording": "episode_000084.h5",
+            "raw_sha256": "8db0dd0f7072369b564728e5f55cb5e8dd5e44491afefed0250fac21f27a903c",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000085.h5": {
+            "raw_recording": "episode_000085.h5",
+            "raw_sha256": "ec9057305b1310dd417dfcb67d6c08f48c6a5d7f23804b4e63d5e5a1a07823e2",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000086.h5": {
+            "raw_recording": "episode_000086.h5",
+            "raw_sha256": "5c4af0ba1051f882389fac68ac3ef963cb6aa0b669c97fb4e7492398575a4a83",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000087.h5": {
+            "raw_recording": "episode_000087.h5",
+            "raw_sha256": "c6b2250db2c54213970d75f5d82d48b40d75433e63e38b9805ca0566716ef967",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000089.h5": {
+            "raw_recording": "episode_000089.h5",
+            "raw_sha256": "3b759d1e2c9926a9d60057ace08a855673d966957dc03d02096155df989978fc",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000090.h5": {
+            "raw_recording": "episode_000090.h5",
+            "raw_sha256": "439e1b883dd6af19850c8b55ac38b54ff07116a34904ca0f6d73b9b49611db8e",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000091.h5": {
+            "raw_recording": "episode_000091.h5",
+            "raw_sha256": "be610447772adb8136cf6aecbf6b96d5519b9184728d95480195d2b1c6b60369",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000092.h5": {
+            "raw_recording": "episode_000092.h5",
+            "raw_sha256": "b2a6c54f9377565d938aeae9e54c0c9f02f203168d76c49ce23176c6658f32b7",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000093.h5": {
+            "raw_recording": "episode_000093.h5",
+            "raw_sha256": "86d2a1390b96b17e3e283131fd41a31a2a2c9b181270bf8287a1bdbb2b99c4e9",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000094.h5": {
+            "raw_recording": "episode_000094.h5",
+            "raw_sha256": "64cecc33490d6afa0c527160d979cd355df841e71d81d80f0030e3e443e985a2",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000095.h5": {
+            "raw_recording": "episode_000095.h5",
+            "raw_sha256": "7d487b70e6e5565083216bb15040fb5580804168a25729b282970aa7f34d99e6",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000096.h5": {
+            "raw_recording": "episode_000096.h5",
+            "raw_sha256": "b1c7d0d4cb1b3fb30b609b327a967b7685dcd6352fc1aac04a6dba8944c77a73",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000097.h5": {
+            "raw_recording": "episode_000097.h5",
+            "raw_sha256": "0f1c518fb7546d3fab0eb9460e5e1bf83ff439fb78858662584bbe5eccc4d72a",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000098.h5": {
+            "raw_recording": "episode_000098.h5",
+            "raw_sha256": "591772a7e5752af5d3f0b970fd65a8b70debdeb484615787db2dd4795bdb587d",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000099.h5": {
+            "raw_recording": "episode_000099.h5",
+            "raw_sha256": "9985f244f29f5d61364b139a0fa466cab4d227bcf7d199ff50089eb889fbd306",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000100.h5": {
+            "raw_recording": "episode_000100.h5",
+            "raw_sha256": "5ed3b9876a9c36d05b63fe3a7a40919cfd6c7d445002ec9bf83e86d5f4ce2604",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000102.h5": {
+            "raw_recording": "episode_000102.h5",
+            "raw_sha256": "c74ce3a404a2a0848259e7e793c57466b0e1a8502b1f32d1aecd96d69ad4eedd",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000103.h5": {
+            "raw_recording": "episode_000103.h5",
+            "raw_sha256": "fca2129518fe664232d284cfc63f6b17e60afb8621788778e24bdf8e5613d4bd",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000104.h5": {
+            "raw_recording": "episode_000104.h5",
+            "raw_sha256": "940500fe5bed3b071c9915857c174f1c73963c3008682f0b60514eb0ff2707d6",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000105.h5": {
+            "raw_recording": "episode_000105.h5",
+            "raw_sha256": "31f15688ca451fba35064e50ae7e7573ed6dbad4156f4b039bd46826832ecb1f",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000106.h5": {
+            "raw_recording": "episode_000106.h5",
+            "raw_sha256": "b5cd455a7627f5c88c64c2e918aa24008e75d2ef745148bc523214d0898d1dc1",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000107.h5": {
+            "raw_recording": "episode_000107.h5",
+            "raw_sha256": "83134ba6e8ee0d3baa9a9be507b0f25153472505884309a6ca8a42799e93c14d",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000108.h5": {
+            "raw_recording": "episode_000108.h5",
+            "raw_sha256": "30f8199b2d7906f6c3198365645a02d13a07937ad3e170f197caa7424de2d2a6",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000110.h5": {
+            "raw_recording": "episode_000110.h5",
+            "raw_sha256": "8047a50a5da7294e72a5f788e0a3f738b40e8a049e50728c0d3338467c95dbfa",
+            "store_episode": null,
+            "task": "mug-hanging"
+          },
+          "mug-hanging/episode_000111.h5": {
+            "raw_recording": "episode_000111.h5",
+            "raw_sha256": "6c8861db73b05b36a0e457a4a7bb732be3d1e080cc33d36a2f617221b525a2b5",
+            "store_episode": null,
+            "task": "mug-hanging"
+          }
+        },
+        "episodes": [
+          "mug-hanging/episode_000001.h5",
+          "mug-hanging/episode_000003.h5",
+          "mug-hanging/episode_000004.h5",
+          "mug-hanging/episode_000005.h5",
+          "mug-hanging/episode_000007.h5",
+          "mug-hanging/episode_000009.h5",
+          "mug-hanging/episode_000010.h5",
+          "mug-hanging/episode_000011.h5",
+          "mug-hanging/episode_000012.h5",
+          "mug-hanging/episode_000014.h5",
+          "mug-hanging/episode_000015.h5",
+          "mug-hanging/episode_000016.h5",
+          "mug-hanging/episode_000017.h5",
+          "mug-hanging/episode_000018.h5",
+          "mug-hanging/episode_000020.h5",
+          "mug-hanging/episode_000021.h5",
+          "mug-hanging/episode_000022.h5",
+          "mug-hanging/episode_000023.h5",
+          "mug-hanging/episode_000024.h5",
+          "mug-hanging/episode_000025.h5",
+          "mug-hanging/episode_000026.h5",
+          "mug-hanging/episode_000028.h5",
+          "mug-hanging/episode_000029.h5",
+          "mug-hanging/episode_000030.h5",
+          "mug-hanging/episode_000031.h5",
+          "mug-hanging/episode_000032.h5",
+          "mug-hanging/episode_000033.h5",
+          "mug-hanging/episode_000034.h5",
+          "mug-hanging/episode_000035.h5",
+          "mug-hanging/episode_000036.h5",
+          "mug-hanging/episode_000037.h5",
+          "mug-hanging/episode_000038.h5",
+          "mug-hanging/episode_000039.h5",
+          "mug-hanging/episode_000040.h5",
+          "mug-hanging/episode_000041.h5",
+          "mug-hanging/episode_000042.h5",
+          "mug-hanging/episode_000043.h5",
+          "mug-hanging/episode_000044.h5",
+          "mug-hanging/episode_000045.h5",
+          "mug-hanging/episode_000046.h5",
+          "mug-hanging/episode_000047.h5",
+          "mug-hanging/episode_000048.h5",
+          "mug-hanging/episode_000049.h5",
+          "mug-hanging/episode_000050.h5",
+          "mug-hanging/episode_000051.h5",
+          "mug-hanging/episode_000052.h5",
+          "mug-hanging/episode_000053.h5",
+          "mug-hanging/episode_000054.h5",
+          "mug-hanging/episode_000055.h5",
+          "mug-hanging/episode_000056.h5",
+          "mug-hanging/episode_000057.h5",
+          "mug-hanging/episode_000058.h5",
+          "mug-hanging/episode_000059.h5",
+          "mug-hanging/episode_000060.h5",
+          "mug-hanging/episode_000061.h5",
+          "mug-hanging/episode_000062.h5",
+          "mug-hanging/episode_000063.h5",
+          "mug-hanging/episode_000064.h5",
+          "mug-hanging/episode_000065.h5",
+          "mug-hanging/episode_000066.h5",
+          "mug-hanging/episode_000068.h5",
+          "mug-hanging/episode_000069.h5",
+          "mug-hanging/episode_000070.h5",
+          "mug-hanging/episode_000071.h5",
+          "mug-hanging/episode_000072.h5",
+          "mug-hanging/episode_000073.h5",
+          "mug-hanging/episode_000074.h5",
+          "mug-hanging/episode_000075.h5",
+          "mug-hanging/episode_000076.h5",
+          "mug-hanging/episode_000077.h5",
+          "mug-hanging/episode_000078.h5",
+          "mug-hanging/episode_000079.h5",
+          "mug-hanging/episode_000080.h5",
+          "mug-hanging/episode_000082.h5",
+          "mug-hanging/episode_000083.h5",
+          "mug-hanging/episode_000084.h5",
+          "mug-hanging/episode_000085.h5",
+          "mug-hanging/episode_000086.h5",
+          "mug-hanging/episode_000087.h5",
+          "mug-hanging/episode_000089.h5",
+          "mug-hanging/episode_000090.h5",
+          "mug-hanging/episode_000091.h5",
+          "mug-hanging/episode_000092.h5",
+          "mug-hanging/episode_000093.h5",
+          "mug-hanging/episode_000094.h5",
+          "mug-hanging/episode_000095.h5",
+          "mug-hanging/episode_000096.h5",
+          "mug-hanging/episode_000097.h5",
+          "mug-hanging/episode_000098.h5",
+          "mug-hanging/episode_000099.h5",
+          "mug-hanging/episode_000100.h5",
+          "mug-hanging/episode_000102.h5",
+          "mug-hanging/episode_000103.h5",
+          "mug-hanging/episode_000104.h5",
+          "mug-hanging/episode_000105.h5",
+          "mug-hanging/episode_000106.h5",
+          "mug-hanging/episode_000107.h5",
+          "mug-hanging/episode_000108.h5",
+          "mug-hanging/episode_000110.h5",
+          "mug-hanging/episode_000111.h5"
+        ],
+        "excluded": [],
+        "passed": true,
+        "problem_count": 0,
+        "problems": [],
+        "store_episodes": [],
+        "valid_and_preprocessed": 100
+      }
+    }
+  },
+  "jobs": [
+    {
+      "args": [
+        "--config",
+        "configs/realworld/baselines/reviwo/drawer-open.yaml",
+        "--name",
+        "rwng-20261107-reviwo-drawer-open-pre",
+        "--output-root",
+        "runs"
+      ],
+      "baseline": "reviwo",
+      "calibration_dependent": false,
+      "deps": [],
+      "disk_gb": 20,
+      "evidence_manifest": "runs/remote/acceptance/782f140-cc/manifest.json",
+      "gate_level": "image (100-episode gate)",
+      "gpu": "any",
+      "host": "remote",
+      "id": "rwng-20261107-reviwo-drawer-open-pre",
+      "inputs": [
+        "/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/store.yaml",
+        "/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/gate_report.json",
+        "/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/split_seed0.json"
+      ],
+      "max_restarts": 2,
+      "mem_gb": 4,
+      "oom_score_adj": 0,
+      "pin_host": "remote",
+      "plan_row_id": "rw-reviwo-drawer-open-pre",
+      "planned_commit": "782f14080a25d0d62fbd8594662cdfdb512b5a7a",
+      "planned_image": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a",
+      "pretraining": "task-specific, documented protocol (configs/realworld/baselines)",
+      "priority": 1,
+      "ram_gb": 16,
+      "realworld_consumer": "reviwo",
+      "realworld_gate_sha256": "dc2a1ad83114a8fa0a4ee3a78def0a37f367b9e60bdc7cc24c88fec3cbbf9cb7",
+      "realworld_manifest_sha256": "2fb5343046f4f85004a81ae31e2a5df67a9c018e8bf173392d82203b2afa98d0",
+      "realworld_target": "drawer-open",
+      "registration_tool": "runs/setup/tools/register_realworld_nongeometric_20261106.py",
+      "remote_host": "192.168.10.22",
+      "required_results": [
+        "encoder.pt",
+        "metrics.jsonl",
+        "completion.json"
+      ],
+      "role": "realworld_pretrain",
+      "script": "scripts/train_reviwo.py"
+    },
+    {
+      "args": [
+        "--config",
+        "configs/realworld/baselines/dynamo/drawer-open.yaml",
+        "--name",
+        "rwng-20261107-dynamo-drawer-open-pre",
+        "--output-root",
+        "runs",
+        "--resume",
+        "auto"
+      ],
+      "baseline": "dynamo",
+      "calibration_dependent": false,
+      "deps": [],
+      "disk_gb": 20,
+      "evidence_manifest": "runs/remote/acceptance/782f140-cc/manifest.json",
+      "gate_level": "image (100-episode gate)",
+      "gpu": "any",
+      "host": "remote",
+      "id": "rwng-20261107-dynamo-drawer-open-pre",
+      "inputs": [
+        "/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/store.yaml",
+        "/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/gate_report.json",
+        "/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/split_seed0.json"
+      ],
+      "max_restarts": 2,
+      "mem_gb": 12,
+      "oom_score_adj": 0,
+      "pin_host": "remote",
+      "plan_row_id": "rw-dynamo-drawer-open-pre",
+      "planned_commit": "782f14080a25d0d62fbd8594662cdfdb512b5a7a",
+      "planned_image": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a",
+      "pretraining": "task-specific, documented protocol (configs/realworld/baselines)",
+      "priority": 1,
+      "ram_gb": 32,
+      "realworld_consumer": "dynamo",
+      "realworld_gate_sha256": "dc2a1ad83114a8fa0a4ee3a78def0a37f367b9e60bdc7cc24c88fec3cbbf9cb7",
+      "realworld_manifest_sha256": "2fb5343046f4f85004a81ae31e2a5df67a9c018e8bf173392d82203b2afa98d0",
+      "realworld_target": "drawer-open",
+      "registration_tool": "runs/setup/tools/register_realworld_nongeometric_20261106.py",
+      "remote_host": "192.168.10.22",
+      "required_results": [
+        "encoder.pt",
+        "metrics.jsonl",
+        "completion.json"
+      ],
+      "role": "realworld_pretrain",
+      "script": "scripts/train_dynamo.py"
+    },
+    {
+      "args": [
+        "--config",
+        "configs/realworld/baselines/dynamo/mug-hanging.yaml",
+        "--name",
+        "rwng-20261107-dynamo-mug-hanging-pre",
+        "--output-root",
+        "runs",
+        "--resume",
+        "auto"
+      ],
+      "baseline": "dynamo",
+      "calibration_dependent": false,
+      "deps": [],
+      "disk_gb": 20,
+      "evidence_manifest": "runs/remote/acceptance/782f140-cc/manifest.json",
+      "gate_level": "image (100-episode gate)",
+      "gpu": "any",
+      "host": "remote",
+      "id": "rwng-20261107-dynamo-mug-hanging-pre",
+      "inputs": [
+        "/home/compu/kaist/sunho/realworld/learning_inputs/mug-hanging/store.yaml",
+        "/home/compu/kaist/sunho/realworld/learning_inputs/mug-hanging/gate_report.json",
+        "/home/compu/kaist/sunho/realworld/learning_inputs/mug-hanging/split_seed0.json"
+      ],
+      "max_restarts": 2,
+      "mem_gb": 12,
+      "oom_score_adj": 0,
+      "pin_host": "remote",
+      "plan_row_id": "rw-dynamo-mug-hanging-pre",
+      "planned_commit": "782f14080a25d0d62fbd8594662cdfdb512b5a7a",
+      "planned_image": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a",
+      "pretraining": "task-specific, documented protocol (configs/realworld/baselines)",
+      "priority": 1,
+      "ram_gb": 32,
+      "realworld_consumer": "dynamo",
+      "realworld_gate_sha256": "dc2a1ad83114a8fa0a4ee3a78def0a37f367b9e60bdc7cc24c88fec3cbbf9cb7",
+      "realworld_manifest_sha256": "2fb5343046f4f85004a81ae31e2a5df67a9c018e8bf173392d82203b2afa98d0",
+      "realworld_target": "mug-hanging",
+      "registration_tool": "runs/setup/tools/register_realworld_nongeometric_20261106.py",
+      "remote_host": "192.168.10.22",
+      "required_results": [
+        "encoder.pt",
+        "metrics.jsonl",
+        "completion.json"
+      ],
+      "role": "realworld_pretrain",
+      "script": "scripts/train_dynamo.py"
+    },
+    {
+      "args": [
+        "build",
+        "--store",
+        "/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/store.yaml",
+        "--condition",
+        "dynamo",
+        "--out",
+        "runs/rwng-20261107-fqldata-dynamo-drawer-open/dataset.h5",
+        "--gate-report",
+        "/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/gate_report.json",
+        "--outcomes",
+        "/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/outcomes.json",
+        "--export",
+        "runs/rwng-20261107-dynamo-drawer-open-pre/encoder.pt",
+        "--device",
+        "cuda"
+      ],
+      "calibration_dependent": false,
+      "deps": [
+        "rwng-20261107-dynamo-drawer-open-pre"
+      ],
+      "disk_gb": 20,
+      "evidence_manifest": "runs/remote/acceptance/782f140-cc/manifest.json",
+      "fql_condition": "dynamo",
+      "gate_level": "image (100-episode gate)",
+      "gpu": "any",
+      "host": "remote",
+      "id": "rwng-20261107-fqldata-dynamo-drawer-open",
+      "max_restarts": 1,
+      "mem_gb": 8,
+      "oom_score_adj": 0,
+      "pin_host": "remote",
+      "plan_row_id": "rw-fqldata-dynamo-drawer-open",
+      "planned_commit": "782f14080a25d0d62fbd8594662cdfdb512b5a7a",
+      "planned_image": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a",
+      "priority": 2,
+      "ram_gb": 16,
+      "realworld_consumer": "dynamo",
+      "realworld_gate_sha256": "dc2a1ad83114a8fa0a4ee3a78def0a37f367b9e60bdc7cc24c88fec3cbbf9cb7",
+      "realworld_manifest_sha256": "2fb5343046f4f85004a81ae31e2a5df67a9c018e8bf173392d82203b2afa98d0",
+      "realworld_target": "drawer-open",
+      "registration_tool": "runs/setup/tools/register_realworld_nongeometric_20261106.py",
+      "remote_host": "192.168.10.22",
+      "required_results": [
+        "dataset.h5"
+      ],
+      "role": "realworld_fql",
+      "script": "scripts/realworld_fql_dataset.py"
+    },
+    {
+      "args": [
+        "--config",
+        "configs/realworld/fql/base.yaml",
+        "--name",
+        "rwng-20261107-fql-dynamo-drawer-open-s0",
+        "--output-root",
+        "runs",
+        "--set",
+        "condition=dynamo",
+        "data.dataset=runs/rwng-20261107-fqldata-dynamo-drawer-open/dataset.h5",
+        "data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/split_seed0.json",
+        "data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/gate_report.json",
+        "train.seed=0",
+        "agent.alpha=10.0",
+        "agent.batch_size=256",
+        "train.offline_steps=1000000",
+        "train.log_interval=5000",
+        "train.eval_interval=100000"
+      ],
+      "calibration_dependent": false,
+      "deps": [
+        "rwng-20261107-fqldata-dynamo-drawer-open"
+      ],
+      "disk_gb": 10,
+      "evidence_manifest": "runs/remote/acceptance/782f140-cc/manifest.json",
+      "fql_budget": {
+        "alpha": 10.0,
+        "batch_size": 256,
+        "eval_interval": 100000,
+        "log_interval": 5000,
+        "offline_steps": 1000000
+      },
+      "fql_condition": "dynamo",
+      "fql_seed": 0,
+      "gate_level": "image (100-episode gate)",
+      "gpu": "any",
+      "host": "remote",
+      "id": "rwng-20261107-fql-dynamo-drawer-open-s0",
+      "max_restarts": 2,
+      "mem_gb": 6,
+      "oom_score_adj": 0,
+      "pin_host": "remote",
+      "plan_row_id": "rw-fql-dynamo-drawer-open-s0",
+      "planned_commit": "782f14080a25d0d62fbd8594662cdfdb512b5a7a",
+      "planned_image": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a",
+      "priority": 2,
+      "ram_gb": 12,
+      "realworld_consumer": "dynamo",
+      "realworld_gate_sha256": "dc2a1ad83114a8fa0a4ee3a78def0a37f367b9e60bdc7cc24c88fec3cbbf9cb7",
+      "realworld_manifest_sha256": "2fb5343046f4f85004a81ae31e2a5df67a9c018e8bf173392d82203b2afa98d0",
+      "realworld_target": "drawer-open",
+      "registration_tool": "runs/setup/tools/register_realworld_nongeometric_20261106.py",
+      "remote_host": "192.168.10.22",
+      "required_results": [
+        "policy.pt",
+        "metrics.jsonl",
+        "completion.json"
+      ],
+      "role": "realworld_fql",
+      "script": "scripts/train_realworld_fql.py"
+    },
+    {
+      "args": [
+        "--config",
+        "configs/realworld/fql/base.yaml",
+        "--name",
+        "rwng-20261107-fql-dynamo-drawer-open-s1",
+        "--output-root",
+        "runs",
+        "--set",
+        "condition=dynamo",
+        "data.dataset=runs/rwng-20261107-fqldata-dynamo-drawer-open/dataset.h5",
+        "data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/split_seed0.json",
+        "data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/gate_report.json",
+        "train.seed=1",
+        "agent.alpha=10.0",
+        "agent.batch_size=256",
+        "train.offline_steps=1000000",
+        "train.log_interval=5000",
+        "train.eval_interval=100000"
+      ],
+      "calibration_dependent": false,
+      "deps": [
+        "rwng-20261107-fqldata-dynamo-drawer-open"
+      ],
+      "disk_gb": 10,
+      "evidence_manifest": "runs/remote/acceptance/782f140-cc/manifest.json",
+      "fql_budget": {
+        "alpha": 10.0,
+        "batch_size": 256,
+        "eval_interval": 100000,
+        "log_interval": 5000,
+        "offline_steps": 1000000
+      },
+      "fql_condition": "dynamo",
+      "fql_seed": 1,
+      "gate_level": "image (100-episode gate)",
+      "gpu": "any",
+      "host": "remote",
+      "id": "rwng-20261107-fql-dynamo-drawer-open-s1",
+      "max_restarts": 2,
+      "mem_gb": 6,
+      "oom_score_adj": 0,
+      "pin_host": "remote",
+      "plan_row_id": "rw-fql-dynamo-drawer-open-s1",
+      "planned_commit": "782f14080a25d0d62fbd8594662cdfdb512b5a7a",
+      "planned_image": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a",
+      "priority": 2,
+      "ram_gb": 12,
+      "realworld_consumer": "dynamo",
+      "realworld_gate_sha256": "dc2a1ad83114a8fa0a4ee3a78def0a37f367b9e60bdc7cc24c88fec3cbbf9cb7",
+      "realworld_manifest_sha256": "2fb5343046f4f85004a81ae31e2a5df67a9c018e8bf173392d82203b2afa98d0",
+      "realworld_target": "drawer-open",
+      "registration_tool": "runs/setup/tools/register_realworld_nongeometric_20261106.py",
+      "remote_host": "192.168.10.22",
+      "required_results": [
+        "policy.pt",
+        "metrics.jsonl",
+        "completion.json"
+      ],
+      "role": "realworld_fql",
+      "script": "scripts/train_realworld_fql.py"
+    },
+    {
+      "args": [
+        "--config",
+        "configs/realworld/fql/base.yaml",
+        "--name",
+        "rwng-20261107-fql-dynamo-drawer-open-s2",
+        "--output-root",
+        "runs",
+        "--set",
+        "condition=dynamo",
+        "data.dataset=runs/rwng-20261107-fqldata-dynamo-drawer-open/dataset.h5",
+        "data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/split_seed0.json",
+        "data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/gate_report.json",
+        "train.seed=2",
+        "agent.alpha=10.0",
+        "agent.batch_size=256",
+        "train.offline_steps=1000000",
+        "train.log_interval=5000",
+        "train.eval_interval=100000"
+      ],
+      "calibration_dependent": false,
+      "deps": [
+        "rwng-20261107-fqldata-dynamo-drawer-open"
+      ],
+      "disk_gb": 10,
+      "evidence_manifest": "runs/remote/acceptance/782f140-cc/manifest.json",
+      "fql_budget": {
+        "alpha": 10.0,
+        "batch_size": 256,
+        "eval_interval": 100000,
+        "log_interval": 5000,
+        "offline_steps": 1000000
+      },
+      "fql_condition": "dynamo",
+      "fql_seed": 2,
+      "gate_level": "image (100-episode gate)",
+      "gpu": "any",
+      "host": "remote",
+      "id": "rwng-20261107-fql-dynamo-drawer-open-s2",
+      "max_restarts": 2,
+      "mem_gb": 6,
+      "oom_score_adj": 0,
+      "pin_host": "remote",
+      "plan_row_id": "rw-fql-dynamo-drawer-open-s2",
+      "planned_commit": "782f14080a25d0d62fbd8594662cdfdb512b5a7a",
+      "planned_image": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a",
+      "priority": 2,
+      "ram_gb": 12,
+      "realworld_consumer": "dynamo",
+      "realworld_gate_sha256": "dc2a1ad83114a8fa0a4ee3a78def0a37f367b9e60bdc7cc24c88fec3cbbf9cb7",
+      "realworld_manifest_sha256": "2fb5343046f4f85004a81ae31e2a5df67a9c018e8bf173392d82203b2afa98d0",
+      "realworld_target": "drawer-open",
+      "registration_tool": "runs/setup/tools/register_realworld_nongeometric_20261106.py",
+      "remote_host": "192.168.10.22",
+      "required_results": [
+        "policy.pt",
+        "metrics.jsonl",
+        "completion.json"
+      ],
+      "role": "realworld_fql",
+      "script": "scripts/train_realworld_fql.py"
+    },
+    {
+      "args": [
+        "build",
+        "--store",
+        "/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/store.yaml",
+        "--condition",
+        "reviwo",
+        "--out",
+        "runs/rwng-20261107-fqldata-reviwo-drawer-open/dataset.h5",
+        "--gate-report",
+        "/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/gate_report.json",
+        "--outcomes",
+        "/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/outcomes.json",
+        "--export",
+        "runs/rwng-20261107-reviwo-drawer-open-pre/encoder.pt",
+        "--device",
+        "cuda"
+      ],
+      "calibration_dependent": false,
+      "deps": [
+        "rwng-20261107-reviwo-drawer-open-pre"
+      ],
+      "disk_gb": 20,
+      "evidence_manifest": "runs/remote/acceptance/782f140-cc/manifest.json",
+      "fql_condition": "reviwo",
+      "gate_level": "image (100-episode gate)",
+      "gpu": "any",
+      "host": "remote",
+      "id": "rwng-20261107-fqldata-reviwo-drawer-open",
+      "max_restarts": 1,
+      "mem_gb": 8,
+      "oom_score_adj": 0,
+      "pin_host": "remote",
+      "plan_row_id": "rw-fqldata-reviwo-drawer-open",
+      "planned_commit": "782f14080a25d0d62fbd8594662cdfdb512b5a7a",
+      "planned_image": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a",
+      "priority": 2,
+      "ram_gb": 16,
+      "realworld_consumer": "fql_reviwo",
+      "realworld_gate_sha256": "dc2a1ad83114a8fa0a4ee3a78def0a37f367b9e60bdc7cc24c88fec3cbbf9cb7",
+      "realworld_manifest_sha256": "2fb5343046f4f85004a81ae31e2a5df67a9c018e8bf173392d82203b2afa98d0",
+      "realworld_target": "drawer-open",
+      "registration_tool": "runs/setup/tools/register_realworld_nongeometric_20261106.py",
+      "remote_host": "192.168.10.22",
+      "required_results": [
+        "dataset.h5"
+      ],
+      "role": "realworld_fql",
+      "script": "scripts/realworld_fql_dataset.py"
+    },
+    {
+      "args": [
+        "--config",
+        "configs/realworld/fql/base.yaml",
+        "--name",
+        "rwng-20261107-fql-reviwo-drawer-open-s0",
+        "--output-root",
+        "runs",
+        "--set",
+        "condition=reviwo",
+        "data.dataset=runs/rwng-20261107-fqldata-reviwo-drawer-open/dataset.h5",
+        "data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/split_seed0.json",
+        "data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/gate_report.json",
+        "train.seed=0",
+        "agent.alpha=10.0",
+        "agent.batch_size=256",
+        "train.offline_steps=1000000",
+        "train.log_interval=5000",
+        "train.eval_interval=100000"
+      ],
+      "calibration_dependent": false,
+      "deps": [
+        "rwng-20261107-fqldata-reviwo-drawer-open"
+      ],
+      "disk_gb": 10,
+      "evidence_manifest": "runs/remote/acceptance/782f140-cc/manifest.json",
+      "fql_budget": {
+        "alpha": 10.0,
+        "batch_size": 256,
+        "eval_interval": 100000,
+        "log_interval": 5000,
+        "offline_steps": 1000000
+      },
+      "fql_condition": "reviwo",
+      "fql_seed": 0,
+      "gate_level": "image (100-episode gate)",
+      "gpu": "any",
+      "host": "remote",
+      "id": "rwng-20261107-fql-reviwo-drawer-open-s0",
+      "max_restarts": 2,
+      "mem_gb": 6,
+      "oom_score_adj": 0,
+      "pin_host": "remote",
+      "plan_row_id": "rw-fql-reviwo-drawer-open-s0",
+      "planned_commit": "782f14080a25d0d62fbd8594662cdfdb512b5a7a",
+      "planned_image": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a",
+      "priority": 2,
+      "ram_gb": 12,
+      "realworld_consumer": "fql_reviwo",
+      "realworld_gate_sha256": "dc2a1ad83114a8fa0a4ee3a78def0a37f367b9e60bdc7cc24c88fec3cbbf9cb7",
+      "realworld_manifest_sha256": "2fb5343046f4f85004a81ae31e2a5df67a9c018e8bf173392d82203b2afa98d0",
+      "realworld_target": "drawer-open",
+      "registration_tool": "runs/setup/tools/register_realworld_nongeometric_20261106.py",
+      "remote_host": "192.168.10.22",
+      "required_results": [
+        "policy.pt",
+        "metrics.jsonl",
+        "completion.json"
+      ],
+      "role": "realworld_fql",
+      "script": "scripts/train_realworld_fql.py"
+    },
+    {
+      "args": [
+        "--config",
+        "configs/realworld/fql/base.yaml",
+        "--name",
+        "rwng-20261107-fql-reviwo-drawer-open-s1",
+        "--output-root",
+        "runs",
+        "--set",
+        "condition=reviwo",
+        "data.dataset=runs/rwng-20261107-fqldata-reviwo-drawer-open/dataset.h5",
+        "data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/split_seed0.json",
+        "data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/gate_report.json",
+        "train.seed=1",
+        "agent.alpha=10.0",
+        "agent.batch_size=256",
+        "train.offline_steps=1000000",
+        "train.log_interval=5000",
+        "train.eval_interval=100000"
+      ],
+      "calibration_dependent": false,
+      "deps": [
+        "rwng-20261107-fqldata-reviwo-drawer-open"
+      ],
+      "disk_gb": 10,
+      "evidence_manifest": "runs/remote/acceptance/782f140-cc/manifest.json",
+      "fql_budget": {
+        "alpha": 10.0,
+        "batch_size": 256,
+        "eval_interval": 100000,
+        "log_interval": 5000,
+        "offline_steps": 1000000
+      },
+      "fql_condition": "reviwo",
+      "fql_seed": 1,
+      "gate_level": "image (100-episode gate)",
+      "gpu": "any",
+      "host": "remote",
+      "id": "rwng-20261107-fql-reviwo-drawer-open-s1",
+      "max_restarts": 2,
+      "mem_gb": 6,
+      "oom_score_adj": 0,
+      "pin_host": "remote",
+      "plan_row_id": "rw-fql-reviwo-drawer-open-s1",
+      "planned_commit": "782f14080a25d0d62fbd8594662cdfdb512b5a7a",
+      "planned_image": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a",
+      "priority": 2,
+      "ram_gb": 12,
+      "realworld_consumer": "fql_reviwo",
+      "realworld_gate_sha256": "dc2a1ad83114a8fa0a4ee3a78def0a37f367b9e60bdc7cc24c88fec3cbbf9cb7",
+      "realworld_manifest_sha256": "2fb5343046f4f85004a81ae31e2a5df67a9c018e8bf173392d82203b2afa98d0",
+      "realworld_target": "drawer-open",
+      "registration_tool": "runs/setup/tools/register_realworld_nongeometric_20261106.py",
+      "remote_host": "192.168.10.22",
+      "required_results": [
+        "policy.pt",
+        "metrics.jsonl",
+        "completion.json"
+      ],
+      "role": "realworld_fql",
+      "script": "scripts/train_realworld_fql.py"
+    },
+    {
+      "args": [
+        "--config",
+        "configs/realworld/fql/base.yaml",
+        "--name",
+        "rwng-20261107-fql-reviwo-drawer-open-s2",
+        "--output-root",
+        "runs",
+        "--set",
+        "condition=reviwo",
+        "data.dataset=runs/rwng-20261107-fqldata-reviwo-drawer-open/dataset.h5",
+        "data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/split_seed0.json",
+        "data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/gate_report.json",
+        "train.seed=2",
+        "agent.alpha=10.0",
+        "agent.batch_size=256",
+        "train.offline_steps=1000000",
+        "train.log_interval=5000",
+        "train.eval_interval=100000"
+      ],
+      "calibration_dependent": false,
+      "deps": [
+        "rwng-20261107-fqldata-reviwo-drawer-open"
+      ],
+      "disk_gb": 10,
+      "evidence_manifest": "runs/remote/acceptance/782f140-cc/manifest.json",
+      "fql_budget": {
+        "alpha": 10.0,
+        "batch_size": 256,
+        "eval_interval": 100000,
+        "log_interval": 5000,
+        "offline_steps": 1000000
+      },
+      "fql_condition": "reviwo",
+      "fql_seed": 2,
+      "gate_level": "image (100-episode gate)",
+      "gpu": "any",
+      "host": "remote",
+      "id": "rwng-20261107-fql-reviwo-drawer-open-s2",
+      "max_restarts": 2,
+      "mem_gb": 6,
+      "oom_score_adj": 0,
+      "pin_host": "remote",
+      "plan_row_id": "rw-fql-reviwo-drawer-open-s2",
+      "planned_commit": "782f14080a25d0d62fbd8594662cdfdb512b5a7a",
+      "planned_image": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a",
+      "priority": 2,
+      "ram_gb": 12,
+      "realworld_consumer": "fql_reviwo",
+      "realworld_gate_sha256": "dc2a1ad83114a8fa0a4ee3a78def0a37f367b9e60bdc7cc24c88fec3cbbf9cb7",
+      "realworld_manifest_sha256": "2fb5343046f4f85004a81ae31e2a5df67a9c018e8bf173392d82203b2afa98d0",
+      "realworld_target": "drawer-open",
+      "registration_tool": "runs/setup/tools/register_realworld_nongeometric_20261106.py",
+      "remote_host": "192.168.10.22",
+      "required_results": [
+        "policy.pt",
+        "metrics.jsonl",
+        "completion.json"
+      ],
+      "role": "realworld_fql",
+      "script": "scripts/train_realworld_fql.py"
+    },
+    {
+      "args": [
+        "build",
+        "--store",
+        "/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/store.yaml",
+        "--condition",
+        "e2e_cnn",
+        "--out",
+        "runs/rwng-20261107-fqldata-e2e_cnn-drawer-open/dataset.h5",
+        "--gate-report",
+        "/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/gate_report.json",
+        "--outcomes",
+        "/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/outcomes.json",
+        "--device",
+        "cpu"
+      ],
+      "calibration_dependent": false,
+      "deps": [
+        "rwng-20261107-dynamo-drawer-open-pre",
+        "rwng-20261107-reviwo-drawer-open-pre"
+      ],
+      "disk_gb": 20,
+      "evidence_manifest": "runs/remote/acceptance/782f140-cc/manifest.json",
+      "fql_condition": "e2e_cnn",
+      "gate_level": "image (100-episode gate)",
+      "gpu": "any",
+      "host": "remote",
+      "id": "rwng-20261107-fqldata-e2e_cnn-drawer-open",
+      "max_restarts": 1,
+      "mem_gb": 1,
+      "oom_score_adj": 0,
+      "pin_host": "remote",
+      "plan_row_id": "rw-fqldata-e2e_cnn-drawer-open",
+      "planned_commit": "782f14080a25d0d62fbd8594662cdfdb512b5a7a",
+      "planned_image": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a",
+      "priority": 2,
+      "ram_gb": 8,
+      "realworld_consumer": "e2e_cnn",
+      "realworld_gate_sha256": "dc2a1ad83114a8fa0a4ee3a78def0a37f367b9e60bdc7cc24c88fec3cbbf9cb7",
+      "realworld_manifest_sha256": "2fb5343046f4f85004a81ae31e2a5df67a9c018e8bf173392d82203b2afa98d0",
+      "realworld_target": "drawer-open",
+      "registration_tool": "runs/setup/tools/register_realworld_nongeometric_20261106.py",
+      "remote_host": "192.168.10.22",
+      "required_results": [
+        "dataset.h5"
+      ],
+      "role": "realworld_fql",
+      "script": "scripts/realworld_fql_dataset.py"
+    },
+    {
+      "args": [
+        "--config",
+        "configs/realworld/fql/base.yaml",
+        "--name",
+        "rwng-20261107-fql-e2e_cnn-drawer-open-s0",
+        "--output-root",
+        "runs",
+        "--set",
+        "condition=e2e_cnn",
+        "data.dataset=runs/rwng-20261107-fqldata-e2e_cnn-drawer-open/dataset.h5",
+        "data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/split_seed0.json",
+        "data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/gate_report.json",
+        "train.seed=0",
+        "data.store=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/store.yaml",
+        "agent.alpha=10.0",
+        "agent.batch_size=256",
+        "train.offline_steps=1000000",
+        "train.log_interval=5000",
+        "train.eval_interval=100000"
+      ],
+      "calibration_dependent": false,
+      "deps": [
+        "rwng-20261107-fqldata-e2e_cnn-drawer-open"
+      ],
+      "disk_gb": 10,
+      "evidence_manifest": "runs/remote/acceptance/782f140-cc/manifest.json",
+      "fql_budget": {
+        "alpha": 10.0,
+        "batch_size": 256,
+        "eval_interval": 100000,
+        "log_interval": 5000,
+        "offline_steps": 1000000
+      },
+      "fql_condition": "e2e_cnn",
+      "fql_seed": 0,
+      "gate_level": "image (100-episode gate)",
+      "gpu": "any",
+      "host": "remote",
+      "id": "rwng-20261107-fql-e2e_cnn-drawer-open-s0",
+      "max_restarts": 2,
+      "mem_gb": 12,
+      "oom_score_adj": 0,
+      "pin_host": "remote",
+      "plan_row_id": "rw-fql-e2e_cnn-drawer-open-s0",
+      "planned_commit": "782f14080a25d0d62fbd8594662cdfdb512b5a7a",
+      "planned_image": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a",
+      "priority": 2,
+      "ram_gb": 24,
+      "realworld_consumer": "e2e_cnn",
+      "realworld_gate_sha256": "dc2a1ad83114a8fa0a4ee3a78def0a37f367b9e60bdc7cc24c88fec3cbbf9cb7",
+      "realworld_manifest_sha256": "2fb5343046f4f85004a81ae31e2a5df67a9c018e8bf173392d82203b2afa98d0",
+      "realworld_target": "drawer-open",
+      "registration_tool": "runs/setup/tools/register_realworld_nongeometric_20261106.py",
+      "remote_host": "192.168.10.22",
+      "required_results": [
+        "policy.pt",
+        "metrics.jsonl",
+        "completion.json"
+      ],
+      "role": "realworld_fql",
+      "script": "scripts/train_realworld_fql.py"
+    },
+    {
+      "args": [
+        "--config",
+        "configs/realworld/fql/base.yaml",
+        "--name",
+        "rwng-20261107-fql-e2e_cnn-drawer-open-s1",
+        "--output-root",
+        "runs",
+        "--set",
+        "condition=e2e_cnn",
+        "data.dataset=runs/rwng-20261107-fqldata-e2e_cnn-drawer-open/dataset.h5",
+        "data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/split_seed0.json",
+        "data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/gate_report.json",
+        "train.seed=1",
+        "data.store=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/store.yaml",
+        "agent.alpha=10.0",
+        "agent.batch_size=256",
+        "train.offline_steps=1000000",
+        "train.log_interval=5000",
+        "train.eval_interval=100000"
+      ],
+      "calibration_dependent": false,
+      "deps": [
+        "rwng-20261107-fqldata-e2e_cnn-drawer-open"
+      ],
+      "disk_gb": 10,
+      "evidence_manifest": "runs/remote/acceptance/782f140-cc/manifest.json",
+      "fql_budget": {
+        "alpha": 10.0,
+        "batch_size": 256,
+        "eval_interval": 100000,
+        "log_interval": 5000,
+        "offline_steps": 1000000
+      },
+      "fql_condition": "e2e_cnn",
+      "fql_seed": 1,
+      "gate_level": "image (100-episode gate)",
+      "gpu": "any",
+      "host": "remote",
+      "id": "rwng-20261107-fql-e2e_cnn-drawer-open-s1",
+      "max_restarts": 2,
+      "mem_gb": 12,
+      "oom_score_adj": 0,
+      "pin_host": "remote",
+      "plan_row_id": "rw-fql-e2e_cnn-drawer-open-s1",
+      "planned_commit": "782f14080a25d0d62fbd8594662cdfdb512b5a7a",
+      "planned_image": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a",
+      "priority": 2,
+      "ram_gb": 24,
+      "realworld_consumer": "e2e_cnn",
+      "realworld_gate_sha256": "dc2a1ad83114a8fa0a4ee3a78def0a37f367b9e60bdc7cc24c88fec3cbbf9cb7",
+      "realworld_manifest_sha256": "2fb5343046f4f85004a81ae31e2a5df67a9c018e8bf173392d82203b2afa98d0",
+      "realworld_target": "drawer-open",
+      "registration_tool": "runs/setup/tools/register_realworld_nongeometric_20261106.py",
+      "remote_host": "192.168.10.22",
+      "required_results": [
+        "policy.pt",
+        "metrics.jsonl",
+        "completion.json"
+      ],
+      "role": "realworld_fql",
+      "script": "scripts/train_realworld_fql.py"
+    },
+    {
+      "args": [
+        "--config",
+        "configs/realworld/fql/base.yaml",
+        "--name",
+        "rwng-20261107-fql-e2e_cnn-drawer-open-s2",
+        "--output-root",
+        "runs",
+        "--set",
+        "condition=e2e_cnn",
+        "data.dataset=runs/rwng-20261107-fqldata-e2e_cnn-drawer-open/dataset.h5",
+        "data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/split_seed0.json",
+        "data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/gate_report.json",
+        "train.seed=2",
+        "data.store=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/store.yaml",
+        "agent.alpha=10.0",
+        "agent.batch_size=256",
+        "train.offline_steps=1000000",
+        "train.log_interval=5000",
+        "train.eval_interval=100000"
+      ],
+      "calibration_dependent": false,
+      "deps": [
+        "rwng-20261107-fqldata-e2e_cnn-drawer-open"
+      ],
+      "disk_gb": 10,
+      "evidence_manifest": "runs/remote/acceptance/782f140-cc/manifest.json",
+      "fql_budget": {
+        "alpha": 10.0,
+        "batch_size": 256,
+        "eval_interval": 100000,
+        "log_interval": 5000,
+        "offline_steps": 1000000
+      },
+      "fql_condition": "e2e_cnn",
+      "fql_seed": 2,
+      "gate_level": "image (100-episode gate)",
+      "gpu": "any",
+      "host": "remote",
+      "id": "rwng-20261107-fql-e2e_cnn-drawer-open-s2",
+      "max_restarts": 2,
+      "mem_gb": 12,
+      "oom_score_adj": 0,
+      "pin_host": "remote",
+      "plan_row_id": "rw-fql-e2e_cnn-drawer-open-s2",
+      "planned_commit": "782f14080a25d0d62fbd8594662cdfdb512b5a7a",
+      "planned_image": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a",
+      "priority": 2,
+      "ram_gb": 24,
+      "realworld_consumer": "e2e_cnn",
+      "realworld_gate_sha256": "dc2a1ad83114a8fa0a4ee3a78def0a37f367b9e60bdc7cc24c88fec3cbbf9cb7",
+      "realworld_manifest_sha256": "2fb5343046f4f85004a81ae31e2a5df67a9c018e8bf173392d82203b2afa98d0",
+      "realworld_target": "drawer-open",
+      "registration_tool": "runs/setup/tools/register_realworld_nongeometric_20261106.py",
+      "remote_host": "192.168.10.22",
+      "required_results": [
+        "policy.pt",
+        "metrics.jsonl",
+        "completion.json"
+      ],
+      "role": "realworld_fql",
+      "script": "scripts/train_realworld_fql.py"
+    },
+    {
+      "args": [
+        "build",
+        "--store",
+        "/home/compu/kaist/sunho/realworld/learning_inputs/mug-hanging/store.yaml",
+        "--condition",
+        "dynamo",
+        "--out",
+        "runs/rwng-20261107-fqldata-dynamo-mug-hanging/dataset.h5",
+        "--gate-report",
+        "/home/compu/kaist/sunho/realworld/learning_inputs/mug-hanging/gate_report.json",
+        "--outcomes",
+        "/home/compu/kaist/sunho/realworld/learning_inputs/mug-hanging/outcomes.json",
+        "--export",
+        "runs/rwng-20261107-dynamo-mug-hanging-pre/encoder.pt",
+        "--device",
+        "cuda"
+      ],
+      "calibration_dependent": false,
+      "deps": [
+        "rwng-20261107-dynamo-mug-hanging-pre"
+      ],
+      "disk_gb": 20,
+      "evidence_manifest": "runs/remote/acceptance/782f140-cc/manifest.json",
+      "fql_condition": "dynamo",
+      "gate_level": "image (100-episode gate)",
+      "gpu": "any",
+      "host": "remote",
+      "id": "rwng-20261107-fqldata-dynamo-mug-hanging",
+      "max_restarts": 1,
+      "mem_gb": 8,
+      "oom_score_adj": 0,
+      "pin_host": "remote",
+      "plan_row_id": "rw-fqldata-dynamo-mug-hanging",
+      "planned_commit": "782f14080a25d0d62fbd8594662cdfdb512b5a7a",
+      "planned_image": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a",
+      "priority": 2,
+      "ram_gb": 16,
+      "realworld_consumer": "dynamo",
+      "realworld_gate_sha256": "dc2a1ad83114a8fa0a4ee3a78def0a37f367b9e60bdc7cc24c88fec3cbbf9cb7",
+      "realworld_manifest_sha256": "2fb5343046f4f85004a81ae31e2a5df67a9c018e8bf173392d82203b2afa98d0",
+      "realworld_target": "mug-hanging",
+      "registration_tool": "runs/setup/tools/register_realworld_nongeometric_20261106.py",
+      "remote_host": "192.168.10.22",
+      "required_results": [
+        "dataset.h5"
+      ],
+      "role": "realworld_fql",
+      "script": "scripts/realworld_fql_dataset.py"
+    },
+    {
+      "args": [
+        "--config",
+        "configs/realworld/fql/base.yaml",
+        "--name",
+        "rwng-20261107-fql-dynamo-mug-hanging-s0",
+        "--output-root",
+        "runs",
+        "--set",
+        "condition=dynamo",
+        "data.dataset=runs/rwng-20261107-fqldata-dynamo-mug-hanging/dataset.h5",
+        "data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/mug-hanging/split_seed0.json",
+        "data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/mug-hanging/gate_report.json",
+        "train.seed=0",
+        "agent.alpha=10.0",
+        "agent.batch_size=256",
+        "train.offline_steps=1000000",
+        "train.log_interval=5000",
+        "train.eval_interval=100000"
+      ],
+      "calibration_dependent": false,
+      "deps": [
+        "rwng-20261107-fqldata-dynamo-mug-hanging"
+      ],
+      "disk_gb": 10,
+      "evidence_manifest": "runs/remote/acceptance/782f140-cc/manifest.json",
+      "fql_budget": {
+        "alpha": 10.0,
+        "batch_size": 256,
+        "eval_interval": 100000,
+        "log_interval": 5000,
+        "offline_steps": 1000000
+      },
+      "fql_condition": "dynamo",
+      "fql_seed": 0,
+      "gate_level": "image (100-episode gate)",
+      "gpu": "any",
+      "host": "remote",
+      "id": "rwng-20261107-fql-dynamo-mug-hanging-s0",
+      "max_restarts": 2,
+      "mem_gb": 6,
+      "oom_score_adj": 0,
+      "pin_host": "remote",
+      "plan_row_id": "rw-fql-dynamo-mug-hanging-s0",
+      "planned_commit": "782f14080a25d0d62fbd8594662cdfdb512b5a7a",
+      "planned_image": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a",
+      "priority": 2,
+      "ram_gb": 12,
+      "realworld_consumer": "dynamo",
+      "realworld_gate_sha256": "dc2a1ad83114a8fa0a4ee3a78def0a37f367b9e60bdc7cc24c88fec3cbbf9cb7",
+      "realworld_manifest_sha256": "2fb5343046f4f85004a81ae31e2a5df67a9c018e8bf173392d82203b2afa98d0",
+      "realworld_target": "mug-hanging",
+      "registration_tool": "runs/setup/tools/register_realworld_nongeometric_20261106.py",
+      "remote_host": "192.168.10.22",
+      "required_results": [
+        "policy.pt",
+        "metrics.jsonl",
+        "completion.json"
+      ],
+      "role": "realworld_fql",
+      "script": "scripts/train_realworld_fql.py"
+    },
+    {
+      "args": [
+        "--config",
+        "configs/realworld/fql/base.yaml",
+        "--name",
+        "rwng-20261107-fql-dynamo-mug-hanging-s1",
+        "--output-root",
+        "runs",
+        "--set",
+        "condition=dynamo",
+        "data.dataset=runs/rwng-20261107-fqldata-dynamo-mug-hanging/dataset.h5",
+        "data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/mug-hanging/split_seed0.json",
+        "data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/mug-hanging/gate_report.json",
+        "train.seed=1",
+        "agent.alpha=10.0",
+        "agent.batch_size=256",
+        "train.offline_steps=1000000",
+        "train.log_interval=5000",
+        "train.eval_interval=100000"
+      ],
+      "calibration_dependent": false,
+      "deps": [
+        "rwng-20261107-fqldata-dynamo-mug-hanging"
+      ],
+      "disk_gb": 10,
+      "evidence_manifest": "runs/remote/acceptance/782f140-cc/manifest.json",
+      "fql_budget": {
+        "alpha": 10.0,
+        "batch_size": 256,
+        "eval_interval": 100000,
+        "log_interval": 5000,
+        "offline_steps": 1000000
+      },
+      "fql_condition": "dynamo",
+      "fql_seed": 1,
+      "gate_level": "image (100-episode gate)",
+      "gpu": "any",
+      "host": "remote",
+      "id": "rwng-20261107-fql-dynamo-mug-hanging-s1",
+      "max_restarts": 2,
+      "mem_gb": 6,
+      "oom_score_adj": 0,
+      "pin_host": "remote",
+      "plan_row_id": "rw-fql-dynamo-mug-hanging-s1",
+      "planned_commit": "782f14080a25d0d62fbd8594662cdfdb512b5a7a",
+      "planned_image": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a",
+      "priority": 2,
+      "ram_gb": 12,
+      "realworld_consumer": "dynamo",
+      "realworld_gate_sha256": "dc2a1ad83114a8fa0a4ee3a78def0a37f367b9e60bdc7cc24c88fec3cbbf9cb7",
+      "realworld_manifest_sha256": "2fb5343046f4f85004a81ae31e2a5df67a9c018e8bf173392d82203b2afa98d0",
+      "realworld_target": "mug-hanging",
+      "registration_tool": "runs/setup/tools/register_realworld_nongeometric_20261106.py",
+      "remote_host": "192.168.10.22",
+      "required_results": [
+        "policy.pt",
+        "metrics.jsonl",
+        "completion.json"
+      ],
+      "role": "realworld_fql",
+      "script": "scripts/train_realworld_fql.py"
+    },
+    {
+      "args": [
+        "--config",
+        "configs/realworld/fql/base.yaml",
+        "--name",
+        "rwng-20261107-fql-dynamo-mug-hanging-s2",
+        "--output-root",
+        "runs",
+        "--set",
+        "condition=dynamo",
+        "data.dataset=runs/rwng-20261107-fqldata-dynamo-mug-hanging/dataset.h5",
+        "data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/mug-hanging/split_seed0.json",
+        "data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/mug-hanging/gate_report.json",
+        "train.seed=2",
+        "agent.alpha=10.0",
+        "agent.batch_size=256",
+        "train.offline_steps=1000000",
+        "train.log_interval=5000",
+        "train.eval_interval=100000"
+      ],
+      "calibration_dependent": false,
+      "deps": [
+        "rwng-20261107-fqldata-dynamo-mug-hanging"
+      ],
+      "disk_gb": 10,
+      "evidence_manifest": "runs/remote/acceptance/782f140-cc/manifest.json",
+      "fql_budget": {
+        "alpha": 10.0,
+        "batch_size": 256,
+        "eval_interval": 100000,
+        "log_interval": 5000,
+        "offline_steps": 1000000
+      },
+      "fql_condition": "dynamo",
+      "fql_seed": 2,
+      "gate_level": "image (100-episode gate)",
+      "gpu": "any",
+      "host": "remote",
+      "id": "rwng-20261107-fql-dynamo-mug-hanging-s2",
+      "max_restarts": 2,
+      "mem_gb": 6,
+      "oom_score_adj": 0,
+      "pin_host": "remote",
+      "plan_row_id": "rw-fql-dynamo-mug-hanging-s2",
+      "planned_commit": "782f14080a25d0d62fbd8594662cdfdb512b5a7a",
+      "planned_image": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a",
+      "priority": 2,
+      "ram_gb": 12,
+      "realworld_consumer": "dynamo",
+      "realworld_gate_sha256": "dc2a1ad83114a8fa0a4ee3a78def0a37f367b9e60bdc7cc24c88fec3cbbf9cb7",
+      "realworld_manifest_sha256": "2fb5343046f4f85004a81ae31e2a5df67a9c018e8bf173392d82203b2afa98d0",
+      "realworld_target": "mug-hanging",
+      "registration_tool": "runs/setup/tools/register_realworld_nongeometric_20261106.py",
+      "remote_host": "192.168.10.22",
+      "required_results": [
+        "policy.pt",
+        "metrics.jsonl",
+        "completion.json"
+      ],
+      "role": "realworld_fql",
+      "script": "scripts/train_realworld_fql.py"
+    }
+  ],
+  "jobs_sha256": "88076dfe960e470ce8596851b5af3d7401fceb0bb3b33fe27cf1adfaeaf5098b",
+  "plan_adjustment": "FQL consumer aliases from current launch.py supersede stale preview labels",
+  "plan_sha256": "3949bf6b48a57e719b826f97e8c710e39b1c6f732e40477902965ed01b47eb6e",
+  "potential_counts_per_task": {
+    "drawer-open": {
+      "dataset": 3,
+      "fql": 9,
+      "pretrain": 2
+    },
+    "mug-hanging": {
+      "dataset": 3,
+      "fql": 9,
+      "pretrain": 2
+    }
+  },
+  "potential_jobs_not_registrable": [
+    {
+      "args": [
+        "--config",
+        "configs/realworld/baselines/reviwo/drawer-open.yaml",
+        "--name",
+        "rwng-20261107-reviwo-drawer-open-pre",
+        "--output-root",
+        "runs"
+      ],
+      "baseline": "reviwo",
+      "calibration_dependent": false,
+      "deps": [],
+      "disk_gb": 20,
+      "evidence_manifest": "runs/remote/acceptance/782f140-cc/manifest.json",
+      "gate_level": "image (100-episode gate)",
+      "gpu": "any",
+      "host": "remote",
+      "id": "rwng-20261107-reviwo-drawer-open-pre",
+      "inputs": [
+        "/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/store.yaml",
+        "/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/gate_report.json",
+        "/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/split_seed0.json"
+      ],
+      "max_restarts": 2,
+      "mem_gb": 4,
+      "oom_score_adj": 0,
+      "pin_host": "remote",
+      "plan_row_id": "rw-reviwo-drawer-open-pre",
+      "planned_commit": "782f14080a25d0d62fbd8594662cdfdb512b5a7a",
+      "planned_image": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a",
+      "pretraining": "task-specific, documented protocol (configs/realworld/baselines)",
+      "priority": 1,
+      "ram_gb": 16,
+      "realworld_consumer": "reviwo",
+      "realworld_gate_sha256": "dc2a1ad83114a8fa0a4ee3a78def0a37f367b9e60bdc7cc24c88fec3cbbf9cb7",
+      "realworld_manifest_sha256": "2fb5343046f4f85004a81ae31e2a5df67a9c018e8bf173392d82203b2afa98d0",
+      "realworld_target": "drawer-open",
+      "registration_tool": "runs/setup/tools/register_realworld_nongeometric_20261106.py",
+      "remote_host": "192.168.10.22",
+      "required_results": [
+        "encoder.pt",
+        "metrics.jsonl",
+        "completion.json"
+      ],
+      "role": "realworld_pretrain",
+      "script": "scripts/train_reviwo.py"
+    },
+    {
+      "args": [
+        "--config",
+        "configs/realworld/baselines/dynamo/drawer-open.yaml",
+        "--name",
+        "rwng-20261107-dynamo-drawer-open-pre",
+        "--output-root",
+        "runs",
+        "--resume",
+        "auto"
+      ],
+      "baseline": "dynamo",
+      "calibration_dependent": false,
+      "deps": [],
+      "disk_gb": 20,
+      "evidence_manifest": "runs/remote/acceptance/782f140-cc/manifest.json",
+      "gate_level": "image (100-episode gate)",
+      "gpu": "any",
+      "host": "remote",
+      "id": "rwng-20261107-dynamo-drawer-open-pre",
+      "inputs": [
+        "/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/store.yaml",
+        "/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/gate_report.json",
+        "/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/split_seed0.json"
+      ],
+      "max_restarts": 2,
+      "mem_gb": 12,
+      "oom_score_adj": 0,
+      "pin_host": "remote",
+      "plan_row_id": "rw-dynamo-drawer-open-pre",
+      "planned_commit": "782f14080a25d0d62fbd8594662cdfdb512b5a7a",
+      "planned_image": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a",
+      "pretraining": "task-specific, documented protocol (configs/realworld/baselines)",
+      "priority": 1,
+      "ram_gb": 32,
+      "realworld_consumer": "dynamo",
+      "realworld_gate_sha256": "dc2a1ad83114a8fa0a4ee3a78def0a37f367b9e60bdc7cc24c88fec3cbbf9cb7",
+      "realworld_manifest_sha256": "2fb5343046f4f85004a81ae31e2a5df67a9c018e8bf173392d82203b2afa98d0",
+      "realworld_target": "drawer-open",
+      "registration_tool": "runs/setup/tools/register_realworld_nongeometric_20261106.py",
+      "remote_host": "192.168.10.22",
+      "required_results": [
+        "encoder.pt",
+        "metrics.jsonl",
+        "completion.json"
+      ],
+      "role": "realworld_pretrain",
+      "script": "scripts/train_dynamo.py"
+    },
+    {
+      "args": [
+        "--config",
+        "configs/realworld/baselines/reviwo/mug-hanging.yaml",
+        "--name",
+        "rwng-20261107-reviwo-mug-hanging-pre",
+        "--output-root",
+        "runs"
+      ],
+      "baseline": "reviwo",
+      "calibration_dependent": false,
+      "deps": [],
+      "disk_gb": 20,
+      "evidence_manifest": "runs/remote/acceptance/782f140-cc/manifest.json",
+      "gate_level": "image (100-episode gate)",
+      "gpu": "any",
+      "host": "remote",
+      "id": "rwng-20261107-reviwo-mug-hanging-pre",
+      "inputs": [
+        "/home/compu/kaist/sunho/realworld/learning_inputs/mug-hanging/store.yaml",
+        "/home/compu/kaist/sunho/realworld/learning_inputs/mug-hanging/gate_report.json",
+        "/home/compu/kaist/sunho/realworld/learning_inputs/mug-hanging/split_seed0.json"
+      ],
+      "max_restarts": 2,
+      "mem_gb": 4,
+      "oom_score_adj": 0,
+      "pin_host": "remote",
+      "plan_row_id": "rw-reviwo-mug-hanging-pre",
+      "planned_commit": "782f14080a25d0d62fbd8594662cdfdb512b5a7a",
+      "planned_image": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a",
+      "pretraining": "task-specific, documented protocol (configs/realworld/baselines)",
+      "priority": 1,
+      "ram_gb": 16,
+      "realworld_consumer": "reviwo",
+      "realworld_gate_sha256": "dc2a1ad83114a8fa0a4ee3a78def0a37f367b9e60bdc7cc24c88fec3cbbf9cb7",
+      "realworld_manifest_sha256": "2fb5343046f4f85004a81ae31e2a5df67a9c018e8bf173392d82203b2afa98d0",
+      "realworld_target": "mug-hanging",
+      "registration_tool": "runs/setup/tools/register_realworld_nongeometric_20261106.py",
+      "remote_host": "192.168.10.22",
+      "required_results": [
+        "encoder.pt",
+        "metrics.jsonl",
+        "completion.json"
+      ],
+      "role": "realworld_pretrain",
+      "script": "scripts/train_reviwo.py"
+    },
+    {
+      "args": [
+        "--config",
+        "configs/realworld/baselines/dynamo/mug-hanging.yaml",
+        "--name",
+        "rwng-20261107-dynamo-mug-hanging-pre",
+        "--output-root",
+        "runs",
+        "--resume",
+        "auto"
+      ],
+      "baseline": "dynamo",
+      "calibration_dependent": false,
+      "deps": [],
+      "disk_gb": 20,
+      "evidence_manifest": "runs/remote/acceptance/782f140-cc/manifest.json",
+      "gate_level": "image (100-episode gate)",
+      "gpu": "any",
+      "host": "remote",
+      "id": "rwng-20261107-dynamo-mug-hanging-pre",
+      "inputs": [
+        "/home/compu/kaist/sunho/realworld/learning_inputs/mug-hanging/store.yaml",
+        "/home/compu/kaist/sunho/realworld/learning_inputs/mug-hanging/gate_report.json",
+        "/home/compu/kaist/sunho/realworld/learning_inputs/mug-hanging/split_seed0.json"
+      ],
+      "max_restarts": 2,
+      "mem_gb": 12,
+      "oom_score_adj": 0,
+      "pin_host": "remote",
+      "plan_row_id": "rw-dynamo-mug-hanging-pre",
+      "planned_commit": "782f14080a25d0d62fbd8594662cdfdb512b5a7a",
+      "planned_image": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a",
+      "pretraining": "task-specific, documented protocol (configs/realworld/baselines)",
+      "priority": 1,
+      "ram_gb": 32,
+      "realworld_consumer": "dynamo",
+      "realworld_gate_sha256": "dc2a1ad83114a8fa0a4ee3a78def0a37f367b9e60bdc7cc24c88fec3cbbf9cb7",
+      "realworld_manifest_sha256": "2fb5343046f4f85004a81ae31e2a5df67a9c018e8bf173392d82203b2afa98d0",
+      "realworld_target": "mug-hanging",
+      "registration_tool": "runs/setup/tools/register_realworld_nongeometric_20261106.py",
+      "remote_host": "192.168.10.22",
+      "required_results": [
+        "encoder.pt",
+        "metrics.jsonl",
+        "completion.json"
+      ],
+      "role": "realworld_pretrain",
+      "script": "scripts/train_dynamo.py"
+    },
+    {
+      "args": [
+        "build",
+        "--store",
+        "/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/store.yaml",
+        "--condition",
+        "dynamo",
+        "--out",
+        "runs/rwng-20261107-fqldata-dynamo-drawer-open/dataset.h5",
+        "--gate-report",
+        "/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/gate_report.json",
+        "--outcomes",
+        "/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/outcomes.json",
+        "--export",
+        "runs/rwng-20261107-dynamo-drawer-open-pre/encoder.pt",
+        "--device",
+        "cuda"
+      ],
+      "calibration_dependent": false,
+      "deps": [
+        "rwng-20261107-dynamo-drawer-open-pre"
+      ],
+      "disk_gb": 20,
+      "evidence_manifest": "runs/remote/acceptance/782f140-cc/manifest.json",
+      "fql_condition": "dynamo",
+      "gate_level": "image (100-episode gate)",
+      "gpu": "any",
+      "host": "remote",
+      "id": "rwng-20261107-fqldata-dynamo-drawer-open",
+      "max_restarts": 1,
+      "mem_gb": 8,
+      "oom_score_adj": 0,
+      "pin_host": "remote",
+      "plan_row_id": "rw-fqldata-dynamo-drawer-open",
+      "planned_commit": "782f14080a25d0d62fbd8594662cdfdb512b5a7a",
+      "planned_image": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a",
+      "priority": 2,
+      "ram_gb": 16,
+      "realworld_consumer": "dynamo",
+      "realworld_gate_sha256": "dc2a1ad83114a8fa0a4ee3a78def0a37f367b9e60bdc7cc24c88fec3cbbf9cb7",
+      "realworld_manifest_sha256": "2fb5343046f4f85004a81ae31e2a5df67a9c018e8bf173392d82203b2afa98d0",
+      "realworld_target": "drawer-open",
+      "registration_tool": "runs/setup/tools/register_realworld_nongeometric_20261106.py",
+      "remote_host": "192.168.10.22",
+      "required_results": [
+        "dataset.h5"
+      ],
+      "role": "realworld_fql",
+      "script": "scripts/realworld_fql_dataset.py"
+    },
+    {
+      "args": [
+        "--config",
+        "configs/realworld/fql/base.yaml",
+        "--name",
+        "rwng-20261107-fql-dynamo-drawer-open-s0",
+        "--output-root",
+        "runs",
+        "--set",
+        "condition=dynamo",
+        "data.dataset=runs/rwng-20261107-fqldata-dynamo-drawer-open/dataset.h5",
+        "data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/split_seed0.json",
+        "data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/gate_report.json",
+        "train.seed=0",
+        "agent.alpha=10.0",
+        "agent.batch_size=256",
+        "train.offline_steps=1000000",
+        "train.log_interval=5000",
+        "train.eval_interval=100000"
+      ],
+      "calibration_dependent": false,
+      "deps": [
+        "rwng-20261107-fqldata-dynamo-drawer-open"
+      ],
+      "disk_gb": 10,
+      "evidence_manifest": "runs/remote/acceptance/782f140-cc/manifest.json",
+      "fql_budget": {
+        "alpha": 10.0,
+        "batch_size": 256,
+        "eval_interval": 100000,
+        "log_interval": 5000,
+        "offline_steps": 1000000
+      },
+      "fql_condition": "dynamo",
+      "fql_seed": 0,
+      "gate_level": "image (100-episode gate)",
+      "gpu": "any",
+      "host": "remote",
+      "id": "rwng-20261107-fql-dynamo-drawer-open-s0",
+      "max_restarts": 2,
+      "mem_gb": 6,
+      "oom_score_adj": 0,
+      "pin_host": "remote",
+      "plan_row_id": "rw-fql-dynamo-drawer-open-s0",
+      "planned_commit": "782f14080a25d0d62fbd8594662cdfdb512b5a7a",
+      "planned_image": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a",
+      "priority": 2,
+      "ram_gb": 12,
+      "realworld_consumer": "dynamo",
+      "realworld_gate_sha256": "dc2a1ad83114a8fa0a4ee3a78def0a37f367b9e60bdc7cc24c88fec3cbbf9cb7",
+      "realworld_manifest_sha256": "2fb5343046f4f85004a81ae31e2a5df67a9c018e8bf173392d82203b2afa98d0",
+      "realworld_target": "drawer-open",
+      "registration_tool": "runs/setup/tools/register_realworld_nongeometric_20261106.py",
+      "remote_host": "192.168.10.22",
+      "required_results": [
+        "policy.pt",
+        "metrics.jsonl",
+        "completion.json"
+      ],
+      "role": "realworld_fql",
+      "script": "scripts/train_realworld_fql.py"
+    },
+    {
+      "args": [
+        "--config",
+        "configs/realworld/fql/base.yaml",
+        "--name",
+        "rwng-20261107-fql-dynamo-drawer-open-s1",
+        "--output-root",
+        "runs",
+        "--set",
+        "condition=dynamo",
+        "data.dataset=runs/rwng-20261107-fqldata-dynamo-drawer-open/dataset.h5",
+        "data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/split_seed0.json",
+        "data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/gate_report.json",
+        "train.seed=1",
+        "agent.alpha=10.0",
+        "agent.batch_size=256",
+        "train.offline_steps=1000000",
+        "train.log_interval=5000",
+        "train.eval_interval=100000"
+      ],
+      "calibration_dependent": false,
+      "deps": [
+        "rwng-20261107-fqldata-dynamo-drawer-open"
+      ],
+      "disk_gb": 10,
+      "evidence_manifest": "runs/remote/acceptance/782f140-cc/manifest.json",
+      "fql_budget": {
+        "alpha": 10.0,
+        "batch_size": 256,
+        "eval_interval": 100000,
+        "log_interval": 5000,
+        "offline_steps": 1000000
+      },
+      "fql_condition": "dynamo",
+      "fql_seed": 1,
+      "gate_level": "image (100-episode gate)",
+      "gpu": "any",
+      "host": "remote",
+      "id": "rwng-20261107-fql-dynamo-drawer-open-s1",
+      "max_restarts": 2,
+      "mem_gb": 6,
+      "oom_score_adj": 0,
+      "pin_host": "remote",
+      "plan_row_id": "rw-fql-dynamo-drawer-open-s1",
+      "planned_commit": "782f14080a25d0d62fbd8594662cdfdb512b5a7a",
+      "planned_image": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a",
+      "priority": 2,
+      "ram_gb": 12,
+      "realworld_consumer": "dynamo",
+      "realworld_gate_sha256": "dc2a1ad83114a8fa0a4ee3a78def0a37f367b9e60bdc7cc24c88fec3cbbf9cb7",
+      "realworld_manifest_sha256": "2fb5343046f4f85004a81ae31e2a5df67a9c018e8bf173392d82203b2afa98d0",
+      "realworld_target": "drawer-open",
+      "registration_tool": "runs/setup/tools/register_realworld_nongeometric_20261106.py",
+      "remote_host": "192.168.10.22",
+      "required_results": [
+        "policy.pt",
+        "metrics.jsonl",
+        "completion.json"
+      ],
+      "role": "realworld_fql",
+      "script": "scripts/train_realworld_fql.py"
+    },
+    {
+      "args": [
+        "--config",
+        "configs/realworld/fql/base.yaml",
+        "--name",
+        "rwng-20261107-fql-dynamo-drawer-open-s2",
+        "--output-root",
+        "runs",
+        "--set",
+        "condition=dynamo",
+        "data.dataset=runs/rwng-20261107-fqldata-dynamo-drawer-open/dataset.h5",
+        "data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/split_seed0.json",
+        "data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/gate_report.json",
+        "train.seed=2",
+        "agent.alpha=10.0",
+        "agent.batch_size=256",
+        "train.offline_steps=1000000",
+        "train.log_interval=5000",
+        "train.eval_interval=100000"
+      ],
+      "calibration_dependent": false,
+      "deps": [
+        "rwng-20261107-fqldata-dynamo-drawer-open"
+      ],
+      "disk_gb": 10,
+      "evidence_manifest": "runs/remote/acceptance/782f140-cc/manifest.json",
+      "fql_budget": {
+        "alpha": 10.0,
+        "batch_size": 256,
+        "eval_interval": 100000,
+        "log_interval": 5000,
+        "offline_steps": 1000000
+      },
+      "fql_condition": "dynamo",
+      "fql_seed": 2,
+      "gate_level": "image (100-episode gate)",
+      "gpu": "any",
+      "host": "remote",
+      "id": "rwng-20261107-fql-dynamo-drawer-open-s2",
+      "max_restarts": 2,
+      "mem_gb": 6,
+      "oom_score_adj": 0,
+      "pin_host": "remote",
+      "plan_row_id": "rw-fql-dynamo-drawer-open-s2",
+      "planned_commit": "782f14080a25d0d62fbd8594662cdfdb512b5a7a",
+      "planned_image": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a",
+      "priority": 2,
+      "ram_gb": 12,
+      "realworld_consumer": "dynamo",
+      "realworld_gate_sha256": "dc2a1ad83114a8fa0a4ee3a78def0a37f367b9e60bdc7cc24c88fec3cbbf9cb7",
+      "realworld_manifest_sha256": "2fb5343046f4f85004a81ae31e2a5df67a9c018e8bf173392d82203b2afa98d0",
+      "realworld_target": "drawer-open",
+      "registration_tool": "runs/setup/tools/register_realworld_nongeometric_20261106.py",
+      "remote_host": "192.168.10.22",
+      "required_results": [
+        "policy.pt",
+        "metrics.jsonl",
+        "completion.json"
+      ],
+      "role": "realworld_fql",
+      "script": "scripts/train_realworld_fql.py"
+    },
+    {
+      "args": [
+        "build",
+        "--store",
+        "/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/store.yaml",
+        "--condition",
+        "reviwo",
+        "--out",
+        "runs/rwng-20261107-fqldata-reviwo-drawer-open/dataset.h5",
+        "--gate-report",
+        "/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/gate_report.json",
+        "--outcomes",
+        "/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/outcomes.json",
+        "--export",
+        "runs/rwng-20261107-reviwo-drawer-open-pre/encoder.pt",
+        "--device",
+        "cuda"
+      ],
+      "calibration_dependent": false,
+      "deps": [
+        "rwng-20261107-reviwo-drawer-open-pre"
+      ],
+      "disk_gb": 20,
+      "evidence_manifest": "runs/remote/acceptance/782f140-cc/manifest.json",
+      "fql_condition": "reviwo",
+      "gate_level": "image (100-episode gate)",
+      "gpu": "any",
+      "host": "remote",
+      "id": "rwng-20261107-fqldata-reviwo-drawer-open",
+      "max_restarts": 1,
+      "mem_gb": 8,
+      "oom_score_adj": 0,
+      "pin_host": "remote",
+      "plan_row_id": "rw-fqldata-reviwo-drawer-open",
+      "planned_commit": "782f14080a25d0d62fbd8594662cdfdb512b5a7a",
+      "planned_image": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a",
+      "priority": 2,
+      "ram_gb": 16,
+      "realworld_consumer": "fql_reviwo",
+      "realworld_gate_sha256": "dc2a1ad83114a8fa0a4ee3a78def0a37f367b9e60bdc7cc24c88fec3cbbf9cb7",
+      "realworld_manifest_sha256": "2fb5343046f4f85004a81ae31e2a5df67a9c018e8bf173392d82203b2afa98d0",
+      "realworld_target": "drawer-open",
+      "registration_tool": "runs/setup/tools/register_realworld_nongeometric_20261106.py",
+      "remote_host": "192.168.10.22",
+      "required_results": [
+        "dataset.h5"
+      ],
+      "role": "realworld_fql",
+      "script": "scripts/realworld_fql_dataset.py"
+    },
+    {
+      "args": [
+        "--config",
+        "configs/realworld/fql/base.yaml",
+        "--name",
+        "rwng-20261107-fql-reviwo-drawer-open-s0",
+        "--output-root",
+        "runs",
+        "--set",
+        "condition=reviwo",
+        "data.dataset=runs/rwng-20261107-fqldata-reviwo-drawer-open/dataset.h5",
+        "data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/split_seed0.json",
+        "data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/gate_report.json",
+        "train.seed=0",
+        "agent.alpha=10.0",
+        "agent.batch_size=256",
+        "train.offline_steps=1000000",
+        "train.log_interval=5000",
+        "train.eval_interval=100000"
+      ],
+      "calibration_dependent": false,
+      "deps": [
+        "rwng-20261107-fqldata-reviwo-drawer-open"
+      ],
+      "disk_gb": 10,
+      "evidence_manifest": "runs/remote/acceptance/782f140-cc/manifest.json",
+      "fql_budget": {
+        "alpha": 10.0,
+        "batch_size": 256,
+        "eval_interval": 100000,
+        "log_interval": 5000,
+        "offline_steps": 1000000
+      },
+      "fql_condition": "reviwo",
+      "fql_seed": 0,
+      "gate_level": "image (100-episode gate)",
+      "gpu": "any",
+      "host": "remote",
+      "id": "rwng-20261107-fql-reviwo-drawer-open-s0",
+      "max_restarts": 2,
+      "mem_gb": 6,
+      "oom_score_adj": 0,
+      "pin_host": "remote",
+      "plan_row_id": "rw-fql-reviwo-drawer-open-s0",
+      "planned_commit": "782f14080a25d0d62fbd8594662cdfdb512b5a7a",
+      "planned_image": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a",
+      "priority": 2,
+      "ram_gb": 12,
+      "realworld_consumer": "fql_reviwo",
+      "realworld_gate_sha256": "dc2a1ad83114a8fa0a4ee3a78def0a37f367b9e60bdc7cc24c88fec3cbbf9cb7",
+      "realworld_manifest_sha256": "2fb5343046f4f85004a81ae31e2a5df67a9c018e8bf173392d82203b2afa98d0",
+      "realworld_target": "drawer-open",
+      "registration_tool": "runs/setup/tools/register_realworld_nongeometric_20261106.py",
+      "remote_host": "192.168.10.22",
+      "required_results": [
+        "policy.pt",
+        "metrics.jsonl",
+        "completion.json"
+      ],
+      "role": "realworld_fql",
+      "script": "scripts/train_realworld_fql.py"
+    },
+    {
+      "args": [
+        "--config",
+        "configs/realworld/fql/base.yaml",
+        "--name",
+        "rwng-20261107-fql-reviwo-drawer-open-s1",
+        "--output-root",
+        "runs",
+        "--set",
+        "condition=reviwo",
+        "data.dataset=runs/rwng-20261107-fqldata-reviwo-drawer-open/dataset.h5",
+        "data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/split_seed0.json",
+        "data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/gate_report.json",
+        "train.seed=1",
+        "agent.alpha=10.0",
+        "agent.batch_size=256",
+        "train.offline_steps=1000000",
+        "train.log_interval=5000",
+        "train.eval_interval=100000"
+      ],
+      "calibration_dependent": false,
+      "deps": [
+        "rwng-20261107-fqldata-reviwo-drawer-open"
+      ],
+      "disk_gb": 10,
+      "evidence_manifest": "runs/remote/acceptance/782f140-cc/manifest.json",
+      "fql_budget": {
+        "alpha": 10.0,
+        "batch_size": 256,
+        "eval_interval": 100000,
+        "log_interval": 5000,
+        "offline_steps": 1000000
+      },
+      "fql_condition": "reviwo",
+      "fql_seed": 1,
+      "gate_level": "image (100-episode gate)",
+      "gpu": "any",
+      "host": "remote",
+      "id": "rwng-20261107-fql-reviwo-drawer-open-s1",
+      "max_restarts": 2,
+      "mem_gb": 6,
+      "oom_score_adj": 0,
+      "pin_host": "remote",
+      "plan_row_id": "rw-fql-reviwo-drawer-open-s1",
+      "planned_commit": "782f14080a25d0d62fbd8594662cdfdb512b5a7a",
+      "planned_image": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a",
+      "priority": 2,
+      "ram_gb": 12,
+      "realworld_consumer": "fql_reviwo",
+      "realworld_gate_sha256": "dc2a1ad83114a8fa0a4ee3a78def0a37f367b9e60bdc7cc24c88fec3cbbf9cb7",
+      "realworld_manifest_sha256": "2fb5343046f4f85004a81ae31e2a5df67a9c018e8bf173392d82203b2afa98d0",
+      "realworld_target": "drawer-open",
+      "registration_tool": "runs/setup/tools/register_realworld_nongeometric_20261106.py",
+      "remote_host": "192.168.10.22",
+      "required_results": [
+        "policy.pt",
+        "metrics.jsonl",
+        "completion.json"
+      ],
+      "role": "realworld_fql",
+      "script": "scripts/train_realworld_fql.py"
+    },
+    {
+      "args": [
+        "--config",
+        "configs/realworld/fql/base.yaml",
+        "--name",
+        "rwng-20261107-fql-reviwo-drawer-open-s2",
+        "--output-root",
+        "runs",
+        "--set",
+        "condition=reviwo",
+        "data.dataset=runs/rwng-20261107-fqldata-reviwo-drawer-open/dataset.h5",
+        "data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/split_seed0.json",
+        "data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/gate_report.json",
+        "train.seed=2",
+        "agent.alpha=10.0",
+        "agent.batch_size=256",
+        "train.offline_steps=1000000",
+        "train.log_interval=5000",
+        "train.eval_interval=100000"
+      ],
+      "calibration_dependent": false,
+      "deps": [
+        "rwng-20261107-fqldata-reviwo-drawer-open"
+      ],
+      "disk_gb": 10,
+      "evidence_manifest": "runs/remote/acceptance/782f140-cc/manifest.json",
+      "fql_budget": {
+        "alpha": 10.0,
+        "batch_size": 256,
+        "eval_interval": 100000,
+        "log_interval": 5000,
+        "offline_steps": 1000000
+      },
+      "fql_condition": "reviwo",
+      "fql_seed": 2,
+      "gate_level": "image (100-episode gate)",
+      "gpu": "any",
+      "host": "remote",
+      "id": "rwng-20261107-fql-reviwo-drawer-open-s2",
+      "max_restarts": 2,
+      "mem_gb": 6,
+      "oom_score_adj": 0,
+      "pin_host": "remote",
+      "plan_row_id": "rw-fql-reviwo-drawer-open-s2",
+      "planned_commit": "782f14080a25d0d62fbd8594662cdfdb512b5a7a",
+      "planned_image": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a",
+      "priority": 2,
+      "ram_gb": 12,
+      "realworld_consumer": "fql_reviwo",
+      "realworld_gate_sha256": "dc2a1ad83114a8fa0a4ee3a78def0a37f367b9e60bdc7cc24c88fec3cbbf9cb7",
+      "realworld_manifest_sha256": "2fb5343046f4f85004a81ae31e2a5df67a9c018e8bf173392d82203b2afa98d0",
+      "realworld_target": "drawer-open",
+      "registration_tool": "runs/setup/tools/register_realworld_nongeometric_20261106.py",
+      "remote_host": "192.168.10.22",
+      "required_results": [
+        "policy.pt",
+        "metrics.jsonl",
+        "completion.json"
+      ],
+      "role": "realworld_fql",
+      "script": "scripts/train_realworld_fql.py"
+    },
+    {
+      "args": [
+        "build",
+        "--store",
+        "/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/store.yaml",
+        "--condition",
+        "e2e_cnn",
+        "--out",
+        "runs/rwng-20261107-fqldata-e2e_cnn-drawer-open/dataset.h5",
+        "--gate-report",
+        "/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/gate_report.json",
+        "--outcomes",
+        "/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/outcomes.json",
+        "--device",
+        "cpu"
+      ],
+      "calibration_dependent": false,
+      "deps": [
+        "rwng-20261107-dynamo-drawer-open-pre",
+        "rwng-20261107-reviwo-drawer-open-pre"
+      ],
+      "disk_gb": 20,
+      "evidence_manifest": "runs/remote/acceptance/782f140-cc/manifest.json",
+      "fql_condition": "e2e_cnn",
+      "gate_level": "image (100-episode gate)",
+      "gpu": "any",
+      "host": "remote",
+      "id": "rwng-20261107-fqldata-e2e_cnn-drawer-open",
+      "max_restarts": 1,
+      "mem_gb": 1,
+      "oom_score_adj": 0,
+      "pin_host": "remote",
+      "plan_row_id": "rw-fqldata-e2e_cnn-drawer-open",
+      "planned_commit": "782f14080a25d0d62fbd8594662cdfdb512b5a7a",
+      "planned_image": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a",
+      "priority": 2,
+      "ram_gb": 8,
+      "realworld_consumer": "e2e_cnn",
+      "realworld_gate_sha256": "dc2a1ad83114a8fa0a4ee3a78def0a37f367b9e60bdc7cc24c88fec3cbbf9cb7",
+      "realworld_manifest_sha256": "2fb5343046f4f85004a81ae31e2a5df67a9c018e8bf173392d82203b2afa98d0",
+      "realworld_target": "drawer-open",
+      "registration_tool": "runs/setup/tools/register_realworld_nongeometric_20261106.py",
+      "remote_host": "192.168.10.22",
+      "required_results": [
+        "dataset.h5"
+      ],
+      "role": "realworld_fql",
+      "script": "scripts/realworld_fql_dataset.py"
+    },
+    {
+      "args": [
+        "--config",
+        "configs/realworld/fql/base.yaml",
+        "--name",
+        "rwng-20261107-fql-e2e_cnn-drawer-open-s0",
+        "--output-root",
+        "runs",
+        "--set",
+        "condition=e2e_cnn",
+        "data.dataset=runs/rwng-20261107-fqldata-e2e_cnn-drawer-open/dataset.h5",
+        "data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/split_seed0.json",
+        "data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/gate_report.json",
+        "train.seed=0",
+        "data.store=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/store.yaml",
+        "agent.alpha=10.0",
+        "agent.batch_size=256",
+        "train.offline_steps=1000000",
+        "train.log_interval=5000",
+        "train.eval_interval=100000"
+      ],
+      "calibration_dependent": false,
+      "deps": [
+        "rwng-20261107-fqldata-e2e_cnn-drawer-open"
+      ],
+      "disk_gb": 10,
+      "evidence_manifest": "runs/remote/acceptance/782f140-cc/manifest.json",
+      "fql_budget": {
+        "alpha": 10.0,
+        "batch_size": 256,
+        "eval_interval": 100000,
+        "log_interval": 5000,
+        "offline_steps": 1000000
+      },
+      "fql_condition": "e2e_cnn",
+      "fql_seed": 0,
+      "gate_level": "image (100-episode gate)",
+      "gpu": "any",
+      "host": "remote",
+      "id": "rwng-20261107-fql-e2e_cnn-drawer-open-s0",
+      "max_restarts": 2,
+      "mem_gb": 12,
+      "oom_score_adj": 0,
+      "pin_host": "remote",
+      "plan_row_id": "rw-fql-e2e_cnn-drawer-open-s0",
+      "planned_commit": "782f14080a25d0d62fbd8594662cdfdb512b5a7a",
+      "planned_image": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a",
+      "priority": 2,
+      "ram_gb": 24,
+      "realworld_consumer": "e2e_cnn",
+      "realworld_gate_sha256": "dc2a1ad83114a8fa0a4ee3a78def0a37f367b9e60bdc7cc24c88fec3cbbf9cb7",
+      "realworld_manifest_sha256": "2fb5343046f4f85004a81ae31e2a5df67a9c018e8bf173392d82203b2afa98d0",
+      "realworld_target": "drawer-open",
+      "registration_tool": "runs/setup/tools/register_realworld_nongeometric_20261106.py",
+      "remote_host": "192.168.10.22",
+      "required_results": [
+        "policy.pt",
+        "metrics.jsonl",
+        "completion.json"
+      ],
+      "role": "realworld_fql",
+      "script": "scripts/train_realworld_fql.py"
+    },
+    {
+      "args": [
+        "--config",
+        "configs/realworld/fql/base.yaml",
+        "--name",
+        "rwng-20261107-fql-e2e_cnn-drawer-open-s1",
+        "--output-root",
+        "runs",
+        "--set",
+        "condition=e2e_cnn",
+        "data.dataset=runs/rwng-20261107-fqldata-e2e_cnn-drawer-open/dataset.h5",
+        "data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/split_seed0.json",
+        "data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/gate_report.json",
+        "train.seed=1",
+        "data.store=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/store.yaml",
+        "agent.alpha=10.0",
+        "agent.batch_size=256",
+        "train.offline_steps=1000000",
+        "train.log_interval=5000",
+        "train.eval_interval=100000"
+      ],
+      "calibration_dependent": false,
+      "deps": [
+        "rwng-20261107-fqldata-e2e_cnn-drawer-open"
+      ],
+      "disk_gb": 10,
+      "evidence_manifest": "runs/remote/acceptance/782f140-cc/manifest.json",
+      "fql_budget": {
+        "alpha": 10.0,
+        "batch_size": 256,
+        "eval_interval": 100000,
+        "log_interval": 5000,
+        "offline_steps": 1000000
+      },
+      "fql_condition": "e2e_cnn",
+      "fql_seed": 1,
+      "gate_level": "image (100-episode gate)",
+      "gpu": "any",
+      "host": "remote",
+      "id": "rwng-20261107-fql-e2e_cnn-drawer-open-s1",
+      "max_restarts": 2,
+      "mem_gb": 12,
+      "oom_score_adj": 0,
+      "pin_host": "remote",
+      "plan_row_id": "rw-fql-e2e_cnn-drawer-open-s1",
+      "planned_commit": "782f14080a25d0d62fbd8594662cdfdb512b5a7a",
+      "planned_image": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a",
+      "priority": 2,
+      "ram_gb": 24,
+      "realworld_consumer": "e2e_cnn",
+      "realworld_gate_sha256": "dc2a1ad83114a8fa0a4ee3a78def0a37f367b9e60bdc7cc24c88fec3cbbf9cb7",
+      "realworld_manifest_sha256": "2fb5343046f4f85004a81ae31e2a5df67a9c018e8bf173392d82203b2afa98d0",
+      "realworld_target": "drawer-open",
+      "registration_tool": "runs/setup/tools/register_realworld_nongeometric_20261106.py",
+      "remote_host": "192.168.10.22",
+      "required_results": [
+        "policy.pt",
+        "metrics.jsonl",
+        "completion.json"
+      ],
+      "role": "realworld_fql",
+      "script": "scripts/train_realworld_fql.py"
+    },
+    {
+      "args": [
+        "--config",
+        "configs/realworld/fql/base.yaml",
+        "--name",
+        "rwng-20261107-fql-e2e_cnn-drawer-open-s2",
+        "--output-root",
+        "runs",
+        "--set",
+        "condition=e2e_cnn",
+        "data.dataset=runs/rwng-20261107-fqldata-e2e_cnn-drawer-open/dataset.h5",
+        "data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/split_seed0.json",
+        "data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/gate_report.json",
+        "train.seed=2",
+        "data.store=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/store.yaml",
+        "agent.alpha=10.0",
+        "agent.batch_size=256",
+        "train.offline_steps=1000000",
+        "train.log_interval=5000",
+        "train.eval_interval=100000"
+      ],
+      "calibration_dependent": false,
+      "deps": [
+        "rwng-20261107-fqldata-e2e_cnn-drawer-open"
+      ],
+      "disk_gb": 10,
+      "evidence_manifest": "runs/remote/acceptance/782f140-cc/manifest.json",
+      "fql_budget": {
+        "alpha": 10.0,
+        "batch_size": 256,
+        "eval_interval": 100000,
+        "log_interval": 5000,
+        "offline_steps": 1000000
+      },
+      "fql_condition": "e2e_cnn",
+      "fql_seed": 2,
+      "gate_level": "image (100-episode gate)",
+      "gpu": "any",
+      "host": "remote",
+      "id": "rwng-20261107-fql-e2e_cnn-drawer-open-s2",
+      "max_restarts": 2,
+      "mem_gb": 12,
+      "oom_score_adj": 0,
+      "pin_host": "remote",
+      "plan_row_id": "rw-fql-e2e_cnn-drawer-open-s2",
+      "planned_commit": "782f14080a25d0d62fbd8594662cdfdb512b5a7a",
+      "planned_image": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a",
+      "priority": 2,
+      "ram_gb": 24,
+      "realworld_consumer": "e2e_cnn",
+      "realworld_gate_sha256": "dc2a1ad83114a8fa0a4ee3a78def0a37f367b9e60bdc7cc24c88fec3cbbf9cb7",
+      "realworld_manifest_sha256": "2fb5343046f4f85004a81ae31e2a5df67a9c018e8bf173392d82203b2afa98d0",
+      "realworld_target": "drawer-open",
+      "registration_tool": "runs/setup/tools/register_realworld_nongeometric_20261106.py",
+      "remote_host": "192.168.10.22",
+      "required_results": [
+        "policy.pt",
+        "metrics.jsonl",
+        "completion.json"
+      ],
+      "role": "realworld_fql",
+      "script": "scripts/train_realworld_fql.py"
+    },
+    {
+      "args": [
+        "build",
+        "--store",
+        "/home/compu/kaist/sunho/realworld/learning_inputs/mug-hanging/store.yaml",
+        "--condition",
+        "dynamo",
+        "--out",
+        "runs/rwng-20261107-fqldata-dynamo-mug-hanging/dataset.h5",
+        "--gate-report",
+        "/home/compu/kaist/sunho/realworld/learning_inputs/mug-hanging/gate_report.json",
+        "--outcomes",
+        "/home/compu/kaist/sunho/realworld/learning_inputs/mug-hanging/outcomes.json",
+        "--export",
+        "runs/rwng-20261107-dynamo-mug-hanging-pre/encoder.pt",
+        "--device",
+        "cuda"
+      ],
+      "calibration_dependent": false,
+      "deps": [
+        "rwng-20261107-dynamo-mug-hanging-pre"
+      ],
+      "disk_gb": 20,
+      "evidence_manifest": "runs/remote/acceptance/782f140-cc/manifest.json",
+      "fql_condition": "dynamo",
+      "gate_level": "image (100-episode gate)",
+      "gpu": "any",
+      "host": "remote",
+      "id": "rwng-20261107-fqldata-dynamo-mug-hanging",
+      "max_restarts": 1,
+      "mem_gb": 8,
+      "oom_score_adj": 0,
+      "pin_host": "remote",
+      "plan_row_id": "rw-fqldata-dynamo-mug-hanging",
+      "planned_commit": "782f14080a25d0d62fbd8594662cdfdb512b5a7a",
+      "planned_image": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a",
+      "priority": 2,
+      "ram_gb": 16,
+      "realworld_consumer": "dynamo",
+      "realworld_gate_sha256": "dc2a1ad83114a8fa0a4ee3a78def0a37f367b9e60bdc7cc24c88fec3cbbf9cb7",
+      "realworld_manifest_sha256": "2fb5343046f4f85004a81ae31e2a5df67a9c018e8bf173392d82203b2afa98d0",
+      "realworld_target": "mug-hanging",
+      "registration_tool": "runs/setup/tools/register_realworld_nongeometric_20261106.py",
+      "remote_host": "192.168.10.22",
+      "required_results": [
+        "dataset.h5"
+      ],
+      "role": "realworld_fql",
+      "script": "scripts/realworld_fql_dataset.py"
+    },
+    {
+      "args": [
+        "--config",
+        "configs/realworld/fql/base.yaml",
+        "--name",
+        "rwng-20261107-fql-dynamo-mug-hanging-s0",
+        "--output-root",
+        "runs",
+        "--set",
+        "condition=dynamo",
+        "data.dataset=runs/rwng-20261107-fqldata-dynamo-mug-hanging/dataset.h5",
+        "data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/mug-hanging/split_seed0.json",
+        "data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/mug-hanging/gate_report.json",
+        "train.seed=0",
+        "agent.alpha=10.0",
+        "agent.batch_size=256",
+        "train.offline_steps=1000000",
+        "train.log_interval=5000",
+        "train.eval_interval=100000"
+      ],
+      "calibration_dependent": false,
+      "deps": [
+        "rwng-20261107-fqldata-dynamo-mug-hanging"
+      ],
+      "disk_gb": 10,
+      "evidence_manifest": "runs/remote/acceptance/782f140-cc/manifest.json",
+      "fql_budget": {
+        "alpha": 10.0,
+        "batch_size": 256,
+        "eval_interval": 100000,
+        "log_interval": 5000,
+        "offline_steps": 1000000
+      },
+      "fql_condition": "dynamo",
+      "fql_seed": 0,
+      "gate_level": "image (100-episode gate)",
+      "gpu": "any",
+      "host": "remote",
+      "id": "rwng-20261107-fql-dynamo-mug-hanging-s0",
+      "max_restarts": 2,
+      "mem_gb": 6,
+      "oom_score_adj": 0,
+      "pin_host": "remote",
+      "plan_row_id": "rw-fql-dynamo-mug-hanging-s0",
+      "planned_commit": "782f14080a25d0d62fbd8594662cdfdb512b5a7a",
+      "planned_image": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a",
+      "priority": 2,
+      "ram_gb": 12,
+      "realworld_consumer": "dynamo",
+      "realworld_gate_sha256": "dc2a1ad83114a8fa0a4ee3a78def0a37f367b9e60bdc7cc24c88fec3cbbf9cb7",
+      "realworld_manifest_sha256": "2fb5343046f4f85004a81ae31e2a5df67a9c018e8bf173392d82203b2afa98d0",
+      "realworld_target": "mug-hanging",
+      "registration_tool": "runs/setup/tools/register_realworld_nongeometric_20261106.py",
+      "remote_host": "192.168.10.22",
+      "required_results": [
+        "policy.pt",
+        "metrics.jsonl",
+        "completion.json"
+      ],
+      "role": "realworld_fql",
+      "script": "scripts/train_realworld_fql.py"
+    },
+    {
+      "args": [
+        "--config",
+        "configs/realworld/fql/base.yaml",
+        "--name",
+        "rwng-20261107-fql-dynamo-mug-hanging-s1",
+        "--output-root",
+        "runs",
+        "--set",
+        "condition=dynamo",
+        "data.dataset=runs/rwng-20261107-fqldata-dynamo-mug-hanging/dataset.h5",
+        "data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/mug-hanging/split_seed0.json",
+        "data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/mug-hanging/gate_report.json",
+        "train.seed=1",
+        "agent.alpha=10.0",
+        "agent.batch_size=256",
+        "train.offline_steps=1000000",
+        "train.log_interval=5000",
+        "train.eval_interval=100000"
+      ],
+      "calibration_dependent": false,
+      "deps": [
+        "rwng-20261107-fqldata-dynamo-mug-hanging"
+      ],
+      "disk_gb": 10,
+      "evidence_manifest": "runs/remote/acceptance/782f140-cc/manifest.json",
+      "fql_budget": {
+        "alpha": 10.0,
+        "batch_size": 256,
+        "eval_interval": 100000,
+        "log_interval": 5000,
+        "offline_steps": 1000000
+      },
+      "fql_condition": "dynamo",
+      "fql_seed": 1,
+      "gate_level": "image (100-episode gate)",
+      "gpu": "any",
+      "host": "remote",
+      "id": "rwng-20261107-fql-dynamo-mug-hanging-s1",
+      "max_restarts": 2,
+      "mem_gb": 6,
+      "oom_score_adj": 0,
+      "pin_host": "remote",
+      "plan_row_id": "rw-fql-dynamo-mug-hanging-s1",
+      "planned_commit": "782f14080a25d0d62fbd8594662cdfdb512b5a7a",
+      "planned_image": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a",
+      "priority": 2,
+      "ram_gb": 12,
+      "realworld_consumer": "dynamo",
+      "realworld_gate_sha256": "dc2a1ad83114a8fa0a4ee3a78def0a37f367b9e60bdc7cc24c88fec3cbbf9cb7",
+      "realworld_manifest_sha256": "2fb5343046f4f85004a81ae31e2a5df67a9c018e8bf173392d82203b2afa98d0",
+      "realworld_target": "mug-hanging",
+      "registration_tool": "runs/setup/tools/register_realworld_nongeometric_20261106.py",
+      "remote_host": "192.168.10.22",
+      "required_results": [
+        "policy.pt",
+        "metrics.jsonl",
+        "completion.json"
+      ],
+      "role": "realworld_fql",
+      "script": "scripts/train_realworld_fql.py"
+    },
+    {
+      "args": [
+        "--config",
+        "configs/realworld/fql/base.yaml",
+        "--name",
+        "rwng-20261107-fql-dynamo-mug-hanging-s2",
+        "--output-root",
+        "runs",
+        "--set",
+        "condition=dynamo",
+        "data.dataset=runs/rwng-20261107-fqldata-dynamo-mug-hanging/dataset.h5",
+        "data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/mug-hanging/split_seed0.json",
+        "data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/mug-hanging/gate_report.json",
+        "train.seed=2",
+        "agent.alpha=10.0",
+        "agent.batch_size=256",
+        "train.offline_steps=1000000",
+        "train.log_interval=5000",
+        "train.eval_interval=100000"
+      ],
+      "calibration_dependent": false,
+      "deps": [
+        "rwng-20261107-fqldata-dynamo-mug-hanging"
+      ],
+      "disk_gb": 10,
+      "evidence_manifest": "runs/remote/acceptance/782f140-cc/manifest.json",
+      "fql_budget": {
+        "alpha": 10.0,
+        "batch_size": 256,
+        "eval_interval": 100000,
+        "log_interval": 5000,
+        "offline_steps": 1000000
+      },
+      "fql_condition": "dynamo",
+      "fql_seed": 2,
+      "gate_level": "image (100-episode gate)",
+      "gpu": "any",
+      "host": "remote",
+      "id": "rwng-20261107-fql-dynamo-mug-hanging-s2",
+      "max_restarts": 2,
+      "mem_gb": 6,
+      "oom_score_adj": 0,
+      "pin_host": "remote",
+      "plan_row_id": "rw-fql-dynamo-mug-hanging-s2",
+      "planned_commit": "782f14080a25d0d62fbd8594662cdfdb512b5a7a",
+      "planned_image": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a",
+      "priority": 2,
+      "ram_gb": 12,
+      "realworld_consumer": "dynamo",
+      "realworld_gate_sha256": "dc2a1ad83114a8fa0a4ee3a78def0a37f367b9e60bdc7cc24c88fec3cbbf9cb7",
+      "realworld_manifest_sha256": "2fb5343046f4f85004a81ae31e2a5df67a9c018e8bf173392d82203b2afa98d0",
+      "realworld_target": "mug-hanging",
+      "registration_tool": "runs/setup/tools/register_realworld_nongeometric_20261106.py",
+      "remote_host": "192.168.10.22",
+      "required_results": [
+        "policy.pt",
+        "metrics.jsonl",
+        "completion.json"
+      ],
+      "role": "realworld_fql",
+      "script": "scripts/train_realworld_fql.py"
+    },
+    {
+      "args": [
+        "build",
+        "--store",
+        "/home/compu/kaist/sunho/realworld/learning_inputs/mug-hanging/store.yaml",
+        "--condition",
+        "reviwo",
+        "--out",
+        "runs/rwng-20261107-fqldata-reviwo-mug-hanging/dataset.h5",
+        "--gate-report",
+        "/home/compu/kaist/sunho/realworld/learning_inputs/mug-hanging/gate_report.json",
+        "--outcomes",
+        "/home/compu/kaist/sunho/realworld/learning_inputs/mug-hanging/outcomes.json",
+        "--export",
+        "runs/rwng-20261107-reviwo-mug-hanging-pre/encoder.pt",
+        "--device",
+        "cuda"
+      ],
+      "calibration_dependent": false,
+      "deps": [
+        "rwng-20261107-reviwo-mug-hanging-pre"
+      ],
+      "disk_gb": 20,
+      "evidence_manifest": "runs/remote/acceptance/782f140-cc/manifest.json",
+      "fql_condition": "reviwo",
+      "gate_level": "image (100-episode gate)",
+      "gpu": "any",
+      "host": "remote",
+      "id": "rwng-20261107-fqldata-reviwo-mug-hanging",
+      "max_restarts": 1,
+      "mem_gb": 8,
+      "oom_score_adj": 0,
+      "pin_host": "remote",
+      "plan_row_id": "rw-fqldata-reviwo-mug-hanging",
+      "planned_commit": "782f14080a25d0d62fbd8594662cdfdb512b5a7a",
+      "planned_image": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a",
+      "priority": 2,
+      "ram_gb": 16,
+      "realworld_consumer": "fql_reviwo",
+      "realworld_gate_sha256": "dc2a1ad83114a8fa0a4ee3a78def0a37f367b9e60bdc7cc24c88fec3cbbf9cb7",
+      "realworld_manifest_sha256": "2fb5343046f4f85004a81ae31e2a5df67a9c018e8bf173392d82203b2afa98d0",
+      "realworld_target": "mug-hanging",
+      "registration_tool": "runs/setup/tools/register_realworld_nongeometric_20261106.py",
+      "remote_host": "192.168.10.22",
+      "required_results": [
+        "dataset.h5"
+      ],
+      "role": "realworld_fql",
+      "script": "scripts/realworld_fql_dataset.py"
+    },
+    {
+      "args": [
+        "--config",
+        "configs/realworld/fql/base.yaml",
+        "--name",
+        "rwng-20261107-fql-reviwo-mug-hanging-s0",
+        "--output-root",
+        "runs",
+        "--set",
+        "condition=reviwo",
+        "data.dataset=runs/rwng-20261107-fqldata-reviwo-mug-hanging/dataset.h5",
+        "data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/mug-hanging/split_seed0.json",
+        "data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/mug-hanging/gate_report.json",
+        "train.seed=0",
+        "agent.alpha=10.0",
+        "agent.batch_size=256",
+        "train.offline_steps=1000000",
+        "train.log_interval=5000",
+        "train.eval_interval=100000"
+      ],
+      "calibration_dependent": false,
+      "deps": [
+        "rwng-20261107-fqldata-reviwo-mug-hanging"
+      ],
+      "disk_gb": 10,
+      "evidence_manifest": "runs/remote/acceptance/782f140-cc/manifest.json",
+      "fql_budget": {
+        "alpha": 10.0,
+        "batch_size": 256,
+        "eval_interval": 100000,
+        "log_interval": 5000,
+        "offline_steps": 1000000
+      },
+      "fql_condition": "reviwo",
+      "fql_seed": 0,
+      "gate_level": "image (100-episode gate)",
+      "gpu": "any",
+      "host": "remote",
+      "id": "rwng-20261107-fql-reviwo-mug-hanging-s0",
+      "max_restarts": 2,
+      "mem_gb": 6,
+      "oom_score_adj": 0,
+      "pin_host": "remote",
+      "plan_row_id": "rw-fql-reviwo-mug-hanging-s0",
+      "planned_commit": "782f14080a25d0d62fbd8594662cdfdb512b5a7a",
+      "planned_image": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a",
+      "priority": 2,
+      "ram_gb": 12,
+      "realworld_consumer": "fql_reviwo",
+      "realworld_gate_sha256": "dc2a1ad83114a8fa0a4ee3a78def0a37f367b9e60bdc7cc24c88fec3cbbf9cb7",
+      "realworld_manifest_sha256": "2fb5343046f4f85004a81ae31e2a5df67a9c018e8bf173392d82203b2afa98d0",
+      "realworld_target": "mug-hanging",
+      "registration_tool": "runs/setup/tools/register_realworld_nongeometric_20261106.py",
+      "remote_host": "192.168.10.22",
+      "required_results": [
+        "policy.pt",
+        "metrics.jsonl",
+        "completion.json"
+      ],
+      "role": "realworld_fql",
+      "script": "scripts/train_realworld_fql.py"
+    },
+    {
+      "args": [
+        "--config",
+        "configs/realworld/fql/base.yaml",
+        "--name",
+        "rwng-20261107-fql-reviwo-mug-hanging-s1",
+        "--output-root",
+        "runs",
+        "--set",
+        "condition=reviwo",
+        "data.dataset=runs/rwng-20261107-fqldata-reviwo-mug-hanging/dataset.h5",
+        "data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/mug-hanging/split_seed0.json",
+        "data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/mug-hanging/gate_report.json",
+        "train.seed=1",
+        "agent.alpha=10.0",
+        "agent.batch_size=256",
+        "train.offline_steps=1000000",
+        "train.log_interval=5000",
+        "train.eval_interval=100000"
+      ],
+      "calibration_dependent": false,
+      "deps": [
+        "rwng-20261107-fqldata-reviwo-mug-hanging"
+      ],
+      "disk_gb": 10,
+      "evidence_manifest": "runs/remote/acceptance/782f140-cc/manifest.json",
+      "fql_budget": {
+        "alpha": 10.0,
+        "batch_size": 256,
+        "eval_interval": 100000,
+        "log_interval": 5000,
+        "offline_steps": 1000000
+      },
+      "fql_condition": "reviwo",
+      "fql_seed": 1,
+      "gate_level": "image (100-episode gate)",
+      "gpu": "any",
+      "host": "remote",
+      "id": "rwng-20261107-fql-reviwo-mug-hanging-s1",
+      "max_restarts": 2,
+      "mem_gb": 6,
+      "oom_score_adj": 0,
+      "pin_host": "remote",
+      "plan_row_id": "rw-fql-reviwo-mug-hanging-s1",
+      "planned_commit": "782f14080a25d0d62fbd8594662cdfdb512b5a7a",
+      "planned_image": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a",
+      "priority": 2,
+      "ram_gb": 12,
+      "realworld_consumer": "fql_reviwo",
+      "realworld_gate_sha256": "dc2a1ad83114a8fa0a4ee3a78def0a37f367b9e60bdc7cc24c88fec3cbbf9cb7",
+      "realworld_manifest_sha256": "2fb5343046f4f85004a81ae31e2a5df67a9c018e8bf173392d82203b2afa98d0",
+      "realworld_target": "mug-hanging",
+      "registration_tool": "runs/setup/tools/register_realworld_nongeometric_20261106.py",
+      "remote_host": "192.168.10.22",
+      "required_results": [
+        "policy.pt",
+        "metrics.jsonl",
+        "completion.json"
+      ],
+      "role": "realworld_fql",
+      "script": "scripts/train_realworld_fql.py"
+    },
+    {
+      "args": [
+        "--config",
+        "configs/realworld/fql/base.yaml",
+        "--name",
+        "rwng-20261107-fql-reviwo-mug-hanging-s2",
+        "--output-root",
+        "runs",
+        "--set",
+        "condition=reviwo",
+        "data.dataset=runs/rwng-20261107-fqldata-reviwo-mug-hanging/dataset.h5",
+        "data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/mug-hanging/split_seed0.json",
+        "data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/mug-hanging/gate_report.json",
+        "train.seed=2",
+        "agent.alpha=10.0",
+        "agent.batch_size=256",
+        "train.offline_steps=1000000",
+        "train.log_interval=5000",
+        "train.eval_interval=100000"
+      ],
+      "calibration_dependent": false,
+      "deps": [
+        "rwng-20261107-fqldata-reviwo-mug-hanging"
+      ],
+      "disk_gb": 10,
+      "evidence_manifest": "runs/remote/acceptance/782f140-cc/manifest.json",
+      "fql_budget": {
+        "alpha": 10.0,
+        "batch_size": 256,
+        "eval_interval": 100000,
+        "log_interval": 5000,
+        "offline_steps": 1000000
+      },
+      "fql_condition": "reviwo",
+      "fql_seed": 2,
+      "gate_level": "image (100-episode gate)",
+      "gpu": "any",
+      "host": "remote",
+      "id": "rwng-20261107-fql-reviwo-mug-hanging-s2",
+      "max_restarts": 2,
+      "mem_gb": 6,
+      "oom_score_adj": 0,
+      "pin_host": "remote",
+      "plan_row_id": "rw-fql-reviwo-mug-hanging-s2",
+      "planned_commit": "782f14080a25d0d62fbd8594662cdfdb512b5a7a",
+      "planned_image": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a",
+      "priority": 2,
+      "ram_gb": 12,
+      "realworld_consumer": "fql_reviwo",
+      "realworld_gate_sha256": "dc2a1ad83114a8fa0a4ee3a78def0a37f367b9e60bdc7cc24c88fec3cbbf9cb7",
+      "realworld_manifest_sha256": "2fb5343046f4f85004a81ae31e2a5df67a9c018e8bf173392d82203b2afa98d0",
+      "realworld_target": "mug-hanging",
+      "registration_tool": "runs/setup/tools/register_realworld_nongeometric_20261106.py",
+      "remote_host": "192.168.10.22",
+      "required_results": [
+        "policy.pt",
+        "metrics.jsonl",
+        "completion.json"
+      ],
+      "role": "realworld_fql",
+      "script": "scripts/train_realworld_fql.py"
+    },
+    {
+      "args": [
+        "build",
+        "--store",
+        "/home/compu/kaist/sunho/realworld/learning_inputs/mug-hanging/store.yaml",
+        "--condition",
+        "e2e_cnn",
+        "--out",
+        "runs/rwng-20261107-fqldata-e2e_cnn-mug-hanging/dataset.h5",
+        "--gate-report",
+        "/home/compu/kaist/sunho/realworld/learning_inputs/mug-hanging/gate_report.json",
+        "--outcomes",
+        "/home/compu/kaist/sunho/realworld/learning_inputs/mug-hanging/outcomes.json",
+        "--device",
+        "cpu"
+      ],
+      "calibration_dependent": false,
+      "deps": [
+        "rwng-20261107-dynamo-mug-hanging-pre",
+        "rwng-20261107-reviwo-mug-hanging-pre"
+      ],
+      "disk_gb": 20,
+      "evidence_manifest": "runs/remote/acceptance/782f140-cc/manifest.json",
+      "fql_condition": "e2e_cnn",
+      "gate_level": "image (100-episode gate)",
+      "gpu": "any",
+      "host": "remote",
+      "id": "rwng-20261107-fqldata-e2e_cnn-mug-hanging",
+      "max_restarts": 1,
+      "mem_gb": 1,
+      "oom_score_adj": 0,
+      "pin_host": "remote",
+      "plan_row_id": "rw-fqldata-e2e_cnn-mug-hanging",
+      "planned_commit": "782f14080a25d0d62fbd8594662cdfdb512b5a7a",
+      "planned_image": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a",
+      "priority": 2,
+      "ram_gb": 8,
+      "realworld_consumer": "e2e_cnn",
+      "realworld_gate_sha256": "dc2a1ad83114a8fa0a4ee3a78def0a37f367b9e60bdc7cc24c88fec3cbbf9cb7",
+      "realworld_manifest_sha256": "2fb5343046f4f85004a81ae31e2a5df67a9c018e8bf173392d82203b2afa98d0",
+      "realworld_target": "mug-hanging",
+      "registration_tool": "runs/setup/tools/register_realworld_nongeometric_20261106.py",
+      "remote_host": "192.168.10.22",
+      "required_results": [
+        "dataset.h5"
+      ],
+      "role": "realworld_fql",
+      "script": "scripts/realworld_fql_dataset.py"
+    },
+    {
+      "args": [
+        "--config",
+        "configs/realworld/fql/base.yaml",
+        "--name",
+        "rwng-20261107-fql-e2e_cnn-mug-hanging-s0",
+        "--output-root",
+        "runs",
+        "--set",
+        "condition=e2e_cnn",
+        "data.dataset=runs/rwng-20261107-fqldata-e2e_cnn-mug-hanging/dataset.h5",
+        "data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/mug-hanging/split_seed0.json",
+        "data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/mug-hanging/gate_report.json",
+        "train.seed=0",
+        "data.store=/home/compu/kaist/sunho/realworld/learning_inputs/mug-hanging/store.yaml",
+        "agent.alpha=10.0",
+        "agent.batch_size=256",
+        "train.offline_steps=1000000",
+        "train.log_interval=5000",
+        "train.eval_interval=100000"
+      ],
+      "calibration_dependent": false,
+      "deps": [
+        "rwng-20261107-fqldata-e2e_cnn-mug-hanging"
+      ],
+      "disk_gb": 10,
+      "evidence_manifest": "runs/remote/acceptance/782f140-cc/manifest.json",
+      "fql_budget": {
+        "alpha": 10.0,
+        "batch_size": 256,
+        "eval_interval": 100000,
+        "log_interval": 5000,
+        "offline_steps": 1000000
+      },
+      "fql_condition": "e2e_cnn",
+      "fql_seed": 0,
+      "gate_level": "image (100-episode gate)",
+      "gpu": "any",
+      "host": "remote",
+      "id": "rwng-20261107-fql-e2e_cnn-mug-hanging-s0",
+      "max_restarts": 2,
+      "mem_gb": 12,
+      "oom_score_adj": 0,
+      "pin_host": "remote",
+      "plan_row_id": "rw-fql-e2e_cnn-mug-hanging-s0",
+      "planned_commit": "782f14080a25d0d62fbd8594662cdfdb512b5a7a",
+      "planned_image": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a",
+      "priority": 2,
+      "ram_gb": 24,
+      "realworld_consumer": "e2e_cnn",
+      "realworld_gate_sha256": "dc2a1ad83114a8fa0a4ee3a78def0a37f367b9e60bdc7cc24c88fec3cbbf9cb7",
+      "realworld_manifest_sha256": "2fb5343046f4f85004a81ae31e2a5df67a9c018e8bf173392d82203b2afa98d0",
+      "realworld_target": "mug-hanging",
+      "registration_tool": "runs/setup/tools/register_realworld_nongeometric_20261106.py",
+      "remote_host": "192.168.10.22",
+      "required_results": [
+        "policy.pt",
+        "metrics.jsonl",
+        "completion.json"
+      ],
+      "role": "realworld_fql",
+      "script": "scripts/train_realworld_fql.py"
+    },
+    {
+      "args": [
+        "--config",
+        "configs/realworld/fql/base.yaml",
+        "--name",
+        "rwng-20261107-fql-e2e_cnn-mug-hanging-s1",
+        "--output-root",
+        "runs",
+        "--set",
+        "condition=e2e_cnn",
+        "data.dataset=runs/rwng-20261107-fqldata-e2e_cnn-mug-hanging/dataset.h5",
+        "data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/mug-hanging/split_seed0.json",
+        "data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/mug-hanging/gate_report.json",
+        "train.seed=1",
+        "data.store=/home/compu/kaist/sunho/realworld/learning_inputs/mug-hanging/store.yaml",
+        "agent.alpha=10.0",
+        "agent.batch_size=256",
+        "train.offline_steps=1000000",
+        "train.log_interval=5000",
+        "train.eval_interval=100000"
+      ],
+      "calibration_dependent": false,
+      "deps": [
+        "rwng-20261107-fqldata-e2e_cnn-mug-hanging"
+      ],
+      "disk_gb": 10,
+      "evidence_manifest": "runs/remote/acceptance/782f140-cc/manifest.json",
+      "fql_budget": {
+        "alpha": 10.0,
+        "batch_size": 256,
+        "eval_interval": 100000,
+        "log_interval": 5000,
+        "offline_steps": 1000000
+      },
+      "fql_condition": "e2e_cnn",
+      "fql_seed": 1,
+      "gate_level": "image (100-episode gate)",
+      "gpu": "any",
+      "host": "remote",
+      "id": "rwng-20261107-fql-e2e_cnn-mug-hanging-s1",
+      "max_restarts": 2,
+      "mem_gb": 12,
+      "oom_score_adj": 0,
+      "pin_host": "remote",
+      "plan_row_id": "rw-fql-e2e_cnn-mug-hanging-s1",
+      "planned_commit": "782f14080a25d0d62fbd8594662cdfdb512b5a7a",
+      "planned_image": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a",
+      "priority": 2,
+      "ram_gb": 24,
+      "realworld_consumer": "e2e_cnn",
+      "realworld_gate_sha256": "dc2a1ad83114a8fa0a4ee3a78def0a37f367b9e60bdc7cc24c88fec3cbbf9cb7",
+      "realworld_manifest_sha256": "2fb5343046f4f85004a81ae31e2a5df67a9c018e8bf173392d82203b2afa98d0",
+      "realworld_target": "mug-hanging",
+      "registration_tool": "runs/setup/tools/register_realworld_nongeometric_20261106.py",
+      "remote_host": "192.168.10.22",
+      "required_results": [
+        "policy.pt",
+        "metrics.jsonl",
+        "completion.json"
+      ],
+      "role": "realworld_fql",
+      "script": "scripts/train_realworld_fql.py"
+    },
+    {
+      "args": [
+        "--config",
+        "configs/realworld/fql/base.yaml",
+        "--name",
+        "rwng-20261107-fql-e2e_cnn-mug-hanging-s2",
+        "--output-root",
+        "runs",
+        "--set",
+        "condition=e2e_cnn",
+        "data.dataset=runs/rwng-20261107-fqldata-e2e_cnn-mug-hanging/dataset.h5",
+        "data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/mug-hanging/split_seed0.json",
+        "data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/mug-hanging/gate_report.json",
+        "train.seed=2",
+        "data.store=/home/compu/kaist/sunho/realworld/learning_inputs/mug-hanging/store.yaml",
+        "agent.alpha=10.0",
+        "agent.batch_size=256",
+        "train.offline_steps=1000000",
+        "train.log_interval=5000",
+        "train.eval_interval=100000"
+      ],
+      "calibration_dependent": false,
+      "deps": [
+        "rwng-20261107-fqldata-e2e_cnn-mug-hanging"
+      ],
+      "disk_gb": 10,
+      "evidence_manifest": "runs/remote/acceptance/782f140-cc/manifest.json",
+      "fql_budget": {
+        "alpha": 10.0,
+        "batch_size": 256,
+        "eval_interval": 100000,
+        "log_interval": 5000,
+        "offline_steps": 1000000
+      },
+      "fql_condition": "e2e_cnn",
+      "fql_seed": 2,
+      "gate_level": "image (100-episode gate)",
+      "gpu": "any",
+      "host": "remote",
+      "id": "rwng-20261107-fql-e2e_cnn-mug-hanging-s2",
+      "max_restarts": 2,
+      "mem_gb": 12,
+      "oom_score_adj": 0,
+      "pin_host": "remote",
+      "plan_row_id": "rw-fql-e2e_cnn-mug-hanging-s2",
+      "planned_commit": "782f14080a25d0d62fbd8594662cdfdb512b5a7a",
+      "planned_image": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a",
+      "priority": 2,
+      "ram_gb": 24,
+      "realworld_consumer": "e2e_cnn",
+      "realworld_gate_sha256": "dc2a1ad83114a8fa0a4ee3a78def0a37f367b9e60bdc7cc24c88fec3cbbf9cb7",
+      "realworld_manifest_sha256": "2fb5343046f4f85004a81ae31e2a5df67a9c018e8bf173392d82203b2afa98d0",
+      "realworld_target": "mug-hanging",
+      "registration_tool": "runs/setup/tools/register_realworld_nongeometric_20261106.py",
+      "remote_host": "192.168.10.22",
+      "required_results": [
+        "policy.pt",
+        "metrics.jsonl",
+        "completion.json"
+      ],
+      "role": "realworld_fql",
+      "script": "scripts/train_realworld_fql.py"
+    }
+  ],
+  "prepared_at": "2026-11-06T17:28:52.137265+00:00",
+  "proof_file": "rw-registration-nongeometric-20261106-7e4076702fc5.json",
+  "queue_sha256_after": "204273d89912bf7d8a85a0a76a8293e241ebe6db6c616a26a908d60b6a40af40",
+  "queue_sha256_at_evaluation": "fe3276c9c8797c04ea15a36caf6cc8264e87aabd026762e8ed556826b37c592a",
+  "queue_sha256_before": "fe3276c9c8797c04ea15a36caf6cc8264e87aabd026762e8ed556826b37c592a",
+  "refused": {
+    "rwng-20261107-fql-e2e_cnn-mug-hanging-s0": [
+      "dependencies not gated/registered: rwng-20261107-fqldata-e2e_cnn-mug-hanging"
+    ],
+    "rwng-20261107-fql-e2e_cnn-mug-hanging-s1": [
+      "dependencies not gated/registered: rwng-20261107-fqldata-e2e_cnn-mug-hanging"
+    ],
+    "rwng-20261107-fql-e2e_cnn-mug-hanging-s2": [
+      "dependencies not gated/registered: rwng-20261107-fqldata-e2e_cnn-mug-hanging"
+    ],
+    "rwng-20261107-fql-reviwo-mug-hanging-s0": [
+      "dependencies not gated/registered: rwng-20261107-fqldata-reviwo-mug-hanging"
+    ],
+    "rwng-20261107-fql-reviwo-mug-hanging-s1": [
+      "dependencies not gated/registered: rwng-20261107-fqldata-reviwo-mug-hanging"
+    ],
+    "rwng-20261107-fql-reviwo-mug-hanging-s2": [
+      "dependencies not gated/registered: rwng-20261107-fqldata-reviwo-mug-hanging"
+    ],
+    "rwng-20261107-fqldata-e2e_cnn-mug-hanging": [
+      "dependencies not gated/registered: rwng-20261107-reviwo-mug-hanging-pre"
+    ],
+    "rwng-20261107-fqldata-reviwo-mug-hanging": [
+      "dependencies not gated/registered: rwng-20261107-reviwo-mug-hanging-pre"
+    ],
+    "rwng-20261107-reviwo-mug-hanging-pre": [
+      "QA family multiview: 3 episodes failed ['mug-hanging/episode_000062.h5', 'mug-hanging/episode_000075.h5', 'mug-hanging/episode_000110.h5']"
+    ]
+  },
+  "registered_at": "2026-11-06T17:29:47.676407+00:00",
+  "registry_sha256_at_evaluation": "4ed6e55788d767eca161b63b46593a30666aa89223ab561662cd2cbda475779f",
+  "release": {
+    "acceptance_manifest": "runs/remote/acceptance/782f140-cc/manifest.json",
+    "acceptance_manifest_sha256": "c0d6d1a95e110d1f7e58018407243c49d886a5a217300c5caa08b852295fcbd7",
+    "activation_required": false,
+    "active_role_release": {
+      "commit": "782f14080a25d0d62fbd8594662cdfdb512b5a7a",
+      "image": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a"
+    },
+    "commit": "782f14080a25d0d62fbd8594662cdfdb512b5a7a",
+    "image": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a",
+    "source_sha256": {
+      "configs/realworld/baselines/dynamo/drawer-open.yaml": "60a062e3f98fe2b8bae7a78d34e2d51b681977145cf4d12d614f525a41c6e276",
+      "configs/realworld/baselines/dynamo/mug-hanging.yaml": "d145729309d3e67f90dbb84a468dfd05e9583ec2b6dd3f63e6ecb42be754e144",
+      "configs/realworld/baselines/reviwo/drawer-open.yaml": "9a9b40facc975dd4c9abcf0f8baa49705806414686b669acce26e1d0b53a1a8c",
+      "configs/realworld/baselines/reviwo/mug-hanging.yaml": "7c4529171806e86ff0d83375e0499c45a2b88b37b820e12f61f662bdae3e80c8",
+      "configs/realworld/fql/base.yaml": "e3f5396f832bb4597319c910a1a942e3ad09f6cf8749a9c07978f506d61e1d14",
+      "s4d/rwlearn/actions.py": "384c2387a09cc64062e2580deea4342e43ae5fe6ea29c62685c569759cf0b8f5",
+      "s4d/rwlearn/configs.py": "1fdfd5efad3d111a2d78ea4bcfa3115785867c84d92492e47a96387f81515310",
+      "s4d/rwlearn/fql_data.py": "bb220f7ac51fa18f3fa81d43877bb9eb746704a6fa0ffae3b28fb89bddf3afd0",
+      "s4d/rwlearn/gate.py": "fd7a68180bb67dfddf63d86fed538b4175675c0dea03a819a958c22a18950ce4",
+      "s4d/rwlearn/identity.py": "0b831d613f542992af86c95e05f3f7d374ab4fc2ffc8e0c975375d9a9d7955e5",
+      "s4d/rwlearn/launch.py": "30a4b6e96425e69e414c9d5552d17f70dbf9d5753334dbff7a7a266c100da217",
+      "scripts/realworld_fql_dataset.py": "94bb803beb9c27d23e7f3ed8fd4a224cecbe066eef6b81784c3b833c8b68b530",
+      "scripts/train_dynamo.py": "59107b068002f31e4b4e29c9f65a6e23731720c40e54965fafa3782d379cf288",
+      "scripts/train_realworld_fql.py": "0179c05c2e71eaa8d26fe63bf5261a77f7ec92f256d2ddeddcf36495d610e253",
+      "scripts/train_reviwo.py": "0e4004b3926704c8afedffe4debae43248a38bc2d7de2ba300c82dbc02f58fec"
+    }
+  },
+  "roles_sha256": "26a7a33be344d7fb38cbc3794a2ecfc58936203528f7afcc09ff2c463c96e1b7",
+  "schema": "rw-registration/v1",
+  "status": "published",
+  "tasks": [
+    "drawer-open",
+    "mug-hanging"
+  ],
+  "tool_sha256": "c14252d7eb8f2dfd303ba8aed569b7a27d9c394d012f9cc4f5748081730038da"
+}

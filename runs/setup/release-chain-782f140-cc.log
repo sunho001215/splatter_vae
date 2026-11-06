@@ -1,0 +1,31 @@
+=== 2026-11-07 02:06:34 release chain 782f14080a25d0d62fbd8594662cdfdb512b5a7a (main 826fefa + raw-provenance episode joins for real-world gate/inputs/outcomes/splits/FQL; Codex c10)
+02:07:06 /home/ws/ws/splatter4d/.worktrees/rwepid/s4d/remote_access.py sync-code 782f14080a25d0d62fbd8594662cdfdb512b5a7a -> 0 /home/compu/kaist/sunho/releases/782f14080a25d0d62fbd8594662cdfdb512b5a7a/code 
+02:07:06 /home/compu/kaist/sunho/releases/782f14080a25d0d62fbd8594662cdfdb512b5a7a/code
+02:07:14 sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a --tag cc -> 0 /home/ws/ws/splatter4d/runs/remote/verification/native-782f140-cc-queue.yaml 
+02:08:21 launched verify-native-782f140-cc on remote/GPU-ca65e1b7-c0ac-6757-7d3f-816c3119a4c1 (s4d-verify-native-782f140-cc-a1, attempt 1)
+02:08:23 wait {'verify-native-782f140-cc': 'running'}
+02:10:44 wait {'verify-native-782f140-cc': 'running'}
+02:12:01 wait {'verify-native-782f140-cc': 'running'}
+02:13:32 wait {'verify-native-782f140-cc': 'running'}
+02:14:46 wait {'verify-native-782f140-cc': 'running'}
+02:16:13 verify-native-782f140-cc: live result sync unavailable; job remains running
+02:16:14 wait {'verify-native-782f140-cc': 'running'}
+02:17:26 verify-native-782f140-cc: live result sync unavailable; job remains running
+02:17:27 wait {'verify-native-782f140-cc': 'running'}
+02:18:55 wait {'verify-native-782f140-cc': 'running'}
+02:20:07 wait {'verify-native-782f140-cc': 'running'}
+02:21:30 verify-native-782f140-cc: live result sync unavailable; job remains running
+02:21:31 wait {'verify-native-782f140-cc': 'running'}
+02:22:38 done {'verify-native-782f140-cc': 'done'}
+02:22:38 {"exit_code": 0, "counts": {"passed": 2028, "error": 0, "failed": 0, "skipped": 0}, "full_suite_passed": true}
+02:22:49 sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a --tag cc -> 0 /home/ws/ws/splatter4d/runs/remote/verification/isolation-782f140-cc-queue.yaml 
+02:25:21 launched verify-isolation-0-782f140-cc on remote/GPU-4391fcee-537f-d408-d138-10d8a3866eea (s4d-verify-isolation-0-782f140-cc-a1, attempt 1)
+02:25:21 launched verify-isolation-1-782f140-cc on remote/GPU-6122c7a9-eaa6-b539-6005-f20e339da4ea (s4d-verify-isolation-1-782f140-cc-a1, attempt 1)
+02:25:21 launched verify-isolation-2-782f140-cc on remote/GPU-9e9f1e97-b2ca-04e0-eb2a-8035398daa79 (s4d-verify-isolation-2-782f140-cc-a1, attempt 1)
+02:25:21 launched verify-isolation-3-782f140-cc on remote/GPU-ca65e1b7-c0ac-6757-7d3f-816c3119a4c1 (s4d-verify-isolation-3-782f140-cc-a1, attempt 1)
+02:25:22 wait {'verify-isolation-0-782f140-cc': 'running', 'verify-isolation-1-782f140-cc': 'running', 'verify-isolation-2-782f140-cc': 'running', 'verify-isolation-3-782f140-cc': 'running'}
+02:26:40 verify-isolation-3-782f140-cc exited with 0 on remote; results checksum verified
+02:26:42 done {'verify-isolation-0-782f140-cc': 'done', 'verify-isolation-1-782f140-cc': 'done', 'verify-isolation-2-782f140-cc': 'done', 'verify-isolation-3-782f140-cc': 'done'}
+02:26:44 sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a --tag cc -> 0 ACCEPTED /home/ws/ws/splatter4d/runs/remote/acceptance/782f140-cc/manifest.json c0d6d1a95e110d1f7e58018407243c49d886a5a217300c5caa08b852295fcbd7 56bd8ce9c59e 
+02:26:44 ACCEPTED /home/ws/ws/splatter4d/runs/remote/acceptance/782f140-cc/manifest.json c0d6d1a95e110d1f7e58018407243c49d886a5a217300c5caa08b852295fcbd7 56bd8ce9c59e
+chain exit 0

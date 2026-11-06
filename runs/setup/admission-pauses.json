@@ -142,6 +142,16 @@
     "ds-pre-snerl-sweep-into",
     "ds-pre-snerl-drawer-open"
    ]
+  },
+  {
+   "name": "rwng-learning-inputs-20261107",
+   "active": true,
+   "prefixes": [
+    "rwng-20261106-"
+   ],
+   "since": "2026-11-07T01:55:00+09:00",
+   "by": "coordinator",
+   "reason": "real-world non-geometric rows fail at start: learning_inputs/<task>/split_seed0.json missing because scripts/realworld_learning.py inputs refuses the real stores (gate store_episode_id episode_NNNNNN vs pipeline store key task-NNNNNN; fix rw-epid-20261107 in progress). Lift after the fix is released, inputs are written and the failed rows are reset. UPDATE 02:30: SUPERSEDED (permanent): replaced by rwng-20261107-* rows pinned to 782f140 (retries would keep the first launch commit c9fc448); learning inputs written 02:28 under learning_inputs/<task>/ with 782f140."
   }
  ]
 }
