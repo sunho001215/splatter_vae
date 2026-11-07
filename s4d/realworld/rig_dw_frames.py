@@ -110,13 +110,17 @@ def _select_one(k):
     frames, surf, state, cfg = _POOL["frames"], _POOL["surf"], _POOL["state"], _POOL["cfg"]
     fr = frames[k]
     T, alpha, tau = state["T"][fr.cam], state["alpha"][fr.cam], state["tau"][fr.cam]
+    eps = (state.get("focal") or {}).get(fr.cam, 0.0)
+    Keff = fr.K.copy()
+    Keff[0, 0] *= np.exp(eps)
+    Keff[1, 1] *= np.exp(eps)
     X, N, V = surf.posed(fr)
     if abs(tau) > 1e-3:  # render the support at the effective robot time t + tau
         X = X + tau * V(np.arange(len(X)))
         X0, V0 = X, V
         V = (lambda ids, V0=V0: V0(ids))
     rng = np.random.default_rng(cfg.seed + 7919 * k)
-    ff, st = rr.frame_factors(fr.cam, X, N, V, T, fr.K, fr.ev(), cfg, rng, alpha=alpha, tau=tau)
+    ff, st = rr.frame_factors(fr.cam, X, N, V, T, Keff, fr.ev(), cfg, rng, alpha=alpha, tau=tau, K_ray=fr.K)
     if ff is not None and abs(tau) > 1e-3:  # factors store points at the camera timestamp t (residuals add tau V)
         ff.X = ff.X - tau * ff.V
     # visible-surface speed at this frame: max over the model points that carry factors
@@ -152,7 +156,8 @@ def robot_normal_equations(packed, state, Kmap, cfg, col_of, n, cauchy_c: float 
     g = np.zeros(n)
     cost, nres = 0.0, 0
     for cam, pk in packed.items():
-        r, J = rr.packed_residuals(pk, state["T"][cam], Kmap[cam], state["alpha"][cam], state["tau"][cam], cfg)
+        r, J = rr.packed_residuals(pk, state["T"][cam], Kmap[cam], state["alpha"][cam], state["tau"][cam], cfg,
+                                   focal=(state.get("focal") or {}).get(cam, 0.0))
         use = np.isin(pk.kind, kinds)
         r, J = r[use], J[use]
         w = 1.0 / (1.0 + (r / cauchy_c) ** 2) if robust else np.ones_like(r)
@@ -170,7 +175,7 @@ def robot_cost_packed(packed, state, Kmap, cfg, cauchy_c: float = 3.0, kinds=(0,
     cost = 0.0
     for cam, pk in packed.items():
         r, _ = rr.packed_residuals(pk, state["T"][cam], Kmap[cam], state["alpha"][cam], state["tau"][cam], cfg,
-                                   jac=False)
+                                   jac=False, focal=(state.get("focal") or {}).get(cam, 0.0))
         r = r[np.isin(pk.kind, kinds)]
         cost += float(np.sum(cauchy_c ** 2 * np.log1p((r / cauchy_c) ** 2)))
     return cost
@@ -179,7 +184,7 @@ def robot_cost_packed(packed, state, Kmap, cfg, cauchy_c: float = 3.0, kinds=(0,
 def _robot_normal_equations_unpacked(factors, state, Kmap, cfg, col_of, n, cauchy_c: float = 3.0, kinds=(0, 1, 2),
                                      robust: bool = True):
     """Robot part of the normal equations: H (n,n), g (n,), cost = sum c^2 log(1 + r^2/c^2) (robust) or sum r^2.
-    ``col_of(cam)`` -> 8 global column indices [xi(6), alpha, tau] (entries < 0 are fixed)."""
+    ``col_of(cam)`` -> 9 global column indices [xi(6), alpha, tau, focal] (entries < 0 are fixed)."""
     H = np.zeros((n, n))
     g = np.zeros(n)
     cost = 0.0

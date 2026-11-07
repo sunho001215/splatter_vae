@@ -366,3 +366,27 @@ def test_integer_and_object_camera_arrays(dtype):
     original = normal_equations(T, alpha, K, M, P, _index())
     np.testing.assert_allclose(normal['H'], original['H'], atol=1e-8)
     np.testing.assert_allclose(normal['g'], original['g'], atol=1e-9)
+
+
+
+def test_focal_column_finite_difference():
+    """The optional log focal multiplier column of the ext-ext factor (image rows: d u / d eps = u - c)."""
+    from s4d.realworld.rig_dw_extext import ParamIndex, _linearize, init_points
+
+    T, alpha, K, M, _, _ = _scene(outliers=0.0)
+    cams = sorted(T)
+    idx = ParamIndex({c: (True, True, True) for c in cams}, order=cams)
+    P = init_points(T, K, M)
+    a, b, ids = M._groups[0]
+    ids = ids[:50]
+    r0, jp, jx, cols = _linearize(T, alpha, K, M, P[ids], a, b, ids, idx)
+    for cam in (a, b):
+        col = list(cols).index(idx.focal[cam])
+        e = 1e-6
+        def rr(sgn):
+            Kp = {c: k.copy() for c, k in K.items()}
+            Kp[cam][0, 0] *= np.exp(sgn * e)
+            Kp[cam][1, 1] *= np.exp(sgn * e)
+            return _linearize(T, alpha, Kp, M, P[ids], a, b, ids)[0]
+        num = (rr(1) - rr(-1)) / (2 * e)
+        np.testing.assert_allclose(num, jx[:, :, col], rtol=1e-5, atol=1e-6)

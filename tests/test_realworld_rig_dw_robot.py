@@ -101,15 +101,23 @@ def test_packed_jacobians_finite_difference(kind):
     pk = rr.pack([ff])["c"]
     keep = pk.kind == kind
     assert keep.sum() > 20
-    alpha, tau = 0.01, 0.005
-    r0, J = rr.packed_residuals(pk, T, K, alpha, tau, cfg)
+    alpha, tau, focal = 0.01, 0.005, 0.004
+
+    def Kf(f):
+        Ke = K.copy()
+        Ke[0, 0] *= np.exp(f)
+        Ke[1, 1] *= np.exp(f)
+        return Ke
+
+    r0, J = rr.packed_residuals(pk, T, Kf(focal), alpha, tau, cfg, focal=focal)
     eps = 1e-6
-    for j in range(8):
-        d = np.zeros(8)
+    for j in range(9):
+        d = np.zeros(9)
         d[j] = eps
 
         def res(dd):
-            return rr.packed_residuals(pk, se3_exp(dd[:6]) @ T, K, alpha + dd[6], tau + dd[7], cfg, jac=False)[0]
+            return rr.packed_residuals(pk, se3_exp(dd[:6]) @ T, Kf(focal + dd[8]), alpha + dd[6], tau + dd[7], cfg,
+                                       jac=False, focal=focal + dd[8])[0]
 
         num = (res(d) - res(-d)) / (2 * eps)
         a, b = num[keep], J[keep, j]

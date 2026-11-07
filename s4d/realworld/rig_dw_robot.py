@@ -182,7 +182,7 @@ class FrameFactors:
 
 
 def frame_factors(cam, X_posed, N_posed, V_posed, T, K, ev: dict, cfg: RobotTermConfig, rng, alpha=0.0,
-                  tau=0.0) -> tuple[FrameFactors | None, dict]:
+                  tau=0.0, K_ray=None) -> tuple[FrameFactors | None, dict]:
     """Select the support of one (frame, camera) at the current estimate T. ``X_posed`` (N,3) base-frame samples at
     the camera timestamp; ``N_posed(ids)`` / ``V_posed(ids)`` return normals / velocities of selected samples (arrays
     are accepted too). The support is rendered at the timestamp (|tau| <= tens of ms moves it < 1 px); the factors
@@ -290,7 +290,8 @@ def frame_factors(cam, X_posed, N_posed, V_posed, T, K, ev: dict, cfg: RobotTerm
             fid = rend.front[ci, cj]
             u = np.stack([cj + x0 + 0.5, ci + y0 + 0.5], 1)
             d = depth[ci, cj]
-            ray = np.stack([(u[:, 0] - K[0, 2]) / K[0, 0], (u[:, 1] - K[1, 2]) / K[1, 1], np.ones(len(u))], 1) * d[:, None]
+            Kr = K if K_ray is None else K_ray  # rays at the NOMINAL intrinsics (a focal multiplier rescales them)
+            ray = np.stack([(u[:, 0] - Kr[0, 2]) / Kr[0, 0], (u[:, 1] - Kr[1, 2]) / Kr[1, 1], np.ones(len(u))], 1) * d[:, None]
             Xs.append(Xt[fid])
             Vs.append(V_posed(fid))
             kinds.append(np.full(len(fid), 2, np.int8))
@@ -428,14 +429,17 @@ def atlas_bilinear(pk: Packed, uv: np.ndarray, frame: np.ndarray, fill=np.nan):
 
 
 def packed_residuals(pk: Packed, T: np.ndarray, K: np.ndarray, alpha: float, tau: float, cfg: RobotTermConfig,
-                     jac: bool = True):
-    """Whitened residuals (M,) and Jacobians (M, 8) [xi(6), alpha, tau] of one camera's packed factors."""
+                     jac: bool = True, focal: float = 0.0):
+    """Whitened residuals (M,) and Jacobians (M, 9) [xi(6), alpha, tau, focal] of one camera's packed factors. ``K`` is
+    the EFFECTIVE intrinsic matrix (nominal fx, fy times exp(focal)); the stored depth rays were built with the nominal
+    K, so their lateral components are rescaled by exp(-focal)."""
     R, t = T[:3, :3], T[:3, 3]
     Pc = (pk.X + tau * pk.V) @ R.T + t
     M = len(Pc)
     r = np.zeros(M)
-    J = np.zeros((M, 8)) if jac else None
+    J = np.zeros((M, 9)) if jac else None
     uv, Dpi = _project(Pc, K)
+    duv_df = uv - K[:2, 2]
     if jac:
         Vc = pk.V @ R.T
         dP = np.zeros((M, 3, 6))
@@ -454,6 +458,7 @@ def packed_residuals(pk: Packed, T: np.ndarray, K: np.ndarray, alpha: float, tau
             gr = np.stack([gu, gv], 1)
             J[s, :6] = np.einsum("mi,mik->mk", gr, duv_dxi[s]) / cfg.sigma_sil_px
             J[s, 7] = np.einsum("mi,mi->m", gr, duv_dtau[s]) / cfg.sigma_sil_px
+            J[s, 8] = np.einsum("mi,mi->m", gr, duv_df[s]) / cfg.sigma_sil_px
     s = np.flatnonzero(pk.kind == 1)
     if len(s):
         n2 = pk.n2[s]
@@ -461,10 +466,13 @@ def packed_residuals(pk: Packed, T: np.ndarray, K: np.ndarray, alpha: float, tau
         if jac:
             J[s, :6] = np.einsum("mi,mik->mk", n2, duv_dxi[s]) / cfg.sigma_sil_px
             J[s, 7] = np.einsum("mi,mi->m", n2, duv_dtau[s]) / cfg.sigma_sil_px
+            J[s, 8] = np.einsum("mi,mi->m", n2, duv_df[s]) / cfg.sigma_sil_px
     s = np.flatnonzero(pk.kind == 2)
     if len(s):
         nc = pk.nrm[s] @ R.T
         Xo = np.exp(alpha) * pk.obs_ray[s]
+        if focal != 0.0:
+            Xo = Xo * np.array([np.exp(-focal), np.exp(-focal), 1.0])
         proj = np.einsum("mi,mi->m", nc, Xo)
         sig = pk.sig[s]
         r[s] = np.einsum("mi,mi->m", nc, Xo - Pc[s]) / sig
@@ -473,4 +481,5 @@ def packed_residuals(pk: Packed, T: np.ndarray, K: np.ndarray, alpha: float, tau
             J[s, 3:6] = -nc / sig[:, None]
             J[s, 6] = proj / sig
             J[s, 7] = -np.einsum("mi,mi->m", nc, Vc[s]) / sig
+            J[s, 8] = -(nc[:, 0] * Xo[:, 0] + nc[:, 1] * Xo[:, 1]) / sig
     return r, J

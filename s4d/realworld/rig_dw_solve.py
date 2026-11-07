@@ -24,7 +24,7 @@ from s4d.realworld import rig_dw_frames as rf
 from s4d.realworld.rig_dw_geom import camera_centre, pose_distance, se3_exp, skew
 from s4d.realworld.rig_dw_robot import RobotTermConfig
 
-NPC = 8  # columns per camera
+NPC = 9  # columns per camera: xi (6), alpha, tau, focal (log fx/fy multiplier)
 
 
 @dataclass
@@ -46,6 +46,8 @@ class SolveConfig:
     use_robot: bool = True
     robot_cameras: tuple | None = None  # leave-camera-out: robot factors only from these cameras
     fix_alpha: bool = False  # trust the depth source's metric scale (alpha = 0 for every camera)
+    estimate_focal: bool = False  # diagnostic: per-camera log focal multiplier (fx, fy about the principal point)
+    focal_prior: float = 0.03
 
 
 @dataclass
@@ -54,18 +56,24 @@ class State:
     alpha: dict
     tau: dict
     P: np.ndarray | None = None
+    focal: dict | None = None
+
+    def __post_init__(self):
+        if self.focal is None:
+            self.focal = {k: 0.0 for k in self.T}
 
     def copy(self):
         return State({k: v.copy() for k, v in self.T.items()}, dict(self.alpha), dict(self.tau),
-                     None if self.P is None else self.P.copy())
+                     None if self.P is None else self.P.copy(), dict(self.focal))
 
     def as_dict(self):
-        return {"T": self.T, "alpha": self.alpha, "tau": self.tau}
+        return {"T": self.T, "alpha": self.alpha, "tau": self.tau, "focal": self.focal}
 
     def to_json(self):
         return {"T_cam_base": {k: np.asarray(v).tolist() for k, v in self.T.items()},
                 "alpha": {k: float(v) for k, v in self.alpha.items()},
-                "tau_s": {k: float(v) for k, v in self.tau.items()}}
+                "tau_s": {k: float(v) for k, v in self.tau.items()},
+                "focal_log": {k: float(v) for k, v in self.focal.items()}}
 
 
 def adjoint(T):
@@ -89,8 +97,10 @@ class RigProblem:
         self.cfg = scfg
         self.n = NPC * len(self.cams)
         self.pivot = np.zeros(3) if pivot is None else np.asarray(pivot, float)
-        self.idx_ee = ee.ParamIndex({c: (True, True) for c in self.cams}, order=self.cams)
-        self.map_ee = np.concatenate([[k * NPC + j for j in range(7)] for k in range(len(self.cams))])
+        f = bool(scfg.estimate_focal)
+        self.idx_ee = ee.ParamIndex({c: (True, True, f) for c in self.cams}, order=self.cams)
+        self.map_ee = np.concatenate([[k * NPC + j for j in range(7)] + ([k * NPC + 8] if f else [])
+                                      for k in range(len(self.cams))])
         self.support = None
         self.support_stats = None
         self._pack_cache = None
@@ -108,18 +118,20 @@ class RigProblem:
             out.T[c] = se3_exp(d[:6]) @ out.T[c]
             out.alpha[c] = out.alpha[c] + d[6]
             out.tau[c] = out.tau[c] + d[7]
+            out.focal[c] = out.focal[c] + d[8]
         return out
 
     def basis(self, s: State, stage: str) -> np.ndarray:
         n = self.n
         def ok(j):
-            return not (self.cfg.fix_alpha and j % NPC == 6) and (self.cfg.estimate_tau or j % NPC != 7)
+            return (not (self.cfg.fix_alpha and j % NPC == 6) and (self.cfg.estimate_tau or j % NPC != 7)
+                    and (self.cfg.estimate_focal or j % NPC != 8))
 
         if stage == "full":
             cols = [j for j in range(n) if ok(j)]
             return np.eye(n)[:, cols]
         if stage == "shape":  # camera 0 pose + alpha fixed, no tau
-            cols = [j for k in range(1, len(self.cams)) for j in range(k * NPC, k * NPC + 7) if ok(j)]
+            cols = [j for k in range(1, len(self.cams)) for j in range(k * NPC, k * NPC + 7) if ok(j)]  # no tau/focal
             return np.eye(n)[:, cols]
         if stage == "common":
             B = np.zeros((n, 7 + (len(self.cams) if self.cfg.estimate_tau else 0)))
@@ -134,22 +146,33 @@ class RigProblem:
         raise ValueError(stage)
 
     # ------------------------------------------------------------------ costs
+    def Keff(self, s: State) -> dict:
+        """Effective intrinsics: nominal fx, fy times exp(focal_c) (principal point fixed)."""
+        out = {}
+        for c in self.cams:
+            K = self.K[c].copy()
+            K[0, 0] *= np.exp(s.focal[c])
+            K[1, 1] *= np.exp(s.focal[c])
+            out[c] = K
+        return out
+
     def _ee_points(self, s: State, iters=None):
         if self.M is None or not self.cfg.use_extext:
             return None
-        P = ee.init_points(s.T, self.K, self.M) if s.P is None else s.P
-        return ee.refine_points(s.T, s.alpha, self.K, self.M, P, iters=iters or self.cfg.point_iters)
+        K = self.Keff(s)
+        P = ee.init_points(s.T, K, self.M) if s.P is None else s.P
+        return ee.refine_points(s.T, s.alpha, K, self.M, P, iters=iters or self.cfg.point_iters)
 
     def normal(self, s: State, robot=True, extext=True, priors=True):
         H, g, cost, parts = np.zeros((self.n, self.n)), np.zeros(self.n), 0.0, {}
         if extext and self.M is not None and self.cfg.use_extext:
-            ne = ee.normal_equations(s.T, s.alpha, self.K, self.M, s.P, self.idx_ee, self.cfg.cauchy_ee)
+            ne = ee.normal_equations(s.T, s.alpha, self.Keff(s), self.M, s.P, self.idx_ee, self.cfg.cauchy_ee)
             H[np.ix_(self.map_ee, self.map_ee)] += ne["H"]
             g[self.map_ee] += ne["g"]
             cost += ne["cost"]
             parts["extext"] = ne["cost"]
         if robot and self.support is not None and self.cfg.use_robot:
-            Hr, gr, cr, nr = rf.robot_normal_equations(self._packed(), s.as_dict(), self.K, self.rcfg,
+            Hr, gr, cr, nr = rf.robot_normal_equations(self._packed(), s.as_dict(), self.Keff(s), self.rcfg,
                                                        self.cols, self.n, self.cfg.cauchy_robot,
                                                        kinds=self.cfg.robot_kinds)
             H += Hr
@@ -164,18 +187,25 @@ class RigProblem:
                 H[it, it] += 1 / self.cfg.tau_prior_s ** 2
                 g[it] += s.tau[c] / self.cfg.tau_prior_s ** 2
                 cost += (s.alpha[c] / self.cfg.alpha_prior) ** 2 + (s.tau[c] / self.cfg.tau_prior_s) ** 2
+                if self.cfg.estimate_focal:
+                    i_f = k * NPC + 8
+                    H[i_f, i_f] += 1 / self.cfg.focal_prior ** 2
+                    g[i_f] += s.focal[c] / self.cfg.focal_prior ** 2
+                    cost += (s.focal[c] / self.cfg.focal_prior) ** 2
             parts["prior"] = cost - sum(v for k, v in parts.items() if k != "prior")
         return H, g, cost, parts
 
     def cost(self, s: State, robot=True, extext=True):
         c = 0.0
         if extext and self.M is not None and self.cfg.use_extext:
-            c += ee.factor_cost(s.T, s.alpha, self.K, self.M, s.P, self.cfg.cauchy_ee)
+            c += ee.factor_cost(s.T, s.alpha, self.Keff(s), self.M, s.P, self.cfg.cauchy_ee)
         if robot and self.support is not None and self.cfg.use_robot:
-            c += rf.robot_cost_packed(self._packed(), s.as_dict(), self.K, self.rcfg, self.cfg.cauchy_robot,
+            c += rf.robot_cost_packed(self._packed(), s.as_dict(), self.Keff(s), self.rcfg, self.cfg.cauchy_robot,
                                       kinds=self.cfg.robot_kinds)
         for c_ in self.cams:
             c += (s.alpha[c_] / self.cfg.alpha_prior) ** 2 + (s.tau[c_] / self.cfg.tau_prior_s) ** 2
+            if self.cfg.estimate_focal:
+                c += (s.focal[c_] / self.cfg.focal_prior) ** 2
         return c
 
     def _robot_support(self):
@@ -296,7 +326,7 @@ class RigProblem:
         """Physical units of one tolerance step per parameter: 0.35 deg, 8 mm, 0.01 log-scale, 10 ms."""
         d = []
         for _ in self.cams:
-            d += [np.radians(0.35)] * 3 + [0.008] * 3 + [0.01, 0.010]
+            d += [np.radians(0.35)] * 3 + [0.008] * 3 + [0.01, 0.010, 0.01]
         return np.asarray(d)
 
     def information(self, s: State) -> dict:
@@ -304,7 +334,8 @@ class RigProblem:
         robot and combined: eigenvalues, the weakest directions and, for the combined system, marginal per-camera
         standard deviations in which unidentified directions (scaled eigenvalue < 1e-6 of the largest) are reported
         as unbounded instead of being pseudo-inverted to zero variance. Fixed tau columns are removed."""
-        keep = np.array([j for j in range(self.n) if self.cfg.estimate_tau or j % NPC != 7])
+        keep = np.array([j for j in range(self.n) if (self.cfg.estimate_tau or j % NPC != 7)
+                         and (self.cfg.estimate_focal or j % NPC != 8) and not (self.cfg.fix_alpha and j % NPC == 6)])
         D = np.diag(self.scales()[keep])
         out = {"columns": keep.tolist()}
         for name, kw in (("extext", dict(robot=False, extext=True)), ("robot", dict(robot=True, extext=False)),
@@ -337,12 +368,13 @@ class RigProblem:
     def marginal(self, s: State, cov) -> dict:
         res = {}
         for k, c in enumerate(self.cams):
-            C = cov[k * NPC:k * NPC + 8, k * NPC:k * NPC + 8]
+            C = cov[k * NPC:k * NPC + NPC, k * NPC:k * NPC + NPC]
             R = s.T[c][:3, :3]
             rot_sd = np.degrees(np.sqrt(max(np.trace(C[:3, :3]), 0)))
             centre_cov = R.T @ C[3:6, 3:6] @ R  # dC = -R^T v
             res[c] = {"rot_sd_deg": float(rot_sd), "centre_sd_m": float(np.sqrt(max(np.trace(centre_cov), 0))),
-                      "alpha_sd": float(np.sqrt(max(C[6, 6], 0))), "tau_sd_s": float(np.sqrt(max(C[7, 7], 0)))}
+                      "alpha_sd": float(np.sqrt(max(C[6, 6], 0))), "tau_sd_s": float(np.sqrt(max(C[7, 7], 0))),
+                      "focal_sd": float(np.sqrt(max(C[8, 8], 0)))}
         return res
 
 

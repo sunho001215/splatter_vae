@@ -13,7 +13,7 @@ second half of the fit episodes in recording order), ``loco:<camera>`` (robot fa
 2 px), ``depth:sensor`` (sensor depth instead of FS), ``all`` (fit on all 100 episodes; no held-out),
 ``matchseed:<s>`` (match subsampling seed), ``extonly`` / ``robotonly`` (ablations), ``alpha0`` (depth scale fixed:
 FS metric trusted), ``kinds:<digits>`` (robot factor kinds: 0 m2o, 1 o2m, 2 depth), ``spacing:<m>`` (visual-mesh sample
-spacing), ``notau`` (no time offsets)."""
+spacing), ``notau`` (no time offsets), ``focal`` (diagnostic per-camera focal multiplier)."""
 
 from __future__ import annotations
 
@@ -110,10 +110,13 @@ def explained_and_depth(frames, surf, state: State, cfg: RobotTermConfig, use_al
         T = state.T[fr.cam]
         X, _, Vf = surf.posed(fr)
         tau = state.tau[fr.cam]
+        Kf = fr.K.copy()
+        Kf[0, 0] *= np.exp(state.focal[fr.cam])
+        Kf[1, 1] *= np.exp(state.focal[fr.cam])
         if abs(tau) > 1e-4:
             X = X + tau * Vf(np.arange(len(X)))
         Pc = X @ T[:3, :3].T + T[:3, 3]
-        rend = render(Pc, fr.K, fr.crop, cfg.closing)
+        rend = render(Pc, Kf, fr.crop, cfg.closing)
         names = fr.class_names
         robot = fr.sem == names.index("robot")
         other = np.isin(fr.sem, [names.index(c) for c in ("object", "fixture") if c in names])
@@ -124,7 +127,7 @@ def explained_and_depth(frames, surf, state: State, cfg: RobotTermConfig, use_al
         y0, y1, x0, x1 = fr.crop
         ii, jj = np.nonzero(ok)
         u = np.stack([jj + x0 + 0.5, ii + y0 + 0.5], 1)
-        K = fr.K
+        K = Kf
         P = np.stack([(u[:, 0] - K[0, 2]) / K[0, 0], (u[:, 1] - K[1, 2]) / K[1, 1], np.ones(len(u))], 1) * d[ok][:, None]
         front = np.unique(rend.front[rend.front >= 0])
         if len(P) and len(front):
@@ -143,8 +146,19 @@ def explained_and_depth(frames, surf, state: State, cfg: RobotTermConfig, use_al
         near_rob_d = ndimage.maximum_filter(rob_d, size=7)
         front_occ = (~robot) & (fr.depth > 0) & (near_rob_d > 0) & (fr.depth < near_rob_d - cfg.occluder_m)
         bo = boundary(robot) & ~border & ~near_other & ~ndimage.binary_dilation(front_occ, iterations=2)
-        rb = boundary(rend.mask)
-        o2m = ndimage.distance_transform_edt(~rb)[bo] if rb.any() else np.full(int(bo.sum()), 1e3)
+        # continuous: observed boundary point on the zero level of the observed SDF -> |rendered-mask SDF| there
+        from s4d.realworld.rig_dw_robot import bilinear, outward_normals, sdf_of_mask
+
+        sdf_o = sdf_of_mask(robot)
+        onx, ony = outward_normals(robot)
+        oi, oj = np.nonzero(bo)
+        step = -sdf_o[oi, oj]
+        ob = np.stack([oj + 0.5 + step * onx[oi, oj], oi + 0.5 + step * ony[oi, oj]], 1)
+        if rend.mask.any():
+            val, _, _ = bilinear(sdf_of_mask(rend.mask).astype(np.float64), ob, fill=np.nan)
+            o2m = np.where(np.isfinite(val), np.abs(val), 1e3)
+        else:
+            o2m = np.full(len(oi), 1e3)
         st = out.setdefault(fr.cam, {"depth_res": [], "explained": [], "iou": [], "coverage": [], "o2m": []})
         st["depth_res"].append(res)
         if expl is not None:
@@ -175,7 +189,8 @@ def heldout_robot(prob: RigProblem, frames, state: State, surf, cfg: RobotTermCo
     pk = pack([f for f in prob.support if f is not None])  # every camera (also the one a loco fit withheld)
     stats = {}
     for cam, p in pk.items():
-        r, _ = packed_residuals(p, state.T[cam], prob.K[cam], state.alpha[cam], state.tau[cam], cfg, jac=False)
+        r, _ = packed_residuals(p, state.T[cam], prob.Keff(state)[cam], state.alpha[cam], state.tau[cam], cfg,
+                                jac=False, focal=state.focal[cam])
         sil0, sil1 = np.abs(r[p.kind == 0]) * cfg.sigma_sil_px, np.abs(r[p.kind == 1]) * cfg.sigma_sil_px
         s = p.kind == 2
         R = state.T[cam][:3, :3]
@@ -184,14 +199,70 @@ def heldout_robot(prob: RigProblem, frames, state: State, surf, cfg: RobotTermCo
         Pc = (p.X[s] + state.tau[cam] * p.V[s]) @ R.T + state.T[cam][:3, 3]
         ptp = 1e3 * np.abs(np.einsum("mi,mi->m", nc, Xo - Pc))
         signed_m2o = np.clip(r[p.kind == 0] * cfg.sigma_sil_px, -20, 20)
+        signed_o2m = r[p.kind == 1] * cfg.sigma_sil_px
         stats[cam] = {"m2o_median_px": float(np.median(sil0)), "o2m_median_px": float(np.median(sil1)),
                       "contour_median_px": float(np.median(np.concatenate([sil0, sil1]))),
                       "m2o_signed_mean_px": float(np.mean(signed_m2o)),
+                      "m2o_signed_median_px": float(np.median(signed_m2o)),
+                      "o2m_signed_median_px": float(np.median(signed_o2m)),
                       "ptp_median_mm": float(np.median(ptp)) if len(ptp) else None,
                       "n": {"m2o": int(len(sil0)), "o2m": int(len(sil1)), "ptp": int(len(ptp))}}
     stats["robust_cost_per_residual"] = None
     prob.frames, prob.support, prob.support_stats, prob._pack_cache = saved
     return stats
+
+
+def common_challenge(prob: RigProblem, frames, state: State, cfg: RobotTermConfig, rot_deg: float = 0.35,
+                     trans_m: float = 0.008) -> dict:
+    """G6: do the held-out robot data reject a common rig perturbation of the tolerance size? Support fixed at the
+    solution; per held-out frame robust cost at the solution vs each of 12 perturbations (+-rot about the base axes
+    through the workspace pivot, +-trans along them); one-sided sign test over frames."""
+    from scipy.stats import binomtest
+
+    from s4d.realworld.rig_dw_geom import so3_exp
+
+    saved = prob.frames, prob.support, prob.support_stats, prob._pack_cache
+    prob.frames = frames
+    prob.select(state)
+    factors = [f for f in prob.support if f is not None]
+    pk = pack(factors)
+    prob.frames, prob.support, prob.support_stats, prob._pack_cache = saved
+    c = 3.0
+
+    def per_frame(st: State):
+        out = {}
+        for cam, p in pk.items():
+            r, _ = packed_residuals(p, st.T[cam], prob.Keff(st)[cam], st.alpha[cam], st.tau[cam], cfg, jac=False,
+                                    focal=st.focal[cam])
+            rho = c ** 2 * np.log1p((r / c) ** 2)
+            out[cam] = np.bincount(p.frame, weights=rho, minlength=len(p.frames))
+        return np.concatenate([out[k] for k in sorted(out)])
+
+    base = per_frame(state)
+    res = {}
+    for kind in ("rot", "trans"):
+        for ax in range(3):
+            for sgn in (1, -1):
+                G = np.eye(4)
+                if kind == "rot":
+                    e = np.zeros(3)
+                    e[ax] = sgn * np.radians(rot_deg)
+                    Q = so3_exp(e)
+                    G[:3, :3] = Q
+                    G[:3, 3] = prob.pivot - Q @ prob.pivot
+                else:
+                    G[ax, 3] = sgn * trans_m
+                st = state.copy()
+                for cam in st.T:
+                    st.T[cam] = state.T[cam] @ np.linalg.inv(G)
+                d = per_frame(st) - base
+                k = int((d > 0).sum())
+                pval = float(binomtest(k, len(d), 0.5, alternative="greater").pvalue)
+                res[f"{kind}{'xyz'[ax]}{'+' if sgn > 0 else '-'}"] = {
+                    "frames_worse": k, "frames": int(len(d)), "fraction_worse": float(k / max(1, len(d))),
+                    "mean_cost_increase": float(d.mean()), "p_value": pval, "rejected": bool(pval < 0.01 and k > len(d) / 2)}
+    res["all_rejected"] = all(v["rejected"] for v in res.values() if isinstance(v, dict))
+    return res
 
 
 def heldout_extext(state: State, K, Mh: ee.MatchSet) -> dict:
@@ -258,6 +329,7 @@ def main(argv=None):
     ap.add_argument("--sigma-logd", type=float, default=0.01)
     ap.add_argument("--spacing-m", type=float, default=0.0015)
     ap.add_argument("--no-heldout", action="store_true")
+    ap.add_argument("--challenge", action="store_true", help="run the G6 common-transform challenge for any variant")
     ap.add_argument("--init", default=None, help="JSON with a State (T_cam_base, alpha, tau_s) to start from")
     a = ap.parse_args(argv)
     t0 = time.time()
@@ -300,6 +372,8 @@ def main(argv=None):
         a.spacing_m = float(arg)
     elif v == "notau":
         scfg = replace(scfg, estimate_tau=False)
+    elif v == "focal":
+        scfg = replace(scfg, estimate_focal=True)
     elif v == "robotonly":
         scfg = replace(scfg, use_extext=False)
     elif v != "full" and v != "mask":
@@ -354,15 +428,18 @@ def main(argv=None):
                          "frames_per_camera": a.frames_per_camera, "sigma_px": a.sigma_px,
                          "sigma_logd": a.sigma_logd, "spacing_m": a.spacing_m, "depth_stage": depth_stage},
               "match_stats": m["stats"], "n_frames": len(frames), "pivot": pivot.tolist(),
+              "fit_frames": {e: {c: [f.t_index for f in frames if f.episode == e and f.cam == c] for c in CAMS}
+                             for e in fit_eps},
               "surface": surf.vs.provenance()}
     # fit statistics (fixed support at the solution)
     pk = prob._packed() if prob.support is not None else {}
     fit_stats = {}
     for cam, p in pk.items():
-        r, _ = packed_residuals(p, s.T[cam], prob.K[cam], s.alpha[cam], s.tau[cam], rcfg, jac=False)
+        r, _ = packed_residuals(p, s.T[cam], prob.Keff(s)[cam], s.alpha[cam], s.tau[cam], rcfg, jac=False,
+                                focal=s.focal[cam])
         fit_stats[cam] = {f"k{k}_median_whitened": float(np.median(np.abs(r[p.kind == k]))) for k in (0, 1, 2)}
     result["fit_robot"] = fit_stats
-    result["fit_extext"] = heldout_extext(s, prob.K, M)
+    result["fit_extext"] = heldout_extext(s, prob.Keff(s), M)
     info = prob.information(s)
     info.pop("cov", None)
     result["information"] = info
@@ -374,10 +451,12 @@ def main(argv=None):
         Mh = matchset(mh, a.sigma_px, a.sigma_logd)
         hframes = load_frames([edir / f"{e}.npz" for e in held], list(CAMS), depth_stage="foundation_stereo_depth",
                               max_frames_per_camera=a.heldout_frames_per_camera)
-        result["heldout"] = {"extext": heldout_extext(s, prob.K, Mh),
+        result["heldout"] = {"extext": heldout_extext(s, prob.Keff(s), Mh),
                              "robot": heldout_robot(prob, hframes, s, surf, rcfg),
                              "robot_raw_depth": explained_and_depth(hframes, surf, s, rcfg, use_alpha=False),
                              "robot_alpha_depth": explained_and_depth(hframes, surf, s, rcfg, use_alpha=True)}
+        if v == "full" or a.challenge:
+            result["heldout"]["common_challenge"] = common_challenge(prob, hframes, s, rcfg)
         # the current calibration (per-episode calibrate@1 poses) on the same held-out evidence, for comparison
         if v == "full":
             cmp = {"cal1_median_fit": State(T0, {c: 0.0 for c in CAMS}, {c: 0.0 for c in CAMS})}

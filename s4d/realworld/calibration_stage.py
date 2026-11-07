@@ -141,7 +141,7 @@ def calibrate(root: Path, episode_id: str, landmark_source, *, landmark_links: l
             cached = got is not None
             if got is None and rig is not None:
                 out, kmeta = _validate_with_rig(root, episode_id, meta, cam, arrays, local_cfg, rig, fix_cfg,
-                                                robot_mask_stage)
+                                                robot_mask_stage, depth_stage=depth_stage)
                 lap("rig_validation")
                 store.put(cam, out, kmeta)
                 got = (out, kmeta)
@@ -242,10 +242,12 @@ def camera_arrays(root, episode_id, meta, geom, cam, idx, *, depth_rec, depth_st
     return arrays, rows["t_index"], ok, sync, has_depth, local_cfg
 
 
-def _validate_with_rig(root, episode_id, meta, cam, arrays, cfg, rig, fix_cfg, robot_mask_stage):
+def _validate_with_rig(root, episode_id, meta, cam, arrays, cfg, rig, fix_cfg, robot_mask_stage, depth_stage=None):
     """Rig mode of one camera: fixedness against the rig reference + the shared pose on this episode's evidence
     (``calibration_rig.validate_episode``); overlays as the kernel draws them. Returns (out arrays, meta) like the
-    ``calibrate_camera`` kernel."""
+    ``calibrate_camera`` kernel. A rig camera entry may carry ``depth_scale`` {depth stage: factor} (the board-free
+    rig calibration ``rig_dw`` estimates the metric scale of each depth source jointly with the poses); the episode's
+    depth of that stage is multiplied by it before the robot-depth checks, and the factor is reported."""
     from s4d.realworld.calibration import CalibrationFrame, overlay_image
     from s4d.realworld.calibration_rig import episode_motion, validate_episode
     from s4d.realworld.pipeline import read_frames, to_model_rgb
@@ -262,6 +264,9 @@ def _validate_with_rig(root, episode_id, meta, cam, arrays, cfg, rig, fix_cfg, r
     moving = [names.index(c) for c in ("robot", "object") if c in names]
     motion = episode_motion(ref[cam]["grey"], ref[cam]["dynamic"], rgb, np.isin(sem, moving), arrays["K"], fix_cfg)
     depth, masks = arrays.get("depth"), arrays.get("robot_mask")
+    depth_scale = float(((doc["cameras"][cam].get("depth_scale") or {}).get(depth_stage)) or 1.0)
+    if depth is not None and depth_scale != 1.0:
+        depth = np.asarray(depth) * depth_scale
     frames = [CalibrationFrame(int(arrays["t_index"][k]), int(arrays["timestamp_ns"][k]), arrays["landmarks_base"][k],
                                arrays["landmarks_uv"][k], arrays["landmarks_conf"][k], arrays["surface_base"][k],
                                arrays["flange_base"][k], None if depth is None else depth[k],
@@ -269,6 +274,7 @@ def _validate_with_rig(root, episode_id, meta, cam, arrays, cfg, rig, fix_cfg, r
     pooled = (doc.get("pool_frames") or {}).get(episode_id, {}).get(cam, [])
     res = validate_episode(cam, frames, np.asarray(arrays["K"], float), cfg, doc["cameras"][cam], motion,
                            pooled_frames=pooled)
+    res.diagnostics["depth_scale_applied"] = {"stage": depth_stage, "factor": depth_scale}
     overlays = [] if res.T_cam_base is None else [
         overlay_image(img, res.T_cam_base, frames[int(k)], np.asarray(arrays["K"], float), cfg.image_hw)
         for img, k in zip(arrays.get("overlay_images", []), arrays.get("overlay_frames", []))]

@@ -82,15 +82,19 @@ class ParamIndex:
         self.order = tuple(free if order is None else order)
         if len(self.order) != len(free) or set(self.order) != set(free):
             raise ValueError("order must contain each camera exactly once")
-        self.pose, self.alpha, self.pose_offset = {}, {}, {}
+        self.pose, self.alpha, self.focal, self.pose_offset = {}, {}, {}, {}
         self.n = 0
         for cam in self.order:
-            pose_free, alpha_free = free[cam]
+            pose_free, alpha_free, *rest = free[cam]
+            focal_free = bool(rest and rest[0])
             self.pose_offset[cam] = self.n if pose_free else None
             self.pose[cam] = slice(self.n, self.n + 6) if pose_free else None
             self.n += 6 * bool(pose_free)
             self.alpha[cam] = self.n if alpha_free else None
             self.n += bool(alpha_free)
+            # optional log focal multiplier (fx, fy scaled about the principal point; K passed in is the EFFECTIVE K)
+            self.focal[cam] = self.n if focal_free else None
+            self.n += focal_free
         self.n_params = self.n
 
 
@@ -178,6 +182,11 @@ def _linearize(T, alpha, K, M, P, a, b, ids, idx=None):
             ja[valid, depth_row, 0] = -1 / M.sigma_logd[ids][valid]
             blocks.append(ja)
             columns.append(idx.alpha[cam])
+        if idx is not None and getattr(idx, "focal", {}).get(cam) is not None:
+            jf = np.zeros((n, 6, 1))
+            jf[:, image_rows, 0] = (pixels - K[cam][:2, 2]) / M.sigma_px[ids, None]
+            blocks.append(jf)
+            columns.append(idx.focal[cam])
     jx = np.concatenate(blocks, axis=2) if blocks else np.empty((n, 6, 0))
     return r, jp, jx, np.asarray(columns, dtype=int)
 
