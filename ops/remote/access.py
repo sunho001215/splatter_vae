@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import fcntl
+import fnmatch
 import hashlib
 import json
 import os
@@ -667,24 +668,36 @@ class RemoteClient:
         return entries
 
     def sync_results(self, run_id: str, checkpoints: bool = False, final: bool = False, wait: bool = True,
-                     scope: str = "all", only_checkpoints: list[str] | None = None) -> dict:
+                     scope: str = "all", only_checkpoints: list[str] | None = None,
+                     required_files: list[str] | None = None) -> dict:
         if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", run_id):
             raise ValueError("Unsafe run id")
         if scope not in RESULT_SCOPES:
             raise ValueError("Unknown result-sync scope")
-        # Media copies use their own lock: their file set is disjoint from the essential one, so the bulk worker never
-        # blocks a scheduler sync of the same run.
+        # Media copies use their own lock: their default file set is disjoint from the essential one. Explicitly
+        # required media also takes that lock so simultaneous copies cannot share staging/destination files.
         # Scope "all" covers both sets and takes both locks, always results- before media-.
         names = {"essential": ["results-"], "media": ["media-"], "checkpoints": ["media-"],
                  "all": ["results-", "media-"]}[scope]
+        if scope == "essential" and any(isinstance(name, str) and fnmatch.fnmatchcase(PurePosixPath(name).name, pattern)
+                                        for name in required_files or [] for pattern in MEDIA_NAMES):
+            names = ["results-", "media-"]
         with contextlib.ExitStack() as stack:
             for prefix in names:
                 lock = stack.enter_context((self.state_dir / (prefix + run_id + ".lock")).open("a"))
                 fcntl.flock(lock, fcntl.LOCK_EX)
-            return self._sync_results(run_id, checkpoints, final, wait, scope, only_checkpoints)
+            return self._sync_results(run_id, checkpoints, final, wait, scope, only_checkpoints, required_files)
 
     def _sync_results(self, run_id: str, checkpoints: bool, final: bool, wait: bool, scope: str = "all",
-                      only_checkpoints: list[str] | None = None) -> dict:
+                      only_checkpoints: list[str] | None = None, required_files: list[str] | None = None) -> dict:
+        if required_files is not None:
+            if scope != "essential":
+                raise ValueError("required_files extends an essential sync only")
+            for name in required_files:
+                if (not isinstance(name, str)
+                        or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*(?:/[A-Za-z0-9][A-Za-z0-9_.-]*)*", name)
+                        or any(part in {"..", "replay", "wandb", ".cache"} for part in PurePosixPath(name).parts)):
+                    raise ValueError("Unsafe required result path")
         if scope == "checkpoints":
             checkpoints = True
         if only_checkpoints is not None:
@@ -699,6 +712,11 @@ class RemoteClient:
         local = self._local_path(self.main_repo / "runs" / run_id)
         local.mkdir(parents=True, exist_ok=True)
         excluded = ["replay", "wandb", ".cache"] + ([] if checkpoints else ["checkpoints", "snapshots"])
+        # Enter otherwise pruned weight directories only for explicitly required paths. The default patterns below
+        # still exclude those directories, so their other files never join the essential backup.
+        required_dirs = {part for name in required_files or [] for part in PurePosixPath(name).parts[:-1]}
+        unpruned = [name for name in excluded if name in required_dirs]
+        excluded = [name for name in excluded if name not in unpruned]
         names = ["exit_code", "*.json", "*.jsonl", "*.yaml", "*.yml", "*.txt", "*.log", "*.csv",
                  *MEDIA_NAMES, "*.npz"]
         if checkpoints and only_checkpoints is None:
@@ -715,12 +733,18 @@ class RemoteClient:
             patterns += " -o -path './encoder.pt' -o -path './encoder_init.pt' -o -path './exports/*'"
         for name in only_checkpoints or []:  # the required weights only; the rest follow in scope "checkpoints"
             patterns += " -o -path " + shlex.quote("./" + name)
-        if scope == "essential":  # disjoint from the media scope everywhere, exports/ included
+        if scope == "essential":  # default selection is disjoint from media everywhere, exports/ included
             media = " -o ".join("-name " + shlex.quote(name) for name in MEDIA_NAMES)
             patterns = "\\( " + patterns + " \\) ! \\( " + media + " \\)"
+        if required_files:
+            patterns = "\\( " + patterns + " \\)" + "".join(
+                " ! -path " + shlex.quote("*/" + name + "/*") for name in unpruned)
+            patterns += " -o " + " -o ".join("-path " + shlex.quote("./" + name) for name in required_files)
         manifest_cmd = ("set -eu; cd " + shlex.quote(remote) + "; find . -type d \\( " + pruned
                         + " \\) -prune -o -type f \\( " + patterns + " \\) -exec sha256sum -- {} +")
         before = self._result_manifest(self.checked_ssh(manifest_cmd, idempotent=True, wait=wait).stdout, excluded)
+        if final and set(required_files or []) - before.keys():
+            raise RemoteCommandError("Required result files are missing from the final snapshot")
         if final and not before and scope not in ("media", "checkpoints"):
             raise RemoteCommandError("Final result snapshot is empty")
         for relative in before:

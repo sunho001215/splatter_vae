@@ -1,0 +1,173 @@
+{
+  "pretrain": {
+    "id": "s3-m3d-seed0-bin-picking-200k",
+    "script": "scripts/train.py",
+    "required_results": [
+      "completion.json",
+      "metrics.jsonl",
+      "checkpoints/step_0200000.pt"
+    ],
+    "remote_verified_files": [
+      "checkpoints/step_0200000.pt",
+      "completion.json",
+      "exit.json",
+      "metrics.jsonl",
+      "provenance.json"
+    ],
+    "remote_files": [
+      ".cache/info.json",
+      "checkpoints/debug.json",
+      "checkpoints/step_0100000.pt",
+      "checkpoints/step_0200000.pt",
+      "completion.json",
+      "config.yaml",
+      "console.log",
+      "eval/reconstruction.npz",
+      "eval/summary.json",
+      "exit.json",
+      "exit_code",
+      "media/clip.mp4",
+      "metrics.jsonl",
+      "nested/wandb/history.jsonl",
+      "provenance.json",
+      "replay/buffer.json",
+      "snapshots/latest.pt",
+      "unrelated.bin",
+      "unrelated.h5"
+    ],
+    "selected_files": [
+      "checkpoints/debug.json",
+      "checkpoints/step_0200000.pt",
+      "completion.json",
+      "config.yaml",
+      "console.log",
+      "eval/reconstruction.npz",
+      "eval/summary.json",
+      "exit.json",
+      "exit_code",
+      "metrics.jsonl",
+      "provenance.json"
+    ]
+  },
+  "export": {
+    "id": "s3-export-m3d-seed0-bin-picking-200k",
+    "script": "scripts/export_encoder.py",
+    "required_results": [
+      "encoder.pt"
+    ],
+    "remote_verified_files": [
+      "encoder.pt",
+      "exit.json",
+      "provenance.json"
+    ],
+    "remote_files": [
+      ".cache/info.json",
+      "config.yaml",
+      "console.log",
+      "encoder.pt",
+      "exit.json",
+      "exit_code",
+      "export.json",
+      "exports/encoder.pt",
+      "exports/preview.png",
+      "media/clip.mp4",
+      "nested/wandb/history.jsonl",
+      "provenance.json",
+      "replay/buffer.json",
+      "unrelated.bin",
+      "unrelated.h5"
+    ],
+    "selected_files": [
+      "config.yaml",
+      "console.log",
+      "encoder.pt",
+      "exit.json",
+      "exit_code",
+      "export.json",
+      "exports/encoder.pt",
+      "provenance.json"
+    ]
+  },
+  "DrM": {
+    "id": "s4-drm-cnn-bin-picking-s2000-r4",
+    "script": "scripts/train_rl.py",
+    "required_results": [
+      "final.json",
+      "train.jsonl"
+    ],
+    "remote_verified_files": [
+      "exit.json",
+      "final.json",
+      "provenance.json",
+      "train.jsonl"
+    ],
+    "remote_files": [
+      ".cache/info.json",
+      "checkpoints/debug.json",
+      "checkpoints/step_1000000.pt",
+      "config.yaml",
+      "console.log",
+      "encoder_init.pt",
+      "exit.json",
+      "exit_code",
+      "final.json",
+      "media/clip.mp4",
+      "nested/wandb/history.jsonl",
+      "provenance.json",
+      "replay/buffer.json",
+      "snapshots/state.json",
+      "train.jsonl",
+      "unrelated.bin",
+      "unrelated.h5"
+    ],
+    "selected_files": [
+      "config.yaml",
+      "console.log",
+      "encoder_init.pt",
+      "exit.json",
+      "exit_code",
+      "final.json",
+      "provenance.json",
+      "train.jsonl"
+    ]
+  },
+  "eval": {
+    "id": "s4-drm-cnn-bin-picking-s2000-r4-eval",
+    "script": "scripts/eval_rl.py",
+    "required_results": [
+      "eval.jsonl"
+    ],
+    "remote_verified_files": [
+      "eval.jsonl",
+      "exit.json",
+      "provenance.json"
+    ],
+    "remote_files": [
+      ".cache/info.json",
+      "config.yaml",
+      "console.log",
+      "eval.jsonl",
+      "eval/episodes.npz",
+      "eval/frame.png",
+      "eval/summary.json",
+      "exit.json",
+      "exit_code",
+      "media/clip.mp4",
+      "nested/wandb/history.jsonl",
+      "provenance.json",
+      "replay/buffer.json",
+      "unrelated.bin",
+      "unrelated.h5"
+    ],
+    "selected_files": [
+      "config.yaml",
+      "console.log",
+      "eval.jsonl",
+      "eval/episodes.npz",
+      "eval/summary.json",
+      "exit.json",
+      "exit_code",
+      "provenance.json"
+    ]
+  }
+}
