@@ -1,0 +1,106 @@
+2026-11-06 13:28:31 local full suite for release-20261106c ca9561e (arm4 f7c07cc + cotenant 3d4d7f0) on MIG-423203d9
+[gpu_guard] cuda:0 -> MIG-423203d9-5801-5892-a489-30f16a5a2d4a (NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition MIG 1g.24gb)
+........................................................................ [  3%]
+........................................................................ [  7%]
+........................................................................ [ 11%]
+........................................................................ [ 15%]
+........................................................................ [ 19%]
+........................................................................ [ 22%]
+........................................................................ [ 26%]
+........................................................................ [ 30%]
+........................................................................ [ 34%]
+........................................................................ [ 38%]
+........................................................................ [ 41%]
+........................................................................ [ 45%]
+........................................................................ [ 49%]
+........................................................................ [ 53%]
+........................................................................ [ 57%]
+........................................................................ [ 61%]
+........................................................................ [ 64%]
+........................................................................ [ 68%]
+........................................................................ [ 72%]
+........................................................................ [ 76%]
+........................................................................ [ 80%]
+........................................................................ [ 83%]
+........................................................................ [ 87%]
+........................................................................ [ 91%]
+........................................................................ [ 95%]
+........................................................................ [ 99%]
+...............                                                          [100%]
+=============================== warnings summary ===============================
+tests/test_baseline_representation.py: 1222 warnings
+tests/test_droid_crop.py: 580 warnings
+tests/test_droid_largescale.py: 294 warnings
+tests/test_heldout.py: 27 warnings
+tests/test_stop_step.py: 24 warnings
+  /home/ws/ws/splatter4d/.venv/lib/python3.10/site-packages/torch/utils/data/_utils/pin_memory.py:57: DeprecationWarning: The argument 'device' of Tensor.pin_memory() is deprecated. Please do not pass this argument. (Triggered internally at /pytorch/aten/src/ATen/native/Memory.cpp:46.)
+    return data.pin_memory(device)
+
+tests/test_baseline_representation.py: 1222 warnings
+tests/test_droid_crop.py: 580 warnings
+tests/test_droid_largescale.py: 294 warnings
+tests/test_heldout.py: 27 warnings
+tests/test_stop_step.py: 24 warnings
+  /home/ws/ws/splatter4d/.venv/lib/python3.10/site-packages/torch/utils/data/_utils/pin_memory.py:57: DeprecationWarning: The argument 'device' of Tensor.is_pinned() is deprecated. Please do not pass this argument. (Triggered internally at /pytorch/aten/src/ATen/native/Memory.cpp:31.)
+    return data.pin_memory(device)
+
+tests/test_baselines.py::test_reference_camera_convention_matches_our_projection
+  /home/ws/ws/splatter4d/.venv/lib/python3.10/site-packages/torch/functional.py:505: UserWarning: torch.meshgrid: in an upcoming release, it will be required to pass the indexing argument. (Triggered internally at /pytorch/aten/src/ATen/native/TensorShape.cpp:4381.)
+    return _VF.meshgrid(tensors, **kwargs)  # type: ignore[attr-defined]
+
+tests/test_baselines_snerl.py::test_heldout_semantic_ground_truth_is_native_stored_state_replay
+  /home/ws/ws/splatter4d/.venv/lib/python3.10/site-packages/gymnasium/utils/passive_env_checker.py:34: UserWarning: [33mWARN: A Box observation space maximum and minimum values are equal.[0m
+    logger.warn("A Box observation space maximum and minimum values are equal.")
+
+tests/test_baselines_snerl.py::test_heldout_semantic_ground_truth_is_native_stored_state_replay
+  /home/ws/ws/splatter4d/.venv/lib/python3.10/site-packages/gymnasium/utils/passive_env_checker.py:157: UserWarning: [33mWARN: The obs returned by the `reset()` method is not within the observation space.[0m
+    logger.warn(f"{pre} is not within the observation space.")
+
+tests/test_dreamer_v1.py: 8 warnings
+tests/test_flashsac.py: 14 warnings
+  /home/ws/ws/splatter4d/.venv/lib/python3.10/site-packages/torch/jit/_script.py:362: DeprecationWarning: `torch.jit.script_method` is deprecated. Please switch to `torch.compile` or `torch.export`.
+    warnings.warn(
+
+tests/test_dreamer_v1.py: 68 warnings
+  /home/ws/ws/splatter4d/.venv/lib/python3.10/site-packages/torch/jit/_script.py:1480: DeprecationWarning: `torch.jit.script` is deprecated. Please switch to `torch.compile` or `torch.export`.
+    warnings.warn(
+
+tests/test_masking_perframe.py::test_decoder_features_and_zero_initialised_branch_give_persistence
+  /home/ws/ws/splatter4d/.worktrees/release-c/tests/test_masking_perframe.py:192: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
+  Consider using tensor.detach() first. (Triggered internally at /pytorch/torch/csrc/autograd/generated/python_variable_methods.cpp:836.)
+    assert d.shape == (4, 6, 3) and float(d.abs().sum()) == 0.0
+
+tests/test_realworld_rgbd.py::test_panda_metadata_uses_recorded_calibration_and_timestamps
+  /home/ws/ws/splatter4d/.worktrees/release-c/tests/test_realworld_rgbd.py:259: UserWarning: panda: recorder task_name 'test' disagrees with the dataset folder 'test_panda_metadata_uses_recor0' (the folder decides the task)
+    meta = p.adapter.read_meta("panda")
+
+tests/test_realworld_rgbd.py::test_panda_drops_colour_frames_without_a_stereo_record
+  /home/ws/ws/splatter4d/.worktrees/release-c/tests/test_realworld_rgbd.py:340: UserWarning: panda: recorder task_name 'test' disagrees with the dataset folder 'test_panda_drops_colour_frames0' (the folder decides the task)
+    meta = panda_file.adapter.read_meta("panda")
+
+tests/test_realworld_rgbd.py::test_panda_drops_colour_frames_without_a_stereo_record
+  /home/ws/ws/splatter4d/.worktrees/release-c/s4d/realworld/pipeline.py:81: UserWarning: panda: recorder task_name 'test' disagrees with the dataset folder 'test_panda_drops_colour_frames0' (the folder decides the task)
+    meta = adapter.read_meta(episode_id)
+
+tests/test_realworld_rgbd.py::test_sensor_depth_local_runner_resumes_only_remaining_chunks
+  /home/ws/ws/splatter4d/.worktrees/release-c/s4d/realworld/pipeline.py:81: UserWarning: panda: recorder task_name 'test' disagrees with the dataset folder 'test_sensor_depth_local_runner0' (the folder decides the task)
+    meta = adapter.read_meta(episode_id)
+
+tests/test_workers.py::test_fork_safe_iteration_collects_freezes_only_while_forking_and_yields_the_same_batches
+  /home/ws/ws/splatter4d/.worktrees/release-c/tests/test_workers.py:42: FutureWarning: `torch.distributed.reduce_op` is deprecated, please use `torch.distributed.ReduceOp` instead
+    assert not any(isinstance(o, dict) and "tensor" in o and o.get("self") is o for o in gc.get_objects())
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+1887 passed, 4393 warnings in 2120.67s (0:35:20)
+{
+  "counts": {
+    "passed": 1887,
+    "error": 0,
+    "failed": 0,
+    "skipped": 0
+  },
+  "total": 1887,
+  "exit_code": 0,
+  "full_suite_passed": true
+}
+exit 0

@@ -1,0 +1,711 @@
+{
+ "recorded_at": "2026-11-06T13:10:54.338365+09:00",
+ "host": "local",
+ "smoke_root": "/home/ws/ws/splatter4d/outputs/arm4_smoke",
+ "not_campaign_runs": true,
+ "arms": {
+  "A": {
+   "prefix": "ocsw4",
+   "gpu": "MIG-c3511b41-5f78-52f1-9b93-9c6794cdbbdd",
+   "pretrain": {
+    "exit_code": 0,
+    "wall_seconds": 231.5,
+    "median_step_time_s": 0.3465159320831299,
+    "median_gpu_time_s": 0.343122973022461,
+    "peak_gpu_mem_gb": 4.525749683380127,
+    "peak_session_pss_bytes": 9247677440,
+    "finite": true,
+    "loss_terms": [
+     "consistency",
+     "coverage",
+     "depth_grad",
+     "depth_hard",
+     "depth_l1",
+     "infonce",
+     "motion",
+     "render",
+     "rgb",
+     "synth_render",
+     "total",
+     "visibility"
+    ],
+    "config_sha256": {
+     "predicted": "e83006d561473c98738f58fb1812f86a4fbb8327c6d7f3e88248074b8b6d2d23",
+     "recorded": "e83006d561473c98738f58fb1812f86a4fbb8327c6d7f3e88248074b8b6d2d23",
+     "equal": true
+    },
+    "last_logged": {
+     "step": 400,
+     "loss/total": 3.582136631011963,
+     "metric/psnr": 16.12004852294922
+    }
+   },
+   "step0_metrics_vs_matched_init_reference": {
+    "reference_run": "runs/pretrain/cst50-seed0-hammer-200k",
+    "metric_keys": 192,
+    "bitwise_equal": 155,
+    "max_abs_diff": 0.08436107635498047,
+    "deterministic_keys": 168,
+    "deterministic_bitwise_equal": 155,
+    "differing_non_sampled": [
+     "val/effective_rank_retrieval@s6",
+     "val/r2_hand_pos_val_heldout@s2",
+     "val/r2_hand_pos_val_heldout@s6",
+     "val/r2_hand_pos_val_traincams@s2",
+     "val/r2_hand_pos_val_traincams@s6",
+     "val/r2_hand_vel_val_heldout@s2",
+     "val/r2_hand_vel_val_heldout@s6",
+     "val/r2_hand_vel_val_traincams@s2",
+     "val/r2_hand_vel_val_traincams@s6",
+     "val/r2_obj_pos_val_heldout@s2",
+     "val/r2_obj_pos_val_heldout@s6",
+     "val/r2_obj_pos_val_traincams@s2",
+     "val/r2_obj_pos_val_traincams@s6"
+    ],
+    "largest": [
+     [
+      "val/m3d_gap_moving_mm_01@s6",
+      0.08436107635498047
+     ],
+     [
+      "val/m3d_gap_moving_mm_01@s2",
+      0.07196426391601562
+     ],
+     [
+      "val/m3d_gap_moving_mm_02@s6",
+      0.05309295654296875
+     ],
+     [
+      "val/m3d_gap_moving_mm_02@s2",
+      0.0024924278259277344
+     ],
+     [
+      "val/m3d_gap_moving_mm_12@s6",
+      0.0016903877258300781
+     ]
+    ],
+    "psnr_s2": [
+     14.494399666786194,
+     14.494399666786194
+    ],
+    "heldout_psnr_s2": [
+     null,
+     null
+    ]
+   },
+   "export": {
+    "exit_code": 0,
+    "check": {
+     "stem": "patch_cnn",
+     "stem_class": "PatchCNNStem",
+     "width": 256,
+     "depth": 4,
+     "heads": 4,
+     "patch_size": 16,
+     "slot_dim": 256,
+     "mask_mode": "tube",
+     "mask_ratio": 0.5,
+     "parameters": 3516960,
+     "policy_state_shape": [
+      1,
+      256
+     ],
+     "finite": true
+    }
+   },
+   "drm": {
+    "exit_code": 0,
+    "wall_seconds": 76.6,
+    "peak_session_pss_bytes": 1845268480,
+    "final_json": true,
+    "train_records": 6,
+    "snapshots": [
+     "step_0005000.pt"
+    ]
+   },
+   "evaluator": {
+    "exit_code": 0,
+    "wall_seconds": 30.0,
+    "peak_session_pss_bytes": 2475802624,
+    "records": 1,
+    "steps": [
+     5000
+    ]
+   }
+  },
+  "B": {
+   "prefix": "ocham",
+   "gpu": "MIG-c3511b41-5f78-52f1-9b93-9c6794cdbbdd",
+   "pretrain": {
+    "exit_code": 0,
+    "wall_seconds": 231.5,
+    "median_step_time_s": 0.3589582753181457,
+    "median_gpu_time_s": 0.3556804702758789,
+    "peak_gpu_mem_gb": 3.625781536102295,
+    "peak_session_pss_bytes": 10085386240,
+    "finite": true,
+    "loss_terms": [
+     "chamfer",
+     "chamfer_pred_to_target",
+     "chamfer_target_to_pred",
+     "consistency",
+     "coverage",
+     "depth_grad",
+     "depth_hard",
+     "depth_l1",
+     "infonce",
+     "motion",
+     "render",
+     "rgb",
+     "synth_render",
+     "total",
+     "visibility"
+    ],
+    "config_sha256": {
+     "predicted": "950f5f3bbde9a0465df3e9ce473b64358b9fc748a19d858185c4c6126d7d022e",
+     "recorded": "950f5f3bbde9a0465df3e9ce473b64358b9fc748a19d858185c4c6126d7d022e",
+     "equal": true
+    },
+    "last_logged": {
+     "step": 400,
+     "loss/total": 3.9993832111358643,
+     "metric/psnr": 16.26740264892578
+    }
+   },
+   "step0_metrics_vs_matched_init_reference": {
+    "reference_run": "runs/pretrain/i2-m3d-seed0-hammer",
+    "metric_keys": 192,
+    "bitwise_equal": 121,
+    "max_abs_diff": 0.08444929122924805,
+    "deterministic_keys": 168,
+    "deterministic_bitwise_equal": 121,
+    "differing_non_sampled": [
+     "val/coverage_mean@s2",
+     "val/coverage_mean@s6",
+     "val/coverage_valid_mean@s2",
+     "val/depth_absrel@s2",
+     "val/dyn_alpha_share_moving@s2",
+     "val/dyn_alpha_share_moving@s6",
+     "val/effective_rank_retrieval@s2",
+     "val/effective_rank_val@s2",
+     "val/epe_02@s2",
+     "val/epe_02@s6",
+     "val/epe_12@s2",
+     "val/epe_12@s6",
+     "val/epe_moving_01@s2",
+     "val/epe_moving_02@s2",
+     "val/epe_moving_02@s6",
+     "val/epe_moving_12@s2",
+     "val/epe_moving_12@s6",
+     "val/epe_moving_mm_01@s2",
+     "val/epe_moving_mm_02@s2",
+     "val/epe_moving_mm_02@s6",
+     "val/epe_moving_mm_12@s2",
+     "val/epe_moving_mm_12@s6",
+     "val/epe_static_01@s2",
+     "val/epe_static_01@s6",
+     "val/epe_static_02@s2",
+     "val/epe_static_02@s6",
+     "val/epe_static_12@s2",
+     "val/epe_static_12@s6",
+     "val/opacity_std@s2",
+     "val/opacity_std@s6",
+     "val/psnr_moving@s6",
+     "val/r2_hand_pos_val_heldout@s2",
+     "val/r2_hand_pos_val_heldout@s6",
+     "val/r2_hand_pos_val_traincams@s2",
+     "val/r2_hand_pos_val_traincams@s6",
+     "val/r2_hand_vel_val_heldout@s2",
+     "val/r2_hand_vel_val_heldout@s6",
+     "val/r2_hand_vel_val_traincams@s2",
+     "val/r2_hand_vel_val_traincams@s6",
+     "val/r2_obj_pos_val_heldout@s2",
+     "val/r2_obj_pos_val_heldout@s6",
+     "val/r2_obj_pos_val_traincams@s2",
+     "val/r2_obj_pos_val_traincams@s6",
+     "val/ssim@s2",
+     "val/ssim@s6",
+     "val/ssim_moving@s2",
+     "val/ssim_moving@s6"
+    ],
+    "largest": [
+     [
+      "val/m3d_gap_moving_mm_01@s6",
+      0.08444929122924805
+     ],
+     [
+      "val/m3d_gap_moving_mm_01@s2",
+      0.07222509384155273
+     ],
+     [
+      "val/m3d_gap_moving_mm_02@s6",
+      0.053075313568115234
+     ],
+     [
+      "val/m3d_gap_moving_mm_02@s2",
+      0.0022878646850585938
+     ],
+     [
+      "val/m3d_gap_moving_mm_12@s6",
+      0.0016760826110839844
+     ]
+    ],
+    "psnr_s2": [
+     14.541132926940918,
+     14.541132926940918
+    ],
+    "heldout_psnr_s2": [
+     null,
+     null
+    ]
+   },
+   "export": {
+    "exit_code": 0,
+    "check": {
+     "stem": "patchify",
+     "stem_class": "Conv2d",
+     "width": 128,
+     "depth": 8,
+     "heads": 8,
+     "patch_size": 16,
+     "slot_dim": 256,
+     "mask_mode": "tube",
+     "mask_ratio": 0.5,
+     "parameters": 1726592,
+     "policy_state_shape": [
+      1,
+      256
+     ],
+     "finite": true
+    }
+   },
+   "drm": {
+    "exit_code": 0,
+    "wall_seconds": 83.2,
+    "peak_session_pss_bytes": 1775452160,
+    "final_json": true,
+    "train_records": 6,
+    "snapshots": [
+     "step_0005000.pt"
+    ]
+   },
+   "evaluator": {
+    "exit_code": 0,
+    "wall_seconds": 30.0,
+    "peak_session_pss_bytes": 2364145664,
+    "records": 1,
+    "steps": [
+     5000
+    ]
+   }
+  },
+  "C": {
+   "prefix": "c50dg",
+   "gpu": "MIG-c3511b41-5f78-52f1-9b93-9c6794cdbbdd",
+   "pretrain": {
+    "exit_code": 0,
+    "wall_seconds": 230.1,
+    "median_step_time_s": 0.35450388431549074,
+    "median_gpu_time_s": 0.35117588073730466,
+    "peak_gpu_mem_gb": 4.218125820159912,
+    "peak_session_pss_bytes": 9641398272,
+    "finite": true,
+    "loss_terms": [
+     "chamfer",
+     "chamfer_pred_to_target",
+     "chamfer_target_to_pred",
+     "consistency",
+     "coverage",
+     "depth_grad",
+     "depth_l1",
+     "infonce",
+     "motion",
+     "render",
+     "rgb",
+     "synth_render",
+     "total"
+    ],
+    "config_sha256": {
+     "predicted": "d5ba98e41c312d1fe34c2fe28549db5d997d54f02b93f5631c7a020d2c468916",
+     "recorded": "d5ba98e41c312d1fe34c2fe28549db5d997d54f02b93f5631c7a020d2c468916",
+     "equal": true
+    },
+    "last_logged": {
+     "step": 400,
+     "loss/total": 3.42917537689209,
+     "metric/psnr": 15.974397659301758
+    }
+   },
+   "step0_metrics_vs_matched_init_reference": {
+    "reference_run": "runs/pretrain/cst50-seed0-hammer-200k",
+    "metric_keys": 192,
+    "bitwise_equal": 179,
+    "max_abs_diff": 1.9073486328125e-05,
+    "deterministic_keys": 168,
+    "deterministic_bitwise_equal": 155,
+    "differing_non_sampled": [
+     "val/effective_rank_retrieval@s6",
+     "val/r2_hand_pos_val_heldout@s2",
+     "val/r2_hand_pos_val_heldout@s6",
+     "val/r2_hand_pos_val_traincams@s2",
+     "val/r2_hand_pos_val_traincams@s6",
+     "val/r2_hand_vel_val_heldout@s2",
+     "val/r2_hand_vel_val_heldout@s6",
+     "val/r2_hand_vel_val_traincams@s2",
+     "val/r2_hand_vel_val_traincams@s6",
+     "val/r2_obj_pos_val_heldout@s2",
+     "val/r2_obj_pos_val_heldout@s6",
+     "val/r2_obj_pos_val_traincams@s2",
+     "val/r2_obj_pos_val_traincams@s6"
+    ],
+    "largest": [
+     [
+      "val/effective_rank_retrieval@s6",
+      1.9073486328125e-05
+     ],
+     [
+      "val/r2_hand_pos_val_heldout@s6",
+      1.0480505352461478e-13
+     ],
+     [
+      "val/r2_hand_pos_val_heldout@s2",
+      4.618527782440651e-14
+     ],
+     [
+      "val/r2_hand_vel_val_heldout@s6",
+      1.4210854715202004e-14
+     ],
+     [
+      "val/r2_obj_pos_val_heldout@s6",
+      9.769962616701378e-15
+     ]
+    ],
+    "psnr_s2": [
+     14.494399666786194,
+     14.494399666786194
+    ],
+    "heldout_psnr_s2": [
+     null,
+     null
+    ]
+   },
+   "export": {
+    "exit_code": 0,
+    "check": {
+     "stem": "patch_cnn",
+     "stem_class": "PatchCNNStem",
+     "width": 256,
+     "depth": 4,
+     "heads": 4,
+     "patch_size": 16,
+     "slot_dim": 256,
+     "mask_mode": "tube",
+     "mask_ratio": 0.5,
+     "parameters": 3516960,
+     "policy_state_shape": [
+      1,
+      256
+     ],
+     "finite": true
+    }
+   },
+   "drm": {
+    "exit_code": 0,
+    "wall_seconds": 74.7,
+    "peak_session_pss_bytes": 1840033792,
+    "final_json": true,
+    "train_records": 6,
+    "snapshots": [
+     "step_0005000.pt"
+    ]
+   },
+   "evaluator": {
+    "exit_code": 0,
+    "wall_seconds": 30.1,
+    "peak_session_pss_bytes": 2351939584,
+    "records": 1,
+    "steps": [
+     5000
+    ]
+   }
+  },
+  "D": {
+   "prefix": "c50vis",
+   "gpu": "MIG-c3511b41-5f78-52f1-9b93-9c6794cdbbdd",
+   "pretrain": {
+    "exit_code": 0,
+    "wall_seconds": 234.5,
+    "median_step_time_s": 0.3521516227722168,
+    "median_gpu_time_s": 0.348920964050293,
+    "peak_gpu_mem_gb": 4.099727153778076,
+    "peak_session_pss_bytes": 9598391296,
+    "finite": true,
+    "loss_terms": [
+     "chamfer",
+     "chamfer_pred_to_target",
+     "chamfer_target_to_pred",
+     "consistency",
+     "coverage",
+     "depth_l1",
+     "infonce",
+     "motion",
+     "render",
+     "rgb",
+     "synth_render",
+     "total",
+     "visibility"
+    ],
+    "config_sha256": {
+     "predicted": "25b4a3d5877b79120ec75b7cb11ba024fae96a0e53267b3d8ce0841480b098d5",
+     "recorded": "25b4a3d5877b79120ec75b7cb11ba024fae96a0e53267b3d8ce0841480b098d5",
+     "equal": true
+    },
+    "last_logged": {
+     "step": 400,
+     "loss/total": 3.631869077682495,
+     "metric/psnr": 16.146848678588867
+    }
+   },
+   "step0_metrics_vs_matched_init_reference": {
+    "reference_run": "runs/pretrain/cst50-seed0-hammer-200k",
+    "metric_keys": 192,
+    "bitwise_equal": 179,
+    "max_abs_diff": 1.9073486328125e-05,
+    "deterministic_keys": 168,
+    "deterministic_bitwise_equal": 155,
+    "differing_non_sampled": [
+     "val/effective_rank_retrieval@s6",
+     "val/r2_hand_pos_val_heldout@s2",
+     "val/r2_hand_pos_val_heldout@s6",
+     "val/r2_hand_pos_val_traincams@s2",
+     "val/r2_hand_pos_val_traincams@s6",
+     "val/r2_hand_vel_val_heldout@s2",
+     "val/r2_hand_vel_val_heldout@s6",
+     "val/r2_hand_vel_val_traincams@s2",
+     "val/r2_hand_vel_val_traincams@s6",
+     "val/r2_obj_pos_val_heldout@s2",
+     "val/r2_obj_pos_val_heldout@s6",
+     "val/r2_obj_pos_val_traincams@s2",
+     "val/r2_obj_pos_val_traincams@s6"
+    ],
+    "largest": [
+     [
+      "val/effective_rank_retrieval@s6",
+      1.9073486328125e-05
+     ],
+     [
+      "val/r2_hand_pos_val_heldout@s6",
+      1.0480505352461478e-13
+     ],
+     [
+      "val/r2_hand_pos_val_heldout@s2",
+      4.618527782440651e-14
+     ],
+     [
+      "val/r2_hand_vel_val_heldout@s6",
+      1.4210854715202004e-14
+     ],
+     [
+      "val/r2_obj_pos_val_heldout@s6",
+      9.769962616701378e-15
+     ]
+    ],
+    "psnr_s2": [
+     14.494399666786194,
+     14.494399666786194
+    ],
+    "heldout_psnr_s2": [
+     null,
+     null
+    ]
+   },
+   "export": {
+    "exit_code": 0,
+    "check": {
+     "stem": "patch_cnn",
+     "stem_class": "PatchCNNStem",
+     "width": 256,
+     "depth": 4,
+     "heads": 4,
+     "patch_size": 16,
+     "slot_dim": 256,
+     "mask_mode": "tube",
+     "mask_ratio": 0.5,
+     "parameters": 3516960,
+     "policy_state_shape": [
+      1,
+      256
+     ],
+     "finite": true
+    }
+   },
+   "drm": {
+    "exit_code": 0,
+    "wall_seconds": 76.7,
+    "peak_session_pss_bytes": 1840312320,
+    "final_json": true,
+    "train_records": 6,
+    "snapshots": [
+     "step_0005000.pt"
+    ]
+   },
+   "evaluator": {
+    "exit_code": 0,
+    "wall_seconds": 30.2,
+    "peak_session_pss_bytes": 2401456128,
+    "records": 1,
+    "steps": [
+     5000
+    ]
+   }
+  }
+ },
+ "render_wrapper": {
+  "orig": {
+   "model": "orig_200k",
+   "checkpoint": "runs/s3-m3d-seed0-stick-push-200k/checkpoints/step_0200000.pt",
+   "checkpoint_sha256": "556d37578bd8f553cbe1c3d944f41932f98d266bc222071f69908b0a413a391f",
+   "seconds": 12.5,
+   "outputs": {
+    "outputs/arm4_smoke/render/orig/render/stick-push__orig_200k.npz": "ce16eb01a46450b46d406b27a546d052f9aab54b2ce11ef5c246645e640fa129",
+    "outputs/arm4_smoke/render/orig/render/stick-push__orig_200k.json": "edeabb3ac80f9a3c086868c031c6240fa5ad1058963e8b25a67216337538b726",
+    "outputs/arm4_smoke/render/orig/diag/stick-push__orig_200k__geom.json": "d2425c8f203b9be0d853c438c4aa4274e345820f872970ef0281ef965834d66f",
+    "outputs/arm4_smoke/render/orig/diag/stick-push__orig_200k__points.npz": "f7291c3beb88de357d2c8d76bf252ac587be3215f025b7ed2d6aebff0b1001f0"
+   },
+   "reproduction_of_chl_ref200": {
+    "reference": "reports/results-artifact/chl/render/stick-push__ref200.npz",
+    "tolerance": {
+     "images": 0,
+     "alpha": 0.0001,
+     "depth": 0.0001
+    },
+    "reference_sha256": "ce16eb01a46450b46d406b27a546d052f9aab54b2ce11ef5c246645e640fa129",
+    "arrays": {
+     "alpha": {
+      "comparable": true,
+      "shape": [
+       880,
+       128,
+       128
+      ],
+      "dtype": [
+       "float16",
+       "float16"
+      ],
+      "bitwise_equal": true,
+      "max_abs_diff": 0.0,
+      "mean_abs_diff": 0.0
+     },
+     "depth": {
+      "comparable": true,
+      "shape": [
+       880,
+       128,
+       128
+      ],
+      "dtype": [
+       "float16",
+       "float16"
+      ],
+      "bitwise_equal": true,
+      "max_abs_diff": 0.0,
+      "mean_abs_diff": 0.0
+     },
+     "images": {
+      "comparable": true,
+      "shape": [
+       880,
+       128,
+       128,
+       3
+      ],
+      "dtype": [
+       "uint8",
+       "uint8"
+      ],
+      "bitwise_equal": true,
+      "max_abs_diff": 0.0,
+      "mean_abs_diff": 0.0
+     }
+    },
+    "all_bitwise_equal": true,
+    "passed": true
+   }
+  },
+  "cst50": {
+   "model": "cst50_200k",
+   "checkpoint": "runs/pretrain/cst50-seed0-hammer-200k/checkpoints/step_0200000.pt",
+   "checkpoint_sha256": "6fac62b2ece555e99fcae0d0a4dfd52a84a63db1e6779e006b6bb4910771878c",
+   "seconds": 8.5,
+   "outputs": {
+    "outputs/arm4_smoke/render/cst50/render/hammer__cst50_200k.npz": "06d6718639ab7330381446132f0f1cbf56ff9e591935425a267a3f0c20a1c7bf",
+    "outputs/arm4_smoke/render/cst50/render/hammer__cst50_200k.json": "db33d1c65e8e07175136e079c316404e019271333265aff548dbf719655dfe78",
+    "outputs/arm4_smoke/render/cst50/diag/hammer__cst50_200k__geom.json": "1c3a2f592e22c1bfc83f71952482f78db8df612d924bc100b3e005245bdcb5d3",
+    "outputs/arm4_smoke/render/cst50/diag/hammer__cst50_200k__points.npz": "6d4e467e1423fddc3dc4bf6af1c895b6978c8407a1fd9921c0ceb7dc4ec7d6fa"
+   },
+   "reproduction_of_chl_ref200": null
+  }
+ },
+ "evaluator_layout_check": {
+  "question": "Codex arm4-a #9: is the v1 evaluation of a fixed snapshot invariant to the evaluator layout (3 x 8 vs 6 x 8)?",
+  "snapshot": "runs/cst50-drm-hammer-s2000/snapshots/step_1000000.pt (read only)",
+  "host": "local MIG-c3511b41",
+  "script": "/home/ws/ws/validation-20261031/arm4/evalcheck.sh",
+  "outputs": "outputs/arm4_smoke/evalcheck",
+  "summaries": {
+   "3x8_a": {
+    "train_success": 0.9249999999999999,
+    "heldout_success": 0.0625,
+    "moving_success": 0.925,
+    "train_return": 1837.7248652837754
+   },
+   "3x8_b": {
+    "train_success": 0.9249999999999999,
+    "heldout_success": 0.0625,
+    "moving_success": 0.95,
+    "train_return": 1837.6454441238745
+   },
+   "6x8": {
+    "train_success": 0.9500000000000002,
+    "heldout_success": 0.0375,
+    "moving_success": 0.975,
+    "train_return": 1821.8363517830949
+   },
+   "campaign_6x8_2026-11-05": {
+    "train_success": 0.9500000000000002,
+    "heldout_success": 0.05,
+    "moving_success": 0.925,
+    "train_return": 1836.8006973954036
+   }
+  },
+  "repeat_same_layout_3x8": {
+   "values_differing": 15,
+   "of": 27,
+   "max_camera_return_diff": 58.02744664460306,
+   "max_camera_success_diff": 0.050000000000000044
+  },
+  "layout_3x8_vs_6x8": {
+   "values_differing": 23,
+   "of": 27,
+   "max_camera_return_diff": 278.33911482096073,
+   "max_camera_success_diff": 0.15000000000000002
+  },
+  "repeat_6x8_vs_campaign_record": {
+   "values_differing": 16,
+   "of": 27,
+   "max_camera_return_diff": 70.92507577036486,
+   "max_camera_success_diff": 0.15000000000000002
+  },
+  "conclusion": "repeated evaluations of one snapshot are not bit-reproducible even with the same layout (renderer +/-1 intensity noise, GPU nondeterminism); in this single comparison the 3 x 8 vs 6 x 8 difference was larger than the same-layout repeat (max per-camera success difference 0.15 vs 0.05; return 278 vs 58) while the suite means stayed within 0.025-0.05 - layout invariance is NOT established, so each arm uses its reference invocation: A / B 3 x 8 as Original, C / D 6 x 8 as cst50 (Codex arm4-a #9 accepted)"
+ },
+ "render_wrapper_note": "orig reproduction verified bitwise (dtype, shape, bytes) on stick-push (s3-m3d-seed0-stick-push-200k, enforced version, record above) and earlier on hammer (i2-m3d-seed0-hammer, informational version); cst50 hammer rendered (new for this pipeline)",
+ "evaluator_layout_check_file": "runs/setup/arm4-evalcheck-20261106.json",
+ "relocated_to": "/home/ws/ws/validation-20261031/arm4/smoke_runs (moved from outputs/arm4_smoke after the checks; paths above are the original locations)",
+ "scripts": {
+  "smoke": "runs/setup/tools/arm4_smoke_local_20261106.py",
+  "summary": "runs/setup/tools/arm4_smoke_summary_20261106.py",
+  "layout_check": "/home/ws/ws/validation-20261031/arm4/evalcheck.sh",
+  "logs": "/home/ws/ws/validation-20261031/arm4/smoke.log"
+ },
+ "prefix_note": "arm B's smoke ran under the provisional prefix 'ocham' (directories ocham/, run arm4smoke-ocham-hammer); renamed to 'ochf' before registration because 'ocham' is a substring of existing enc-abl-nochamfer-* ids (grep-based watchers); the configuration is unchanged"
+}

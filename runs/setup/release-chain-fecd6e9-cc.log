@@ -1,0 +1,50 @@
+=== 2026-11-07 06:20:41 release chain fecd6e917f1550faad9ed0a507712b4b89a98dcd (validate_container expects the same real-world mounts as the launcher; Codex c14)
+06:21:14 /home/ws/ws/splatter4d/.worktrees/rwvalmounts/s4d/remote_access.py sync-code fecd6e917f1550faad9ed0a507712b4b89a98dcd -> 0 /home/compu/kaist/sunho/releases/fecd6e917f1550faad9ed0a507712b4b89a98dcd/code 
+06:21:14 /home/compu/kaist/sunho/releases/fecd6e917f1550faad9ed0a507712b4b89a98dcd/code
+06:21:23 sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a --tag cc -> 0 /home/ws/ws/splatter4d/runs/remote/verification/native-fecd6e9-cc-queue.yaml 
+06:22:14 foreign processes on remote/GPU-4391fcee-537f-d408-d138-10d8a3866eea; not launching there
+06:22:14 launched verify-native-fecd6e9-cc on remote/GPU-ca65e1b7-c0ac-6757-7d3f-816c3119a4c1 (s4d-verify-native-fecd6e9-cc-a1, attempt 1)
+06:22:15 wait {'verify-native-fecd6e9-cc': 'running'}
+06:23:59 foreign processes on remote/GPU-4391fcee-537f-d408-d138-10d8a3866eea; not launching there
+06:23:59 foreign processes on remote/GPU-ca65e1b7-c0ac-6757-7d3f-816c3119a4c1; not launching there
+06:24:00 wait {'verify-native-fecd6e9-cc': 'running'}
+06:25:20 foreign processes on remote/GPU-4391fcee-537f-d408-d138-10d8a3866eea; not launching there
+06:25:22 wait {'verify-native-fecd6e9-cc': 'running'}
+06:27:11 foreign processes on remote/GPU-4391fcee-537f-d408-d138-10d8a3866eea; not launching there
+06:27:12 wait {'verify-native-fecd6e9-cc': 'running'}
+06:29:23 verify-native-fecd6e9-cc: live result sync unavailable; job remains running
+06:29:23 foreign processes on remote/GPU-4391fcee-537f-d408-d138-10d8a3866eea; not launching there
+06:29:24 wait {'verify-native-fecd6e9-cc': 'running'}
+06:30:43 foreign processes on remote/GPU-4391fcee-537f-d408-d138-10d8a3866eea; not launching there
+06:30:45 wait {'verify-native-fecd6e9-cc': 'running'}
+06:32:33 foreign processes on remote/GPU-4391fcee-537f-d408-d138-10d8a3866eea; not launching there
+06:32:35 wait {'verify-native-fecd6e9-cc': 'running'}
+06:33:54 foreign processes on remote/GPU-4391fcee-537f-d408-d138-10d8a3866eea; not launching there
+06:33:56 wait {'verify-native-fecd6e9-cc': 'running'}
+06:35:37 foreign processes on remote/GPU-4391fcee-537f-d408-d138-10d8a3866eea; not launching there
+06:35:37 foreign processes on remote/GPU-ca65e1b7-c0ac-6757-7d3f-816c3119a4c1; not launching there
+06:35:39 wait {'verify-native-fecd6e9-cc': 'running'}
+06:37:08 verify-native-fecd6e9-cc exited with 0 on remote; results checksum verified
+06:37:08 foreign processes on remote/GPU-4391fcee-537f-d408-d138-10d8a3866eea; not launching there
+06:37:09 done {'verify-native-fecd6e9-cc': 'done'}
+06:37:09 {"exit_code": 0, "counts": {"passed": 2156, "error": 0, "failed": 0, "skipped": 0}, "full_suite_passed": true}
+06:37:18 sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a --tag cc -> 0 /home/ws/ws/splatter4d/runs/remote/verification/isolation-fecd6e9-cc-queue.yaml 
+06:39:23 foreign processes on remote/GPU-4391fcee-537f-d408-d138-10d8a3866eea; not launching there
+06:39:23 launched verify-isolation-1-fecd6e9-cc on remote/GPU-6122c7a9-eaa6-b539-6005-f20e339da4ea (s4d-verify-isolation-1-fecd6e9-cc-a1, attempt 1)
+06:39:23 launched verify-isolation-2-fecd6e9-cc on remote/GPU-9e9f1e97-b2ca-04e0-eb2a-8035398daa79 (s4d-verify-isolation-2-fecd6e9-cc-a1, attempt 1)
+06:39:23 launched verify-isolation-3-fecd6e9-cc on remote/GPU-ca65e1b7-c0ac-6757-7d3f-816c3119a4c1 (s4d-verify-isolation-3-fecd6e9-cc-a1, attempt 1)
+06:39:24 wait {'verify-isolation-0-fecd6e9-cc': None, 'verify-isolation-1-fecd6e9-cc': 'running', 'verify-isolation-2-fecd6e9-cc': 'running', 'verify-isolation-3-fecd6e9-cc': 'running'}
+06:40:42 foreign processes on remote/GPU-4391fcee-537f-d408-d138-10d8a3866eea; not launching there
+06:40:43 wait {'verify-isolation-0-fecd6e9-cc': None, 'verify-isolation-1-fecd6e9-cc': 'done', 'verify-isolation-2-fecd6e9-cc': 'done', 'verify-isolation-3-fecd6e9-cc': 'done'}
+06:42:19 foreign processes on remote/GPU-4391fcee-537f-d408-d138-10d8a3866eea; not launching there
+06:42:20 wait {'verify-isolation-0-fecd6e9-cc': None, 'verify-isolation-1-fecd6e9-cc': 'done', 'verify-isolation-2-fecd6e9-cc': 'done', 'verify-isolation-3-fecd6e9-cc': 'done'}
+06:43:36 foreign processes on remote/GPU-4391fcee-537f-d408-d138-10d8a3866eea; not launching there
+06:43:37 wait {'verify-isolation-0-fecd6e9-cc': None, 'verify-isolation-1-fecd6e9-cc': 'done', 'verify-isolation-2-fecd6e9-cc': 'done', 'verify-isolation-3-fecd6e9-cc': 'done'}
+06:45:14 foreign processes on remote/GPU-4391fcee-537f-d408-d138-10d8a3866eea; not launching there
+06:45:15 wait {'verify-isolation-0-fecd6e9-cc': None, 'verify-isolation-1-fecd6e9-cc': 'done', 'verify-isolation-2-fecd6e9-cc': 'done', 'verify-isolation-3-fecd6e9-cc': 'done'}
+06:47:05 launched verify-isolation-0-fecd6e9-cc on remote/GPU-4391fcee-537f-d408-d138-10d8a3866eea (s4d-verify-isolation-0-fecd6e9-cc-a1, attempt 1)
+06:47:06 wait {'verify-isolation-0-fecd6e9-cc': 'running', 'verify-isolation-1-fecd6e9-cc': 'done', 'verify-isolation-2-fecd6e9-cc': 'done', 'verify-isolation-3-fecd6e9-cc': 'done'}
+06:49:22 done {'verify-isolation-0-fecd6e9-cc': 'done', 'verify-isolation-1-fecd6e9-cc': 'done', 'verify-isolation-2-fecd6e9-cc': 'done', 'verify-isolation-3-fecd6e9-cc': 'done'}
+06:49:24 sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a --tag cc -> 0 ACCEPTED /home/ws/ws/splatter4d/runs/remote/acceptance/fecd6e9-cc/manifest.json 0fb7570bd24061b010734175f19dfd03efa7b1876f0b2edc8c2299c80adb4b93 56bd8ce9c59e 
+06:49:24 ACCEPTED /home/ws/ws/splatter4d/runs/remote/acceptance/fecd6e9-cc/manifest.json 0fb7570bd24061b010734175f19dfd03efa7b1876f0b2edc8c2299c80adb4b93 56bd8ce9c59e
+chain exit 0

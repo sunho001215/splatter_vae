@@ -1,0 +1,20 @@
+Evaluated 2026-11-06T19:47:16.681645+09:00
+DRY-RUN: 0 new rows; 28 refused rows
+Pinned commit e323513b7c0d5b48753fa2d7b4c0764a78aa71c8; image sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a
+Manifest sha256 70e055ccbfd35b2f106bb5fdddd91d8e036ec09c3c12733ccefef574682fcb9f
+drawer-open: 85/100 ready; singleview=REFUSED, multiview=REFUSED, geometry=REFUSED; calibration_validated=0
+  reviwo: REFUSED: drawer-open/episode_000111.h5: preprocessing 'pending' (schema 'rw-preprocess' v1; stages not done: []); drawer-open/episode_000112.h5: preprocessing 'pending' (schema 'rw-preprocess' v1; stages not done: []); drawer-open/episode_000113.h5: preprocessing 'pending' (schema 'rw-preprocess' v1; stages not done: [])
+  dynamo: REFUSED: drawer-open/episode_000111.h5: preprocessing 'pending' (schema 'rw-preprocess' v1; stages not done: []); drawer-open/episode_000112.h5: preprocessing 'pending' (schema 'rw-preprocess' v1; stages not done: []); drawer-open/episode_000113.h5: preprocessing 'pending' (schema 'rw-preprocess' v1; stages not done: [])
+  fql_reviwo: REFUSED: drawer-open/episode_000111.h5: preprocessing 'pending' (schema 'rw-preprocess' v1; stages not done: []); drawer-open/episode_000112.h5: preprocessing 'pending' (schema 'rw-preprocess' v1; stages not done: []); drawer-open/episode_000113.h5: preprocessing 'pending' (schema 'rw-preprocess' v1; stages not done: [])
+  e2e_cnn: REFUSED: drawer-open/episode_000111.h5: preprocessing 'pending' (schema 'rw-preprocess' v1; stages not done: []); drawer-open/episode_000112.h5: preprocessing 'pending' (schema 'rw-preprocess' v1; stages not done: []); drawer-open/episode_000113.h5: preprocessing 'pending' (schema 'rw-preprocess' v1; stages not done: [])
+  New rows: {}; once all non-geometric gates pass: {"dataset": 3, "fql": 9, "pretrain": 2}
+mug-hanging: 65/100 ready; singleview=REFUSED, multiview=REFUSED, geometry=REFUSED; calibration_validated=0
+  reviwo: REFUSED: mug-hanging/episode_000023.h5: preprocessing 'pending' (schema 'rw-preprocess' v1; stages not done: []); mug-hanging/episode_000024.h5: preprocessing 'pending' (schema 'rw-preprocess' v1; stages not done: []); mug-hanging/episode_000025.h5: preprocessing 'pending' (schema 'rw-preprocess' v1; stages not done: [])
+  dynamo: REFUSED: mug-hanging/episode_000023.h5: preprocessing 'pending' (schema 'rw-preprocess' v1; stages not done: []); mug-hanging/episode_000024.h5: preprocessing 'pending' (schema 'rw-preprocess' v1; stages not done: []); mug-hanging/episode_000025.h5: preprocessing 'pending' (schema 'rw-preprocess' v1; stages not done: [])
+  fql_reviwo: REFUSED: mug-hanging/episode_000023.h5: preprocessing 'pending' (schema 'rw-preprocess' v1; stages not done: []); mug-hanging/episode_000024.h5: preprocessing 'pending' (schema 'rw-preprocess' v1; stages not done: []); mug-hanging/episode_000025.h5: preprocessing 'pending' (schema 'rw-preprocess' v1; stages not done: [])
+  e2e_cnn: REFUSED: mug-hanging/episode_000023.h5: preprocessing 'pending' (schema 'rw-preprocess' v1; stages not done: []); mug-hanging/episode_000024.h5: preprocessing 'pending' (schema 'rw-preprocess' v1; stages not done: []); mug-hanging/episode_000025.h5: preprocessing 'pending' (schema 'rw-preprocess' v1; stages not done: [])
+  New rows: {}; once all non-geometric gates pass: {"dataset": 3, "fql": 9, "pretrain": 2}
+Geometry consumers are excluded from this registrar regardless of calibration status.
+Proposed release: /home/ws/ws/splatter4d/runs/setup/role-release.proposed.json; activation_required=true
+DRY-RUN proof: /home/ws/ws/splatter4d/runs/setup/rwreg-dry-run-20261106.json; ungated preview: /home/ws/ws/splatter4d/runs/setup/rwreg-plan-preview-20261106.yaml
+Queue/registry unchanged. role-release.json was not created or modified.

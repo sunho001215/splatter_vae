@@ -94,7 +94,14 @@ REGISTRATIONS = ['baselines-sanity-registration-20261016.json', 'baselines-eight
                  'chlhm-registration-eight-task-20261103.json',
                  'cst-registration-eight-task-20261104.json',
                  # hybrid analyses run locally (rendering; 2026-11-04)
-                 'ana-chlhm-registration-20261104.json']
+                 'ana-chlhm-registration-20261104.json',
+                 # four-arm local campaign (user directive 2026-11-06; runs/setup/arm4-definition-20261106.json):
+                 # Original + CSW4 encoder / + Chamfer, cst50 + depth gradient / + visibility, eight tasks, and their
+                 # render-analysis rows; every row pinned local (Meta-World stays local). Priorities as the CSW4
+                 # tube-ratio campaign (1; exports 0; render rows 1, registered after the training rows). Listed last:
+                 # within the order below (evaluators of finished trainers first, then priority, trainers before
+                 # evaluators, registration order; enc- rows last) equal-priority ties go to the earlier registrations
+                 'arm4-registration-eight-task-20261106.json']
 ONLY = {'baselines-sanity-registration-20261016.json': {'bxs-dynamo-hammer-rand-s1000-eval'}}
 PLACEMENT = Path('/home/ws/ws/splatter4d/runs/setup/baselines-placement-20261018.json')
 POOL = Path('/home/ws/ws/splatter4d/runs/setup/pool-placement.json')

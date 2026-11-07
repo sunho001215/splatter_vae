@@ -1,0 +1,122 @@
+2026-11-06 13:16:19 local full suite for arm4 release f7c07cc on MIG-c4ec2a95 (worktree .worktrees/arm4)
+[gpu_guard] FATAL: CUDA_VISIBLE_DEVICES entry 'MIG-c4ec2a95-3c8a-5c55-b4d0-c2e2f0d8cbb5' is not an allowed GPU UUID. Allowed: ['MIG-8da55219-bd6b-5260-8be1-3b2a76ac733c', 'MIG-c4ec2a95-30cc-5398-82bf-d9b11787fc70', 'MIG-423203d9-5801-5892-a489-30f16a5a2d4a', 'MIG-02b55a66-ed41-53c2-9004-c3f5619d6369', 'MIG-05a151e7-c6bd-5344-91cb-8bfb3a342631', 'MIG-b50e85c3-8498-5ef0-906e-5eda9db34b90', 'MIG-2ebd9e11-f2e0-5e22-870a-7779d44ec10a', 'MIG-c3511b41-5f78-52f1-9b93-9c6794cdbbdd'].
+Traceback (most recent call last):
+  File "/home/ws/ws/splatter4d/.worktrees/arm4/scripts/run_tests.py", line 139, in <module>
+    raise SystemExit(main())
+  File "/home/ws/ws/splatter4d/.worktrees/arm4/scripts/run_tests.py", line 78, in main
+    gpu_mapping = guard_gpus()
+  File "/home/ws/ws/splatter4d/.worktrees/arm4/scripts/_bootstrap.py", line 37, in guard_gpus
+    return enforce_allowed_gpus()
+  File "/home/ws/ws/splatter4d/.worktrees/arm4/ops/resources/gpu_guard.py", line 151, in enforce_allowed_gpus
+    entries = visible_device_uuids()
+  File "/home/ws/ws/splatter4d/.worktrees/arm4/ops/resources/gpu_guard.py", line 138, in visible_device_uuids
+    _die(f"CUDA_VISIBLE_DEVICES entry {item!r} is not an allowed GPU UUID. Allowed: {list(ALLOWED_GPU_UUIDS)}.")
+  File "/home/ws/ws/splatter4d/.worktrees/arm4/ops/resources/gpu_guard.py", line 75, in _die
+    raise GPUIsolationError(message)
+ops.resources.gpu_guard.GPUIsolationError: CUDA_VISIBLE_DEVICES entry 'MIG-c4ec2a95-3c8a-5c55-b4d0-c2e2f0d8cbb5' is not an allowed GPU UUID. Allowed: ['MIG-8da55219-bd6b-5260-8be1-3b2a76ac733c', 'MIG-c4ec2a95-30cc-5398-82bf-d9b11787fc70', 'MIG-423203d9-5801-5892-a489-30f16a5a2d4a', 'MIG-02b55a66-ed41-53c2-9004-c3f5619d6369', 'MIG-05a151e7-c6bd-5344-91cb-8bfb3a342631', 'MIG-b50e85c3-8498-5ef0-906e-5eda9db34b90', 'MIG-2ebd9e11-f2e0-5e22-870a-7779d44ec10a', 'MIG-c3511b41-5f78-52f1-9b93-9c6794cdbbdd'].
+exit 1
+2026-11-06 13:16:36 rerun with the correct UUID MIG-c4ec2a95-30cc-5398-82bf-d9b11787fc70 (first attempt rejected by the GPU guard: mistyped UUID; nothing ran)
+[gpu_guard] cuda:0 -> MIG-c4ec2a95-30cc-5398-82bf-d9b11787fc70 (NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition MIG 1g.24gb)
+........................................................................ [  3%]
+........................................................................ [  7%]
+........................................................................ [ 11%]
+........................................................................ [ 15%]
+........................................................................ [ 19%]
+........................................................................ [ 23%]
+........................................................................ [ 26%]
+........................................................................ [ 30%]
+........................................................................ [ 34%]
+........................................................................ [ 38%]
+........................................................................ [ 42%]
+........................................................................ [ 46%]
+........................................................................ [ 50%]
+........................................................................ [ 53%]
+........................................................................ [ 57%]
+........................................................................ [ 61%]
+........................................................................ [ 65%]
+........................................................................ [ 69%]
+........................................................................ [ 73%]
+........................................................................ [ 77%]
+........................................................................ [ 80%]
+........................................................................ [ 84%]
+........................................................................ [ 88%]
+........................................................................ [ 92%]
+........................................................................ [ 96%]
+......................................................................   [100%]
+=============================== warnings summary ===============================
+tests/test_baseline_representation.py: 1222 warnings
+tests/test_droid_crop.py: 580 warnings
+tests/test_droid_largescale.py: 294 warnings
+tests/test_heldout.py: 27 warnings
+tests/test_stop_step.py: 24 warnings
+  /home/ws/ws/splatter4d/.venv/lib/python3.10/site-packages/torch/utils/data/_utils/pin_memory.py:57: DeprecationWarning: The argument 'device' of Tensor.pin_memory() is deprecated. Please do not pass this argument. (Triggered internally at /pytorch/aten/src/ATen/native/Memory.cpp:46.)
+    return data.pin_memory(device)
+
+tests/test_baseline_representation.py: 1222 warnings
+tests/test_droid_crop.py: 580 warnings
+tests/test_droid_largescale.py: 294 warnings
+tests/test_heldout.py: 27 warnings
+tests/test_stop_step.py: 24 warnings
+  /home/ws/ws/splatter4d/.venv/lib/python3.10/site-packages/torch/utils/data/_utils/pin_memory.py:57: DeprecationWarning: The argument 'device' of Tensor.is_pinned() is deprecated. Please do not pass this argument. (Triggered internally at /pytorch/aten/src/ATen/native/Memory.cpp:31.)
+    return data.pin_memory(device)
+
+tests/test_baselines.py::test_reference_camera_convention_matches_our_projection
+  /home/ws/ws/splatter4d/.venv/lib/python3.10/site-packages/torch/functional.py:505: UserWarning: torch.meshgrid: in an upcoming release, it will be required to pass the indexing argument. (Triggered internally at /pytorch/aten/src/ATen/native/TensorShape.cpp:4381.)
+    return _VF.meshgrid(tensors, **kwargs)  # type: ignore[attr-defined]
+
+tests/test_baselines_snerl.py::test_heldout_semantic_ground_truth_is_native_stored_state_replay
+  /home/ws/ws/splatter4d/.venv/lib/python3.10/site-packages/gymnasium/utils/passive_env_checker.py:34: UserWarning: [33mWARN: A Box observation space maximum and minimum values are equal.[0m
+    logger.warn("A Box observation space maximum and minimum values are equal.")
+
+tests/test_baselines_snerl.py::test_heldout_semantic_ground_truth_is_native_stored_state_replay
+  /home/ws/ws/splatter4d/.venv/lib/python3.10/site-packages/gymnasium/utils/passive_env_checker.py:157: UserWarning: [33mWARN: The obs returned by the `reset()` method is not within the observation space.[0m
+    logger.warn(f"{pre} is not within the observation space.")
+
+tests/test_dreamer_v1.py: 8 warnings
+tests/test_flashsac.py: 14 warnings
+  /home/ws/ws/splatter4d/.venv/lib/python3.10/site-packages/torch/jit/_script.py:362: DeprecationWarning: `torch.jit.script_method` is deprecated. Please switch to `torch.compile` or `torch.export`.
+    warnings.warn(
+
+tests/test_dreamer_v1.py: 68 warnings
+  /home/ws/ws/splatter4d/.venv/lib/python3.10/site-packages/torch/jit/_script.py:1480: DeprecationWarning: `torch.jit.script` is deprecated. Please switch to `torch.compile` or `torch.export`.
+    warnings.warn(
+
+tests/test_masking_perframe.py::test_decoder_features_and_zero_initialised_branch_give_persistence
+  /home/ws/ws/splatter4d/.worktrees/arm4/tests/test_masking_perframe.py:192: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
+  Consider using tensor.detach() first. (Triggered internally at /pytorch/torch/csrc/autograd/generated/python_variable_methods.cpp:836.)
+    assert d.shape == (4, 6, 3) and float(d.abs().sum()) == 0.0
+
+tests/test_realworld_rgbd.py::test_panda_metadata_uses_recorded_calibration_and_timestamps
+  /home/ws/ws/splatter4d/.worktrees/arm4/tests/test_realworld_rgbd.py:259: UserWarning: panda: recorder task_name 'test' disagrees with the dataset folder 'test_panda_metadata_uses_recor0' (the folder decides the task)
+    meta = p.adapter.read_meta("panda")
+
+tests/test_realworld_rgbd.py::test_panda_drops_colour_frames_without_a_stereo_record
+  /home/ws/ws/splatter4d/.worktrees/arm4/tests/test_realworld_rgbd.py:340: UserWarning: panda: recorder task_name 'test' disagrees with the dataset folder 'test_panda_drops_colour_frames0' (the folder decides the task)
+    meta = panda_file.adapter.read_meta("panda")
+
+tests/test_realworld_rgbd.py::test_panda_drops_colour_frames_without_a_stereo_record
+  /home/ws/ws/splatter4d/.worktrees/arm4/s4d/realworld/pipeline.py:81: UserWarning: panda: recorder task_name 'test' disagrees with the dataset folder 'test_panda_drops_colour_frames0' (the folder decides the task)
+    meta = adapter.read_meta(episode_id)
+
+tests/test_realworld_rgbd.py::test_sensor_depth_local_runner_resumes_only_remaining_chunks
+  /home/ws/ws/splatter4d/.worktrees/arm4/s4d/realworld/pipeline.py:81: UserWarning: panda: recorder task_name 'test' disagrees with the dataset folder 'test_sensor_depth_local_runner0' (the folder decides the task)
+    meta = adapter.read_meta(episode_id)
+
+tests/test_workers.py::test_fork_safe_iteration_collects_freezes_only_while_forking_and_yields_the_same_batches
+  /home/ws/ws/splatter4d/.worktrees/arm4/tests/test_workers.py:42: FutureWarning: `torch.distributed.reduce_op` is deprecated, please use `torch.distributed.ReduceOp` instead
+    assert not any(isinstance(o, dict) and "tensor" in o and o.get("self") is o for o in gc.get_objects())
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+1870 passed, 4393 warnings in 911.56s (0:15:11)
+{
+  "counts": {
+    "passed": 1870,
+    "error": 0,
+    "failed": 0,
+    "skipped": 0
+  },
+  "total": 1870,
+  "exit_code": 0,
+  "full_suite_passed": true
+}
+exit 0

@@ -13,10 +13,15 @@ three times, EVERY consecutive reference frame inside the window span is at most
 after its predecessor (no window across a recording pause or a dropped reference frame, so the canonical times are
 evenly spaced; stricter than the former export, which checked only the three sampled frames against
 ``max_gap_factor * s`` periods), the three reference frames lie in one recording segment, and enough cameras are
-ELIGIBLE: synchronised at all three times (stored mutual nearest within
-``max_sync_ns``; a smaller loader bound filters further), the three frames in one recording segment and in one
-TrackEverything query window (the latest such window). All selected cameras must be eligible unless ``num_views`` is
-set, which then needs ``num_views`` eligible cameras and draws them per (index, epoch).
+ELIGIBLE: synchronised at all three times, the three frames in one recording segment and in one TrackEverything query
+window (the latest such window). Synchronised = criterion M5 (coordinator decision 2026-11-06, PREP2's sync review):
+the stored mutual nearest frame (no time cap; the cameras are free-running with constant phase offsets up to half a
+period) of a set whose robot-surface motion across its member timestamps (``sync/surface_disp_m``) is at most
+``max_set_motion_m`` (default 5 mm). ``sync_criterion="time"`` (the former raw time bound ``max_sync_ns`` on the
+stored offsets) exists only for stores written before schema 1.1.0 and must be asked for explicitly. ``max_sync_ns``
+bounds the per-camera robot <-> camera sync of the reference camera (at most the store's). All selected cameras must
+be eligible unless ``num_views`` is set, which then needs ``num_views`` eligible cameras and draws them per (index,
+epoch).
 ``validation_tail_frames`` labels windows lying entirely in the last frames ``validation`` and drops straddling ones.
 
 Targets per camera (moving ``track_motion`` tracks of the chosen query window, base-frame metres, never rescaled):
@@ -42,7 +47,7 @@ from s4d.data.droid.pointworld import project, track_targets
 from s4d.realworld.export import segment_motion, splat_score_given_motion
 from s4d.realworld.geometry import invert_T
 from s4d.realworld.tracking import VALID
-from s4d.realworld.train_store import CompactStore
+from s4d.realworld.train_store import MAX_SET_MOTION_M, CompactStore
 
 
 def stable_hash(*parts) -> int:
@@ -126,7 +131,11 @@ def camera_targets(pts, valid, seg, grip, gvis, K, w2c, depth, size: int) -> dic
 class RealworldWindowDataset(Dataset):
     def __init__(self, store, *, episodes=None, split: str = "train", strides=(1, 2), max_sync_ns: int | None = None,
                  max_gap_factor: float | None = 1.5, validation_tail_frames: int = 0, cameras=None,
-                 num_views: int | None = None, max_tracks: int | None = None, seed: int = 0, validate: bool = True):
+                 num_views: int | None = None, max_tracks: int | None = None, seed: int = 0, validate: bool = True,
+                 sync_criterion: str = "M5", max_set_motion_m: float = MAX_SET_MOTION_M):
+        if sync_criterion not in ("M5", "time"):
+            raise ValueError("sync_criterion must be 'M5' (robot motion) or 'time' (legacy stores only)")
+        self.sync_criterion, self.max_set_motion_m = sync_criterion, float(max_set_motion_m)
         if split not in ("train", "validation", "all"):
             raise ValueError("split must be train, validation or all")
         self.store = store if isinstance(store, CompactStore) else CompactStore(store)
@@ -138,10 +147,13 @@ class RealworldWindowDataset(Dataset):
             raise ValueError("num_views must be >= 1")
         self.epoch_tagged_indices = self.num_views is not None  # a new viewpoint draw per visit (trainer sampler)
         rows, self.cams = [], []
-        self.counts = {"windows_dropped_for_time_gaps": 0, "dropped_recording_segment": 0, "dropped_too_few_views": 0}
+        self.counts = {"windows_dropped_for_time_gaps": 0, "dropped_recording_segment": 0, "dropped_too_few_views": 0,
+                       "sync_criterion": sync_criterion, "max_set_motion_m": self.max_set_motion_m,
+                       "complete_sets": 0, "accepted_sets": 0}
         capacity = 1
         for e, ep in enumerate(self.episodes):
             ef = self.store.episode(ep)
+            ef.require_geometry()
             cams = list(cameras or ef.cameras)
             if self.num_views is None and self.cams and len(cams) != len(self.cams[0]):
                 raise ValueError("every episode must provide the same number of cameras (or set num_views)")
@@ -154,6 +166,19 @@ class RealworldWindowDataset(Dataset):
                 raise ValueError(f"{ep}: max_sync_ns {tol} exceeds the store's bound {ef.max_sync_ns}")
             sync = ef.sync()
             frames, err = sync["frames"][:, vidx], sync["error_ns"][:, vidx]
+            if sync_criterion == "M5":
+                if "surface_disp_m" not in sync:
+                    raise ValueError(f"{ep}: the store has no per-set robot motion (schema < 1.1.0); re-export "
+                                     "train_data, or ask for sync_criterion='time' explicitly")
+                accepted = sync["surface_disp_m"] <= self.max_set_motion_m
+                matched = (frames >= 0) & accepted[:, None]
+            else:
+                if "surface_disp_m" in sync:
+                    raise ValueError(f"{ep}: sync_criterion='time' is only for stores without per-set robot motion")
+                matched = (frames >= 0) & (err <= tol)
+            complete = (frames >= 0).all(1)
+            self.counts["complete_sets"] += int(complete.sum())
+            self.counts["accepted_sets"] += int((complete & matched.all(1)).sum())
             ref = ef.reference_camera
             robot = ef.robot(ref)
             tables = [ef.track_index(c) for c in cams]
@@ -161,7 +186,7 @@ class RealworldWindowDataset(Dataset):
                 capacity = max(capacity, int(np.diff(t["chunk_offset"]).max(initial=0)))
             windows, counts = enumerate_windows(
                 ef.timestamps(ref), ef.segments(ref), robot["ok"] & (robot["sync_err_ns"] <= tol), frames,
-                (frames >= 0) & (err <= tol), [ef.segments(c) for c in cams],
+                matched, [ef.segments(c) for c in cams],
                 [(t["chunk_frames"], t["chunk_query"]) for t in tables], strides=self.strides,
                 max_gap_factor=max_gap_factor, min_views=self.num_views or len(cams))
             for k, v in counts.items():

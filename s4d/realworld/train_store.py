@@ -1,4 +1,4 @@
-"""Compact real-world TRAINING store (schema ``s4d.realworld.train/1.0.0``; data-format policy of 2026-11-06).
+"""Compact real-world TRAINING store (schema ``s4d.realworld.train/1.1.0``; data-format policy of 2026-11-06).
 
 One HDF5 file per episode (``<out>/<episode_id>/episode.h5``, written through ``io.run_stage`` as the ``train_data``
 stage: fingerprinted completion record, atomic swap-in). Frames are stored ONCE per camera and timestamp; temporal
@@ -34,13 +34,27 @@ array is stored LOSSLESSLY: the values are exactly the resampled preprocessing o
                 chunk_frames (C,L) int32 (-1 pad), chunk_query (C,), chunk_offset (C+1,) rows of each chunk,
                 point_id (J,) int32 (camera- and chunk-local), xyz (J,L,3) float32 (NaN unless valid),
                 status (J,L) uint8 (``tracking.STATUS``), segment (J,L) int16 (-1 invalid), visibility/confidence f16
-    sync/   frames (F_ref,V) int32 (-1: no mutual nearest frame within max_sync_ns), error_ns (F_ref,V) int64,
+    sync/   frames (F_ref,V) int32: the MUTUAL nearest frame of every camera to each reference frame, no time cap
+            (-1: none; unique for any constant phase offset below half a period: the cameras are free-running),
+            error_ns (F_ref,V) int64 (|time offset| to the reference frame),
+            surface_disp_m (F_ref,) float64: the largest displacement of the robot's URDF surface between any two members
+            of the set (robot state interpolated to each member's timestamp; inf when a member has no valid robot
+            state); the loaders accept a set iff it is <= a configurable threshold (criterion M5, default 5 mm,
+            ``MAX_SET_MOTION_M``),
             gripper_visible (F_ref,V,G) bool: reference-time gripper FK points depth-tested (2 cm) against each
-            camera's native-resolution depth of its synchronised frame (the export's gripper visibility, exactly)
+            camera's native-resolution depth of its synchronised frame (the export's gripper visibility, exactly);
+            attrs: criterion, pairing, surface sampling, default threshold, per-episode set counts
     robot/  timestamps_ns, joint_positions, gripper_state[, ee_pose_base]   (the recorded trajectory, as normalized)
 
 Dense XYZ is never stored (depth + K + w2c reconstruct it); no window-level copies, no DINO features (SNeRL DINO
 targets are computed online by the trainer from the stored RGB: ``s4d.baselines.snerl.model.dino_target``).
+
+Episodes with a rejected/held/missing camera calibration carry ``layout=calibration_optional/1`` in the file,
+stage config and summary. Every RGB camera remains, with explicit ``calibration`` / ``calibration_status`` and
+``geometry_available`` attributes; cameras without geometry omit ``w2c``, ``depth`` and ``tracks``. The episode omits
+``sync/gripper_visible``. Robot FK points and M5 surface motion depend on robot kinematics only and remain valid.
+Readers refuse multi-view/geometry access to such episodes. Fully accepted episodes retain their existing bytes,
+config and fingerprint, so neither the writer version nor schema is bumped and no full re-export is needed.
 """
 
 from __future__ import annotations
@@ -64,8 +78,11 @@ from s4d.realworld.geometry import PixelAffine
 from s4d.realworld.tracking import NOT_TRACKED, VALID
 
 FORMAT = "s4d.realworld.train"
-SCHEMA_VERSION = "1.0.0"
-WRITER_VERSION = "1"
+SCHEMA_VERSION = "1.1.0"  # 1.1.0: cross-camera sets by mutual nearest WITHOUT a time cap + per-set robot motion (M5)
+WRITER_VERSION = "2"
+CALIBRATION_OPTIONAL_LAYOUT = "calibration_optional/1"  # only affected episodes; accepted exports stay byte-identical
+SYNC_CRITERION = "M5"
+MAX_SET_MOTION_M = 0.005  # M5 default: a set is accepted iff the robot surface moved <= 5 mm across its timestamps
 STAGE = "train_data"
 FILE = "episode.h5"
 IMAGE_SIZE = 128
@@ -126,14 +143,18 @@ def recording_segments(meta, stamps_ns: np.ndarray) -> np.ndarray:
     return (np.searchsorted(starts, np.asarray(stamps_ns, np.int64), side="right") - 1).astype(np.int16)
 
 
-def mutual_sync(stamps: list[np.ndarray], max_sync_ns: int) -> tuple[np.ndarray, np.ndarray]:
+def mutual_sync(stamps: list[np.ndarray], max_sync_ns: int | None = None) -> tuple[np.ndarray, np.ndarray]:
     """Frame sets over the reference (first) camera: ``frames`` (F_ref, V), the MUTUAL nearest frame of every camera
-    within ``max_sync_ns`` (else -1), and ``error_ns`` (F_ref, V) of the nearest frame. ``max_sync_ns`` must stay below
-    half the reference period so a match is unique (``depth_stages.frame_sets(allow_unmatched=True)`` rule)."""
+    (else -1), and ``error_ns`` (F_ref, V) of the nearest frame. Mutual nearest pairing is one-to-one by construction
+    and finds every pair of two free-running cameras whose constant phase offset is below half a period. Without
+    ``max_sync_ns`` there is no time cap (criterion M5: sets are then filtered by robot motion, ``set_surface_motion``);
+    a given cap must stay below half the reference period (``depth_stages.frame_sets(allow_unmatched=True)`` rule)."""
     from s4d.data.droid.pointworld import nearest_timestamps
 
     ref = np.asarray(stamps[0], np.int64)
-    if len(ref) > 1 and max_sync_ns >= float(np.median(np.diff(ref))) / 2:
+    if max_sync_ns is None:
+        max_sync_ns = np.iinfo(np.int64).max
+    elif len(ref) > 1 and max_sync_ns >= float(np.median(np.diff(ref))) / 2:
         raise ValueError(f"max_sync_ns {max_sync_ns} >= half the frame period: matches would not be unique")
     frames = np.full((len(ref), len(stamps)), -1, np.int32)
     error = np.zeros((len(ref), len(stamps)), np.int64)
@@ -145,6 +166,36 @@ def mutual_sync(stamps: list[np.ndarray], max_sync_ns: int) -> tuple[np.ndarray,
         ok = (error[:, v] <= max_sync_ns) & (back[j] == np.arange(len(ref)))
         frames[ok, v] = j[ok]
     return frames, error
+
+
+def set_surface_motion(surface_points, frames: np.ndarray, states: list, ok: list) -> np.ndarray:
+    """(F_ref,) largest displacement (m) of the robot surface between any two members of each set (``frames`` (F,V),
+    -1 = no member of camera v). ``states[v][f]`` is the robot state of camera v's frame f (joint positions, gripper
+    state; interpolated to that frame's timestamp), ``surface_points(state)`` -> (P, 3) base-frame URDF surface points,
+    ``ok[v][f]`` its validity. A set with an invalid member state is ``inf`` (never accepted); a single member is 0.
+    The quantity of the retired MapAnything static-scene rule (``max_set_motion_m``) and of PREP2's sync review."""
+    out = np.zeros(len(frames))
+    for k, row in enumerate(frames):
+        members = [(v, int(f)) for v, f in enumerate(row) if f >= 0]
+        if not all(ok[v][f] for v, f in members):
+            out[k] = np.inf
+            continue
+        pts = [np.asarray(surface_points(states[v][f]), np.float64) for v, f in members]
+        if not all(np.isfinite(x).all() for x in pts):  # a non-finite interpolated state is no valid state
+            out[k] = np.inf
+            continue
+        out[k] = max((float(np.linalg.norm(pts[a] - pts[b], axis=1).max())
+                      for a in range(len(pts)) for b in range(a + 1, len(pts))), default=0.0)
+    return out
+
+
+def sync_counts(frames: np.ndarray, disp: np.ndarray, max_set_motion_m: float = MAX_SET_MOTION_M) -> dict:
+    complete = (frames >= 0).all(1)
+    return {"reference_frames": int(len(frames)), "complete_sets": int(complete.sum()),
+            "accepted": int((complete & (disp <= max_set_motion_m)).sum()),
+            "rejected_motion": int((complete & np.isfinite(disp) & (disp > max_set_motion_m)).sum()),
+            "rejected_no_robot_state": int((complete & ~np.isfinite(disp)).sum()),
+            "max_set_motion_m": float(max_set_motion_m)}
 
 
 # ------------------------------------------------------------------------------------------------ writer
@@ -216,16 +267,21 @@ def _camera_tracks(root, episode_id, cam, stamps) -> dict:
 
 def write_episode(root: Path, episode_id: str, out_dir: Path, *, task: str | None = None, depth_stage: str | None = None,
                   semantic: bool | None = None, max_sync_ns: int | None = None, gripper_points: int = 32,
-                  image_size: int = IMAGE_SIZE, chunk: int = 16, allow_mock: bool = False, force: bool = False) -> dict:
+                  image_size: int = IMAGE_SIZE, chunk: int = 16, allow_mock: bool = False, force: bool = False,
+                  cross_camera_cap_ns: int | None = None, max_set_motion_m: float = MAX_SET_MOTION_M) -> dict:
     """Write the compact training store of one processed episode root into ``out_dir`` (stage ``train_data``).
 
     Inputs (complete, validated stage records of ``root``): ingest (normalized frames, timestamps, robot trajectory),
     ``depth_stage`` (default: the FoundationStereo IR depth on the colour grid), ``calibrate`` (accepted T_cam_base),
     ``track2d``/``lift3d`` (TrackEverything) and ``track_motion``; ``sam3_masks`` when ``semantic`` (default: when its
-    record exists). ``max_sync_ns`` bounds the stored cross-camera frame sets (default: a third of the reference period,
-    as the window export) and the robot-state sync. ``task`` defaults to the dataset folder of the recording (the
-    adapter's task identity). Cameras without an accepted calibration, metric depth or lifted tracks are excluded and
-    listed."""
+    record exists). ``max_sync_ns`` is the per-camera ROBOT <-> camera sync tolerance (default: a third of the reference
+    period, as the window export); it no longer bounds the cross-camera sets: those pair mutual nearest frames without a
+    time cap (``cross_camera_cap_ns`` None) and store each set's robot-surface motion (criterion M5; the loaders accept
+    a set iff it is <= their threshold, default ``max_set_motion_m`` 5 mm, which also sets the recorded counts).
+    ``task`` defaults to the dataset folder of the recording (the adapter's task identity). Cameras without an accepted
+    calibration retain RGB and robot sync under ``CALIBRATION_OPTIONAL_LAYOUT``. Geometry fields are omitted for
+    those cameras; multi-view and geometric consumers must refuse them. Fully accepted episodes keep the existing
+    layout and fingerprint (including the existing metric-depth/track eligibility rules)."""
     from s4d.data.droid.pointworld import depth_test
     from s4d.realworld.depth_stages import load_view_depth
     from s4d.realworld.export import motion_target_source
@@ -253,25 +309,37 @@ def write_episode(root: Path, episode_id: str, out_dir: Path, *, task: str | Non
     if semantic:
         names.append("sam3_masks")
     records = {k: rio.read_record(rio.stage_dir(root, episode_id, k)) for k in names}
-    missing = [k for k, v in records.items() if v is None] + ([] if norm else ["ingest"])
+    views = camera_views(meta)
+    calibration = {v.stream_id: accepted_calibration(root, episode_id, v.stream_id) for v in views}
+    partial = any(calibration[v.stream_id] is None for v in views)
+    required = ["calibrate", *(["sam3_masks"] if semantic else [])] if partial else names
+    missing = [k for k in required if records[k] is None] + ([] if norm else ["ingest"])
     if missing:
         raise RuntimeError(f"{STAGE} needs complete upstream stages: {missing}")
     mock = any('"is_mock": true' in json.dumps(r, default=str) for r in records.values())
     if mock and not allow_mock:
         raise RuntimeError("upstream stages used MOCK model outputs; refusing to write training data (allow_mock=False)")
-    excluded, chosen = {}, []
-    for view in camera_views(meta):
+    excluded, chosen, geometry = {}, [], set()
+    for view in views:
         cam = view.stream_id
-        if accepted_calibration(root, episode_id, cam) is None:
-            excluded[view.rig_id] = "calibration missing or rejected"
+        reason = None
+        if calibration[cam] is None:
+            reason = "calibration missing or rejected"
         elif meta.rig_rgbd(view.rig_id).status != "metric":
-            excluded[view.rig_id] = "no metric depth"
-        elif "chunks" not in records["lift3d"]["summary"].get(cam, {}):
-            excluded[view.rig_id] = "no lifted tracks"
+            reason = "no metric depth"
+        elif "chunks" not in ((records["lift3d"] or {}).get("summary") or {}).get(cam, {}):
+            reason = "no lifted tracks"
         elif meta.stream(cam).modality != "rgb":
-            excluded[view.rig_id] = f"modality {meta.stream(cam).modality} (training images are RGB)"
-        else:
+            reason = f"modality {meta.stream(cam).modality} (training images are RGB)"
+        if reason is None:
+            missing = [k for k in names if records[k] is None]
+            if missing:
+                raise RuntimeError(f"{STAGE} needs complete upstream stages: {missing}")
+            geometry.add(cam)
+        if reason is None or partial and meta.stream(cam).modality == "rgb":
             chosen.append(view)
+        else:
+            excluded[view.rig_id] = reason
     if not chosen:
         raise RuntimeError(f"no camera for the training store: {excluded}")
     chosen.sort(key=lambda v: v.rig_id)
@@ -280,8 +348,12 @@ def write_episode(root: Path, episode_id: str, out_dir: Path, *, task: str | Non
         max_sync_ns = int(np.median(np.diff(ref_stamps)) // 3) if len(ref_stamps) > 1 else 0
     config = {"task": task, "depth_stage": depth_stage, "semantic": bool(semantic), "max_sync_ns": int(max_sync_ns),
               "gripper_points": int(gripper_points), "image_size": int(image_size), "schema": SCHEMA_VERSION,
-              "writer_version": WRITER_VERSION, "allow_mock": bool(allow_mock)}
-    inputs = {"ingest": rio.build_id(norm), **{k: rio.build_id(v) for k, v in records.items()}}
+              "writer_version": WRITER_VERSION, "allow_mock": bool(allow_mock), "sync_criterion": SYNC_CRITERION,
+              "cross_camera_cap_ns": None if cross_camera_cap_ns is None else int(cross_camera_cap_ns),
+              "max_set_motion_m": float(max_set_motion_m)}
+    if partial:
+        config["layout"] = CALIBRATION_OPTIONAL_LAYOUT
+    inputs = {"ingest": rio.build_id(norm), **{k: rio.build_id(v) for k, v in records.items() if v is not None}}
 
     def build(tmp: Path) -> dict:
         t_start = time.perf_counter()
@@ -292,7 +364,7 @@ def write_episode(root: Path, episode_id: str, out_dir: Path, *, task: str | Non
         pool_link = np.concatenate([[n] * len(geom.surface.link_points[n]) for n in links])
         pick = rng.choice(len(pool), min(gripper_points, len(pool)), replace=False)
         source = meta.provenance.source_files[0] if meta.provenance.source_files else None
-        timing = {}
+        timing, calibration_status = {}, {}
         with h5py.File(tmp / FILE, "x") as f:
             f.attrs.update(
                 format=FORMAT, schema_version=SCHEMA_VERSION, writer_version=WRITER_VERSION,
@@ -305,19 +377,22 @@ def write_episode(root: Path, episode_id: str, out_dir: Path, *, task: str | Non
                 conventions=json.dumps(CONVENTIONS), rgb_resample=RGB_RESAMPLE, nearest_resample=NEAREST_RESAMPLE,
                 semantic_classes=json.dumps(SEMANTIC_CLASSES if semantic else []),
                 upstream=json.dumps(inputs), depth_stage=depth_stage,
-                models=json.dumps({depth_stage: records[depth_stage]["summary"].get("model"),
-                                   "track2d": {"tracker": records["track2d"]["config"].get("tracker"),
-                                               "worker": records["track2d"]["config"].get("worker")},
+                models=json.dumps({depth_stage: (records[depth_stage] or {}).get("summary", {}).get("model"),
+                                   "track2d": {"tracker": (records["track2d"] or {}).get("config", {}).get("tracker"),
+                                               "worker": (records["track2d"] or {}).get("config", {}).get("worker")},
                                    **({"sam3_masks": {c: s.get("model") for c, s in records["sam3_masks"]["summary"]
                                                       .items() if isinstance(s, dict)}} if semantic else {})},
                                   default=str),
-                track_source=(motion_target_source(records["track2d"], depth_stage) + "; ONLY tracks classified "
+                track_source=((motion_target_source(records["track2d"], depth_stage) if geometry else
+                               "unavailable") + "; ONLY tracks classified "
                               "moving by track_motion, full valid trajectories with their motion segments"),
                 gripper_target=f"{len(pick)} surface points of the URDF gripper links {links} via FK at the "
                                "camera frame's interpolated robot state (seed-0 sample, as the window export)",
                 probe_state="panda flange xyz (m), flange euler xyz (rad, scipy 'xyz'), gripper closure in [0,1] "
                             "(0 open; recorded state through the URDF joint range)",
                 max_sync_ns=int(max_sync_ns), MOCK_MODEL_OUTPUTS=bool(mock))
+            if partial:
+                f.attrs["layout"] = CALIBRATION_OPTIONAL_LAYOUT
             tr = meta.trajectory
             g = f.create_group("robot")
             g.create_dataset("timestamps_ns", data=tr.timestamps_ns.astype(np.int64))
@@ -330,7 +405,7 @@ def write_episode(root: Path, episode_id: str, out_dir: Path, *, task: str | Non
                            ee_frame=str(tr.ee_frame), gripper_model=r.gripper_model,
                            gripper_state_semantics=r.gripper_state_semantics, urdf_sha256=json.dumps(r.asset_sha256),
                            robot_sync_max_ns=int(max_sync_ns))
-            stamps_all = []
+            stamps_all, states_all, ok_all = [], [], []
             for view in chosen:
                 cam, rig = view.stream_id, view.rig_id
                 t0 = time.perf_counter()
@@ -340,27 +415,41 @@ def write_episode(root: Path, episode_id: str, out_dir: Path, *, task: str | Non
                 n, H, W = len(stamps), s.intrinsics.height, s.intrinsics.width
                 box = square_box(H, W)
                 aff = box_affine(box, image_size)
-                _, _, K_nat = load_view_depth(root, episode_id, cam, [0], depth_stage)
+                has_geometry = cam in geometry
+                if has_geometry:
+                    _, _, K_nat = load_view_depth(root, episode_id, cam, [0], depth_stage)
+                else:
+                    K_nat = s.intrinsics.K()
                 w2c = accepted_calibration(root, episode_id, cam)
                 cg = f.create_group(f"cameras/{rig}")
-                cal = json.loads((rio.stage_dir(root, episode_id, "calibrate") / f"{rio.safe_name(cam)}.json").read_text())
+                cal_path = rio.stage_dir(root, episode_id, "calibrate") / f"{rio.safe_name(cam)}.json"
+                cal = json.loads(cal_path.read_text()) if cal_path.is_file() else {"status": "missing"}
+                calibration_status[rig] = cal["status"]
                 cg.attrs.update(stream_id=cam, rig_id=rig, modality=s.modality, channel_order="RGB",
                                 native_hw=[H, W], depth_stage=depth_stage,
                                 calibration=json.dumps({"status": cal["status"], "reasons": cal.get("reasons"),
                                                         "init": cal.get("init_method")}, default=str))
+                if partial:
+                    cg.attrs.update(calibration_status=cal["status"], geometry_available=has_geometry)
                 cg.create_dataset("timestamps_ns", data=stamps)
                 cg.create_dataset("segment", data=recording_segments(meta, stamps))
                 cg.create_dataset("K_native", data=np.asarray(K_nat, np.float64))
                 cg.create_dataset("K", data=aff.apply_K(K_nat))
                 cg.create_dataset("affine", data=aff.matrix())
                 cg.create_dataset("crop_box", data=np.array([box.x0, box.y0, box.side], np.int64))
-                cg.create_dataset("w2c", data=np.asarray(w2c, np.float64))
+                if has_geometry:
+                    cg.create_dataset("w2c", data=np.asarray(w2c, np.float64))
                 S = int(image_size)
                 rgb_ds = cg.create_dataset("rgb", (n, S, S, 3), np.uint8, chunks=(1, S, S, 3), **GZIP)
-                dep_ds = cg.create_dataset("depth", (n, S, S), np.float32, chunks=(1, S, S), shuffle=True, **GZIP)
-                if semantic:
+                if has_geometry:
+                    dep_ds = cg.create_dataset("depth", (n, S, S), np.float32, chunks=(1, S, S), shuffle=True, **GZIP)
+                sem_path = rio.stage_dir(root, episode_id, "sam3_masks") / f"{rio.safe_name(cam)}.h5"
+                camera_semantic = bool(semantic and sem_path.is_file())
+                if semantic and not camera_semantic and has_geometry:
+                    raise RuntimeError(f"{cam}: missing semantic masks")
+                if camera_semantic:
                     sem_ds = cg.create_dataset("semantic", (n, S, S), np.uint8, chunks=(1, S, S), **GZIP)
-                    sem_file = h5py.File(rio.stage_dir(root, episode_id, "sam3_masks") / f"{rio.safe_name(cam)}.h5", "r")
+                    sem_file = h5py.File(sem_path, "r")
                     if json.loads(sem_file.attrs.get("class_names", json.dumps(SEMANTIC_CLASSES))) != list(SEMANTIC_CLASSES):
                         raise RuntimeError(f"{cam}: unexpected semantic classes")
                     cg.create_dataset("class_present", data=sem_file["class_present"][:].astype(bool))
@@ -371,17 +460,20 @@ def write_episode(root: Path, episode_id: str, out_dir: Path, *, task: str | Non
                         if frames.shape[1:] != (H, W, 3):
                             raise RuntimeError(f"{cam}: frames {frames.shape} are not RGB {H}x{W}")
                         rgb_ds[start:start + len(idx)] = np.stack([CR.crop_rgb(im, box, S) for im in frames])
-                        depth, valid, _ = load_view_depth(root, episode_id, cam, idx, depth_stage)
-                        depth = training_depth(depth, valid)
-                        dep_ds[start:start + len(idx)] = np.stack([nearest_resample(d, box, S) for d in depth])
-                        if semantic:
+                        if has_geometry:
+                            depth, valid, _ = load_view_depth(root, episode_id, cam, idx, depth_stage)
+                            depth = training_depth(depth, valid)
+                            dep_ds[start:start + len(idx)] = np.stack([nearest_resample(d, box, S) for d in depth])
+                        if camera_semantic:
                             sem_ds[start:start + len(idx)] = np.stack([nearest_resample(sem_file["semantic"][i], box, S)
                                                                        for i in idx])
                 finally:
-                    if semantic:
+                    if camera_semantic:
                         sem_file.close()
                 # robot state at this camera's frame times (the window export's rule at the reference camera)
                 q, gs, ok, err = robot_state_at(meta, stamps, max_sync_ns)
+                states_all.append(list(zip(q, gs)))
+                ok_all.append(np.asarray(ok, bool))
                 grip = np.zeros((n, len(pick), 3), np.float32)
                 probe = np.zeros((n, 7), np.float32)
                 for k in range(n):
@@ -397,22 +489,29 @@ def write_episode(root: Path, episode_id: str, out_dir: Path, *, task: str | Non
                 rg.create_dataset("gripper_state", data=np.asarray(gs, np.float64), **GZIP)
                 rg.create_dataset("probe_state", data=probe, **GZIP)
                 rg.create_dataset("gripper_points", data=grip, shuffle=True, **GZIP)
-                tracks = _camera_tracks(root, episode_id, cam, stamps)
-                tg = cg.create_group("tracks")
-                tg.attrs["chunk_names"] = json.dumps(tracks.pop("_names"))
-                for key, arr in tracks.items():
-                    big = arr.ndim >= 2 and arr.size > 64
-                    tg.create_dataset(key, data=arr, **({**GZIP, "shuffle": True} if big else {}))
+                if has_geometry:
+                    tracks = _camera_tracks(root, episode_id, cam, stamps)
+                    tg = cg.create_group("tracks")
+                    tg.attrs["chunk_names"] = json.dumps(tracks.pop("_names"))
+                    for key, arr in tracks.items():
+                        big = arr.ndim >= 2 and arr.size > 64
+                        tg.create_dataset(key, data=arr, **({**GZIP, "shuffle": True} if big else {}))
                 timing[rig] = round(time.perf_counter() - t0, 2)
-            frames_sync, err_sync = mutual_sync(stamps_all, int(max_sync_ns))
+            frames_sync, err_sync = mutual_sync(stamps_all, cross_camera_cap_ns)
+            disp = set_surface_motion(lambda st: geom.surface.points(geom.q(st[0], st[1]))[0], frames_sync,
+                                      states_all, ok_all)
+            counts = sync_counts(frames_sync, disp, max_set_motion_m)
             sg = f.create_group("sync")
             sg.create_dataset("frames", data=frames_sync)
             sg.create_dataset("error_ns", data=err_sync)
+            sg.create_dataset("surface_disp_m", data=disp.astype(np.float64))  # float64: counts == loaders exactly
             # gripper FK points at the reference frame times, depth-tested (2 cm) against each camera's NATIVE-resolution
             # depth of its synchronised frame: the window export's gripper visibility, kept exactly (G bits per set)
             ref_grip = f[f"cameras/{chosen[0].rig_id}/robot/gripper_points"][:]
             gvis = np.zeros((len(frames_sync), len(chosen), len(pick)), bool)
             for v, view in enumerate(chosen):
+                if view.stream_id not in geometry:
+                    continue
                 K_nat = f[f"cameras/{view.rig_id}/K_native"][:].astype(np.float32)
                 w2c = f[f"cameras/{view.rig_id}/w2c"][:].astype(np.float32)
                 rows = np.flatnonzero(frames_sync[:, v] >= 0)
@@ -422,18 +521,30 @@ def write_episode(root: Path, episode_id: str, out_dir: Path, *, task: str | Non
                     depth = np.where(valid, depth, 0.0).astype(np.float32)
                     for k, t in enumerate(sel):
                         gvis[t, v] = depth_test(ref_grip[t], K_nat, w2c, depth[k], continuous=True)[0]
-            sg.create_dataset("gripper_visible", data=gvis, **GZIP)
+            if len(geometry) == len(chosen):
+                sg.create_dataset("gripper_visible", data=gvis, **GZIP)
+            n_points = int(sum(len(x) for x in geom.surface.link_points.values()))
             sg.attrs.update(reference_camera=chosen[0].rig_id, cameras=json.dumps([v.rig_id for v in chosen]),
-                            max_sync_ns=int(max_sync_ns),
-                            policy="mutual nearest frame of every camera within max_sync_ns of the reference frame")
+                            robot_sync_max_ns=int(max_sync_ns), criterion=SYNC_CRITERION,
+                            cross_camera_cap_ns=-1 if cross_camera_cap_ns is None else int(cross_camera_cap_ns),
+                            default_max_set_motion_m=float(max_set_motion_m), counts=json.dumps(counts),
+                            policy=("M5: mutual nearest frame of every camera to the reference frame, no time cap; a set "
+                                    "is accepted iff surface_disp_m (largest URDF-surface displacement between any two "
+                                    "members, robot state interpolated to each member's timestamp) <= the loader's "
+                                    f"threshold (default {max_set_motion_m} m)"),
+                            surface=f"RobotGeometry URDF surface, {n_points} points over "
+                                    f"{len(geom.surface.link_points)} links (seed 0)")
         sizes = component_sizes(tmp / FILE)
         return {"format": FORMAT, "schema_version": SCHEMA_VERSION, "writer_version": WRITER_VERSION,
                 "code_commit": _code_commit(), "task": task, "cameras": [v.rig_id for v in chosen],
                 "excluded_cameras": excluded, "frames": {v.rig_id: len(t) for v, t in zip(chosen, stamps_all)},
-                "sync_sets": int((frames_sync >= 0).all(1).sum()), "semantic": bool(semantic),
+                "sync_sets": int((frames_sync >= 0).all(1).sum()), "sync": {"criterion": SYNC_CRITERION, **counts},
+                "semantic": bool(semantic),
                 "moving_tracks": sizes.pop("_tracks"), "bytes": sizes, "file_bytes": (tmp / FILE).stat().st_size,
                 "file_sha256": rio.sha256_file(tmp / FILE), "write_seconds": round(time.perf_counter() - t_start, 2),
-                "camera_seconds": timing, "mock": bool(mock)}
+                "camera_seconds": timing, "mock": bool(mock),
+                **({"layout": CALIBRATION_OPTIONAL_LAYOUT, "calibration_status": calibration_status}
+                   if partial else {})}
 
     return rio.run_stage(out_dir, stage=STAGE, version=WRITER_VERSION, config=config, inputs=inputs, build=build,
                          force=force)
@@ -472,7 +583,9 @@ def manifest_fields(record: dict) -> dict:
     return {"stage": STAGE, "format": s["format"], "schema_version": s["schema_version"],
             "writer_version": s["writer_version"], "code_commit": s["code_commit"], "fingerprint": record["fingerprint"],
             "build_id": record["build_id"], "file": FILE, "file_bytes": s["file_bytes"], "file_sha256": s["file_sha256"],
-            "cameras": s["cameras"], "frames": s["frames"], "semantic": s["semantic"], "inputs": record["inputs"]}
+            "cameras": s["cameras"], "frames": s["frames"], "semantic": s["semantic"], "inputs": record["inputs"],
+            "sync": s.get("sync"),
+            **({k: s[k] for k in ("layout", "calibration_status")} if "layout" in s else {})}
 
 
 # ------------------------------------------------------------------------------------------------ reader
@@ -500,6 +613,7 @@ class EpisodeFile:
         self.max_sync_ns = int(f.attrs["max_sync_ns"])
         self.has_semantic = all("semantic" in f[f"cameras/{c}"] for c in self.cameras)
         self.raw_recording = str(f.attrs["raw_recording"])
+        self.raw_sha256 = str(f.attrs.get("raw_sha256") or "")
         self.mock = bool(f.attrs.get("MOCK_MODEL_OUTPUTS", False))
         self.close()
 
@@ -582,7 +696,27 @@ class EpisodeFile:
         m = self._small(("A", cam), lambda: self._cam(cam)["affine"][:])
         return PixelAffine(float(m[0, 0]), float(m[1, 1]), float(m[0, 2]), float(m[1, 2]))
 
+    def geometry_problems(self) -> list[str]:
+        """Explicit calibration/geometry holds; legacy accepted stores need no new marker."""
+        problems = []
+        for cam in self.cameras:
+            g = self._cam(cam)
+            cal = json.loads(g.attrs.get("calibration", "{}"))
+            status = g.attrs.get("calibration_status", cal.get("status"))
+            partial = self.file.attrs.get("layout") == CALIBRATION_OPTIONAL_LAYOUT
+            if (status is not None or partial) and status != "accepted":
+                problems.append(f"{cam}: calibration {status}")
+            elif not bool(g.attrs.get("geometry_available", True)):
+                problems.append(f"{cam}: geometry unavailable")
+        return problems
+
+    def require_geometry(self) -> None:
+        problems = self.geometry_problems()
+        if problems:
+            raise ValueError(f"{self.path}: geometry held: {'; '.join(problems)}")
+
     def w2c(self, cam: str) -> np.ndarray:
+        self.require_geometry()
         return self._small(("w2c", cam), lambda: self._cam(cam)["w2c"][:])
 
     def robot(self, cam: str) -> dict:
@@ -594,10 +728,12 @@ class EpisodeFile:
         return self._small("traj", lambda: {k: v[:] for k, v in self.file["robot"].items()})
 
     def tracks(self, cam: str) -> dict:
+        self.require_geometry()
         return self._small(("tracks", cam), lambda: {k: v[:] for k, v in self._cam(cam)["tracks"].items()})
 
     def track_index(self, cam: str) -> dict:
         """The chunk tables only (frames, query frame, row offsets of each TrackEverything query window)."""
+        self.require_geometry()
         return self._small(("tindex", cam), lambda: {k: self._cam(cam)["tracks"][k][:]
                                                      for k in ("chunk_frames", "chunk_query", "chunk_offset")})
 
@@ -703,6 +839,27 @@ class CompactStore:
 
     def raw_recording(self, ep):
         return self._files[ep].raw_recording
+
+    def raw_sha256(self, ep):
+        return self._files[ep].raw_sha256
+
+    def sync_sets(self, ep) -> dict:
+        """The stored cross-camera sets of an episode: ``cameras`` (store order), ``frames`` (F_ref,V), ``times`` of the
+        reference frames, ``surface_disp_m`` (F_ref,). Refuses stores written before schema 1.1.0 (no per-set robot
+        motion: re-export train_data) and episodes with held camera calibration/geometry."""
+        ef = self.episode(ep)
+        ef.require_geometry()
+        sync = ef.sync()
+        if "surface_disp_m" not in sync:
+            raise ValueError(f"{ep}: training store schema {ef.attrs().get('schema_version')} has no per-set robot "
+                             "motion (sync/surface_disp_m); re-export train_data (schema >= 1.1.0)")
+        return {"cameras": list(ef.cameras), "frames": sync["frames"], "surface_disp_m": sync["surface_disp_m"]}
+
+    def upstream(self, ep) -> dict:
+        """{stage: build id} of the preprocessing outputs this episode file was built from (attribute ``upstream``;
+        geometry-dependent consumers compare its ``calibrate`` with the validated calibration)."""
+        raw = self.episode(ep).attrs().get("upstream") or "{}"
+        return json.loads(raw.decode() if isinstance(raw, bytes) else raw)
 
 
 def verify_snerl_teacher(device: str = "cpu", image: np.ndarray | None = None) -> dict:

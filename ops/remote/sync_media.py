@@ -84,8 +84,13 @@ def backup_candidates(state: dict, client: RemoteClient, queue_jobs: list[dict])
     return sorted(found, key=lambda job_id: job_id not in needed_locally)
 
 
+def required_backup_files(current: dict) -> list[str]:
+    """Every file the scheduler compares when completing this job's local backup."""
+    return sorted(set(current.get("required_results", [])) | set((current.get("remote_verified") or {}).get("files", {})))
+
+
 def required_checkpoints(current: dict) -> list[str]:
-    return [name for name in current.get("required_results", []) if Path(name).parts[0] == "checkpoints"]
+    return [name for name in required_backup_files(current) if Path(name).parts[0] == "checkpoints"]
 
 
 def candidates(state: dict, client: RemoteClient) -> tuple[list[str], list[str]]:
@@ -168,7 +173,8 @@ def main() -> int:
                 if scope == "backup":  # the final essential copy with only the required weights (the rest: "checkpoints")
                     weights_needed = required_checkpoints(state[run_id])
                     result = client.sync_results(run_id, checkpoints=bool(weights_needed), final=True, wait=False,
-                                                 scope=jobs.ESSENTIAL, only_checkpoints=weights_needed or None)
+                                                 scope=jobs.ESSENTIAL, only_checkpoints=weights_needed or None,
+                                                 required_files=required_backup_files(state[run_id]))
                 else:
                     result = client.sync_results(run_id, final=is_final, wait=False, scope=scope)
                 entry.update(ok=True, files=len(result["files"]))

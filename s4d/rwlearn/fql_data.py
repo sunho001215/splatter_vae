@@ -1,4 +1,5 @@
-"""FQL datasets on top of frozen representation baselines (design: docs/realworld_fql.md).
+"""FQL datasets on top of frozen representation baselines, and the transitions of the end-to-end CNN condition
+(design: docs/realworld_fql.md).
 
 ``build_fql_dataset`` runs a baseline's FROZEN encoder export once over the training store and writes, per episode
 and timeline, one feature vector per observation time (per camera frame for single-view encoders, per synchronised
@@ -15,7 +16,13 @@ views and 3D-MVP fuses them, so their order is irrelevant).
 Policy input = the campaign's frozen-encoder adapter (``FrameMLPStackHead`` over the 3-frame stack, or
 ``SmallPostEncoderMLPHead`` for SinCro's fused state; 256-d, trainable) concatenated with the 10-d proprioception
 (``actions`` module docstring); one adapter instance per FQL network, as the official agent gives every network its
-own encoder.
+own encoder. The ``e2e_cnn`` condition has no frozen encoder: its dataset holds the same transitions without features
+and ``s4d.rwlearn.pixel.OfflinePixelTransitions`` reads the store's RGB frames for a jointly trained IMPALA CNN.
+
+Action contract (audited; user decision 2026-11-06 ~11:20): the recorded ``action/flange_pose`` is the pose command
+actually SENT; the action is the command-based base-frame flange delta pose (rotation vector) + the CONTINUOUS gripper
+closure command (2c - 1), never a measured displacement and never binarised (``s4d.rwlearn.actions``; pinned by
+tests/test_rwlearn_actions.py). Outcomes: every recording is a successful demonstration (``s4d.rwlearn.outcomes``).
 """
 
 from __future__ import annotations
@@ -40,24 +47,38 @@ FRAME_STACK = 3
 
 @dataclass(frozen=True)
 class Condition:
-    encoder_type: str
+    encoder_type: str | None  # None: no frozen encoder (end-to-end CNN trained jointly with FQL)
     views: int
     depth: bool
     cameras: bool
     label: str
+    extra_inputs: str = "none"  # observation inputs beyond the single-view reference (1 RGB view + proprio)
 
     @property
     def multiview(self) -> bool:
         return self.views > 1
 
+    @property
+    def inputs(self) -> str:
+        v = "3 synchronised RGB views" if self.multiview else "1 RGB view (random camera per sample)"
+        return v + (" + depth" if self.depth else "") + (" + K, c2w" if self.cameras else "") + \
+            " + 10-d proprio, 3-step history"
 
+
+SINGLE_VIEW_REFERENCE = "1 RGB view (one random camera per sample, fixed for the history and next obs) + 10-d proprio"
 CONDITIONS = {
     "dynamo": Condition("dynamo", 1, False, False, "DynaMo, single RGB"),
     "reviwo": Condition("reviwo", 1, False, False, "ReViWo, single RGB"),
     "sincro": Condition("sincro", 1, False, False, "SinCro, single RGB"),
-    "snerl": Condition("snerl", 3, False, True, "SNeRL, multi-view RGB + poses (privileged)"),
-    "mvp3d_multiview": Condition("mvp3d", 3, True, True, "3D-MVP A, multi-view RGB-D + extrinsics (privileged)"),
-    "mvp3d_single": Condition("mvp3d", 1, True, True, "3D-MVP B, single RGB-D + extrinsics (privileged)"),
+    "snerl": Condition("snerl", 3, False, True, "SNeRL, native multi-view RGB + camera poses (privileged inputs)",
+                       "+2 RGB views (all 3 synchronised cameras) and the 3 camera poses (calibrated extrinsics, "
+                       "normalised c2w): SNeRL's native multi-view condition"),
+    "mvp3d_multiview": Condition("mvp3d", 3, True, True, "3D-MVP A, multi-view RGB-D + extrinsics (privileged)",
+                                 "+2 RGB views, depth of all 3, intrinsics + extrinsics (fused point cloud)"),
+    "mvp3d_single": Condition("mvp3d", 1, True, True, "3D-MVP B, single RGB-D + extrinsics (privileged)",
+                              "+depth of the view, its intrinsics + extrinsics"),
+    "e2e_cnn": Condition(None, 1, False, False, "End-to-end IMPALA-small CNN, random init, trained jointly with FQL "
+                                                "(official FQL pixel handling), single RGB"),
 }
 
 
@@ -66,6 +87,16 @@ def sha256_file(path) -> str:
     with open(path, "rb") as f:
         while block := f.read(1 << 22):
             h.update(block)
+    return h.hexdigest()
+
+
+def rgb_digest(store: FrameStore, ep: str, cam: str, frames, chunk: int = 64) -> str:
+    """sha256 over the uint8 RGB frames ``frames`` of one camera, in order (shape-tagged, read in chunks)."""
+    h = hashlib.sha256()
+    frames = np.asarray(frames)
+    h.update(json.dumps([int(len(frames)), list(store.image_hw)]).encode())
+    for s0 in range(0, len(frames), chunk):
+        h.update(np.ascontiguousarray(np.asarray(store.rgb(ep, cam, frames[s0:s0 + chunk]), np.uint8)).tobytes())
     return h.hexdigest()
 
 
@@ -117,59 +148,88 @@ def encode_timeline(adapter, store: FrameStore, ep: str, tl, *, device, chunk: i
 
 def build_fql_dataset(store: FrameStore, condition: str, export_path, out: Path, *, episodes: list[str],
                       reward: str = "ogbench_final_success", device="cpu", max_sync_ns: int = 30_000_000,
-                      raw_paths: dict | None = None, outcomes: dict | None = None,
-                      assume_final_success: bool = False) -> dict:
+                      raw_paths: dict | None = None, outcomes=None, assume_final_success: bool = False) -> dict:
     """Write ``out`` (atomic). ``raw_paths`` optionally maps episode -> raw recording path (else the store's).
-    Outcomes are explicit: ``outcomes[ep]`` (True = successful demonstration) for every episode, or
-    ``assume_final_success`` (every recording is a successful demonstration; the files carry no outcome marker)."""
-    bad = {ep: v for ep, v in (outcomes or {}).items() if not isinstance(v, bool)}
-    if bad:
-        raise ValueError(f"outcome labels must be JSON booleans, got {dict(list(bad.items())[:3])}")
-    missing = [ep for ep in episodes if ep not in (outcomes or {})]
+    Outcomes are explicit: an ``rw-outcomes`` document (``s4d.rwlearn.outcomes.outcome_labels``; user decision: all
+    successful) or ``{ep: bool}`` for every episode, or ``assume_final_success``. ``export_path`` is None exactly for
+    the ``e2e_cnn`` condition (no frozen encoder: transitions and frame indices only)."""
+    from s4d.rwlearn.identity import match_recordings, store_identities
+    from s4d.rwlearn.outcomes import load_outcomes
+
+    outcome_doc = outcomes if isinstance(outcomes, dict) and "schema" in outcomes else None
+    outcomes = load_outcomes(outcomes) if outcomes is not None else {}
+    missing = [ep for ep in episodes if ep not in outcomes]
     if missing and not assume_final_success:
         raise ValueError(f"no outcome label for {len(missing)} episode(s) (e.g. {missing[0]}); give outcomes or "
                          "assume_final_success=True explicitly")
     c = CONDITIONS[condition]
-    adapter = encoder_adapter(condition, export_path, store.image_hw[0]).to(device)
-    adapter.backbone.eval()
+    if (c.encoder_type is None) != (export_path is None):
+        raise ValueError(f"{condition}: " + ("the end-to-end condition takes no encoder export" if export_path else
+                                             "a frozen-encoder condition needs its encoder export"))
+    identities = store_identities(store, episodes)
+    match_recordings(identities, identities)
+    if raw_paths:
+        actual = {ep: {**rec, "raw_recording": str(raw_paths.get(ep) or rec["raw_recording"])}
+                  for ep, rec in identities.items()}
+        match_recordings(identities, actual)
+    adapter = None
+    if c.encoder_type is not None:
+        adapter = encoder_adapter(condition, export_path, store.image_hw[0]).to(device)
+        adapter.backbone.eval()
     out = Path(out)
     tmp = out.with_name(f".{out.name}.partial")
+    frame_mapping = {}
     contract, stats = None, {"transitions": 0, "reasons": {}, "labels": {}}
     with h5py.File(tmp, "w") as f:
         for ep in episodes:
             raw = A.load_raw((raw_paths or {}).get(ep) or store.raw_recording(ep))
             A.check_contract_preconditions(raw)
-            for cam in store.cameras(ep):  # store frames are the recording's frames (index = native frame index)
-                st, rt = np.asarray(store.timestamps(ep, cam)), raw.cameras[cam]["t"]
-                if len(st) > len(rt) or not np.array_equal(st, rt[:len(st)]):
-                    raise ValueError(f"{ep}/{cam}: store timestamps are not the recording's camera frames")
+            raw_frames = {cam: A.camera_frame_indices(raw, cam, store.timestamps(ep, cam), store.segments(ep, cam))
+                          for cam in store.cameras(ep)}
+            frame_mapping[ep] = {
+                cam: {"raw_count": len(raw.cameras[cam]["t"]), "store_count": len(indices),
+                      "rule": "stereo/color_index" if "paired_colour" in raw.cameras[cam] else "legacy_raw_prefix",
+                      "dropped_raw_indices": np.setdiff1d(np.arange(len(raw.cameras[cam]["t"])), indices).tolist()}
+                for cam, indices in raw_frames.items()}
             ep_contract = A.contract_for(raw)  # nominal period; each camera's measured period checked within 1 %
             if contract is None:
                 contract = ep_contract
             elif ep_contract != contract:
                 raise ValueError(f"{ep}: teleop limits differ from the dataset contract")
-            for tl in timelines(store, ep, c.multiview, max_sync_ns):
-                tr = episode_transitions(raw, tl, contract, reward, success=bool((outcomes or {}).get(ep, True)))
+            for tl in timelines(store, ep, c.multiview, max_sync_ns, raw_frames=raw_frames):
+                tr = episode_transitions(raw, tl, contract, reward, success=bool(outcomes.get(ep, True)))
                 g = f.create_group(f"episodes/{ep}/{tl.name}")
-                g.create_dataset("features", data=encode_timeline(adapter, store, ep, tl, device=device),
-                                 compression="lzf")
+                if adapter is not None:
+                    g.create_dataset("features", data=encode_timeline(adapter, store, ep, tl, device=device),
+                                     compression="lzf")
+                else:  # e2e_cnn: pin the content of the RGB frames the trainer will read from the store
+                    g.attrs["rgb_sha256"] = rgb_digest(store, ep, tl.cameras[0], tl.frames[:, 0])
                 for k in ("times", "run", "proprio", "state_ok", "transition_ok", "action", "action_phys", "reward",
                           "mask", "success", "terminal"):
                     g.create_dataset(k, data=tr[k])
                 g.create_dataset("measured_pose", data=tr["measured_pose"].astype(np.float64))
-                g.create_dataset("frames", data=tl.frames.astype(np.int32))
+                g.create_dataset("frames", data=tl.frames.astype(np.int32))  # store RGB/depth indices
+                g.create_dataset("raw_frames", data=tl.raw_frames)  # exact recorder colour indices
                 g.attrs.update(cameras=json.dumps(tl.cameras), task=store.task(ep), label=tr["label"])
                 stats["labels"][tr["label"]] = stats["labels"].get(tr["label"], 0) + 1
                 stats["transitions"] += int(tr["transition_ok"].sum())
                 for r, n in tr["reasons"].items():
                     stats["reasons"][r] = stats["reasons"].get(r, 0) + int(n)
-        f.attrs.update(format=FORMAT, condition=condition, label=c.label, encoder_type=c.encoder_type,
-                       export_path=str(export_path), export_sha256=sha256_file(export_path), reward=reward,
+        upstream = getattr(store, "upstream", None)
+        calibration = {ep: {"calibrate": (upstream(ep) or {}).get("calibrate") if upstream else None,
+                            "cameras": sorted(store.cameras(ep))} for ep in episodes}
+        f.attrs.update(format=FORMAT, condition=condition, label=c.label, inputs=c.inputs,
+                       extra_inputs=c.extra_inputs, single_view_reference=SINGLE_VIEW_REFERENCE,
+                       encoder_type=c.encoder_type or "none", export_path=str(export_path or ""),
+                       export_sha256=sha256_file(export_path) if export_path else "", reward=reward,
                        contract=json.dumps(contract.to_json()), frame_stack=FRAME_STACK,
-                       sequence_feature=bool(adapter.stack_feature), episodes=json.dumps(list(episodes)),
-                       image_hw=json.dumps(list(store.image_hw)), stats=json.dumps(stats),
+                       sequence_feature=bool(adapter.stack_feature) if adapter else False,
+                       episodes=json.dumps(list(episodes)), image_hw=json.dumps(list(store.image_hw)),
+                       raw_identities=json.dumps(identities), frame_mapping=json.dumps(frame_mapping),
+                       stats=json.dumps(stats), calibration=json.dumps(calibration),
                        outcomes=json.dumps({"assume_final_success": bool(assume_final_success),
-                                            "labels": {ep: bool(v) for ep, v in (outcomes or {}).items()}}))
+                                            "labels": {ep: bool(v) for ep, v in outcomes.items()},
+                                            "document": outcome_doc}))
     tmp.replace(out)
     return {"path": str(out), **stats}
 
@@ -191,9 +251,11 @@ class ObsEncoder(nn.Module):
 
 
 class OfflineTransitions:
-    """All transitions of ``episodes`` in memory: frozen features once per observation time + index arrays."""
+    """All transitions of ``episodes`` in memory: frozen features once per observation time + index arrays. Dataset
+    actions are clipped to [-1 + eps, 1 - eps] as the official loader does (``envs/env_utils.py`` :138-146,
+    ``action_clip_eps`` 1e-5; every recorded command already lies inside [-1, 1])."""
 
-    def __init__(self, path, episodes: list[str] | None = None, device="cpu"):
+    def __init__(self, path, episodes: list[str] | None = None, device="cpu", action_clip_eps: float | None = 1e-5):
         self.path = str(path)
         feats, prop, rows = [], [], []
         base = 0
@@ -201,6 +263,9 @@ class OfflineTransitions:
             if f.attrs.get("format") != FORMAT:
                 raise ValueError(f"{path}: not a {FORMAT} file")
             self.attrs = {k: (v.decode() if isinstance(v, bytes) else v) for k, v in f.attrs.items()}
+            if self.attrs.get("condition") == "e2e_cnn":
+                raise ValueError(f"{path}: e2e_cnn datasets hold no features; use s4d.rwlearn.pixel."
+                                 "OfflinePixelTransitions")
             self.sequence = bool(self.attrs["sequence_feature"])
             self.contract = A.ActionContract.from_json(json.loads(self.attrs["contract"]))
             eps = episodes if episodes is not None else json.loads(self.attrs["episodes"])
@@ -233,7 +298,10 @@ class OfflineTransitions:
         self.next_idx = torch.from_numpy(cat["next"]).to(dev)
         self.obs_k = torch.from_numpy(cat["obs_k"]).to(dev)
         self.next_k = torch.from_numpy(cat["next_k"]).to(dev)
-        self.actions = torch.from_numpy(cat["action"]).to(dev).float()
+        actions = cat["action"]
+        if action_clip_eps is not None:
+            actions = np.clip(actions, -1 + action_clip_eps, 1 - action_clip_eps)
+        self.actions = torch.from_numpy(actions).to(dev).float()
         self.rewards = torch.from_numpy(cat["reward"]).to(dev).float()
         self.masks = torch.from_numpy(cat["mask"]).to(dev).float()
         self.size = len(self.actions)

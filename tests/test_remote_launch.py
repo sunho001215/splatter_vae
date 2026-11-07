@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shlex
@@ -13,6 +14,8 @@ from ops.remote.access import REMOTE_ROOT, RemoteCommandError, RemoteUnreachable
 from ops.containers.launch import (
     RAM_RESERVE_BYTES,
     SHM_SIZE_BYTES,
+    REALWORLD_READ_ROOTS,
+    _bound_path,
     build_remote_command,
     evidence_artifacts,
     launch,
@@ -241,6 +244,120 @@ def test_generated_shell_has_detachment_single_uuid_rooted_mounts_and_syntax(gpu
     assert "flock -x 9" in command and "native" not in spec["args"]
 
 
+@pytest.mark.parametrize("gpu_backend,script,original_sha256", [
+    # Full command fingerprints captured from e9338cb before adding real-world mounts (including all shell guards).
+    ("cdi", "train.py", "5da26a0e5191d58318971603400e1f2f53953a632f6496daf4d01076dbcefcfb"),
+    ("cdi", "train_reviwo.py", "6d074b20f7103cf18bdbcdb4d2274e00efe025583c09272428d55b0d0a566b23"),
+    ("cdi", "train_dynamo.py", "27c9eabac474ba58de42875069eaf87f94f867e56e5c34373ba9a275688f9af9"),
+    ("legacy", "train.py", "2aacdb661f56e7b306bc005153cfc4aeea0eb3fc577a0bab995bcc45706d64be"),
+    ("legacy", "train_reviwo.py", "96024f15d4349ef6d4787151b1f82dbaa1ca26e10359006391777f0f853c4c95"),
+    ("legacy", "train_dynamo.py", "97d5bad8a907f478c8682e2220f2a684ae2683701817165fd074e4cf9678bbc7"),
+])
+def test_metaworld_command_is_byte_identical_to_before_realworld_mounts(gpu_backend, script, original_sha256):
+    spec = job_spec()
+    spec.update(role="metaworld", gpu_backend=gpu_backend, script="scripts/" + script)
+    spec["args"] += ["--config", "configs/metaworld/tasks/hammer.yaml"]
+    command = build_remote_command(spec, DATA_ID, "e" * 40, "f" * 64, {"tests.json": "1" * 64},
+                                   [(REMOTE_ROOT + "/data/metaworld/splatter4d_v1/hammer.hdf5", "d" * 64)])
+    assert hashlib.sha256(command.encode()).hexdigest() == original_sha256
+
+
+@pytest.mark.parametrize("gpu_backend,script,original_sha256", [
+    # Full commands captured from 447be17 before sharing the real-world mount rule with reconciliation.
+    ("cdi", "train.py", "3c71fb0d84db7bffe6dbbf2ea25b1b375c8d178cfbcb2e3330fdb9777c1e949e"),
+    ("cdi", "train_reviwo.py", "6c8b725b8cabfc55fa5a6785c37606be4af8c0b49378ba0b35923322928e51ac"),
+    ("cdi", "train_dynamo.py", "fb8ca7327e5f5ab8ca45eb68b145adb007b0e49a552b7d35627d9ab98753fde7"),
+    ("cdi", "realworld_fql_dataset.py", "1251451ece0d79ce46fdbdc60b0fed3cec540d4fde45d15f85dc6883e15f82ac"),
+    ("cdi", "train_realworld_fql.py", "46b6eb73c0047cac86c4f23e36d25b1ea19a2d7e5f2063a202374e550ea6d9f8"),
+    ("cdi", "realworld_preprocess.py", "685b029a307ef5b9d516322d3bf01f1798b54cf865942b84f946b19636883891"),
+    ("legacy", "train.py", "ed7238db84c45359c0d6926f3e6a3fa05dc7a11cd8f644a64e98c9739c13328f"),
+    ("legacy", "train_reviwo.py", "9f4f7b318aa2af088126b64c5e873f83be09ea9b66746e335e3873799fc7b98b"),
+    ("legacy", "train_dynamo.py", "46b87a32db95ec97161bb7593afdc59a9af0d4b155994881301ee2d5fd9b1830"),
+    ("legacy", "realworld_fql_dataset.py", "642085cae0365067d601acf32c76d5bb3ba13f682da37860d3f7f651c4aa522a"),
+    ("legacy", "train_realworld_fql.py", "cdc2a3cd622ef26b8bbd1b150153b66c97919c0f0ae08d98f79d0dff08f734cb"),
+    ("legacy", "realworld_preprocess.py", "60f79f3ae2a0cb73622ffca37b27bf36e04d268e3204abce9177a15c2e7c670a"),
+])
+def test_realworld_command_is_byte_identical_before_mount_refactor(gpu_backend, script, original_sha256):
+    spec = job_spec()
+    spec.update(gpu_backend=gpu_backend, script="scripts/" + script)
+    spec["args"] += ["--config", "configs/realworld/baselines/reviwo/drawer-open.yaml"]
+    command = build_remote_command(spec, DATA_ID, "e" * 40, "f" * 64, {"tests.json": "1" * 64},
+                                   [(REMOTE_ROOT + "/data/hammer.hdf5", "d" * 64)])
+    assert hashlib.sha256(command.encode()).hexdigest() == original_sha256
+
+
+@pytest.mark.parametrize("script", ["train.py", "export_encoder.py", "train_reviwo.py", "train_dynamo.py",
+                                   "train_sincro.py", "train_snerl.py", "train_mvp3d.py",
+                                   "realworld_fql_dataset.py", "train_realworld_fql.py", "realworld_preprocess.py"])
+@pytest.mark.parametrize("explicit_role", [False, True])
+def test_realworld_roles_mount_input_roots_readonly_at_identical_paths(script, explicit_role):
+    spec = job_spec()
+    spec["script"] = "scripts/" + script
+    spec["args"] += ["--config", "configs/realworld/baselines/reviwo/drawer-open.yaml"]
+    if explicit_role:
+        spec["role"] = ("realworld_fql" if "fql" in script else
+                        "realworld_preprocess" if "preprocess" in script else "realworld_pretrain")
+    assert validate_spec(spec)["script"] == spec["script"]  # Also the scheduler's local-side launcher validation.
+    command = build_remote_command(spec, DATA_ID, "e" * 40, "f" * 64, {"tests.json": "1" * 64},
+                                   [(REMOTE_ROOT + "/data/hammer.hdf5", "d" * 64)])
+    assert subprocess.run(["bash", "-n"], input=command, text=True, capture_output=True).returncode == 0
+    docker_line = next(line for line in command.splitlines() if line.startswith("cid=$(docker run "))
+    docker_args = shlex.split(docker_line[len("cid=$("):-1])
+    mounts = [docker_args[i + 1] for i, arg in enumerate(docker_args) if arg == "--mount"]
+    assert REALWORLD_READ_ROOTS == (REMOTE_ROOT + "/realworld/learning_inputs", REMOTE_ROOT + "/realworld/processed",
+                                    REMOTE_ROOT + "/data/real_world")
+    for path in REALWORLD_READ_ROOTS:
+        assert mounts.count(f"type=bind,src={path},dst={path},readonly") == 1
+        assert f"bind|{path}|{path}|false" in command  # existing-attempt inspection enforces read-only, too
+        assert "bounded " + shlex.quote(path) in command
+    assert len(mounts) == 11
+
+
+@pytest.mark.parametrize("role,script,args", [
+    (None, "train.py", []),
+    (None, "realworld_viewer.py", []),  # a real-world name without a recognized role class grants no inputs
+    ("metaworld", "train_reviwo.py", ["--config", "configs/metaworld/tasks/hammer.yaml"]),
+    ("droid_pretrain", "train_dynamo.py", ["--config", "configs/droid/base.yaml"]),
+    ("droid_preprocess", "droid_preprocess.py", []),
+])
+def test_non_realworld_roles_do_not_gain_input_mounts(role, script, args):
+    spec = job_spec()
+    spec.update(script="scripts/" + script)
+    spec["args"] += args
+    if role is not None:
+        spec["role"] = role
+    command = build_remote_command(spec, DATA_ID, "e" * 40, "f" * 64, {"tests.json": "1" * 64},
+                                   [(REMOTE_ROOT + "/data/hammer.hdf5", "d" * 64)])
+    assert all(path not in command for path in REALWORLD_READ_ROOTS)
+
+
+@pytest.mark.parametrize("role,script,configs", [
+    (None, "train_dynamo.py", ["configs/realworld/base.yaml", "configs/droid/base.yaml"]),
+    ("realworld_pretrain", "train_dynamo.py", ["configs/metaworld/base.yaml"]),
+    ("realworld_fql", "train_rl.py", []),
+    ("realworld_typo", "train_dynamo.py", []),
+])
+def test_realworld_mounts_fail_closed_on_ambiguous_or_invalid_roles(role, script, configs):
+    spec = job_spec()
+    spec["script"] = "scripts/" + script
+    spec["args"] += ["--config", *configs] if configs else []
+    if role is not None:
+        spec["role"] = role
+    with pytest.raises(ValueError, match="remote job role"):
+        build_remote_command(spec, DATA_ID, "e" * 40, "f" * 64, {"tests.json": "1" * 64},
+                             [(REMOTE_ROOT + "/data/hammer.hdf5", "d" * 64)])
+
+
+@pytest.mark.parametrize("root", REALWORLD_READ_ROOTS)
+def test_realworld_input_paths_keep_bind_source_bounds(root):
+    assert _bound_path(root) == root
+    assert _bound_path(root + "/drawer-open/episode.h5") == root + "/drawer-open/episode.h5"
+    for path in (root + "/../outside", root.lstrip("/"), "/home/compu/kaist/sunho-other/realworld/processed",
+                 "/home/compu/kaist", REMOTE_ROOT):
+        with pytest.raises(ValueError, match="authorized root"):
+            _bound_path(path)
+
+
 def test_remote_rl_evaluation_writes_only_into_its_own_run_directory():
     spec = job_spec()
     spec.update(id="cnn-hammer-s2000-eval", container="s4d-cnn-hammer-s2000-eval-a1", script="scripts/eval_rl.py",
@@ -286,11 +403,14 @@ def test_generated_shell_quotes_arguments_without_evaluation():
         "privileged", "writable_root", "pid_namespace", "writable_code", "writable_data", "missing_mount",
     )],
 ])
+@pytest.mark.parametrize("realworld", [False, True])
 def test_existing_attempt_is_returned_without_second_launch_or_foreign_changes(
-    tmp_path, gpu_backend, mutation, foreign_label, shm_size,
+    tmp_path, gpu_backend, mutation, foreign_label, shm_size, realworld,
 ):
     spec = job_spec()
     spec["gpu_backend"] = gpu_backend
+    if realworld:
+        spec["role"] = "realworld_pretrain"
     acceptance = f"{REMOTE_ROOT}/runtime/acceptance/{COMMIT}-{IMAGE[7:]}"
     code = f"{REMOTE_ROOT}/releases/{COMMIT}/code"
     proof = f"{REMOTE_ROOT}/releases/{COMMIT}/provenance.json"
@@ -301,6 +421,8 @@ def test_existing_attempt_is_returned_without_second_launch_or_foreign_changes(
               (cache, "/workspace/splatter4d/.cache", True), (runtime, runtime, True),
               (acceptance, acceptance, False), (proof, proof, False),
               (REMOTE_ROOT + "/data/metaworld/splatter4d_v1", "/home/ws/data/metaworld/splatter4d_v1", False)]
+    if realworld:
+        mounts += [(path, path, False) for path in REALWORLD_READ_ROOTS]
     if mutation == "writable_code":
         mounts[0] = (mounts[0][0], mounts[0][1], True)
     if mutation == "writable_data":
@@ -648,3 +770,154 @@ def test_verification_child_timeout_terminates_its_process_group(monkeypatch):
     monkeypatch.setattr(entry.os, "killpg", lambda pid, signum: signals.append((pid, signum)))
     assert entry.run_child(Path("scripts/run_tests.py"), [], None, timeout_seconds=1, environment={}) == 124
     assert waits == [1, 10] and signals == [(123, signal.SIGTERM)]
+
+
+# ---- campaign-owned co-tenants in the remote launch guard (2026-11-06) ----
+GIB = 2**30
+CO_ID = "e" * 64
+
+
+def _guard(tmp_path, *, apps, cotenant=None, inspect_fails=None, memory_stat=None, gpu_used_mib=40000,
+           available_gib=1000, graphics=(), own_pids=(11,), own_declared_gib=5):
+    """Runs the generated admission section (from the GPU queries to the last capacity test) against stubbed docker,
+    nvidia-smi, df, /proc/meminfo and cgroup files: one scheduler job (s4d-own-a1, pid 11, 5 GiB declared, 4 GiB
+    used) is running on the selected GPU; ``cotenant`` is the co-tenant's inspect line (or None)."""
+    spec = job_spec()
+    gpu = spec["gpu"]
+    command = build_remote_command(spec, DATA_ID, "e" * 40, "f" * 64, {"tests.json": "1" * 64},
+                                   [(REMOTE_ROOT + "/data/hammer.hdf5", "d" * 64)])
+    lines = command.splitlines()
+    head = lines[:next(i for i, line in enumerate(lines) if line.startswith('test ! -L "$root"'))]
+    start = next(i for i, line in enumerate(lines) if line.startswith('apps="$(nvidia-smi'))
+    end = next(i for i, line in enumerate(lines) if i > start and line.startswith("bounded "))
+    meminfo = tmp_path / "meminfo"
+    meminfo.write_text(f"MemTotal: 1 kB\nMemAvailable: {available_gib * 1024 * 1024} kB\n")
+    cgroup = tmp_path / "cgroup"
+    if memory_stat is not None:
+        (cgroup / f"docker-{CO_ID}.scope").mkdir(parents=True)
+        (cgroup / f"docker-{CO_ID}.scope/memory.stat").write_text(
+            f"anon {memory_stat[0]}\nfile 999999999999\nkernel 5\nshmem {memory_stat[1]}\n")
+    body = "\n".join(lines[start:end]).replace("/proc/meminfo", str(meminfo)).replace(
+        "/sys/fs/cgroup/system.slice", str(cgroup))
+    q = shlex.quote
+    own = {"s4d.disk_bytes": str(GIB), "s4d.gpu": gpu, "s4d.mem_bytes": str(own_declared_gib * GIB),
+           "s4d.ram_bytes": str(GIB)}
+    listing = "printf '%s\\n' " + CO_ID if cotenant is not None else "true"
+    stubs = ("docker() {\ncase \"$1\" in\n"
+             "ps) case \"$*\" in *s4d.managed=true*) printf '%s\\n' s4d-own-a1;; "
+             "*s4d.managed=false*) " + listing + ";; "
+             "*) return 97;; esac;;\n"
+             "top) case \"$2\" in s4d-own-a1) printf '%s\\n' PID " + " ".join(map(str, own_pids))
+             + ";; " + CO_ID + ") printf 'PID\\n777\\n778\\n';; "
+             "*) return 97;; esac;;\n"
+             "inspect) case \"$4\" in s4d-own-a1) case \"$3\" in "
+             + " ".join(f"*{q(key)}*) printf '%s\\n' {q(value)};;" for key, value in own.items())
+             + " *StartedAt*) printf '%s\\n' 2020-01-01T00:00:00Z;; *) return 97;; esac;; "
+             + CO_ID + {None: f") printf '%s\\n' {q(cotenant or '')};; ",
+                        "gone": ") printf 'Error: No such object: %s\\n' \"$4\" >&2; return 1;; ",
+                        "daemon": ") printf 'Error response from daemon: busy\\n' >&2; return 1;; "}[inspect_fails]
+             + "*) return 97;; esac;;\n*) return 97;; esac\n}\n"
+             "nvidia-smi() {\ncase \"$*\" in\n"
+             f"*query-compute-apps*) printf '%s\\n' {' '.join(q(row) for row in apps)};;\n"
+             f"*index,uuid*) printf '%s\\n' {q('0, ' + gpu)} {q('1, ' + APPROVED_HOST_GPUS['remote'][1])};;\n"
+             f"*memory.total*) printf '%s\\n' {q(f'{gpu}, 97887, {gpu_used_mib}')};;\n"
+             "'') printf '%s\\n' " + " ".join(q(row) for row in graphics or ("no graphics",))
+             + ";;\n*) return 97;; esac\n}\n"
+             "df() { printf '1B-blocks Avail\\n%s %s\\n' 6900000000000 2200000000000; }\n")
+    script = "\n".join(["set -eu", *head[1:], stubs, body, "printf 'ADMITTED\\n'"])
+    return subprocess.run(["bash", "-c", script], capture_output=True, text=True)
+
+
+def _co_line(name="/s4d-rwprep-x-a1", role="rwprep", limit=48 * GIB, gpu=None, declared=34 * GIB, devices=0,
+             request=None):
+    gpu = gpu or APPROVED_HOST_GPUS["remote"][0]
+    request = f"cdi,0,0,0,nvidia.com/gpu={gpu};/" if request is None else request
+    return "|".join(map(str, (name, role, limit, gpu, declared, devices, request)))
+
+
+def _apps(cotenant_mib=(15000, 15000)):
+    gpu = APPROVED_HOST_GPUS["remote"][0]
+    return [f"{gpu}, 11, 4096", *(f"{gpu}, {pid}, {mib}" for pid, mib in zip((777, 778), cotenant_mib))]
+
+
+def test_launch_guard_admits_next_to_a_verified_cotenant_only():
+    import tempfile
+
+    other = APPROVED_HOST_GPUS["remote"][1]
+    needed = (34 * 1024 - 30000) + 1024 + 4 * 1024 + 6 * 1024  # MiB
+    cases = {  # name -> (keyword arguments, expected stderr marker or None for admitted)
+        "no_cotenant": (dict(apps=_apps(())), None),
+        "unlisted_process": (dict(apps=_apps()), "Foreign process"),
+        "cotenant": (dict(apps=_apps(), cotenant=_co_line(), memory_stat=(10 * GIB, GIB)), None),
+        "cpu_only_cotenant": (dict(apps=_apps(()), cotenant=_co_line(role="rwprep-maint", gpu="none", request="",
+                                                                     declared="")), None),
+        "role": (dict(apps=_apps(), cotenant=_co_line(role="rwprep-fetch")), "Foreign process"),
+        "name": (dict(apps=_apps(), cotenant=_co_line(name="/kimi")), "Foreign process"),
+        "other_gpu": (dict(apps=_apps(), cotenant=_co_line(gpu=other)), "Foreign process"),
+        "label_differs": (dict(apps=_apps(), cotenant=_co_line(
+            request=f"cdi,0,0,0,nvidia.com/gpu={other};/")), "Foreign process"),
+        "legacy_request": (dict(apps=_apps(), cotenant=_co_line(
+            request=f"nvidia,0,1,0,{APPROVED_HOST_GPUS['remote'][0]};/")), "Foreign process"),
+        "devices": (dict(apps=_apps(), cotenant=_co_line(devices=1)), "Foreign process"),
+        "undeclared": (dict(apps=_apps(), cotenant=_co_line(declared="")), "Foreign process"),
+        "vanished": (dict(apps=_apps(()), cotenant=_co_line(), inspect_fails="gone"), None),
+        "vanished_process_left": (dict(apps=_apps(), cotenant=_co_line(), inspect_fails="gone"), "Foreign process"),
+        "inspect_error": (dict(apps=_apps(()), cotenant=_co_line(), inspect_fails="daemon"), "inspect failed"),
+        "unbounded": (dict(apps=_apps(), cotenant=_co_line(limit=0)), "without a RAM limit"),
+        # Codex review: label values carrying separators or newlines must not forge the binding fields
+        "forged_newline": (dict(apps=_apps(), cotenant=_co_line(gpu=other) + "\n" + _co_line()), "Foreign process"),
+        "forged_separator": (dict(apps=_apps(), cotenant=_co_line(role="rwprep|x")), "Foreign process"),
+        # Codex review round 2: no octal / unbounded byte counts reach the shell arithmetic
+        "octal_declared": (dict(apps=_apps(), cotenant=_co_line(declared="085899345920")), "Foreign process"),
+        "zero_declared": (dict(apps=_apps(), cotenant=_co_line(declared="00")), "Foreign process"),
+        "huge_limit": (dict(apps=_apps(), cotenant=_co_line(limit=10**15)), "Foreign process"),
+        "octal_limit": (dict(apps=_apps(), cotenant=_co_line(limit="0123")), "Foreign process"),
+        "forged_request": (dict(apps=_apps(), cotenant=_co_line(
+            request=f"cdi,0,0,0,nvidia.com/gpu={APPROVED_HOST_GPUS['remote'][0]};/|")), "Foreign process"),
+        "static_cap": (dict(apps=_apps(), cotenant=_co_line(declared=80 * GIB)), ""),  # 80 + 5 + 6 > 90
+        "measured_cap": (dict(apps=_apps((60000, 25000)), cotenant=_co_line(), gpu_used_mib=90000), ""),
+        # free memory needed: co-tenant pending 34 GiB - 30000 MiB, own job pending 1 GiB, 4 GiB margin, 6 GiB job
+        "free": (dict(apps=_apps(), cotenant=_co_line(), gpu_used_mib=97887 - needed + 1), "Co-tenant GPU memory"),
+        "free_exact": (dict(apps=_apps(), cotenant=_co_line(), gpu_used_mib=97887 - needed), None),
+        "ram": (dict(apps=_apps(), cotenant=_co_line(limit=900 * GIB)), ""),  # 1000 - 900 - 13 < 120
+        "ram_in_use": (dict(apps=_apps(), cotenant=_co_line(limit=900 * GIB), memory_stat=(880 * GIB, 10 * GIB)),
+                       None),
+    }
+    for name, (kwargs, marker) in cases.items():
+        with tempfile.TemporaryDirectory() as directory:
+            result = _guard(Path(directory), **kwargs)
+        if marker is None:
+            assert result.returncode == 0 and result.stdout == "ADMITTED\n", (name, result.stderr)
+        else:
+            assert result.returncode != 0 and "ADMITTED" not in result.stdout, (name, result.stdout)
+            assert marker in result.stderr, (name, result.stderr)
+
+
+@pytest.mark.parametrize("cotenant", [False, True])
+@pytest.mark.parametrize("graphics_only", [False, True])
+def test_scheduler_over_declaration_is_charged_with_cotenants(tmp_path, cotenant, graphics_only):
+    gpu = APPROVED_HOST_GPUS["remote"][0]
+    # 54 GiB measured scheduler job + 34 GiB co-tenant + 6 GiB new job = 94 GiB > 90 GiB cap.
+    apps = [f"{gpu}, 11, {4 * 1024 if graphics_only else 54 * 1024}"]
+    if cotenant:
+        apps += [f"{gpu}, 777, {34 * 1024}"]
+    graphics = ["| 0 N/A N/A 12 G /usr/bin/renderer 51200MiB |"] if graphics_only else []
+    result = _guard(tmp_path, apps=apps, graphics=graphics, own_pids=(11, 12),
+                    cotenant=_co_line() if cotenant else None, gpu_used_mib=88 * 1024)
+    assert (result.returncode == 0) is (not cotenant), result.stderr
+
+
+def test_graphics_duplicate_pid_is_counted_once_and_foreign_gpu_is_ignored(tmp_path):
+    gpu = APPROVED_HOST_GPUS["remote"][0]
+    result = _guard(tmp_path, apps=[f"{gpu}, 11, {50 * 1024}", f"{gpu}, 777, {34 * 1024}"],
+                    cotenant=_co_line(), gpu_used_mib=84 * 1024,
+                    graphics=["| 0 N/A N/A 11 C+G /usr/bin/train 51200MiB |",
+                              "| 1 N/A N/A 999 G /usr/bin/foreign 51200MiB |"])
+    assert result.returncode == 0 and result.stdout == "ADMITTED\n", result.stderr  # 50 + 34 + 6 == 90
+
+
+def test_no_cotenant_keeps_the_existing_declared_reservation_policy(tmp_path):
+    gpu = APPROVED_HOST_GPUS["remote"][0]
+    # Without a co-tenant, even a managed job exceeding its declaration retains the old admission behavior.
+    result = _guard(tmp_path, apps=[f"{gpu}, 11, {88 * 1024}"], gpu_used_mib=88 * 1024)
+    assert result.returncode == 0 and result.stdout == "ADMITTED\n", result.stderr

@@ -4,7 +4,7 @@ Discovers ``episode_NNNNNN.h5`` recordings in /home/ws/data/real_world/{drawer-o
 modified, moved or renamed), validates them (episode_validator.py), detects duplicates/conflicts, and uploads valid
 episodes one at a time to the remote campaign root under data/real_world/<task>/:
 
-  rsync --partial --append-verify --bwlimit=<upload-budget.json> -> <task>/.incoming/<name>.part   (resumable)
+  rsync --partial --append-verify --bwlimit=<upload-budget.json, or a live upload-boost lease> -> .incoming/<name>.part
   remote sha256(part) == local sha256  ->  chmod 0444 + ln (atomic, never clobbers) + rm part  ->  sha256(final)
 
 State (manifest.json, events.jsonl, status.json, worker.lock/pid) lives in /home/ws/ws/realworld-ops/ingest/; see the
@@ -23,6 +23,7 @@ import contextlib
 import ctypes
 import fcntl
 import json
+import math
 import os
 import re
 import shlex
@@ -30,6 +31,7 @@ import signal
 import socket
 import subprocess
 import sys
+import threading
 import time
 import traceback
 from datetime import datetime, timezone
@@ -59,11 +61,18 @@ STAGE_FIELDS_REQUIRED = ("status", "code_version")
 STAGE_FIELDS = {"status", "code_version", "stage_schema_version", "code_commit", "config_sha256", "input_sha256",
                 "output_format", "outputs", "started_at", "finished_at", "host", "failure", "attempt", "notes",
                 "metrics"}
-WORKER_VERSION = "rw-ingest-worker/2"
+WORKER_VERSION = "rw-ingest-worker/3"  # /3: reads the upload-boost lease; budget increases apply at the next transfer
 HEARTBEAT_S = 3600.0          # quiet loop: a pass summary is logged on change, else at most hourly
 SCAN_DURING_TRANSFER_S = 300.0  # new/completed raw files are checked every 5 min even during a long upload
 DEFAULT_KIB = 600          # authorized initial upload budget (KiB/s)
 MAX_KIB = 600              # never exceeded unless upload-budget.json carries "coordinator_override": true
+# Temporary dataset-upload boost (user decision 2026-11-06 ~11:20, item 6), granted by upload_boost.py: ONE aggregate
+# budget for this worker's dataset uploads. It applies only while upload-boost/policy.json is a live lease that is valid
+# in every respect (boost_level); anything else (missing, stale, malformed, base budget changed) = the base budget.
+BOOST_POLICY = "upload-boost/policy.json"
+BOOST_SCHEMA = "rw-upload-boost/1"
+BOOST_LEVELS_KIB = (2048, 4096, 8192)  # 2, 4, 8 MiB/s; 8 MiB/s is the ceiling
+BOOST_MAX_LEASE_S = 600.0              # a lease reaching further into the future than this is invalid
 GRACE_S = 120.0            # files modified (mtime/ctime) more recently are not looked at
 INVALID_AFTER_S = 3 * 3600  # a finished-looking file that keeps failing, unchanged, this long -> "invalid"
 RECHECK_FAILED_S = 600.0
@@ -93,6 +102,62 @@ def now_iso(t: float | None = None) -> str:
 
 def log(msg: str) -> None:
     print(f"[{now_iso()}] {msg}", flush=True)
+
+
+def base_budget_kib(state_dir: Path) -> int:
+    """The coordinator's upload budget (upload-budget.json); missing = DEFAULT_KIB, unreadable/invalid = 0 (pause)."""
+    path = state_dir / "upload-budget.json"
+    try:
+        doc = json.loads(path.read_text())
+    except FileNotFoundError:
+        return DEFAULT_KIB
+    except (OSError, ValueError) as exc:
+        log(f"upload-budget.json unreadable ({exc}): transfers paused")
+        return 0
+    value = doc.get("kib_per_s") if isinstance(doc, dict) else None
+    if type(value) is not int or value < 0:
+        log(f"upload-budget.json kib_per_s {value!r} invalid: transfers paused")
+        return 0
+    if value > MAX_KIB and doc.get("coordinator_override") is not True:
+        log(f"upload-budget.json asks {value} KiB/s > {MAX_KIB} without coordinator_override: using {MAX_KIB}")
+        return MAX_KIB
+    return value
+
+
+def boost_level(state_dir: Path, base_kib: int, now: float | None = None) -> tuple[int | None, str]:
+    """(aggregate KiB/s, why) of a live upload-boost lease, or (None, why not) -> the base budget applies (fail safe)."""
+    try:
+        return _boost_level(state_dir, base_kib, now)
+    except Exception as exc:  # noqa: BLE001 - whatever is wrong with the record, the original budget applies
+        return None, f"boost check failed ({type(exc).__name__})"
+
+
+def _boost_level(state_dir: Path, base_kib: int, now: float | None) -> tuple[int | None, str]:
+    try:
+        doc = json.loads((state_dir / BOOST_POLICY).read_text())
+    except FileNotFoundError:
+        return None, "no boost policy"
+    except (OSError, ValueError) as exc:
+        return None, f"boost policy unreadable ({type(exc).__name__})"
+    now = time.time() if now is None else now
+    if not isinstance(doc, dict) or doc.get("schema") != BOOST_SCHEMA:
+        return None, "unknown boost policy schema"
+    if doc.get("state") != "active":
+        return None, f"boost {doc.get('state')!r}"
+    level = doc.get("aggregate_kib_per_s")
+    if type(level) is not int or level not in BOOST_LEVELS_KIB:
+        return None, f"boost level {level!r} not allowed"
+    if base_kib <= 0 or doc.get("original_kib_per_s") != base_kib:
+        return None, f"boost granted for base {doc.get('original_kib_per_s')!r}, base is {base_kib}"
+    lease = doc.get("lease")
+    expires = lease.get("expires_at_unix") if isinstance(lease, dict) else None
+    if type(expires) not in (int, float) or not math.isfinite(expires):
+        return None, "boost lease invalid"
+    if expires <= now:
+        return None, "boost lease expired"
+    if expires - now > BOOST_MAX_LEASE_S:
+        return None, "boost lease too long"
+    return level, "boost lease valid"
 
 
 def atomic_write_json(path: Path, doc) -> None:
@@ -381,6 +446,8 @@ class Worker:
         self.transfers_done = 0
         self.remote_unreachable_since = None
         self._last_kib = None
+        self._boost_why = None
+        self._inflight = None  # {"proc", "kib", "reduced_to"} while _run_rsync supervises an upload
         self._mirror_dirty = True
         self.last_scan = 0.0
         self.remote_disk = None
@@ -389,22 +456,21 @@ class Worker:
 
     # ------------------------------------------------------------------ configuration files
     def upload_kib(self) -> int:
-        path = self.state.dir / "upload-budget.json"
-        try:
-            doc = json.loads(path.read_text())
-        except FileNotFoundError:
-            return DEFAULT_KIB
-        except (OSError, ValueError) as exc:
-            log(f"upload-budget.json unreadable ({exc}): transfers paused")
-            return 0
-        value = doc.get("kib_per_s") if isinstance(doc, dict) else None
-        if type(value) is not int or value < 0:
-            log(f"upload-budget.json kib_per_s {value!r} invalid: transfers paused")
-            return 0
-        if value > MAX_KIB and doc.get("coordinator_override") is not True:
-            log(f"upload-budget.json asks {value} KiB/s > {MAX_KIB} without coordinator_override: using {MAX_KIB}")
-            return MAX_KIB
-        return value
+        return self.upload_budget()[0]
+
+    def upload_budget(self) -> tuple[int, str]:
+        """(KiB/s, "boost"|"base"): the boost lease's aggregate budget while it is valid for the current base budget,
+        else the base budget (upload-budget.json). A change of the boost's applicability is logged once."""
+        base = self.base_kib()
+        level, why = boost_level(self.state.dir, base)
+        if why != self._boost_why:
+            self.state.event("upload_boost", applied=level is not None, kib_per_s=level or base, base_kib_per_s=base,
+                             reason=why, quiet=self._boost_why is None and level is None)
+            self._boost_why = why
+        return (level, "boost") if level else (base, "base")
+
+    def base_kib(self) -> int:
+        return base_budget_kib(self.state.dir)
 
     def overrides(self) -> dict:
         path = self.state.dir / "overrides.json"
@@ -705,7 +771,7 @@ class Worker:
         if (probe["fs_avail"] - need) / probe["fs_size"] < REMOTE_MIN_FREE_FRACTION:
             self._hold(entry, f"remote SSD free space would drop below {REMOTE_MIN_FREE_FRACTION:.0%}", 1800)
             raise _PauseTransfers("remote disk")
-        kib = self.upload_kib()
+        kib, budget = self.upload_budget()
         if kib <= 0:
             self._hold(entry, "upload budget 0 (paused by upload-budget.json)")
             raise _PauseTransfers("budget 0")
@@ -719,10 +785,13 @@ class Worker:
         t["status"] = "partial"
         t["started_at"] = now_iso()
         t["resumed_from_bytes"] = probe["part_size"] or 0
+        t["kib_per_s"] = kib  # lowered by _run_rsync when the budget drops mid-transfer
         self.state.save()
-        self.state.event("transfer_start", key, size=entry["size"], resume_from=probe["part_size"], kib_per_s=kib)
+        self.state.event("transfer_start", key, size=entry["size"], resume_from=probe["part_size"], kib_per_s=kib,
+                         budget=budget)
         started = time.time()
         rc, err = self._run_rsync(local, part, kib, entry)
+        t["rsync_s"] = round(time.time() - started, 1)
         if rc is None:  # stopped / paused
             return False
         if rc != 0:
@@ -761,10 +830,11 @@ class Worker:
             t["status"] = "conflict"
             self.state.event("remote_conflict", key, outcome=outcome, remote_sha=final_sha)
             return False
-        t["duration_s"] = round(time.time() - started, 1)
+        t["duration_s"] = round(time.time() - started, 1)  # rsync + remote sha256 + publish + sha256
         sent = entry["size"] - (probe["part_size"] or 0)
         t["effective_kib_per_s"] = round(sent / 1024 / max(t["duration_s"], 1e-3), 1)
-        t["kib_per_s"] = kib
+        t["rsync_kib_per_s"] = round(sent / 1024 / max(t["rsync_s"], 1e-3), 1)
+        t["sent_bytes"] = sent
         self._verified(entry, final_sha, final, already=False, outcome=outcome)
         return True
 
@@ -778,10 +848,15 @@ class Worker:
         self._mirror_dirty = True
         self.state.event("transfer_verified", entry["key"], remote_path=final, sha256=remote_sha,
                          already_present=already, outcome=outcome, duration_s=t.get("duration_s"),
-                         effective_kib_per_s=t.get("effective_kib_per_s"))
+                         effective_kib_per_s=t.get("effective_kib_per_s"),
+                         **({} if already else {k: t.get(k) for k in ("rsync_s", "rsync_kib_per_s", "sent_bytes",
+                                                                        "kib_per_s")}))
 
     def _run_rsync(self, local: Path, part: str, kib: int, entry: dict) -> tuple[int | None, str]:
-        """rsync with budget polling: a budget change restarts it (resumes the part); STOP/signal/0 ends it."""
+        """rsync with budget polling: a budget reduction (incl. a lapsed boost lease) restarts it at once with the
+        lower limit (the part is resumed); an increase applies from the next transfer, so a valid in-flight transfer
+        is not interrupted. STOP/signal/0 ends it (part kept). A watchdog thread enforces reductions even while this
+        loop is busy (e.g. validating new arrivals); whatever happens, the rsync never outlives this call."""
         while True:
             _kill_stray_uploads(part)
             cmd, env = self.remote.rsync_command(local, part, kib)
@@ -791,37 +866,63 @@ class Worker:
             with open(errfile, "w") as err:
                 proc = subprocess.Popen(cmd, env=env, stdout=subprocess.DEVNULL, stderr=err,
                                         preexec_fn=_child_setup())
-            (self.state.dir / "rsync-current.json").write_text(json.dumps(
-                {"pid": proc.pid, "key": entry["key"], "kib_per_s": kib, "started_at": now_iso()}))
             restart_with = None
-            while proc.poll() is None:
-                time.sleep(2.0)
-                if time.time() - self.last_scan >= SCAN_DURING_TRANSFER_S:
-                    try:
-                        self.scan(skip_key=entry["key"])
-                        self.write_status(self.state.doc["counts"], {"remote": "ok", "transferring": entry["key"]})
-                    except Exception:  # noqa: BLE001 - a scan problem must not break the running upload
-                        log("scan during transfer failed:\n" + traceback.format_exc())
-                        self.last_scan = time.time()
-                if self.stop_requested():
+            self._inflight = cur = {"proc": proc, "kib": kib, "reduced_to": None}
+            watch_stop = threading.Event()
+            watcher = threading.Thread(target=self._budget_watchdog, args=(cur, watch_stop), daemon=True)
+            try:
+                (self.state.dir / "rsync-current.json").write_text(json.dumps(
+                    {"pid": proc.pid, "key": entry["key"], "kib_per_s": kib, "started_at": now_iso()}))
+                watcher.start()
+                while True:
+                    if cur["reduced_to"] is None:
+                        if proc.poll() is not None:
+                            break  # rsync ended by itself
+                        time.sleep(2.0)
+                    if time.time() - self.last_scan >= SCAN_DURING_TRANSFER_S and cur["reduced_to"] is None:
+                        try:
+                            self.scan(skip_key=entry["key"])
+                            self.write_status(self.state.doc["counts"], {"remote": "ok",
+                                                                         "transferring": entry["key"]})
+                        except Exception:  # noqa: BLE001 - a scan problem must not break the running upload
+                            log("scan during transfer failed:\n" + traceback.format_exc())
+                            self.last_scan = time.time()
+                    if self.stop_requested():
+                        _terminate(proc)
+                        self.state.event("transfer_interrupted", entry["key"], reason="stop requested; partial kept")
+                        return None, ""
+                    new = self.upload_kib()
+                    if cur["reduced_to"] is not None:  # latched by the watchdog: never restart above it
+                        new = min(new, cur["reduced_to"])
+                    if new < kib:
+                        _terminate(proc)
+                        if new <= 0:
+                            self._hold(entry, "upload budget 0 (paused by upload-budget.json)")
+                            self.state.event("transfer_interrupted", entry["key"], reason="budget 0; partial kept")
+                            return None, ""
+                        restart_with = new
+                        break
+                    if time.time() > deadline:
+                        _terminate(proc)
+                        return 30, "local transfer deadline exceeded"
+                watch_stop.set()  # settle the watchdog before deciding: a late latch is a reduction, not a failure
+                if watcher.is_alive():
+                    watcher.join(timeout=45)
+                if cur["reduced_to"] is not None:
                     _terminate(proc)
-                    self.state.event("transfer_interrupted", entry["key"], reason="stop requested; partial kept")
-                    return None, ""
-                new = self.upload_kib()
-                if new != kib:
-                    _terminate(proc)
-                    if new <= 0:
+                    low = min(self.upload_kib(), cur["reduced_to"])
+                    restart_with = low if restart_with is None else min(restart_with, low)
+                    if restart_with <= 0:
                         self._hold(entry, "upload budget 0 (paused by upload-budget.json)")
                         self.state.event("transfer_interrupted", entry["key"], reason="budget 0; partial kept")
                         return None, ""
-                    restart_with = new
-                    break
-                if time.time() > deadline:
-                    _terminate(proc)
-                    return 30, "local transfer deadline exceeded"
-            rc = proc.wait()
-            with contextlib.suppress(OSError):
-                (self.state.dir / "rsync-current.json").unlink()
+            finally:  # every exit (normal, restart, stop, pause, deadline, exception): no rsync left running
+                watch_stop.set()
+                _terminate(proc)
+                self._inflight = None
+                with contextlib.suppress(OSError):
+                    (self.state.dir / "rsync-current.json").unlink()
+            rc = proc.returncode
             err_text = self.remote.redact(errfile.read_text(errors="replace"))[-500:].strip()
             if restart_with is not None:
                 self.state.event("budget_changed_mid_transfer", entry["key"], old=kib, new=restart_with)
@@ -829,6 +930,19 @@ class Worker:
                 entry["transfer"]["kib_per_s"] = kib
                 continue
             return rc, err_text
+
+    def _budget_watchdog(self, cur: dict, stop: threading.Event) -> None:
+        """Thread: every 2 s, a budget below the running limit terminates the rsync and latches the lowest budget seen
+        (read-only check: no events, no state changes besides cur)."""
+        while not stop.wait(2.0):
+            if cur["proc"].poll() is not None:
+                return
+            base = base_budget_kib(self.state.dir)
+            eff = boost_level(self.state.dir, base)[0] or base
+            if eff < cur["kib"]:
+                cur["reduced_to"] = eff
+                _terminate(cur["proc"])
+                return
 
     # ------------------------------------------------------------------ remote mirror
     def mirror(self, counts: dict) -> None:
@@ -853,7 +967,7 @@ class Worker:
                     "flags": sorted(e["flags"]), "counted": self.counted(e, overrides)}
         local = self.state.dir / "remote-mirror.json"
         atomic_write_json(local, doc)
-        kib = self.upload_kib() or 1
+        kib = self.base_kib() or 1  # informational file: never boosted
         self.remote.ensure_dirs(next(iter(self.tasks)))
         self.remote.upload_small(local, f"{REMOTE_DATA_REL}/ingest-manifest.json", kib)
         self._mirror_dirty = False
@@ -956,8 +1070,11 @@ class Worker:
                 issues["flags"][e["key"]] = e["flags"]
             if v["status"] == "valid" and v.get("warning_codes"):
                 issues["warnings"][e["key"]] = v["warning_codes"]
+        kib, budget = self.upload_budget()
         doc = {"updated_at": now_iso(), "counts": counts, "last_pass": self.state.doc.get("last_pass"),
-               "upload_kib_per_s": self.upload_kib(), "issues": issues, "remote_disk": self.remote_disk,
+               "upload_kib_per_s": kib, "upload_budget": {"source": budget, "base_kib_per_s": self.base_kib(),
+                                                          "boost": self._boost_why},
+               "issues": issues, "remote_disk": self.remote_disk,
                "manifest_schema": [MANIFEST_SCHEMA, MANIFEST_SCHEMA_VERSION],
                "remote_unreachable_since": now_iso(self.remote_unreachable_since)
                if self.remote_unreachable_since else None}

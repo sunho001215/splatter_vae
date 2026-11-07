@@ -1,0 +1,2879 @@
+{
+ "recorded_at": "2026-11-06T13:12:23.106699+09:00",
+ "release_checkout": "/home/ws/ws/splatter4d/.worktrees/arm4",
+ "release_commit": "8b9992a929591c4f56b5063f143ec4cc9c4e19cb",
+ "tasks": [
+  "hammer",
+  "pick-place",
+  "bin-picking",
+  "coffee-push",
+  "door-open",
+  "peg-insert-side",
+  "peg-unplug-side",
+  "stick-push"
+ ],
+ "arms": {
+  "A": {
+   "prefix": "ocsw4",
+   "label": "Original + CSW4 encoder",
+   "base": "original",
+   "per_task": {
+    "hammer": {
+     "files": [
+      "configs/metaworld/base.yaml",
+      "configs/metaworld/tasks/hammer.yaml",
+      "configs/metaworld/variants/enc_cs.yaml",
+      "configs/metaworld/variants/enc_w4.yaml"
+     ],
+     "set": [
+      "train.steps=200000",
+      "train.seed=0",
+      "aug.synth_views=2",
+      "aug.synth_render=true",
+      "loss.depth_valid_far=true",
+      "loss.motion_space=gaussian"
+     ],
+     "config_sha256": "8d486cd10a68376616d433d3c05a85fff79c10e3d9abe4833353e9f275e2df34",
+     "reference_run": "runs/pretrain/i2-m3d-seed0-hammer",
+     "reference_config_sha256": "90db962e72775bfd5dfd50b19bf5db9b2a047a4dcdd077e8fdea9543487f1784",
+     "resolved_diff_vs_reference_run": {
+      "model.encoder.depth": [
+       8,
+       4
+      ],
+      "model.encoder.heads": [
+       8,
+       4
+      ],
+      "model.encoder.stem": [
+       "<absent>",
+       "patch_cnn"
+      ],
+      "model.encoder.width": [
+       128,
+       256
+      ],
+      "train.stop_step": [
+       200000,
+       "<absent>"
+      ]
+     },
+     "tube": {
+      "mask_mode": "tube",
+      "mask_ratio": 0.5,
+      "visible_positions": 32,
+      "motion_quota": 16
+     }
+    },
+    "pick-place": {
+     "files": [
+      "configs/metaworld/base.yaml",
+      "configs/metaworld/tasks/pick-place.yaml",
+      "configs/metaworld/variants/enc_cs.yaml",
+      "configs/metaworld/variants/enc_w4.yaml"
+     ],
+     "set": [
+      "train.steps=200000",
+      "train.seed=0",
+      "aug.synth_views=2",
+      "aug.synth_render=true",
+      "loss.depth_valid_far=true",
+      "loss.motion_space=gaussian"
+     ],
+     "config_sha256": "f737b1ba47c644380692f526a542e12f04146b8b4c003dbfe56c79ba571dbb79",
+     "reference_run": "runs/pretrain/i2-m3d-seed0-pick-place",
+     "reference_config_sha256": "f97a8ffb41fc7e45ba468c81609c8d49b8b7720cc2e3d82e78ddad41f7a7c523",
+     "resolved_diff_vs_reference_run": {
+      "model.encoder.depth": [
+       8,
+       4
+      ],
+      "model.encoder.heads": [
+       8,
+       4
+      ],
+      "model.encoder.stem": [
+       "<absent>",
+       "patch_cnn"
+      ],
+      "model.encoder.width": [
+       128,
+       256
+      ],
+      "train.stop_step": [
+       200000,
+       "<absent>"
+      ]
+     },
+     "tube": {
+      "mask_mode": "tube",
+      "mask_ratio": 0.5,
+      "visible_positions": 32,
+      "motion_quota": 16
+     }
+    },
+    "bin-picking": {
+     "files": [
+      "configs/metaworld/base.yaml",
+      "configs/metaworld/tasks/bin-picking.yaml",
+      "configs/metaworld/variants/enc_cs.yaml",
+      "configs/metaworld/variants/enc_w4.yaml"
+     ],
+     "set": [
+      "train.steps=200000",
+      "train.seed=0",
+      "aug.synth_views=2",
+      "aug.synth_render=true",
+      "loss.depth_valid_far=true",
+      "loss.motion_space=gaussian"
+     ],
+     "config_sha256": "fbfd17ab790ce5f2c069d6fb7611e5e22755e278646652196feca21d121c56b2",
+     "reference_run": "runs/s3-m3d-seed0-bin-picking-200k",
+     "reference_config_sha256": "5076c92b37dbc0e6eb935f09a4331c71df8b37681727756bf5d3e1cc8298fa31",
+     "resolved_diff_vs_reference_run": {
+      "model.encoder.depth": [
+       8,
+       4
+      ],
+      "model.encoder.heads": [
+       8,
+       4
+      ],
+      "model.encoder.stem": [
+       "<absent>",
+       "patch_cnn"
+      ],
+      "model.encoder.width": [
+       128,
+       256
+      ]
+     },
+     "tube": {
+      "mask_mode": "tube",
+      "mask_ratio": 0.5,
+      "visible_positions": 32,
+      "motion_quota": 16
+     }
+    },
+    "coffee-push": {
+     "files": [
+      "configs/metaworld/base.yaml",
+      "configs/metaworld/tasks/coffee-push.yaml",
+      "configs/metaworld/variants/enc_cs.yaml",
+      "configs/metaworld/variants/enc_w4.yaml"
+     ],
+     "set": [
+      "train.steps=200000",
+      "train.seed=0",
+      "aug.synth_views=2",
+      "aug.synth_render=true",
+      "loss.depth_valid_far=true",
+      "loss.motion_space=gaussian"
+     ],
+     "config_sha256": "cdabe56f7473869863d19dbf597c110cbc3445025f5da8d123285d717eb25eaf",
+     "reference_run": "runs/s3-m3d-seed0-coffee-push-200k",
+     "reference_config_sha256": "f280e4ba8b854660fda069e3d25df37f5e2537ba58098f90c35170c2af9d4731",
+     "resolved_diff_vs_reference_run": {
+      "model.encoder.depth": [
+       8,
+       4
+      ],
+      "model.encoder.heads": [
+       8,
+       4
+      ],
+      "model.encoder.stem": [
+       "<absent>",
+       "patch_cnn"
+      ],
+      "model.encoder.width": [
+       128,
+       256
+      ]
+     },
+     "tube": {
+      "mask_mode": "tube",
+      "mask_ratio": 0.5,
+      "visible_positions": 32,
+      "motion_quota": 16
+     }
+    },
+    "door-open": {
+     "files": [
+      "configs/metaworld/base.yaml",
+      "configs/metaworld/tasks/door-open.yaml",
+      "configs/metaworld/variants/enc_cs.yaml",
+      "configs/metaworld/variants/enc_w4.yaml"
+     ],
+     "set": [
+      "train.steps=200000",
+      "train.seed=0",
+      "aug.synth_views=2",
+      "aug.synth_render=true",
+      "loss.depth_valid_far=true",
+      "loss.motion_space=gaussian"
+     ],
+     "config_sha256": "14d6506ad6d9313042b6312cc09dc22835e7c0c16af1b36543c603d665cd588a",
+     "reference_run": "runs/s3-m3d-seed0-door-open-200k",
+     "reference_config_sha256": "000796f8a219389e56d746cfa2dc69c6a0214fa15c96f25774d60287ad9ea26c",
+     "resolved_diff_vs_reference_run": {
+      "model.encoder.depth": [
+       8,
+       4
+      ],
+      "model.encoder.heads": [
+       8,
+       4
+      ],
+      "model.encoder.stem": [
+       "<absent>",
+       "patch_cnn"
+      ],
+      "model.encoder.width": [
+       128,
+       256
+      ]
+     },
+     "tube": {
+      "mask_mode": "tube",
+      "mask_ratio": 0.5,
+      "visible_positions": 32,
+      "motion_quota": 16
+     }
+    },
+    "peg-insert-side": {
+     "files": [
+      "configs/metaworld/base.yaml",
+      "configs/metaworld/tasks/peg-insert-side.yaml",
+      "configs/metaworld/variants/enc_cs.yaml",
+      "configs/metaworld/variants/enc_w4.yaml"
+     ],
+     "set": [
+      "train.steps=200000",
+      "train.seed=0",
+      "aug.synth_views=2",
+      "aug.synth_render=true",
+      "loss.depth_valid_far=true",
+      "loss.motion_space=gaussian"
+     ],
+     "config_sha256": "9d8e8613c5db991cd975b6980e92233b82ca3b2fae2d4a6eb710643a63475b91",
+     "reference_run": "runs/s3-m3d-seed0-peg-insert-side-200k",
+     "reference_config_sha256": "b74521a272e25032d7a499a4eb42a61ac1b350d3e127a26ac7bb85aa83b59b47",
+     "resolved_diff_vs_reference_run": {
+      "model.encoder.depth": [
+       8,
+       4
+      ],
+      "model.encoder.heads": [
+       8,
+       4
+      ],
+      "model.encoder.stem": [
+       "<absent>",
+       "patch_cnn"
+      ],
+      "model.encoder.width": [
+       128,
+       256
+      ]
+     },
+     "tube": {
+      "mask_mode": "tube",
+      "mask_ratio": 0.5,
+      "visible_positions": 32,
+      "motion_quota": 16
+     }
+    },
+    "peg-unplug-side": {
+     "files": [
+      "configs/metaworld/base.yaml",
+      "configs/metaworld/tasks/peg-unplug-side.yaml",
+      "configs/metaworld/variants/enc_cs.yaml",
+      "configs/metaworld/variants/enc_w4.yaml"
+     ],
+     "set": [
+      "train.steps=200000",
+      "train.seed=0",
+      "aug.synth_views=2",
+      "aug.synth_render=true",
+      "loss.depth_valid_far=true",
+      "loss.motion_space=gaussian"
+     ],
+     "config_sha256": "e447d78d4b581dc0b49070c56b9923d6fcbea9ef18ff66ffad62448c4a98069b",
+     "reference_run": "runs/s3-m3d-seed0-peg-unplug-side-200k",
+     "reference_config_sha256": "3f6daa4ee27d548cc87327ca5adda02c23532c5d2152eb79ab5b8be6933d984f",
+     "resolved_diff_vs_reference_run": {
+      "model.encoder.depth": [
+       8,
+       4
+      ],
+      "model.encoder.heads": [
+       8,
+       4
+      ],
+      "model.encoder.stem": [
+       "<absent>",
+       "patch_cnn"
+      ],
+      "model.encoder.width": [
+       128,
+       256
+      ]
+     },
+     "tube": {
+      "mask_mode": "tube",
+      "mask_ratio": 0.5,
+      "visible_positions": 32,
+      "motion_quota": 16
+     }
+    },
+    "stick-push": {
+     "files": [
+      "configs/metaworld/base.yaml",
+      "configs/metaworld/tasks/stick-push.yaml",
+      "configs/metaworld/variants/enc_cs.yaml",
+      "configs/metaworld/variants/enc_w4.yaml"
+     ],
+     "set": [
+      "train.steps=200000",
+      "train.seed=0",
+      "aug.synth_views=2",
+      "aug.synth_render=true",
+      "loss.depth_valid_far=true",
+      "loss.motion_space=gaussian"
+     ],
+     "config_sha256": "0246b7a93df753ab83687dfbc16081f26bf81375514fa009aa4d5960446ddf01",
+     "reference_run": "runs/s3-m3d-seed0-stick-push-200k",
+     "reference_config_sha256": "d3cddf6a38ee82bec87d28559c19e23ab7b25b2830a6759fe9565f68909e1bfc",
+     "resolved_diff_vs_reference_run": {
+      "model.encoder.depth": [
+       8,
+       4
+      ],
+      "model.encoder.heads": [
+       8,
+       4
+      ],
+      "model.encoder.stem": [
+       "<absent>",
+       "patch_cnn"
+      ],
+      "model.encoder.width": [
+       128,
+       256
+      ]
+     },
+     "tube": {
+      "mask_mode": "tube",
+      "mask_ratio": 0.5,
+      "visible_positions": 32,
+      "motion_quota": 16
+     }
+    }
+   }
+  },
+  "B": {
+   "prefix": "ochf",
+   "label": "Original + Chamfer",
+   "base": "original",
+   "per_task": {
+    "hammer": {
+     "files": [
+      "configs/metaworld/base.yaml",
+      "configs/metaworld/tasks/hammer.yaml"
+     ],
+     "set": [
+      "train.steps=200000",
+      "train.seed=0",
+      "aug.synth_views=2",
+      "aug.synth_render=true",
+      "loss.depth_valid_far=true",
+      "loss.motion_space=gaussian",
+      "loss.chamfer=5.0",
+      "loss.chamfer_points=4096",
+      "loss.chamfer_voxel_m=0.01"
+     ],
+     "config_sha256": "c000f81d0625ee5fe80b6db5fca8877131746d204f78649aa19e6a81a3759e46",
+     "reference_run": "runs/pretrain/i2-m3d-seed0-hammer",
+     "reference_config_sha256": "90db962e72775bfd5dfd50b19bf5db9b2a047a4dcdd077e8fdea9543487f1784",
+     "resolved_diff_vs_reference_run": {
+      "loss.chamfer": [
+       "<absent>",
+       5.0
+      ],
+      "loss.chamfer_points": [
+       "<absent>",
+       4096
+      ],
+      "loss.chamfer_voxel_m": [
+       "<absent>",
+       0.01
+      ],
+      "train.stop_step": [
+       200000,
+       "<absent>"
+      ]
+     },
+     "tube": {
+      "mask_mode": "tube",
+      "mask_ratio": 0.5,
+      "visible_positions": 32,
+      "motion_quota": 16
+     }
+    },
+    "pick-place": {
+     "files": [
+      "configs/metaworld/base.yaml",
+      "configs/metaworld/tasks/pick-place.yaml"
+     ],
+     "set": [
+      "train.steps=200000",
+      "train.seed=0",
+      "aug.synth_views=2",
+      "aug.synth_render=true",
+      "loss.depth_valid_far=true",
+      "loss.motion_space=gaussian",
+      "loss.chamfer=5.0",
+      "loss.chamfer_points=4096",
+      "loss.chamfer_voxel_m=0.01"
+     ],
+     "config_sha256": "e59f5f8e5fc4a59130519560f79a74281f03dc9723f29ba17b7c0661ddb9da4a",
+     "reference_run": "runs/pretrain/i2-m3d-seed0-pick-place",
+     "reference_config_sha256": "f97a8ffb41fc7e45ba468c81609c8d49b8b7720cc2e3d82e78ddad41f7a7c523",
+     "resolved_diff_vs_reference_run": {
+      "loss.chamfer": [
+       "<absent>",
+       5.0
+      ],
+      "loss.chamfer_points": [
+       "<absent>",
+       4096
+      ],
+      "loss.chamfer_voxel_m": [
+       "<absent>",
+       0.01
+      ],
+      "train.stop_step": [
+       200000,
+       "<absent>"
+      ]
+     },
+     "tube": {
+      "mask_mode": "tube",
+      "mask_ratio": 0.5,
+      "visible_positions": 32,
+      "motion_quota": 16
+     }
+    },
+    "bin-picking": {
+     "files": [
+      "configs/metaworld/base.yaml",
+      "configs/metaworld/tasks/bin-picking.yaml"
+     ],
+     "set": [
+      "train.steps=200000",
+      "train.seed=0",
+      "aug.synth_views=2",
+      "aug.synth_render=true",
+      "loss.depth_valid_far=true",
+      "loss.motion_space=gaussian",
+      "loss.chamfer=5.0",
+      "loss.chamfer_points=4096",
+      "loss.chamfer_voxel_m=0.01"
+     ],
+     "config_sha256": "54d62ff4d273388a9bc4aa02cee3ea27192b57ca6a6622b3bb910d3674e73fd0",
+     "reference_run": "runs/s3-m3d-seed0-bin-picking-200k",
+     "reference_config_sha256": "5076c92b37dbc0e6eb935f09a4331c71df8b37681727756bf5d3e1cc8298fa31",
+     "resolved_diff_vs_reference_run": {
+      "loss.chamfer": [
+       "<absent>",
+       5.0
+      ],
+      "loss.chamfer_points": [
+       "<absent>",
+       4096
+      ],
+      "loss.chamfer_voxel_m": [
+       "<absent>",
+       0.01
+      ]
+     },
+     "tube": {
+      "mask_mode": "tube",
+      "mask_ratio": 0.5,
+      "visible_positions": 32,
+      "motion_quota": 16
+     }
+    },
+    "coffee-push": {
+     "files": [
+      "configs/metaworld/base.yaml",
+      "configs/metaworld/tasks/coffee-push.yaml"
+     ],
+     "set": [
+      "train.steps=200000",
+      "train.seed=0",
+      "aug.synth_views=2",
+      "aug.synth_render=true",
+      "loss.depth_valid_far=true",
+      "loss.motion_space=gaussian",
+      "loss.chamfer=5.0",
+      "loss.chamfer_points=4096",
+      "loss.chamfer_voxel_m=0.01"
+     ],
+     "config_sha256": "e9226830fc859d10829376609a44063fd573ee094f0c21d6a3bbf20b6970ca61",
+     "reference_run": "runs/s3-m3d-seed0-coffee-push-200k",
+     "reference_config_sha256": "f280e4ba8b854660fda069e3d25df37f5e2537ba58098f90c35170c2af9d4731",
+     "resolved_diff_vs_reference_run": {
+      "loss.chamfer": [
+       "<absent>",
+       5.0
+      ],
+      "loss.chamfer_points": [
+       "<absent>",
+       4096
+      ],
+      "loss.chamfer_voxel_m": [
+       "<absent>",
+       0.01
+      ]
+     },
+     "tube": {
+      "mask_mode": "tube",
+      "mask_ratio": 0.5,
+      "visible_positions": 32,
+      "motion_quota": 16
+     }
+    },
+    "door-open": {
+     "files": [
+      "configs/metaworld/base.yaml",
+      "configs/metaworld/tasks/door-open.yaml"
+     ],
+     "set": [
+      "train.steps=200000",
+      "train.seed=0",
+      "aug.synth_views=2",
+      "aug.synth_render=true",
+      "loss.depth_valid_far=true",
+      "loss.motion_space=gaussian",
+      "loss.chamfer=5.0",
+      "loss.chamfer_points=4096",
+      "loss.chamfer_voxel_m=0.01"
+     ],
+     "config_sha256": "582bb02ad5246da4238861f28b9ab1cb9612847a17b1be9bb992728e1fab7e1a",
+     "reference_run": "runs/s3-m3d-seed0-door-open-200k",
+     "reference_config_sha256": "000796f8a219389e56d746cfa2dc69c6a0214fa15c96f25774d60287ad9ea26c",
+     "resolved_diff_vs_reference_run": {
+      "loss.chamfer": [
+       "<absent>",
+       5.0
+      ],
+      "loss.chamfer_points": [
+       "<absent>",
+       4096
+      ],
+      "loss.chamfer_voxel_m": [
+       "<absent>",
+       0.01
+      ]
+     },
+     "tube": {
+      "mask_mode": "tube",
+      "mask_ratio": 0.5,
+      "visible_positions": 32,
+      "motion_quota": 16
+     }
+    },
+    "peg-insert-side": {
+     "files": [
+      "configs/metaworld/base.yaml",
+      "configs/metaworld/tasks/peg-insert-side.yaml"
+     ],
+     "set": [
+      "train.steps=200000",
+      "train.seed=0",
+      "aug.synth_views=2",
+      "aug.synth_render=true",
+      "loss.depth_valid_far=true",
+      "loss.motion_space=gaussian",
+      "loss.chamfer=5.0",
+      "loss.chamfer_points=4096",
+      "loss.chamfer_voxel_m=0.01"
+     ],
+     "config_sha256": "5ba11541d5a4c5b032ff9e1d04eba22e12c67a6b866c94d5757e309eae096c99",
+     "reference_run": "runs/s3-m3d-seed0-peg-insert-side-200k",
+     "reference_config_sha256": "b74521a272e25032d7a499a4eb42a61ac1b350d3e127a26ac7bb85aa83b59b47",
+     "resolved_diff_vs_reference_run": {
+      "loss.chamfer": [
+       "<absent>",
+       5.0
+      ],
+      "loss.chamfer_points": [
+       "<absent>",
+       4096
+      ],
+      "loss.chamfer_voxel_m": [
+       "<absent>",
+       0.01
+      ]
+     },
+     "tube": {
+      "mask_mode": "tube",
+      "mask_ratio": 0.5,
+      "visible_positions": 32,
+      "motion_quota": 16
+     }
+    },
+    "peg-unplug-side": {
+     "files": [
+      "configs/metaworld/base.yaml",
+      "configs/metaworld/tasks/peg-unplug-side.yaml"
+     ],
+     "set": [
+      "train.steps=200000",
+      "train.seed=0",
+      "aug.synth_views=2",
+      "aug.synth_render=true",
+      "loss.depth_valid_far=true",
+      "loss.motion_space=gaussian",
+      "loss.chamfer=5.0",
+      "loss.chamfer_points=4096",
+      "loss.chamfer_voxel_m=0.01"
+     ],
+     "config_sha256": "5913fac6b7b9be22c2b3875d55c914fa76aa5c049ad13351c864c6dd869d85d6",
+     "reference_run": "runs/s3-m3d-seed0-peg-unplug-side-200k",
+     "reference_config_sha256": "3f6daa4ee27d548cc87327ca5adda02c23532c5d2152eb79ab5b8be6933d984f",
+     "resolved_diff_vs_reference_run": {
+      "loss.chamfer": [
+       "<absent>",
+       5.0
+      ],
+      "loss.chamfer_points": [
+       "<absent>",
+       4096
+      ],
+      "loss.chamfer_voxel_m": [
+       "<absent>",
+       0.01
+      ]
+     },
+     "tube": {
+      "mask_mode": "tube",
+      "mask_ratio": 0.5,
+      "visible_positions": 32,
+      "motion_quota": 16
+     }
+    },
+    "stick-push": {
+     "files": [
+      "configs/metaworld/base.yaml",
+      "configs/metaworld/tasks/stick-push.yaml"
+     ],
+     "set": [
+      "train.steps=200000",
+      "train.seed=0",
+      "aug.synth_views=2",
+      "aug.synth_render=true",
+      "loss.depth_valid_far=true",
+      "loss.motion_space=gaussian",
+      "loss.chamfer=5.0",
+      "loss.chamfer_points=4096",
+      "loss.chamfer_voxel_m=0.01"
+     ],
+     "config_sha256": "1cd265586d3ff2080ff758105323360438eb0b5793320e24ca6ddd81af44ee4e",
+     "reference_run": "runs/s3-m3d-seed0-stick-push-200k",
+     "reference_config_sha256": "d3cddf6a38ee82bec87d28559c19e23ab7b25b2830a6759fe9565f68909e1bfc",
+     "resolved_diff_vs_reference_run": {
+      "loss.chamfer": [
+       "<absent>",
+       5.0
+      ],
+      "loss.chamfer_points": [
+       "<absent>",
+       4096
+      ],
+      "loss.chamfer_voxel_m": [
+       "<absent>",
+       0.01
+      ]
+     },
+     "tube": {
+      "mask_mode": "tube",
+      "mask_ratio": 0.5,
+      "visible_positions": 32,
+      "motion_quota": 16
+     }
+    }
+   }
+  },
+  "C": {
+   "prefix": "c50dg",
+   "label": "cst50 + depth gradient",
+   "base": "cst50",
+   "per_task": {
+    "hammer": {
+     "files": [
+      "configs/metaworld/base.yaml",
+      "configs/metaworld/tasks/hammer.yaml",
+      "configs/metaworld/variants/chamfer_lean.yaml",
+      "configs/metaworld/variants/chamfer_lean_randmask.yaml",
+      "configs/metaworld/variants/enc_cs.yaml",
+      "configs/metaworld/variants/enc_w4.yaml"
+     ],
+     "set": [
+      "train.steps=200000",
+      "train.seed=0",
+      "model.encoder.mask_mode=tube",
+      "model.encoder.mask_ratio=0.5",
+      "loss.depth_grad=0.5"
+     ],
+     "config_sha256": "18bdd7aa4ad3bd82985dd03941b3134d7561cbf395611820c6df2c7df0b088fc",
+     "reference_run": "runs/pretrain/cst50-seed0-hammer-200k",
+     "reference_config_sha256": "22ad63228571d0d49c0d5d361e3c0435dacb71a0d8e59df0cfa06dbe14975b2b",
+     "resolved_diff_vs_reference_run": {
+      "loss.depth_grad": [
+       0.0,
+       0.5
+      ]
+     },
+     "tube": {
+      "mask_mode": "tube",
+      "mask_ratio": 0.5,
+      "visible_positions": 32,
+      "motion_quota": 16
+     }
+    },
+    "pick-place": {
+     "files": [
+      "configs/metaworld/base.yaml",
+      "configs/metaworld/tasks/pick-place.yaml",
+      "configs/metaworld/variants/chamfer_lean.yaml",
+      "configs/metaworld/variants/chamfer_lean_randmask.yaml",
+      "configs/metaworld/variants/enc_cs.yaml",
+      "configs/metaworld/variants/enc_w4.yaml"
+     ],
+     "set": [
+      "train.steps=200000",
+      "train.seed=0",
+      "model.encoder.mask_mode=tube",
+      "model.encoder.mask_ratio=0.5",
+      "loss.depth_grad=0.5"
+     ],
+     "config_sha256": "0a03751a527a465a362b101a9bb0c6abf320d6b40ba7f45261538ca79978cc50",
+     "reference_run": "runs/pretrain/cst50-seed0-pick-place-200k",
+     "reference_config_sha256": "354087538f9cc4c09ecd79433a6e3a68c166ce16037cb3c4b209962263e5795a",
+     "resolved_diff_vs_reference_run": {
+      "loss.depth_grad": [
+       0.0,
+       0.5
+      ]
+     },
+     "tube": {
+      "mask_mode": "tube",
+      "mask_ratio": 0.5,
+      "visible_positions": 32,
+      "motion_quota": 16
+     }
+    },
+    "bin-picking": {
+     "files": [
+      "configs/metaworld/base.yaml",
+      "configs/metaworld/tasks/bin-picking.yaml",
+      "configs/metaworld/variants/chamfer_lean.yaml",
+      "configs/metaworld/variants/chamfer_lean_randmask.yaml",
+      "configs/metaworld/variants/enc_cs.yaml",
+      "configs/metaworld/variants/enc_w4.yaml"
+     ],
+     "set": [
+      "train.steps=200000",
+      "train.seed=0",
+      "model.encoder.mask_mode=tube",
+      "model.encoder.mask_ratio=0.5",
+      "loss.depth_grad=0.5"
+     ],
+     "config_sha256": "424ba9f8de1954db380fc5e294ffa2fc69f110c11a4d54b4e4bba7031b00e518",
+     "reference_run": "runs/pretrain/cst50-seed0-bin-picking-200k",
+     "reference_config_sha256": "bc07f2f35e672010366d7d0b857e87ae40394d4d4134ca2e99338f00a1df1a98",
+     "resolved_diff_vs_reference_run": {
+      "loss.depth_grad": [
+       0.0,
+       0.5
+      ]
+     },
+     "tube": {
+      "mask_mode": "tube",
+      "mask_ratio": 0.5,
+      "visible_positions": 32,
+      "motion_quota": 16
+     }
+    },
+    "coffee-push": {
+     "files": [
+      "configs/metaworld/base.yaml",
+      "configs/metaworld/tasks/coffee-push.yaml",
+      "configs/metaworld/variants/chamfer_lean.yaml",
+      "configs/metaworld/variants/chamfer_lean_randmask.yaml",
+      "configs/metaworld/variants/enc_cs.yaml",
+      "configs/metaworld/variants/enc_w4.yaml"
+     ],
+     "set": [
+      "train.steps=200000",
+      "train.seed=0",
+      "model.encoder.mask_mode=tube",
+      "model.encoder.mask_ratio=0.5",
+      "loss.depth_grad=0.5"
+     ],
+     "config_sha256": "92201054e75e710aa3484d81ad1f5770fcda798df788bed2952e650694a59836",
+     "reference_run": "runs/cst50-seed0-coffee-push-200k",
+     "reference_config_sha256": "ee19ce70e393827c3c27daf10d8b9bfa0f68581bfbf525eb603addba0bce7dad",
+     "resolved_diff_vs_reference_run": {
+      "loss.depth_grad": [
+       0.0,
+       0.5
+      ]
+     },
+     "tube": {
+      "mask_mode": "tube",
+      "mask_ratio": 0.5,
+      "visible_positions": 32,
+      "motion_quota": 16
+     }
+    },
+    "door-open": {
+     "files": [
+      "configs/metaworld/base.yaml",
+      "configs/metaworld/tasks/door-open.yaml",
+      "configs/metaworld/variants/chamfer_lean.yaml",
+      "configs/metaworld/variants/chamfer_lean_randmask.yaml",
+      "configs/metaworld/variants/enc_cs.yaml",
+      "configs/metaworld/variants/enc_w4.yaml"
+     ],
+     "set": [
+      "train.steps=200000",
+      "train.seed=0",
+      "model.encoder.mask_mode=tube",
+      "model.encoder.mask_ratio=0.5",
+      "loss.depth_grad=0.5"
+     ],
+     "config_sha256": "851235ec2888da62c9c7cb9765f68ea63b488465ac8c0c51cfc060cdfd28bd25",
+     "reference_run": "runs/cst50-seed0-door-open-200k",
+     "reference_config_sha256": "d334349345d062e100702a82965262d142c7783d67d792b978a5041cf0e50c77",
+     "resolved_diff_vs_reference_run": {
+      "loss.depth_grad": [
+       0.0,
+       0.5
+      ]
+     },
+     "tube": {
+      "mask_mode": "tube",
+      "mask_ratio": 0.5,
+      "visible_positions": 32,
+      "motion_quota": 16
+     }
+    },
+    "peg-insert-side": {
+     "files": [
+      "configs/metaworld/base.yaml",
+      "configs/metaworld/tasks/peg-insert-side.yaml",
+      "configs/metaworld/variants/chamfer_lean.yaml",
+      "configs/metaworld/variants/chamfer_lean_randmask.yaml",
+      "configs/metaworld/variants/enc_cs.yaml",
+      "configs/metaworld/variants/enc_w4.yaml"
+     ],
+     "set": [
+      "train.steps=200000",
+      "train.seed=0",
+      "model.encoder.mask_mode=tube",
+      "model.encoder.mask_ratio=0.5",
+      "loss.depth_grad=0.5"
+     ],
+     "config_sha256": "b7807467a91572ae0b3bda9e40a592f93ff9536702046619600c52d572244cc4",
+     "reference_run": "runs/cst50-seed0-peg-insert-side-200k",
+     "reference_config_sha256": "6970aefa094dff773e1c8882f6c985eac07daec3d6df697c9398313e7447c20d",
+     "resolved_diff_vs_reference_run": {
+      "loss.depth_grad": [
+       0.0,
+       0.5
+      ]
+     },
+     "tube": {
+      "mask_mode": "tube",
+      "mask_ratio": 0.5,
+      "visible_positions": 32,
+      "motion_quota": 16
+     }
+    },
+    "peg-unplug-side": {
+     "files": [
+      "configs/metaworld/base.yaml",
+      "configs/metaworld/tasks/peg-unplug-side.yaml",
+      "configs/metaworld/variants/chamfer_lean.yaml",
+      "configs/metaworld/variants/chamfer_lean_randmask.yaml",
+      "configs/metaworld/variants/enc_cs.yaml",
+      "configs/metaworld/variants/enc_w4.yaml"
+     ],
+     "set": [
+      "train.steps=200000",
+      "train.seed=0",
+      "model.encoder.mask_mode=tube",
+      "model.encoder.mask_ratio=0.5",
+      "loss.depth_grad=0.5"
+     ],
+     "config_sha256": "eebc0b5ef3260222efef83a8a10332f146b044307a12478d9a572671d299a152",
+     "reference_run": "runs/cst50-seed0-peg-unplug-side-200k",
+     "reference_config_sha256": "7539b42a0b4ef88bdc7248c73b4dbc5d4c0186bb90badddf242a4101166d1949",
+     "resolved_diff_vs_reference_run": {
+      "loss.depth_grad": [
+       0.0,
+       0.5
+      ]
+     },
+     "tube": {
+      "mask_mode": "tube",
+      "mask_ratio": 0.5,
+      "visible_positions": 32,
+      "motion_quota": 16
+     }
+    },
+    "stick-push": {
+     "files": [
+      "configs/metaworld/base.yaml",
+      "configs/metaworld/tasks/stick-push.yaml",
+      "configs/metaworld/variants/chamfer_lean.yaml",
+      "configs/metaworld/variants/chamfer_lean_randmask.yaml",
+      "configs/metaworld/variants/enc_cs.yaml",
+      "configs/metaworld/variants/enc_w4.yaml"
+     ],
+     "set": [
+      "train.steps=200000",
+      "train.seed=0",
+      "model.encoder.mask_mode=tube",
+      "model.encoder.mask_ratio=0.5",
+      "loss.depth_grad=0.5"
+     ],
+     "config_sha256": "4af36c1344e5e61290fe1deb0950883f79c9ef2f74b75f13dda45c72141028b0",
+     "reference_run": "runs/cst50-seed0-stick-push-200k",
+     "reference_config_sha256": "ffe76562355a1dae919857e30c190bfc050086aaf8a102b3a363b80ea9811c08",
+     "resolved_diff_vs_reference_run": {
+      "loss.depth_grad": [
+       0.0,
+       0.5
+      ]
+     },
+     "tube": {
+      "mask_mode": "tube",
+      "mask_ratio": 0.5,
+      "visible_positions": 32,
+      "motion_quota": 16
+     }
+    }
+   }
+  },
+  "D": {
+   "prefix": "c50vis",
+   "label": "cst50 + visibility",
+   "base": "cst50",
+   "per_task": {
+    "hammer": {
+     "files": [
+      "configs/metaworld/base.yaml",
+      "configs/metaworld/tasks/hammer.yaml",
+      "configs/metaworld/variants/chamfer_lean.yaml",
+      "configs/metaworld/variants/chamfer_lean_randmask.yaml",
+      "configs/metaworld/variants/enc_cs.yaml",
+      "configs/metaworld/variants/enc_w4.yaml"
+     ],
+     "set": [
+      "train.steps=200000",
+      "train.seed=0",
+      "model.encoder.mask_mode=tube",
+      "model.encoder.mask_ratio=0.5",
+      "loss.visibility=1.0"
+     ],
+     "config_sha256": "518fee4f5ac36f0c9eef1c9058a44191dbaa4f7718626ff659d50f5169bfd35e",
+     "reference_run": "runs/pretrain/cst50-seed0-hammer-200k",
+     "reference_config_sha256": "22ad63228571d0d49c0d5d361e3c0435dacb71a0d8e59df0cfa06dbe14975b2b",
+     "resolved_diff_vs_reference_run": {
+      "loss.visibility": [
+       0.0,
+       1.0
+      ]
+     },
+     "tube": {
+      "mask_mode": "tube",
+      "mask_ratio": 0.5,
+      "visible_positions": 32,
+      "motion_quota": 16
+     }
+    },
+    "pick-place": {
+     "files": [
+      "configs/metaworld/base.yaml",
+      "configs/metaworld/tasks/pick-place.yaml",
+      "configs/metaworld/variants/chamfer_lean.yaml",
+      "configs/metaworld/variants/chamfer_lean_randmask.yaml",
+      "configs/metaworld/variants/enc_cs.yaml",
+      "configs/metaworld/variants/enc_w4.yaml"
+     ],
+     "set": [
+      "train.steps=200000",
+      "train.seed=0",
+      "model.encoder.mask_mode=tube",
+      "model.encoder.mask_ratio=0.5",
+      "loss.visibility=1.0"
+     ],
+     "config_sha256": "d1ea5eb9fa401723e3102d1cf4ccf5e5049ea8ca8ac908ef6095694660bd5eed",
+     "reference_run": "runs/pretrain/cst50-seed0-pick-place-200k",
+     "reference_config_sha256": "354087538f9cc4c09ecd79433a6e3a68c166ce16037cb3c4b209962263e5795a",
+     "resolved_diff_vs_reference_run": {
+      "loss.visibility": [
+       0.0,
+       1.0
+      ]
+     },
+     "tube": {
+      "mask_mode": "tube",
+      "mask_ratio": 0.5,
+      "visible_positions": 32,
+      "motion_quota": 16
+     }
+    },
+    "bin-picking": {
+     "files": [
+      "configs/metaworld/base.yaml",
+      "configs/metaworld/tasks/bin-picking.yaml",
+      "configs/metaworld/variants/chamfer_lean.yaml",
+      "configs/metaworld/variants/chamfer_lean_randmask.yaml",
+      "configs/metaworld/variants/enc_cs.yaml",
+      "configs/metaworld/variants/enc_w4.yaml"
+     ],
+     "set": [
+      "train.steps=200000",
+      "train.seed=0",
+      "model.encoder.mask_mode=tube",
+      "model.encoder.mask_ratio=0.5",
+      "loss.visibility=1.0"
+     ],
+     "config_sha256": "928056b8476134145a82798874c36a65589abb4683a2ff8bf355ca3143026fa8",
+     "reference_run": "runs/pretrain/cst50-seed0-bin-picking-200k",
+     "reference_config_sha256": "bc07f2f35e672010366d7d0b857e87ae40394d4d4134ca2e99338f00a1df1a98",
+     "resolved_diff_vs_reference_run": {
+      "loss.visibility": [
+       0.0,
+       1.0
+      ]
+     },
+     "tube": {
+      "mask_mode": "tube",
+      "mask_ratio": 0.5,
+      "visible_positions": 32,
+      "motion_quota": 16
+     }
+    },
+    "coffee-push": {
+     "files": [
+      "configs/metaworld/base.yaml",
+      "configs/metaworld/tasks/coffee-push.yaml",
+      "configs/metaworld/variants/chamfer_lean.yaml",
+      "configs/metaworld/variants/chamfer_lean_randmask.yaml",
+      "configs/metaworld/variants/enc_cs.yaml",
+      "configs/metaworld/variants/enc_w4.yaml"
+     ],
+     "set": [
+      "train.steps=200000",
+      "train.seed=0",
+      "model.encoder.mask_mode=tube",
+      "model.encoder.mask_ratio=0.5",
+      "loss.visibility=1.0"
+     ],
+     "config_sha256": "152c98ac8259246d25ded8b0f46b86228e4b03e82ab3a34c051d3985e29fa5e9",
+     "reference_run": "runs/cst50-seed0-coffee-push-200k",
+     "reference_config_sha256": "ee19ce70e393827c3c27daf10d8b9bfa0f68581bfbf525eb603addba0bce7dad",
+     "resolved_diff_vs_reference_run": {
+      "loss.visibility": [
+       0.0,
+       1.0
+      ]
+     },
+     "tube": {
+      "mask_mode": "tube",
+      "mask_ratio": 0.5,
+      "visible_positions": 32,
+      "motion_quota": 16
+     }
+    },
+    "door-open": {
+     "files": [
+      "configs/metaworld/base.yaml",
+      "configs/metaworld/tasks/door-open.yaml",
+      "configs/metaworld/variants/chamfer_lean.yaml",
+      "configs/metaworld/variants/chamfer_lean_randmask.yaml",
+      "configs/metaworld/variants/enc_cs.yaml",
+      "configs/metaworld/variants/enc_w4.yaml"
+     ],
+     "set": [
+      "train.steps=200000",
+      "train.seed=0",
+      "model.encoder.mask_mode=tube",
+      "model.encoder.mask_ratio=0.5",
+      "loss.visibility=1.0"
+     ],
+     "config_sha256": "59410c9415e99d1b62e67155cc93d6221c6a475090bfdf37f990f1231c96fedb",
+     "reference_run": "runs/cst50-seed0-door-open-200k",
+     "reference_config_sha256": "d334349345d062e100702a82965262d142c7783d67d792b978a5041cf0e50c77",
+     "resolved_diff_vs_reference_run": {
+      "loss.visibility": [
+       0.0,
+       1.0
+      ]
+     },
+     "tube": {
+      "mask_mode": "tube",
+      "mask_ratio": 0.5,
+      "visible_positions": 32,
+      "motion_quota": 16
+     }
+    },
+    "peg-insert-side": {
+     "files": [
+      "configs/metaworld/base.yaml",
+      "configs/metaworld/tasks/peg-insert-side.yaml",
+      "configs/metaworld/variants/chamfer_lean.yaml",
+      "configs/metaworld/variants/chamfer_lean_randmask.yaml",
+      "configs/metaworld/variants/enc_cs.yaml",
+      "configs/metaworld/variants/enc_w4.yaml"
+     ],
+     "set": [
+      "train.steps=200000",
+      "train.seed=0",
+      "model.encoder.mask_mode=tube",
+      "model.encoder.mask_ratio=0.5",
+      "loss.visibility=1.0"
+     ],
+     "config_sha256": "71066a4a631d6fb123264a5625a348ee0d9ceed87c0f851a2ac3d0fc72709fea",
+     "reference_run": "runs/cst50-seed0-peg-insert-side-200k",
+     "reference_config_sha256": "6970aefa094dff773e1c8882f6c985eac07daec3d6df697c9398313e7447c20d",
+     "resolved_diff_vs_reference_run": {
+      "loss.visibility": [
+       0.0,
+       1.0
+      ]
+     },
+     "tube": {
+      "mask_mode": "tube",
+      "mask_ratio": 0.5,
+      "visible_positions": 32,
+      "motion_quota": 16
+     }
+    },
+    "peg-unplug-side": {
+     "files": [
+      "configs/metaworld/base.yaml",
+      "configs/metaworld/tasks/peg-unplug-side.yaml",
+      "configs/metaworld/variants/chamfer_lean.yaml",
+      "configs/metaworld/variants/chamfer_lean_randmask.yaml",
+      "configs/metaworld/variants/enc_cs.yaml",
+      "configs/metaworld/variants/enc_w4.yaml"
+     ],
+     "set": [
+      "train.steps=200000",
+      "train.seed=0",
+      "model.encoder.mask_mode=tube",
+      "model.encoder.mask_ratio=0.5",
+      "loss.visibility=1.0"
+     ],
+     "config_sha256": "fc6b14b895d0370bc650732af3ea72965ef5f3ba31a358a4e862791c273392cd",
+     "reference_run": "runs/cst50-seed0-peg-unplug-side-200k",
+     "reference_config_sha256": "7539b42a0b4ef88bdc7248c73b4dbc5d4c0186bb90badddf242a4101166d1949",
+     "resolved_diff_vs_reference_run": {
+      "loss.visibility": [
+       0.0,
+       1.0
+      ]
+     },
+     "tube": {
+      "mask_mode": "tube",
+      "mask_ratio": 0.5,
+      "visible_positions": 32,
+      "motion_quota": 16
+     }
+    },
+    "stick-push": {
+     "files": [
+      "configs/metaworld/base.yaml",
+      "configs/metaworld/tasks/stick-push.yaml",
+      "configs/metaworld/variants/chamfer_lean.yaml",
+      "configs/metaworld/variants/chamfer_lean_randmask.yaml",
+      "configs/metaworld/variants/enc_cs.yaml",
+      "configs/metaworld/variants/enc_w4.yaml"
+     ],
+     "set": [
+      "train.steps=200000",
+      "train.seed=0",
+      "model.encoder.mask_mode=tube",
+      "model.encoder.mask_ratio=0.5",
+      "loss.visibility=1.0"
+     ],
+     "config_sha256": "aa99df6661dc13c9bb89c54fe8aed5606c322ea5685988787b1a60973f830ad8",
+     "reference_run": "runs/cst50-seed0-stick-push-200k",
+     "reference_config_sha256": "ffe76562355a1dae919857e30c190bfc050086aaf8a102b3a363b80ea9811c08",
+     "resolved_diff_vs_reference_run": {
+      "loss.visibility": [
+       0.0,
+       1.0
+      ]
+     },
+     "tube": {
+      "mask_mode": "tube",
+      "mask_ratio": 0.5,
+      "visible_positions": 32,
+      "motion_quota": 16
+     }
+    }
+   }
+  }
+ },
+ "references": {
+  "hammer": {
+   "original": {
+    "rows": [
+     "i2-m3d-seed0-hammer",
+     "ls-a200-m3d-seed0-hammer"
+    ],
+    "row_args_last": {
+     "files": [
+      "configs/metaworld/base.yaml",
+      "configs/metaworld/tasks/hammer.yaml"
+     ],
+     "set": [
+      "train.steps=200000",
+      "train.stop_step=200000",
+      "train.seed=0",
+      "aug.synth_views=2",
+      "aug.synth_render=true",
+      "loss.depth_valid_far=true",
+      "loss.motion_space=gaussian"
+     ]
+    },
+    "launches": {
+     "i2-m3d-seed0-hammer": [
+      {
+       "host": "local",
+       "attempt": 1,
+       "commit": "10b31167da559e7c011d96c389d45016f4fc28c6",
+       "image_digest": null,
+       "gpu": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+      }
+     ],
+     "ls-a200-m3d-seed0-hammer": [
+      {
+       "host": "local",
+       "attempt": 1,
+       "commit": "3fba521fd804386484b072ad9cdf4d97e603434f",
+       "image_digest": null,
+       "gpu": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+      }
+     ]
+    },
+    "run_dir": "runs/pretrain/i2-m3d-seed0-hammer",
+    "checkpoint_200k": "runs/pretrain/i2-m3d-seed0-hammer/checkpoints/step_0200000.pt",
+    "checkpoint_200k_exists": true,
+    "export": "runs/exports/ls-a200-m3d-seed0-hammer-200k.pt",
+    "export_exists": true,
+    "stored_config_sha256": "90db962e72775bfd5dfd50b19bf5db9b2a047a4dcdd077e8fdea9543487f1784",
+    "stored_git_commit": "3fba521fd804386484b072ad9cdf4d97e603434f",
+    "yaml_drift_vs_release": {}
+   },
+   "cst50": {
+    "rows": [
+     "cst50-seed0-hammer-200k"
+    ],
+    "row_args": {
+     "files": [
+      "configs/metaworld/base.yaml",
+      "configs/metaworld/tasks/hammer.yaml",
+      "configs/metaworld/variants/chamfer_lean.yaml",
+      "configs/metaworld/variants/chamfer_lean_randmask.yaml",
+      "configs/metaworld/variants/enc_cs.yaml",
+      "configs/metaworld/variants/enc_w4.yaml"
+     ],
+     "set": [
+      "train.steps=200000",
+      "train.seed=0",
+      "model.encoder.mask_mode=tube",
+      "model.encoder.mask_ratio=0.5"
+     ]
+    },
+    "launches": [
+     {
+      "host": "local",
+      "attempt": 1,
+      "commit": "7643e9d0395fbe99f8f9e3f274728242219a224a",
+      "image_digest": null,
+      "gpu": "MIG-05a151e7-c6bd-5344-91cb-8bfb3a342631"
+     }
+    ],
+    "run_dir": "runs/pretrain/cst50-seed0-hammer-200k",
+    "checkpoint_200k": "runs/pretrain/cst50-seed0-hammer-200k/checkpoints/step_0200000.pt",
+    "checkpoint_200k_exists": true,
+    "export": "runs/cst50-export-seed0-hammer-200k/encoder.pt",
+    "export_exists": true,
+    "stored_config_sha256": "22ad63228571d0d49c0d5d361e3c0435dacb71a0d8e59df0cfa06dbe14975b2b",
+    "stored_git_commit": "7643e9d0395fbe99f8f9e3f274728242219a224a",
+    "yaml_drift_vs_release": {}
+   }
+  },
+  "pick-place": {
+   "original": {
+    "rows": [
+     "i2-m3d-seed0-pick-place",
+     "ls-a200-m3d-seed0-pick-place"
+    ],
+    "row_args_last": {
+     "files": [
+      "configs/metaworld/base.yaml",
+      "configs/metaworld/tasks/pick-place.yaml"
+     ],
+     "set": [
+      "train.steps=200000",
+      "train.stop_step=200000",
+      "train.seed=0",
+      "aug.synth_views=2",
+      "aug.synth_render=true",
+      "loss.depth_valid_far=true",
+      "loss.motion_space=gaussian"
+     ]
+    },
+    "launches": {
+     "i2-m3d-seed0-pick-place": [
+      {
+       "host": "local",
+       "attempt": 1,
+       "commit": "10b31167da559e7c011d96c389d45016f4fc28c6",
+       "image_digest": null,
+       "gpu": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+      }
+     ],
+     "ls-a200-m3d-seed0-pick-place": [
+      {
+       "host": "local",
+       "attempt": 1,
+       "commit": "3fba521fd804386484b072ad9cdf4d97e603434f",
+       "image_digest": null,
+       "gpu": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+      }
+     ]
+    },
+    "run_dir": "runs/pretrain/i2-m3d-seed0-pick-place",
+    "checkpoint_200k": "runs/pretrain/i2-m3d-seed0-pick-place/checkpoints/step_0200000.pt",
+    "checkpoint_200k_exists": true,
+    "export": "runs/exports/ls-a200-m3d-seed0-pick-place-200k.pt",
+    "export_exists": true,
+    "stored_config_sha256": "f97a8ffb41fc7e45ba468c81609c8d49b8b7720cc2e3d82e78ddad41f7a7c523",
+    "stored_git_commit": "3fba521fd804386484b072ad9cdf4d97e603434f",
+    "yaml_drift_vs_release": {}
+   },
+   "cst50": {
+    "rows": [
+     "cst50-seed0-pick-place-200k"
+    ],
+    "row_args": {
+     "files": [
+      "configs/metaworld/base.yaml",
+      "configs/metaworld/tasks/pick-place.yaml",
+      "configs/metaworld/variants/chamfer_lean.yaml",
+      "configs/metaworld/variants/chamfer_lean_randmask.yaml",
+      "configs/metaworld/variants/enc_cs.yaml",
+      "configs/metaworld/variants/enc_w4.yaml"
+     ],
+     "set": [
+      "train.steps=200000",
+      "train.seed=0",
+      "model.encoder.mask_mode=tube",
+      "model.encoder.mask_ratio=0.5"
+     ]
+    },
+    "launches": [
+     {
+      "host": "local",
+      "attempt": 1,
+      "commit": "7643e9d0395fbe99f8f9e3f274728242219a224a",
+      "image_digest": null,
+      "gpu": "MIG-c3511b41-5f78-52f1-9b93-9c6794cdbbdd"
+     }
+    ],
+    "run_dir": "runs/pretrain/cst50-seed0-pick-place-200k",
+    "checkpoint_200k": "runs/pretrain/cst50-seed0-pick-place-200k/checkpoints/step_0200000.pt",
+    "checkpoint_200k_exists": true,
+    "export": "runs/cst50-export-seed0-pick-place-200k/encoder.pt",
+    "export_exists": true,
+    "stored_config_sha256": "354087538f9cc4c09ecd79433a6e3a68c166ce16037cb3c4b209962263e5795a",
+    "stored_git_commit": "7643e9d0395fbe99f8f9e3f274728242219a224a",
+    "yaml_drift_vs_release": {}
+   }
+  },
+  "bin-picking": {
+   "original": {
+    "rows": [
+     "s3-m3d-seed0-bin-picking-200k"
+    ],
+    "row_args_last": {
+     "files": [
+      "configs/metaworld/base.yaml",
+      "configs/metaworld/tasks/bin-picking.yaml"
+     ],
+     "set": [
+      "train.steps=200000",
+      "train.seed=0",
+      "aug.synth_views=2",
+      "aug.synth_render=true",
+      "loss.depth_valid_far=true",
+      "loss.motion_space=gaussian"
+     ]
+    },
+    "launches": {
+     "s3-m3d-seed0-bin-picking-200k": [
+      {
+       "host": "remote",
+       "attempt": 1,
+       "commit": "226d8ae89b6f65097d372e597e0a7734d2eee3e0",
+       "image_digest": "sha256:c3ffea7f7c114dd12755f9d537f760a6d5b31c96c923233185b775e0324799b7",
+       "gpu": "GPU-ca65e1b7-c0ac-6757-7d3f-816c3119a4c1"
+      },
+      {
+       "host": "remote",
+       "attempt": 1,
+       "commit": "226d8ae89b6f65097d372e597e0a7734d2eee3e0",
+       "image_digest": "sha256:c3ffea7f7c114dd12755f9d537f760a6d5b31c96c923233185b775e0324799b7",
+       "gpu": "GPU-ca65e1b7-c0ac-6757-7d3f-816c3119a4c1"
+      },
+      {
+       "host": "remote",
+       "attempt": 1,
+       "commit": "226d8ae89b6f65097d372e597e0a7734d2eee3e0",
+       "image_digest": "sha256:c3ffea7f7c114dd12755f9d537f760a6d5b31c96c923233185b775e0324799b7",
+       "gpu": "GPU-ca65e1b7-c0ac-6757-7d3f-816c3119a4c1"
+      }
+     ]
+    },
+    "run_dir": "runs/s3-m3d-seed0-bin-picking-200k",
+    "checkpoint_200k": "runs/s3-m3d-seed0-bin-picking-200k/checkpoints/step_0200000.pt",
+    "checkpoint_200k_exists": true,
+    "export": "runs/s3-export-m3d-seed0-bin-picking-200k/encoder.pt",
+    "export_exists": true,
+    "stored_config_sha256": "5076c92b37dbc0e6eb935f09a4331c71df8b37681727756bf5d3e1cc8298fa31",
+    "stored_git_commit": "226d8ae89b6f65097d372e597e0a7734d2eee3e0",
+    "yaml_drift_vs_release": {}
+   },
+   "cst50": {
+    "rows": [
+     "cst50-seed0-bin-picking-200k"
+    ],
+    "row_args": {
+     "files": [
+      "configs/metaworld/base.yaml",
+      "configs/metaworld/tasks/bin-picking.yaml",
+      "configs/metaworld/variants/chamfer_lean.yaml",
+      "configs/metaworld/variants/chamfer_lean_randmask.yaml",
+      "configs/metaworld/variants/enc_cs.yaml",
+      "configs/metaworld/variants/enc_w4.yaml"
+     ],
+     "set": [
+      "train.steps=200000",
+      "train.seed=0",
+      "model.encoder.mask_mode=tube",
+      "model.encoder.mask_ratio=0.5"
+     ]
+    },
+    "launches": [
+     {
+      "host": "local",
+      "attempt": 1,
+      "commit": "7643e9d0395fbe99f8f9e3f274728242219a224a",
+      "image_digest": null,
+      "gpu": "MIG-02b55a66-ed41-53c2-9004-c3f5619d6369"
+     }
+    ],
+    "run_dir": "runs/pretrain/cst50-seed0-bin-picking-200k",
+    "checkpoint_200k": "runs/pretrain/cst50-seed0-bin-picking-200k/checkpoints/step_0200000.pt",
+    "checkpoint_200k_exists": true,
+    "export": "runs/cst50-export-seed0-bin-picking-200k/encoder.pt",
+    "export_exists": true,
+    "stored_config_sha256": "bc07f2f35e672010366d7d0b857e87ae40394d4d4134ca2e99338f00a1df1a98",
+    "stored_git_commit": "7643e9d0395fbe99f8f9e3f274728242219a224a",
+    "yaml_drift_vs_release": {}
+   }
+  },
+  "coffee-push": {
+   "original": {
+    "rows": [
+     "s3-m3d-seed0-coffee-push-200k"
+    ],
+    "row_args_last": {
+     "files": [
+      "configs/metaworld/base.yaml",
+      "configs/metaworld/tasks/coffee-push.yaml"
+     ],
+     "set": [
+      "train.steps=200000",
+      "train.seed=0",
+      "aug.synth_views=2",
+      "aug.synth_render=true",
+      "loss.depth_valid_far=true",
+      "loss.motion_space=gaussian"
+     ]
+    },
+    "launches": {
+     "s3-m3d-seed0-coffee-push-200k": [
+      {
+       "host": "remote",
+       "attempt": 1,
+       "commit": "226d8ae89b6f65097d372e597e0a7734d2eee3e0",
+       "image_digest": "sha256:c3ffea7f7c114dd12755f9d537f760a6d5b31c96c923233185b775e0324799b7",
+       "gpu": "GPU-4391fcee-537f-d408-d138-10d8a3866eea"
+      }
+     ]
+    },
+    "run_dir": "runs/s3-m3d-seed0-coffee-push-200k",
+    "checkpoint_200k": "runs/s3-m3d-seed0-coffee-push-200k/checkpoints/step_0200000.pt",
+    "checkpoint_200k_exists": true,
+    "export": "runs/s3-export-m3d-seed0-coffee-push-200k/encoder.pt",
+    "export_exists": true,
+    "stored_config_sha256": "f280e4ba8b854660fda069e3d25df37f5e2537ba58098f90c35170c2af9d4731",
+    "stored_git_commit": "226d8ae89b6f65097d372e597e0a7734d2eee3e0",
+    "yaml_drift_vs_release": {}
+   },
+   "cst50": {
+    "rows": [
+     "cst50-seed0-coffee-push-200k"
+    ],
+    "row_args": {
+     "files": [
+      "configs/metaworld/base.yaml",
+      "configs/metaworld/tasks/coffee-push.yaml",
+      "configs/metaworld/variants/chamfer_lean.yaml",
+      "configs/metaworld/variants/chamfer_lean_randmask.yaml",
+      "configs/metaworld/variants/enc_cs.yaml",
+      "configs/metaworld/variants/enc_w4.yaml"
+     ],
+     "set": [
+      "train.steps=200000",
+      "train.seed=0",
+      "model.encoder.mask_mode=tube",
+      "model.encoder.mask_ratio=0.5"
+     ]
+    },
+    "launches": [
+     {
+      "host": "remote",
+      "attempt": 1,
+      "commit": "fd5e950eac86e3c33365d00388e0e51884ccfba7",
+      "image_digest": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a",
+      "gpu": "GPU-ca65e1b7-c0ac-6757-7d3f-816c3119a4c1"
+     }
+    ],
+    "run_dir": "runs/cst50-seed0-coffee-push-200k",
+    "checkpoint_200k": "runs/cst50-seed0-coffee-push-200k/checkpoints/step_0200000.pt",
+    "checkpoint_200k_exists": true,
+    "export": "runs/cst50-export-seed0-coffee-push-200k/encoder.pt",
+    "export_exists": true,
+    "stored_config_sha256": "ee19ce70e393827c3c27daf10d8b9bfa0f68581bfbf525eb603addba0bce7dad",
+    "stored_git_commit": "fd5e950eac86e3c33365d00388e0e51884ccfba7",
+    "yaml_drift_vs_release": {}
+   }
+  },
+  "door-open": {
+   "original": {
+    "rows": [
+     "s3-m3d-seed0-door-open-200k"
+    ],
+    "row_args_last": {
+     "files": [
+      "configs/metaworld/base.yaml",
+      "configs/metaworld/tasks/door-open.yaml"
+     ],
+     "set": [
+      "train.steps=200000",
+      "train.seed=0",
+      "aug.synth_views=2",
+      "aug.synth_render=true",
+      "loss.depth_valid_far=true",
+      "loss.motion_space=gaussian"
+     ]
+    },
+    "launches": {
+     "s3-m3d-seed0-door-open-200k": [
+      {
+       "host": "remote",
+       "attempt": 1,
+       "commit": "226d8ae89b6f65097d372e597e0a7734d2eee3e0",
+       "image_digest": "sha256:c3ffea7f7c114dd12755f9d537f760a6d5b31c96c923233185b775e0324799b7",
+       "gpu": "GPU-4391fcee-537f-d408-d138-10d8a3866eea"
+      },
+      {
+       "host": "remote",
+       "attempt": 1,
+       "commit": "226d8ae89b6f65097d372e597e0a7734d2eee3e0",
+       "image_digest": "sha256:c3ffea7f7c114dd12755f9d537f760a6d5b31c96c923233185b775e0324799b7",
+       "gpu": "GPU-4391fcee-537f-d408-d138-10d8a3866eea"
+      }
+     ]
+    },
+    "run_dir": "runs/s3-m3d-seed0-door-open-200k",
+    "checkpoint_200k": "runs/s3-m3d-seed0-door-open-200k/checkpoints/step_0200000.pt",
+    "checkpoint_200k_exists": true,
+    "export": "runs/s3-export-m3d-seed0-door-open-200k/encoder.pt",
+    "export_exists": true,
+    "stored_config_sha256": "000796f8a219389e56d746cfa2dc69c6a0214fa15c96f25774d60287ad9ea26c",
+    "stored_git_commit": "226d8ae89b6f65097d372e597e0a7734d2eee3e0",
+    "yaml_drift_vs_release": {}
+   },
+   "cst50": {
+    "rows": [
+     "cst50-seed0-door-open-200k"
+    ],
+    "row_args": {
+     "files": [
+      "configs/metaworld/base.yaml",
+      "configs/metaworld/tasks/door-open.yaml",
+      "configs/metaworld/variants/chamfer_lean.yaml",
+      "configs/metaworld/variants/chamfer_lean_randmask.yaml",
+      "configs/metaworld/variants/enc_cs.yaml",
+      "configs/metaworld/variants/enc_w4.yaml"
+     ],
+     "set": [
+      "train.steps=200000",
+      "train.seed=0",
+      "model.encoder.mask_mode=tube",
+      "model.encoder.mask_ratio=0.5"
+     ]
+    },
+    "launches": [
+     {
+      "host": "remote",
+      "attempt": 1,
+      "commit": "fd5e950eac86e3c33365d00388e0e51884ccfba7",
+      "image_digest": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a",
+      "gpu": "GPU-ca65e1b7-c0ac-6757-7d3f-816c3119a4c1"
+     }
+    ],
+    "run_dir": "runs/cst50-seed0-door-open-200k",
+    "checkpoint_200k": "runs/cst50-seed0-door-open-200k/checkpoints/step_0200000.pt",
+    "checkpoint_200k_exists": true,
+    "export": "runs/cst50-export-seed0-door-open-200k/encoder.pt",
+    "export_exists": true,
+    "stored_config_sha256": "d334349345d062e100702a82965262d142c7783d67d792b978a5041cf0e50c77",
+    "stored_git_commit": "fd5e950eac86e3c33365d00388e0e51884ccfba7",
+    "yaml_drift_vs_release": {}
+   }
+  },
+  "peg-insert-side": {
+   "original": {
+    "rows": [
+     "s3-m3d-seed0-peg-insert-side-200k"
+    ],
+    "row_args_last": {
+     "files": [
+      "configs/metaworld/base.yaml",
+      "configs/metaworld/tasks/peg-insert-side.yaml"
+     ],
+     "set": [
+      "train.steps=200000",
+      "train.seed=0",
+      "aug.synth_views=2",
+      "aug.synth_render=true",
+      "loss.depth_valid_far=true",
+      "loss.motion_space=gaussian"
+     ]
+    },
+    "launches": {
+     "s3-m3d-seed0-peg-insert-side-200k": [
+      {
+       "host": "remote",
+       "attempt": 1,
+       "commit": "226d8ae89b6f65097d372e597e0a7734d2eee3e0",
+       "image_digest": "sha256:c3ffea7f7c114dd12755f9d537f760a6d5b31c96c923233185b775e0324799b7",
+       "gpu": "GPU-6122c7a9-eaa6-b539-6005-f20e339da4ea"
+      }
+     ]
+    },
+    "run_dir": "runs/s3-m3d-seed0-peg-insert-side-200k",
+    "checkpoint_200k": "runs/s3-m3d-seed0-peg-insert-side-200k/checkpoints/step_0200000.pt",
+    "checkpoint_200k_exists": true,
+    "export": "runs/s3-export-m3d-seed0-peg-insert-side-200k/encoder.pt",
+    "export_exists": true,
+    "stored_config_sha256": "b74521a272e25032d7a499a4eb42a61ac1b350d3e127a26ac7bb85aa83b59b47",
+    "stored_git_commit": "226d8ae89b6f65097d372e597e0a7734d2eee3e0",
+    "yaml_drift_vs_release": {}
+   },
+   "cst50": {
+    "rows": [
+     "cst50-seed0-peg-insert-side-200k"
+    ],
+    "row_args": {
+     "files": [
+      "configs/metaworld/base.yaml",
+      "configs/metaworld/tasks/peg-insert-side.yaml",
+      "configs/metaworld/variants/chamfer_lean.yaml",
+      "configs/metaworld/variants/chamfer_lean_randmask.yaml",
+      "configs/metaworld/variants/enc_cs.yaml",
+      "configs/metaworld/variants/enc_w4.yaml"
+     ],
+     "set": [
+      "train.steps=200000",
+      "train.seed=0",
+      "model.encoder.mask_mode=tube",
+      "model.encoder.mask_ratio=0.5"
+     ]
+    },
+    "launches": [
+     {
+      "host": "remote",
+      "attempt": 1,
+      "commit": "fd5e950eac86e3c33365d00388e0e51884ccfba7",
+      "image_digest": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a",
+      "gpu": "GPU-4391fcee-537f-d408-d138-10d8a3866eea"
+     }
+    ],
+    "run_dir": "runs/cst50-seed0-peg-insert-side-200k",
+    "checkpoint_200k": "runs/cst50-seed0-peg-insert-side-200k/checkpoints/step_0200000.pt",
+    "checkpoint_200k_exists": true,
+    "export": "runs/cst50-export-seed0-peg-insert-side-200k/encoder.pt",
+    "export_exists": true,
+    "stored_config_sha256": "6970aefa094dff773e1c8882f6c985eac07daec3d6df697c9398313e7447c20d",
+    "stored_git_commit": "fd5e950eac86e3c33365d00388e0e51884ccfba7",
+    "yaml_drift_vs_release": {}
+   }
+  },
+  "peg-unplug-side": {
+   "original": {
+    "rows": [
+     "s3-m3d-seed0-peg-unplug-side-200k"
+    ],
+    "row_args_last": {
+     "files": [
+      "configs/metaworld/base.yaml",
+      "configs/metaworld/tasks/peg-unplug-side.yaml"
+     ],
+     "set": [
+      "train.steps=200000",
+      "train.seed=0",
+      "aug.synth_views=2",
+      "aug.synth_render=true",
+      "loss.depth_valid_far=true",
+      "loss.motion_space=gaussian"
+     ]
+    },
+    "launches": {
+     "s3-m3d-seed0-peg-unplug-side-200k": [
+      {
+       "host": "remote",
+       "attempt": 1,
+       "commit": "226d8ae89b6f65097d372e597e0a7734d2eee3e0",
+       "image_digest": "sha256:c3ffea7f7c114dd12755f9d537f760a6d5b31c96c923233185b775e0324799b7",
+       "gpu": "GPU-ca65e1b7-c0ac-6757-7d3f-816c3119a4c1"
+      }
+     ]
+    },
+    "run_dir": "runs/s3-m3d-seed0-peg-unplug-side-200k",
+    "checkpoint_200k": "runs/s3-m3d-seed0-peg-unplug-side-200k/checkpoints/step_0200000.pt",
+    "checkpoint_200k_exists": true,
+    "export": "runs/s3-export-m3d-seed0-peg-unplug-side-200k/encoder.pt",
+    "export_exists": true,
+    "stored_config_sha256": "3f6daa4ee27d548cc87327ca5adda02c23532c5d2152eb79ab5b8be6933d984f",
+    "stored_git_commit": "226d8ae89b6f65097d372e597e0a7734d2eee3e0",
+    "yaml_drift_vs_release": {}
+   },
+   "cst50": {
+    "rows": [
+     "cst50-seed0-peg-unplug-side-200k"
+    ],
+    "row_args": {
+     "files": [
+      "configs/metaworld/base.yaml",
+      "configs/metaworld/tasks/peg-unplug-side.yaml",
+      "configs/metaworld/variants/chamfer_lean.yaml",
+      "configs/metaworld/variants/chamfer_lean_randmask.yaml",
+      "configs/metaworld/variants/enc_cs.yaml",
+      "configs/metaworld/variants/enc_w4.yaml"
+     ],
+     "set": [
+      "train.steps=200000",
+      "train.seed=0",
+      "model.encoder.mask_mode=tube",
+      "model.encoder.mask_ratio=0.5"
+     ]
+    },
+    "launches": [
+     {
+      "host": "remote",
+      "attempt": 1,
+      "commit": "fd5e950eac86e3c33365d00388e0e51884ccfba7",
+      "image_digest": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a",
+      "gpu": "GPU-6122c7a9-eaa6-b539-6005-f20e339da4ea"
+     }
+    ],
+    "run_dir": "runs/cst50-seed0-peg-unplug-side-200k",
+    "checkpoint_200k": "runs/cst50-seed0-peg-unplug-side-200k/checkpoints/step_0200000.pt",
+    "checkpoint_200k_exists": true,
+    "export": "runs/cst50-export-seed0-peg-unplug-side-200k/encoder.pt",
+    "export_exists": true,
+    "stored_config_sha256": "7539b42a0b4ef88bdc7248c73b4dbc5d4c0186bb90badddf242a4101166d1949",
+    "stored_git_commit": "fd5e950eac86e3c33365d00388e0e51884ccfba7",
+    "yaml_drift_vs_release": {}
+   }
+  },
+  "stick-push": {
+   "original": {
+    "rows": [
+     "s3-m3d-seed0-stick-push-200k"
+    ],
+    "row_args_last": {
+     "files": [
+      "configs/metaworld/base.yaml",
+      "configs/metaworld/tasks/stick-push.yaml"
+     ],
+     "set": [
+      "train.steps=200000",
+      "train.seed=0",
+      "aug.synth_views=2",
+      "aug.synth_render=true",
+      "loss.depth_valid_far=true",
+      "loss.motion_space=gaussian"
+     ]
+    },
+    "launches": {
+     "s3-m3d-seed0-stick-push-200k": [
+      {
+       "host": "remote",
+       "attempt": 1,
+       "commit": "226d8ae89b6f65097d372e597e0a7734d2eee3e0",
+       "image_digest": "sha256:c3ffea7f7c114dd12755f9d537f760a6d5b31c96c923233185b775e0324799b7",
+       "gpu": "GPU-9e9f1e97-b2ca-04e0-eb2a-8035398daa79"
+      }
+     ]
+    },
+    "run_dir": "runs/s3-m3d-seed0-stick-push-200k",
+    "checkpoint_200k": "runs/s3-m3d-seed0-stick-push-200k/checkpoints/step_0200000.pt",
+    "checkpoint_200k_exists": true,
+    "export": "runs/s3-export-m3d-seed0-stick-push-200k/encoder.pt",
+    "export_exists": true,
+    "stored_config_sha256": "d3cddf6a38ee82bec87d28559c19e23ab7b25b2830a6759fe9565f68909e1bfc",
+    "stored_git_commit": "226d8ae89b6f65097d372e597e0a7734d2eee3e0",
+    "yaml_drift_vs_release": {}
+   },
+   "cst50": {
+    "rows": [
+     "cst50-seed0-stick-push-200k"
+    ],
+    "row_args": {
+     "files": [
+      "configs/metaworld/base.yaml",
+      "configs/metaworld/tasks/stick-push.yaml",
+      "configs/metaworld/variants/chamfer_lean.yaml",
+      "configs/metaworld/variants/chamfer_lean_randmask.yaml",
+      "configs/metaworld/variants/enc_cs.yaml",
+      "configs/metaworld/variants/enc_w4.yaml"
+     ],
+     "set": [
+      "train.steps=200000",
+      "train.seed=0",
+      "model.encoder.mask_mode=tube",
+      "model.encoder.mask_ratio=0.5"
+     ]
+    },
+    "launches": [
+     {
+      "host": "remote",
+      "attempt": 1,
+      "commit": "fd5e950eac86e3c33365d00388e0e51884ccfba7",
+      "image_digest": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a",
+      "gpu": "GPU-9e9f1e97-b2ca-04e0-eb2a-8035398daa79"
+     }
+    ],
+    "run_dir": "runs/cst50-seed0-stick-push-200k",
+    "checkpoint_200k": "runs/cst50-seed0-stick-push-200k/checkpoints/step_0200000.pt",
+    "checkpoint_200k_exists": true,
+    "export": "runs/cst50-export-seed0-stick-push-200k/encoder.pt",
+    "export_exists": true,
+    "stored_config_sha256": "ffe76562355a1dae919857e30c190bfc050086aaf8a102b3a363b80ea9811c08",
+    "stored_git_commit": "fd5e950eac86e3c33365d00388e0e51884ccfba7",
+    "yaml_drift_vs_release": {}
+   }
+  }
+ },
+ "cross_checks": {
+  "A_encoder_vs_cst50_encoder": {
+   "hammer": {
+    "e.mask_mode": [
+     "tube",
+     "<absent>"
+    ]
+   },
+   "pick-place": {
+    "e.mask_mode": [
+     "tube",
+     "<absent>"
+    ]
+   },
+   "bin-picking": {
+    "e.mask_mode": [
+     "tube",
+     "<absent>"
+    ]
+   },
+   "coffee-push": {
+    "e.mask_mode": [
+     "tube",
+     "<absent>"
+    ]
+   },
+   "door-open": {
+    "e.mask_mode": [
+     "tube",
+     "<absent>"
+    ]
+   },
+   "peg-insert-side": {
+    "e.mask_mode": [
+     "tube",
+     "<absent>"
+    ]
+   },
+   "peg-unplug-side": {
+    "e.mask_mode": [
+     "tube",
+     "<absent>"
+    ]
+   },
+   "stick-push": {
+    "e.mask_mode": [
+     "tube",
+     "<absent>"
+    ]
+   }
+  },
+  "B_chamfer_vs_cst50_and_chl": {
+   "hammer": {
+    "chamfer": [
+     5.0,
+     5.0,
+     5.0
+    ],
+    "chamfer_points": [
+     4096,
+     4096,
+     4096
+    ],
+    "chamfer_voxel_m": [
+     0.01,
+     0.01,
+     0.01
+    ]
+   },
+   "pick-place": {
+    "chamfer": [
+     5.0,
+     5.0,
+     5.0
+    ],
+    "chamfer_points": [
+     4096,
+     4096,
+     4096
+    ],
+    "chamfer_voxel_m": [
+     0.01,
+     0.01,
+     0.01
+    ]
+   },
+   "bin-picking": {
+    "chamfer": [
+     5.0,
+     5.0,
+     5.0
+    ],
+    "chamfer_points": [
+     4096,
+     4096,
+     4096
+    ],
+    "chamfer_voxel_m": [
+     0.01,
+     0.01,
+     0.01
+    ]
+   },
+   "coffee-push": {
+    "chamfer": [
+     5.0,
+     5.0,
+     5.0
+    ],
+    "chamfer_points": [
+     4096,
+     4096,
+     4096
+    ],
+    "chamfer_voxel_m": [
+     0.01,
+     0.01,
+     0.01
+    ]
+   },
+   "door-open": {
+    "chamfer": [
+     5.0,
+     5.0,
+     5.0
+    ],
+    "chamfer_points": [
+     4096,
+     4096,
+     4096
+    ],
+    "chamfer_voxel_m": [
+     0.01,
+     0.01,
+     0.01
+    ]
+   },
+   "peg-insert-side": {
+    "chamfer": [
+     5.0,
+     5.0,
+     5.0
+    ],
+    "chamfer_points": [
+     4096,
+     4096,
+     4096
+    ],
+    "chamfer_voxel_m": [
+     0.01,
+     0.01,
+     0.01
+    ]
+   },
+   "peg-unplug-side": {
+    "chamfer": [
+     5.0,
+     5.0,
+     5.0
+    ],
+    "chamfer_points": [
+     4096,
+     4096,
+     4096
+    ],
+    "chamfer_voxel_m": [
+     0.01,
+     0.01,
+     0.01
+    ]
+   },
+   "stick-push": {
+    "chamfer": [
+     5.0,
+     5.0,
+     5.0
+    ],
+    "chamfer_points": [
+     4096,
+     4096,
+     4096
+    ],
+    "chamfer_voxel_m": [
+     0.01,
+     0.01,
+     0.01
+    ]
+   }
+  },
+  "C_depth_grad_D_visibility_vs_original": {
+   "hammer": {
+    "depth_grad": [
+     0.5,
+     0.5
+    ],
+    "visibility": [
+     1.0,
+     1.0
+    ],
+    "C_hard_visibility": [
+     0.0,
+     0.0
+    ],
+    "D_hard_grad": [
+     0.0,
+     0.0
+    ]
+   },
+   "pick-place": {
+    "depth_grad": [
+     0.5,
+     0.5
+    ],
+    "visibility": [
+     1.0,
+     1.0
+    ],
+    "C_hard_visibility": [
+     0.0,
+     0.0
+    ],
+    "D_hard_grad": [
+     0.0,
+     0.0
+    ]
+   },
+   "bin-picking": {
+    "depth_grad": [
+     0.5,
+     0.5
+    ],
+    "visibility": [
+     1.0,
+     1.0
+    ],
+    "C_hard_visibility": [
+     0.0,
+     0.0
+    ],
+    "D_hard_grad": [
+     0.0,
+     0.0
+    ]
+   },
+   "coffee-push": {
+    "depth_grad": [
+     0.5,
+     0.5
+    ],
+    "visibility": [
+     1.0,
+     1.0
+    ],
+    "C_hard_visibility": [
+     0.0,
+     0.0
+    ],
+    "D_hard_grad": [
+     0.0,
+     0.0
+    ]
+   },
+   "door-open": {
+    "depth_grad": [
+     0.5,
+     0.5
+    ],
+    "visibility": [
+     1.0,
+     1.0
+    ],
+    "C_hard_visibility": [
+     0.0,
+     0.0
+    ],
+    "D_hard_grad": [
+     0.0,
+     0.0
+    ]
+   },
+   "peg-insert-side": {
+    "depth_grad": [
+     0.5,
+     0.5
+    ],
+    "visibility": [
+     1.0,
+     1.0
+    ],
+    "C_hard_visibility": [
+     0.0,
+     0.0
+    ],
+    "D_hard_grad": [
+     0.0,
+     0.0
+    ]
+   },
+   "peg-unplug-side": {
+    "depth_grad": [
+     0.5,
+     0.5
+    ],
+    "visibility": [
+     1.0,
+     1.0
+    ],
+    "C_hard_visibility": [
+     0.0,
+     0.0
+    ],
+    "D_hard_grad": [
+     0.0,
+     0.0
+    ]
+   },
+   "stick-push": {
+    "depth_grad": [
+     0.5,
+     0.5
+    ],
+    "visibility": [
+     1.0,
+     1.0
+    ],
+    "C_hard_visibility": [
+     0.0,
+     0.0
+    ],
+    "D_hard_grad": [
+     0.0,
+     0.0
+    ]
+   }
+  },
+  "encoder_default_mask_mode": "tube",
+  "encoder_default_stem": "patchify"
+ },
+ "matched_initialisation": {
+  "protocol": "train.seed 0, s4d.train.loop.seed_everything(seed + rank 0) then build_model (backbone scratch, no warm start); data order from the loader generator seeded with train.seed; the full 200k schedule",
+  "task": "hammer",
+  "hashes": {
+   "original": {
+    "state_sha256": "400f2ef29c186f45300c94f11bc4f1bf7802783c742dd93931e2dd4e1ac5f5a3",
+    "parameters": 2594984,
+    "encoder_parameters": 1726592
+   },
+   "cst50": {
+    "state_sha256": "7a1103d2217f1827ab7502a2a36fbdb02efcd5febf5715bc5aa18fd94c622b11",
+    "parameters": 4385352,
+    "encoder_parameters": 3516960
+   },
+   "A": {
+    "state_sha256": "7a1103d2217f1827ab7502a2a36fbdb02efcd5febf5715bc5aa18fd94c622b11",
+    "parameters": 4385352,
+    "encoder_parameters": 3516960
+   },
+   "B": {
+    "state_sha256": "400f2ef29c186f45300c94f11bc4f1bf7802783c742dd93931e2dd4e1ac5f5a3",
+    "parameters": 2594984,
+    "encoder_parameters": 1726592
+   },
+   "C": {
+    "state_sha256": "7a1103d2217f1827ab7502a2a36fbdb02efcd5febf5715bc5aa18fd94c622b11",
+    "parameters": 4385352,
+    "encoder_parameters": 3516960
+   },
+   "D": {
+    "state_sha256": "7a1103d2217f1827ab7502a2a36fbdb02efcd5febf5715bc5aa18fd94c622b11",
+    "parameters": 4385352,
+    "encoder_parameters": 3516960
+   }
+  },
+  "equal_to_matched_reference": {
+   "A": true,
+   "B": true,
+   "C": true,
+   "D": true
+  }
+ },
+ "code_defaults_ast": {
+  "release_entries": 311,
+  "files": [
+   "s4d/train/loop.py",
+   "s4d/train/augment.py",
+   "s4d/train/evaluate.py",
+   "s4d/model/encoder.py",
+   "s4d/model/decoder.py",
+   "s4d/model/render.py",
+   "s4d/model/gaussians.py",
+   "s4d/geometry.py",
+   "s4d/config.py",
+   "s4d/losses/chamfer.py",
+   "s4d/losses/depth.py",
+   "s4d/losses/invariance.py",
+   "s4d/losses/motion.py",
+   "s4d/losses/motion3d.py",
+   "s4d/losses/occlusion.py",
+   "s4d/losses/regularizers.py",
+   "s4d/losses/rgb.py",
+   "s4d/data/contract.py",
+   "s4d/data/metaworld/dataset.py",
+   "scripts/train.py",
+   "scripts/export_encoder.py"
+  ],
+  "per_reference_commit": {
+   "226d8ae": {
+    "what": "Original pretraining + export + DrM (6 remote tasks)",
+    "entries": 207,
+    "changed": {},
+    "removed": [],
+    "added_count": 104,
+    "added": [
+     "s4d/data/contract.py:CROP_FIELDS",
+     "s4d/data/contract.py:HARDNEG_FIELDS",
+     "s4d/data/contract.py:HISTORY_FIELDS",
+     "s4d/data/metaworld/dataset.py:FUTURE_STRIDES",
+     "s4d/data/metaworld/dataset.py:HISTORY_STRIDE",
+     "s4d/data/metaworld/dataset.py:MAX_ACTIONS",
+     "s4d/data/metaworld/dataset.py:OBJECTIVES",
+     "s4d/data/metaworld/dataset.py:__init__(eligibility_future=)",
+     "s4d/data/metaworld/dataset.py:__init__(future_strides=)",
+     "s4d/data/metaworld/dataset.py:__init__(hardneg=)",
+     "s4d/data/metaworld/dataset.py:__init__(history_stride=)",
+     "s4d/data/metaworld/dataset.py:__init__(objective=)",
+     "s4d/losses/chamfer.py:_FALLBACK_ELEMENTS",
+     "s4d/losses/chamfer.py:_KEY_BITS",
+     "s4d/losses/chamfer.py:nearest_neighbours(fused=)",
+     "s4d/losses/chamfer.py:target_clouds(generator=)",
+     "s4d/losses/invariance.py:multi_positive_info_nce(negatives=)",
+     "s4d/losses/invariance.py:multi_positive_info_nce(negatives_valid=)",
+     "s4d/losses/invariance.py:multi_positive_info_nce(negatives_weight=)",
+     "s4d/losses/motion3d.py:_gaussian_motion_loss(pair_displacements=)",
+     "s4d/losses/motion3d.py:_gaussian_motion_loss(pair_sources=)",
+     "s4d/losses/motion3d.py:motion3d_loss(pair_displacements=)",
+     "s4d/losses/motion3d.py:motion3d_loss(pair_sources=)",
+     "s4d/losses/rgb.py:SSIM_RADIUS",
+     "s4d/losses/rgb.py:pixel_weights(observed=)",
+     "s4d/losses/rgb.py:rgb_loss(ssim_weights=)",
+     "s4d/losses/rgb.py:ssim_support(radius=)",
+     "s4d/model/decoder.py:DecoderConfig.action_dim",
+     "s4d/model/decoder.py:DecoderConfig.action_embed",
+     "s4d/model/decoder.py:DecoderConfig.action_hidden",
+     "s4d/model/decoder.py:DecoderConfig.max_actions",
+     "s4d/model/decoder.py:DecoderConfig.motion_head",
+     "s4d/model/decoder.py:DecoderConfig.temporal_branch",
+     "s4d/model/decoder.py:DecoderConfig.temporal_embed",
+     "s4d/model/decoder.py:DecoderConfig.temporal_hidden",
+     "s4d/model/decoder.py:__init__(action_embed=)",
+     "s4d/model/decoder.py:__init__(motion_head=)",
+     "s4d/model/decoder.py:forward(actions=)",
+     "s4d/model/decoder.py:forward(future_stride=)",
+     "s4d/model/decoder.py:forward(prefix_embeddings=)",
+     "s4d/model/decoder.py:forward(return_features=)",
+     "s4d/model/encoder.py:DEFAULT_ONLY_FIELDS",
+     "s4d/model/encoder.py:EncoderConfig.mask_mode",
+     "s4d/model/encoder.py:EncoderConfig.stem",
+     "s4d/model/encoder.py:HYBRID_TUBE_PATCHES",
+     "s4d/model/encoder.py:STEM_CHANNELS",
+     "s4d/model/encoder.py:STEM_GROUPS",
+     "s4d/model/encoder.py:__init__(channels=)",
+     "s4d/model/encoder.py:__init__(groups=)",
+     "s4d/model/encoder.py:hybrid_counts(tube=)",
+     "s4d/model/encoder.py:sample_eligible_tokens(generator=)",
+     "s4d/model/encoder.py:sample_hybrid_mask(eligible=)",
+     "s4d/model/encoder.py:sample_hybrid_mask(generator=)",
+     "s4d/model/encoder.py:sample_hybrid_mask(tube=)",
+     "s4d/model/encoder.py:sample_random_tokens(generator=)",
+     "s4d/train/augment.py:.get('synth_camera_rig')",
+     "s4d/train/augment.py:.get('synth_views')",
+     "s4d/train/augment.py:.get('version')",
+     "s4d/train/augment.py:REPO",
+     "s4d/train/augment.py:SYNTH_CAMERA_RIGS",
+     "s4d/train/augment.py:domain_cameras(radius_jitter=)",
+     "s4d/train/augment.py:get(cfg,'aug')",
+     "s4d/train/augment.py:get(cfg,'data.regime')",
+     "s4d/train/augment.py:get(cfg,'loss.self_render')",
+     "s4d/train/augment.py:jitter_training_cameras(default_distance=)",
+     "s4d/train/augment.py:jitter_training_cameras(far=)",
+     "s4d/train/augment.py:jitter_training_cameras(near=)",
+     "s4d/train/augment.py:jitter_training_cameras(scale=)",
+     "s4d/train/augment.py:jitter_training_cameras(seed=)",
+     "s4d/train/augment.py:random_shift(pad=)",
+     "s4d/train/augment.py:synthesize_views_with_motion(score_key=)",
+     "s4d/train/evaluate.py:.get('history_motion_score')",
+     "s4d/train/evaluate.py:get(cfg,'data.history_stride')",
+     "s4d/train/evaluate.py:get(cfg,'data.objective')",
+     "s4d/train/evaluate.py:states(group=)",
+     "s4d/train/loop.py:.get('chamfer')",
+     "s4d/train/loop.py:.get('chamfer_points')",
+     "s4d/train/loop.py:.get('chamfer_voxel_m')",
+     "s4d/train/loop.py:.get('hardneg_weight')",
+     "s4d/train/loop.py:.get('motion_feature_render')",
+     "s4d/train/loop.py:.get('pad')",
+     "s4d/train/loop.py:.get('synth_source')",
+     "s4d/train/loop.py:.get('temporal')",
+     "s4d/train/loop.py:SYNTH_SOURCES",
+     "s4d/train/loop.py:__init__(frame_mode=)",
+     "s4d/train/loop.py:forward(actions=)",
+     "s4d/train/loop.py:forward(future_stride=)",
+     "s4d/train/loop.py:forward(visible=)",
+     "s4d/train/loop.py:get(cfg,'aug.synth_source')",
+     "s4d/train/loop.py:get(cfg,'data.hardneg')",
+     "s4d/train/loop.py:get(cfg,'data.objective')",
+     "s4d/train/loop.py:get(cfg,'data.regime')",
+     "s4d/train/loop.py:get(cfg,'loss.self_render')",
+     "s4d/train/loop.py:get(cfg,'train.encoder_lr_mult')",
+     "scripts/export_encoder.py:.get('model')",
+     "scripts/export_encoder.py:.get('objective')",
+     "scripts/export_encoder.py:.get('out_size')",
+     "scripts/train.py:get(cfg,'data.future_strides')",
+     "scripts/train.py:get(cfg,'data.hardneg')",
+     "scripts/train.py:get(cfg,'data.history_stride')",
+     "scripts/train.py:get(cfg,'data.objective')",
+     "scripts/train.py:get(cfg,'data.val_future_strides')",
+     "scripts/train.py:get(cfg,'loss.self_render')",
+     "scripts/train.py:get(cfg,'model.decoder.action_dim')"
+    ]
+   },
+   "10b3116": {
+    "what": "Original hammer / pick-place 0-100k",
+    "entries": 198,
+    "changed": {
+     "s4d/train/loop.py:.get('motion_space')": {
+      "reference": [
+       "'image'"
+      ],
+      "release": [
+       "'gaussian'"
+      ]
+     },
+     "s4d/data/contract.py:REQUIRED": {
+      "reference": [
+       "('images', 'K', 'w2c', 'c2w', 'depth', 'motion3d', 'motion_weight', 'motion_score')"
+      ],
+      "release": [
+       "('images', 'K', 'w2c', 'c2w', 'depth', 'motion_score')"
+      ]
+     }
+    },
+    "removed": [],
+    "added_count": 113,
+    "added": [
+     "s4d/data/contract.py:CROP_FIELDS",
+     "s4d/data/contract.py:DENSE_MOTION",
+     "s4d/data/contract.py:HARDNEG_FIELDS",
+     "s4d/data/contract.py:HISTORY_FIELDS",
+     "s4d/data/contract.py:TRACK_MOTION",
+     "s4d/data/metaworld/dataset.py:FUTURE_STRIDES",
+     "s4d/data/metaworld/dataset.py:HISTORY_STRIDE",
+     "s4d/data/metaworld/dataset.py:MAX_ACTIONS",
+     "s4d/data/metaworld/dataset.py:OBJECTIVES",
+     "s4d/data/metaworld/dataset.py:__init__(eligibility_future=)",
+     "s4d/data/metaworld/dataset.py:__init__(future_strides=)",
+     "s4d/data/metaworld/dataset.py:__init__(hardneg=)",
+     "s4d/data/metaworld/dataset.py:__init__(history_stride=)",
+     "s4d/data/metaworld/dataset.py:__init__(objective=)",
+     "s4d/losses/chamfer.py:_FALLBACK_ELEMENTS",
+     "s4d/losses/chamfer.py:_KEY_BITS",
+     "s4d/losses/chamfer.py:nearest_neighbours(fused=)",
+     "s4d/losses/chamfer.py:target_clouds(generator=)",
+     "s4d/losses/invariance.py:multi_positive_info_nce(negatives=)",
+     "s4d/losses/invariance.py:multi_positive_info_nce(negatives_valid=)",
+     "s4d/losses/invariance.py:multi_positive_info_nce(negatives_weight=)",
+     "s4d/losses/motion3d.py:_gaussian_motion_loss(pair_displacements=)",
+     "s4d/losses/motion3d.py:_gaussian_motion_loss(pair_sources=)",
+     "s4d/losses/motion3d.py:motion3d_loss(pair_displacements=)",
+     "s4d/losses/motion3d.py:motion3d_loss(pair_sources=)",
+     "s4d/losses/motion3d.py:motion3d_track_loss(attraction_weight=)",
+     "s4d/losses/motion3d.py:motion3d_track_loss(generator=)",
+     "s4d/losses/motion3d.py:motion3d_track_loss(huber=)",
+     "s4d/losses/motion3d.py:motion3d_track_loss(neighbours=)",
+     "s4d/losses/motion3d.py:motion3d_track_loss(num_points=)",
+     "s4d/losses/motion3d.py:motion3d_track_loss(pair_weights=)",
+     "s4d/losses/motion3d.py:motion3d_track_loss(radius=)",
+     "s4d/losses/rgb.py:SSIM_RADIUS",
+     "s4d/losses/rgb.py:pixel_weights(observed=)",
+     "s4d/losses/rgb.py:rgb_loss(ssim_weights=)",
+     "s4d/losses/rgb.py:ssim_support(radius=)",
+     "s4d/model/decoder.py:DecoderConfig.action_dim",
+     "s4d/model/decoder.py:DecoderConfig.action_embed",
+     "s4d/model/decoder.py:DecoderConfig.action_hidden",
+     "s4d/model/decoder.py:DecoderConfig.max_actions",
+     "s4d/model/decoder.py:DecoderConfig.motion_head",
+     "s4d/model/decoder.py:DecoderConfig.temporal_branch",
+     "s4d/model/decoder.py:DecoderConfig.temporal_embed",
+     "s4d/model/decoder.py:DecoderConfig.temporal_hidden",
+     "s4d/model/decoder.py:__init__(action_embed=)",
+     "s4d/model/decoder.py:__init__(motion_head=)",
+     "s4d/model/decoder.py:forward(actions=)",
+     "s4d/model/decoder.py:forward(future_stride=)",
+     "s4d/model/decoder.py:forward(prefix_embeddings=)",
+     "s4d/model/decoder.py:forward(return_features=)",
+     "s4d/model/encoder.py:DEFAULT_ONLY_FIELDS",
+     "s4d/model/encoder.py:EncoderConfig.mask_mode",
+     "s4d/model/encoder.py:EncoderConfig.stem",
+     "s4d/model/encoder.py:HYBRID_TUBE_PATCHES",
+     "s4d/model/encoder.py:STEM_CHANNELS",
+     "s4d/model/encoder.py:STEM_GROUPS",
+     "s4d/model/encoder.py:__init__(channels=)",
+     "s4d/model/encoder.py:__init__(groups=)",
+     "s4d/model/encoder.py:hybrid_counts(tube=)",
+     "s4d/model/encoder.py:sample_eligible_tokens(generator=)",
+     "s4d/model/encoder.py:sample_hybrid_mask(eligible=)",
+     "s4d/model/encoder.py:sample_hybrid_mask(generator=)",
+     "s4d/model/encoder.py:sample_hybrid_mask(tube=)",
+     "s4d/model/encoder.py:sample_random_tokens(generator=)",
+     "s4d/train/augment.py:.get('synth_camera_rig')",
+     "s4d/train/augment.py:.get('synth_views')",
+     "s4d/train/augment.py:.get('version')",
+     "s4d/train/augment.py:REPO",
+     "s4d/train/augment.py:SYNTH_CAMERA_RIGS",
+     "s4d/train/augment.py:domain_cameras(radius_jitter=)",
+     "s4d/train/augment.py:get(cfg,'aug')",
+     "s4d/train/augment.py:get(cfg,'data.regime')",
+     "s4d/train/augment.py:get(cfg,'loss.self_render')",
+     "s4d/train/augment.py:jitter_training_cameras(default_distance=)",
+     "s4d/train/augment.py:jitter_training_cameras(far=)",
+     "s4d/train/augment.py:jitter_training_cameras(near=)",
+     "s4d/train/augment.py:jitter_training_cameras(scale=)",
+     "s4d/train/augment.py:jitter_training_cameras(seed=)",
+     "s4d/train/augment.py:random_shift(pad=)",
+     "s4d/train/augment.py:synthesize_views_with_motion(score_key=)",
+     "s4d/train/evaluate.py:.get('history_motion_score')",
+     "s4d/train/evaluate.py:get(cfg,'data.history_stride')",
+     "s4d/train/evaluate.py:get(cfg,'data.objective')",
+     "s4d/train/evaluate.py:states(group=)",
+     "s4d/train/loop.py:.get('chamfer')",
+     "s4d/train/loop.py:.get('chamfer_points')",
+     "s4d/train/loop.py:.get('chamfer_voxel_m')",
+     "s4d/train/loop.py:.get('hardneg_weight')",
+     "s4d/train/loop.py:.get('motion_feature_render')",
+     "s4d/train/loop.py:.get('pad')",
+     "s4d/train/loop.py:.get('synth_source')",
+     "s4d/train/loop.py:.get('temporal')",
+     "s4d/train/loop.py:SYNTH_SOURCES",
+     "s4d/train/loop.py:__init__(frame_mode=)",
+     "s4d/train/loop.py:forward(actions=)",
+     "s4d/train/loop.py:forward(future_stride=)",
+     "s4d/train/loop.py:forward(visible=)",
+     "s4d/train/loop.py:get(cfg,'aug.synth_source')",
+     "s4d/train/loop.py:get(cfg,'data.hardneg')",
+     "s4d/train/loop.py:get(cfg,'data.objective')",
+     "s4d/train/loop.py:get(cfg,'data.regime')",
+     "s4d/train/loop.py:get(cfg,'loss.self_render')",
+     "s4d/train/loop.py:get(cfg,'train.encoder_lr_mult')",
+     "scripts/export_encoder.py:.get('model')",
+     "scripts/export_encoder.py:.get('objective')",
+     "scripts/export_encoder.py:.get('out_size')",
+     "scripts/train.py:get(cfg,'data.future_strides')",
+     "scripts/train.py:get(cfg,'data.hardneg')",
+     "scripts/train.py:get(cfg,'data.history_stride')",
+     "scripts/train.py:get(cfg,'data.objective')",
+     "scripts/train.py:get(cfg,'data.val_future_strides')",
+     "scripts/train.py:get(cfg,'loss.self_render')",
+     "scripts/train.py:get(cfg,'model.decoder.action_dim')"
+    ]
+   },
+   "3fba521": {
+    "what": "Original hammer / pick-place 100k-200k + exports",
+    "entries": 198,
+    "changed": {
+     "s4d/train/loop.py:.get('motion_space')": {
+      "reference": [
+       "'image'"
+      ],
+      "release": [
+       "'gaussian'"
+      ]
+     },
+     "s4d/data/contract.py:REQUIRED": {
+      "reference": [
+       "('images', 'K', 'w2c', 'c2w', 'depth', 'motion3d', 'motion_weight', 'motion_score')"
+      ],
+      "release": [
+       "('images', 'K', 'w2c', 'c2w', 'depth', 'motion_score')"
+      ]
+     }
+    },
+    "removed": [],
+    "added_count": 113,
+    "added": [
+     "s4d/data/contract.py:CROP_FIELDS",
+     "s4d/data/contract.py:DENSE_MOTION",
+     "s4d/data/contract.py:HARDNEG_FIELDS",
+     "s4d/data/contract.py:HISTORY_FIELDS",
+     "s4d/data/contract.py:TRACK_MOTION",
+     "s4d/data/metaworld/dataset.py:FUTURE_STRIDES",
+     "s4d/data/metaworld/dataset.py:HISTORY_STRIDE",
+     "s4d/data/metaworld/dataset.py:MAX_ACTIONS",
+     "s4d/data/metaworld/dataset.py:OBJECTIVES",
+     "s4d/data/metaworld/dataset.py:__init__(eligibility_future=)",
+     "s4d/data/metaworld/dataset.py:__init__(future_strides=)",
+     "s4d/data/metaworld/dataset.py:__init__(hardneg=)",
+     "s4d/data/metaworld/dataset.py:__init__(history_stride=)",
+     "s4d/data/metaworld/dataset.py:__init__(objective=)",
+     "s4d/losses/chamfer.py:_FALLBACK_ELEMENTS",
+     "s4d/losses/chamfer.py:_KEY_BITS",
+     "s4d/losses/chamfer.py:nearest_neighbours(fused=)",
+     "s4d/losses/chamfer.py:target_clouds(generator=)",
+     "s4d/losses/invariance.py:multi_positive_info_nce(negatives=)",
+     "s4d/losses/invariance.py:multi_positive_info_nce(negatives_valid=)",
+     "s4d/losses/invariance.py:multi_positive_info_nce(negatives_weight=)",
+     "s4d/losses/motion3d.py:_gaussian_motion_loss(pair_displacements=)",
+     "s4d/losses/motion3d.py:_gaussian_motion_loss(pair_sources=)",
+     "s4d/losses/motion3d.py:motion3d_loss(pair_displacements=)",
+     "s4d/losses/motion3d.py:motion3d_loss(pair_sources=)",
+     "s4d/losses/motion3d.py:motion3d_track_loss(attraction_weight=)",
+     "s4d/losses/motion3d.py:motion3d_track_loss(generator=)",
+     "s4d/losses/motion3d.py:motion3d_track_loss(huber=)",
+     "s4d/losses/motion3d.py:motion3d_track_loss(neighbours=)",
+     "s4d/losses/motion3d.py:motion3d_track_loss(num_points=)",
+     "s4d/losses/motion3d.py:motion3d_track_loss(pair_weights=)",
+     "s4d/losses/motion3d.py:motion3d_track_loss(radius=)",
+     "s4d/losses/rgb.py:SSIM_RADIUS",
+     "s4d/losses/rgb.py:pixel_weights(observed=)",
+     "s4d/losses/rgb.py:rgb_loss(ssim_weights=)",
+     "s4d/losses/rgb.py:ssim_support(radius=)",
+     "s4d/model/decoder.py:DecoderConfig.action_dim",
+     "s4d/model/decoder.py:DecoderConfig.action_embed",
+     "s4d/model/decoder.py:DecoderConfig.action_hidden",
+     "s4d/model/decoder.py:DecoderConfig.max_actions",
+     "s4d/model/decoder.py:DecoderConfig.motion_head",
+     "s4d/model/decoder.py:DecoderConfig.temporal_branch",
+     "s4d/model/decoder.py:DecoderConfig.temporal_embed",
+     "s4d/model/decoder.py:DecoderConfig.temporal_hidden",
+     "s4d/model/decoder.py:__init__(action_embed=)",
+     "s4d/model/decoder.py:__init__(motion_head=)",
+     "s4d/model/decoder.py:forward(actions=)",
+     "s4d/model/decoder.py:forward(future_stride=)",
+     "s4d/model/decoder.py:forward(prefix_embeddings=)",
+     "s4d/model/decoder.py:forward(return_features=)",
+     "s4d/model/encoder.py:DEFAULT_ONLY_FIELDS",
+     "s4d/model/encoder.py:EncoderConfig.mask_mode",
+     "s4d/model/encoder.py:EncoderConfig.stem",
+     "s4d/model/encoder.py:HYBRID_TUBE_PATCHES",
+     "s4d/model/encoder.py:STEM_CHANNELS",
+     "s4d/model/encoder.py:STEM_GROUPS",
+     "s4d/model/encoder.py:__init__(channels=)",
+     "s4d/model/encoder.py:__init__(groups=)",
+     "s4d/model/encoder.py:hybrid_counts(tube=)",
+     "s4d/model/encoder.py:sample_eligible_tokens(generator=)",
+     "s4d/model/encoder.py:sample_hybrid_mask(eligible=)",
+     "s4d/model/encoder.py:sample_hybrid_mask(generator=)",
+     "s4d/model/encoder.py:sample_hybrid_mask(tube=)",
+     "s4d/model/encoder.py:sample_random_tokens(generator=)",
+     "s4d/train/augment.py:.get('synth_camera_rig')",
+     "s4d/train/augment.py:.get('synth_views')",
+     "s4d/train/augment.py:.get('version')",
+     "s4d/train/augment.py:REPO",
+     "s4d/train/augment.py:SYNTH_CAMERA_RIGS",
+     "s4d/train/augment.py:domain_cameras(radius_jitter=)",
+     "s4d/train/augment.py:get(cfg,'aug')",
+     "s4d/train/augment.py:get(cfg,'data.regime')",
+     "s4d/train/augment.py:get(cfg,'loss.self_render')",
+     "s4d/train/augment.py:jitter_training_cameras(default_distance=)",
+     "s4d/train/augment.py:jitter_training_cameras(far=)",
+     "s4d/train/augment.py:jitter_training_cameras(near=)",
+     "s4d/train/augment.py:jitter_training_cameras(scale=)",
+     "s4d/train/augment.py:jitter_training_cameras(seed=)",
+     "s4d/train/augment.py:random_shift(pad=)",
+     "s4d/train/augment.py:synthesize_views_with_motion(score_key=)",
+     "s4d/train/evaluate.py:.get('history_motion_score')",
+     "s4d/train/evaluate.py:get(cfg,'data.history_stride')",
+     "s4d/train/evaluate.py:get(cfg,'data.objective')",
+     "s4d/train/evaluate.py:states(group=)",
+     "s4d/train/loop.py:.get('chamfer')",
+     "s4d/train/loop.py:.get('chamfer_points')",
+     "s4d/train/loop.py:.get('chamfer_voxel_m')",
+     "s4d/train/loop.py:.get('hardneg_weight')",
+     "s4d/train/loop.py:.get('motion_feature_render')",
+     "s4d/train/loop.py:.get('pad')",
+     "s4d/train/loop.py:.get('synth_source')",
+     "s4d/train/loop.py:.get('temporal')",
+     "s4d/train/loop.py:SYNTH_SOURCES",
+     "s4d/train/loop.py:__init__(frame_mode=)",
+     "s4d/train/loop.py:forward(actions=)",
+     "s4d/train/loop.py:forward(future_stride=)",
+     "s4d/train/loop.py:forward(visible=)",
+     "s4d/train/loop.py:get(cfg,'aug.synth_source')",
+     "s4d/train/loop.py:get(cfg,'data.hardneg')",
+     "s4d/train/loop.py:get(cfg,'data.objective')",
+     "s4d/train/loop.py:get(cfg,'data.regime')",
+     "s4d/train/loop.py:get(cfg,'loss.self_render')",
+     "s4d/train/loop.py:get(cfg,'train.encoder_lr_mult')",
+     "scripts/export_encoder.py:.get('model')",
+     "scripts/export_encoder.py:.get('objective')",
+     "scripts/export_encoder.py:.get('out_size')",
+     "scripts/train.py:get(cfg,'data.future_strides')",
+     "scripts/train.py:get(cfg,'data.hardneg')",
+     "scripts/train.py:get(cfg,'data.history_stride')",
+     "scripts/train.py:get(cfg,'data.objective')",
+     "scripts/train.py:get(cfg,'data.val_future_strides')",
+     "scripts/train.py:get(cfg,'loss.self_render')",
+     "scripts/train.py:get(cfg,'model.decoder.action_dim')"
+    ]
+   },
+   "fd5e950": {
+    "what": "cst50 remote (5 tasks)",
+    "entries": 311,
+    "changed": {},
+    "removed": [],
+    "added_count": 0,
+    "added": []
+   },
+   "7643e9d": {
+    "what": "cst50 local pretraining (3 tasks)",
+    "entries": 311,
+    "changed": {},
+    "removed": [],
+    "added_count": 0,
+    "added": []
+   },
+   "cec4b00": {
+    "what": "cst50 local exports + DrM",
+    "entries": 311,
+    "changed": {},
+    "removed": [],
+    "added_count": 0,
+    "added": []
+   }
+  }
+ },
+ "cross_commit_fingerprints": {
+  "harness": "runs/setup/tools/arm4_xcommit_fingerprint_20261106.py",
+  "harness_sha256": "da8bf86f491326fd62e3050ea7c34b97d666b0852876212e55e2a4e5ddb42ef2",
+  "config_task": "bin-picking (task-independent at test size)",
+  "results": {
+   "original@226d8ae": {
+    "bitwise_identical_to_release": true,
+    "loss_terms": [
+     "consistency",
+     "coverage",
+     "depth_grad",
+     "depth_hard",
+     "depth_l1",
+     "infonce",
+     "motion",
+     "render",
+     "rgb",
+     "synth_render",
+     "total",
+     "visibility"
+    ],
+    "steps": 3
+   },
+   "original@10b3116": {
+    "bitwise_identical_to_release": true,
+    "loss_terms": [
+     "consistency",
+     "coverage",
+     "depth_grad",
+     "depth_hard",
+     "depth_l1",
+     "infonce",
+     "motion",
+     "render",
+     "rgb",
+     "synth_render",
+     "total",
+     "visibility"
+    ],
+    "steps": 3
+   },
+   "original@3fba521": {
+    "bitwise_identical_to_release": true,
+    "loss_terms": [
+     "consistency",
+     "coverage",
+     "depth_grad",
+     "depth_hard",
+     "depth_l1",
+     "infonce",
+     "motion",
+     "render",
+     "rgb",
+     "synth_render",
+     "total",
+     "visibility"
+    ],
+    "steps": 3
+   },
+   "cst50@fd5e950": {
+    "bitwise_identical_to_release": true,
+    "loss_terms": [
+     "chamfer",
+     "chamfer_pred_to_target",
+     "chamfer_target_to_pred",
+     "consistency",
+     "coverage",
+     "depth_l1",
+     "infonce",
+     "motion",
+     "render",
+     "rgb",
+     "synth_render",
+     "total"
+    ],
+    "steps": 3
+   },
+   "cst50@7643e9d": {
+    "bitwise_identical_to_release": true,
+    "loss_terms": [
+     "chamfer",
+     "chamfer_pred_to_target",
+     "chamfer_target_to_pred",
+     "consistency",
+     "coverage",
+     "depth_l1",
+     "infonce",
+     "motion",
+     "render",
+     "rgb",
+     "synth_render",
+     "total"
+    ],
+    "steps": 3
+   }
+  }
+ },
+ "drm": {
+  "resolved_config_diff_vs_reference_s2000": {
+   "original/hammer": {},
+   "original/pick-place": {},
+   "original/bin-picking": {},
+   "original/coffee-push": {},
+   "original/door-open": {},
+   "original/peg-insert-side": {},
+   "original/peg-unplug-side": {},
+   "original/stick-push": {},
+   "cst50/hammer": {},
+   "cst50/pick-place": {},
+   "cst50/bin-picking": {},
+   "cst50/coffee-push": {},
+   "cst50/door-open": {},
+   "cst50/peg-insert-side": {},
+   "cst50/peg-unplug-side": {},
+   "cst50/stick-push": {}
+  },
+  "rl_code_changed_files": {
+   "226d8ae": [
+    "configs/rl/algorithms/dreamer_v1.yaml",
+    "configs/rl/algorithms/flashsac.yaml",
+    "configs/rl/algorithms/sb3_ppo.yaml",
+    "configs/rl/algorithms/snerl_sac.yaml",
+    "configs/rl/encoders/dynamo.yaml",
+    "configs/rl/encoders/mvp3d_multiview.yaml",
+    "configs/rl/encoders/mvp3d_single.yaml",
+    "configs/rl/encoders/snerl.yaml",
+    "configs/rl/tasks.yaml",
+    "s4d/rl/agent.py",
+    "s4d/rl/algorithms.py",
+    "s4d/rl/camera_suites.py",
+    "s4d/rl/dreamer_v1.py",
+    "s4d/rl/encoders.py",
+    "s4d/rl/env.py",
+    "s4d/rl/evaluate.py",
+    "s4d/rl/flashsac.py",
+    "s4d/rl/protocol.py",
+    "s4d/rl/replay.py",
+    "s4d/rl/run_io.py",
+    "s4d/rl/sb3_ppo.py",
+    "s4d/rl/snerl_sac.py",
+    "s4d/rl/vecenv.py",
+    "s4d/rl/visibility.py",
+    "scripts/eval_rl.py",
+    "scripts/train_rl.py"
+   ],
+   "fd5e950": [],
+   "cec4b00": []
+  }
+ },
+ "problems": []
+}

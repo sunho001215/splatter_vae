@@ -1,7 +1,10 @@
-"""Offline FQL on a frozen real-world baseline representation (docs/realworld_fql.md). Offline only: no environment,
+"""Offline FQL on a frozen real-world baseline representation, or end-to-end with a randomly initialised IMPALA CNN
+trained jointly (``condition=e2e_cnn``; s4d/rwlearn/pixel.py) (docs/realworld_fql.md). Offline only: no environment,
 no robot. The agent is the PyTorch port of the official FQL (s4d/rwlearn/fql.py); the loop is the official
 ``main.py`` offline phase (uniform batches, one ``agent.update`` per step, validation losses every ``log_interval``)
-with offline validation metrics in place of environment evaluation.
+with offline validation metrics in place of environment evaluation. alpha = 10 for every condition (user decision
+2026-11-06; no sweep). The offline metrics are diagnostics only, never a selection criterion: later tuning follows a
+predefined real-robot evaluation protocol.
 
     CUDA_VISIBLE_DEVICES=<uuid> python -I scripts/train_realworld_fql.py --config configs/realworld/fql/base.yaml \
         --name fql-dynamo-drawer-open-s0 --set condition=dynamo data.dataset=... data.split_manifest=... \
@@ -15,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -35,6 +39,7 @@ from s4d.rwlearn.fql import FQLAgent, Noise  # noqa: E402
 from s4d.rwlearn.fql_data import CONDITIONS, OfflineTransitions, sha256_file  # noqa: E402
 from s4d.rwlearn.gate import check_dataset_gate  # noqa: E402
 from s4d.rwlearn.inference import checkpoint_payload  # noqa: E402
+from s4d.rwlearn.pixel import OfflinePixelTransitions  # noqa: E402
 
 SHORT_RUN_STEPS = 10_000
 
@@ -83,7 +88,8 @@ def main() -> None:
     if steps > SHORT_RUN_STEPS:
         require_passed_tests()
     split = json.loads(Path(data_cfg["split_manifest"]).read_text())
-    gate = check_dataset_gate(data_cfg["dataset"], data_cfg.get("gate_report"), steps=steps, split=split)
+    gate = check_dataset_gate(data_cfg["dataset"], data_cfg.get("gate_report"), steps=steps, split=split,
+                              smoke_without_calibration=data_cfg.get("smoke_without_calibration") is True)
     try:
         run_dir = validate_runtime_path(Path(args.output_root) / args.name, repository=REPO)
     except GPUIsolationError as exc:
@@ -94,22 +100,48 @@ def main() -> None:
     dump_config(cfg, run_dir / "config.yaml")
 
     device = torch.device(train_cfg["device"])
-    train = OfflineTransitions(data_cfg["dataset"], split["train"], device)
-    val = OfflineTransitions(data_cfg["dataset"], split["validation"], device) if split["validation"] else None
+    deterministic = train_cfg.get("deterministic") is True
+    if deterministic:  # bitwise-reproducible kernels (tests / audits); real runs keep the fast default kernels
+        os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
+        torch.backends.cudnn.benchmark = False
+        torch.backends.cudnn.deterministic = True
+        torch.use_deterministic_algorithms(True)
+    clip = data_cfg.get("action_clip_eps")
+    pixel_cfg = dict(cfg.get("pixel") or {})
+    end_to_end = CONDITIONS[condition].encoder_type is None
+    if end_to_end:  # frames of the store, loaded once per camera and frame; CNN trained jointly with FQL
+        if pixel_cfg.get("encoder") != "impala_small":
+            raise SystemExit("e2e_cnn uses the official impala_small encoder (pixel.encoder)")
+        if not data_cfg.get("store"):
+            raise SystemExit("e2e_cnn needs data.store (the training store the dataset was built from)")
+        kw = {"device": device, "frames_device": data_cfg.get("frames_device") or device,
+              "p_aug": pixel_cfg.get("p_aug"), "action_clip_eps": clip}
+        train = OfflinePixelTransitions(data_cfg["dataset"], data_cfg["store"], split["train"], **kw)
+        val = (OfflinePixelTransitions(data_cfg["dataset"], data_cfg["store"], split["validation"], **kw)
+               if split["validation"] else None)  # official: p_aug is set on the validation dataset too
+        enc = train.encoder_factory()
+    else:
+        train = OfflineTransitions(data_cfg["dataset"], split["train"], device, action_clip_eps=clip)
+        val = (OfflineTransitions(data_cfg["dataset"], split["validation"], device, action_clip_eps=clip)
+               if split["validation"] else None)
+        enc = train.encoder_factory(int(cfg["encoder"]["proj_dim"]))
     if train.attrs["condition"] != condition:
         raise SystemExit(f"dataset condition {train.attrs['condition']} != {condition}")
     seed = int(train_cfg["seed"])
     agent_cfg = {k: (tuple(v) if isinstance(v, list) else v) for k, v in dict(cfg["agent"]).items()}
-    enc = train.encoder_factory(int(cfg["encoder"]["proj_dim"]))
     agent = FQLAgent.create(seed, enc().out_dim, A.ACTION_DIM, agent_cfg, device=device, encoder=enc)
+    if device.type == "cuda" and end_to_end and not deterministic:
+        torch.backends.cudnn.benchmark = True
     sample_gen = torch.Generator().manual_seed(seed + 1)
+    aug_gen = torch.Generator().manual_seed(seed + 3)
     val_gen_seed = seed + 2
     latest = run_dir / "checkpoints" / "latest.pt"
     step = 0
     identity = {"condition": condition, "export_sha256": train.attrs["export_sha256"],
                 "contract": json.loads(train.attrs["contract"]), "reward": train.attrs["reward"],
                 "dataset_sha256": sha256_file(data_cfg["dataset"]), "split": split, "smoke": bool(gate["smoke"]),
-                "agent": agent_cfg}
+                "agent": agent_cfg, "action_clip_eps": clip,
+                "pixel": {**pixel_cfg, "store": str(data_cfg.get("store"))} if end_to_end else None}
     if latest.is_file():
         ckpt = torch.load(latest, map_location="cpu", weights_only=False)  # own checkpoint (RNG payload)
         if json.dumps(ckpt.get("identity"), sort_keys=True, default=list) != json.dumps(identity, sort_keys=True,
@@ -118,20 +150,25 @@ def main() -> None:
                              "status or agent config); refusing to resume")
         agent.load_state_dict(ckpt["agent"])
         sample_gen.set_state(ckpt["sample_gen"])
+        if "aug_gen" in ckpt:
+            aug_gen.set_state(ckpt["aug_gen"])
         step = int(ckpt["step"])
 
     def save(path: Path) -> None:
         tmp = path.with_suffix(".tmp")
         torch.save(checkpoint_payload(agent, train, condition, step, sample_gen=sample_gen.get_state(),
-                                      identity=identity), tmp)
+                                      aug_gen=aug_gen.get_state(), identity=identity), tmp)
         tmp.replace(path)
+
+    def sample(batch_size: int):
+        return train.sample(batch_size, sample_gen, aug_gen) if end_to_end else train.sample(batch_size, sample_gen)
 
     wandb_run = init_wandb(cfg, args.name, cfg["wandb"]["project"], not args.no_wandb, run_dir)
     metrics = open(run_dir / "metrics.jsonl", "a")
     batch_size = int(agent_cfg["batch_size"])
     agent.train_mode(True)
     while step < steps:
-        info = agent.update(train.sample(batch_size, sample_gen))
+        info = agent.update(sample(batch_size))
         step += 1
         record = {}
         if step % int(train_cfg["log_interval"]) == 0:

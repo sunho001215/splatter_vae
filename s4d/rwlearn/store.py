@@ -9,6 +9,7 @@ Contract of a ``FrameStore`` (all arrays numpy):
 
 * ``episodes()`` -> episode ids; ``task(ep)`` -> task name; ``cameras(ep)`` -> camera ids (sorted serials);
 * ``timestamps(ep, cam)`` -> (F,) int64 ns (recorder host CLOCK_MONOTONIC, the raw ``cameras/cam_<serial>/t``);
+  adapter normalization can omit colour frames without stereo records, so store indices need not equal raw indices;
   ``segments(ep, cam)`` -> (F,) int recording segment of each frame (pauses between segments);
 * ``rgb(ep, cam, idx)`` -> (n, H, W, 3) uint8 RGB; ``depth(ep, cam, idx)`` -> (n, H, W) float32 metres, 0 invalid
   (camera z on the colour grid); ``semantic(ep, cam, idx)`` -> (n, H, W) uint8 SNeRL classes (0 background,
@@ -16,7 +17,13 @@ Contract of a ``FrameStore`` (all arrays numpy):
 * ``intrinsics(ep, cam)`` -> (3, 3) K of the STORED grid in continuous pixel coordinates (pixel i covers [i, i+1));
   ``w2c(ep, cam)`` -> (4, 4) OpenCV, world = robot base (``panda_link0``), the episode's accepted calibration;
 * ``raw_recording(ep)`` -> path of the read-only ``panda_teleop_episode`` file (actions for FQL);
-* ``image_hw`` -> (H, W) of every stored image.
+* optional ``raw_sha256(ep)`` -> the recorded source hash (checked against the manifest when present);
+* ``image_hw`` -> (H, W) of every stored image;
+* optional ``upstream(ep)`` -> {stage: build id} of the preprocessing outputs the episode was built from (at least
+  ``calibrate``); geometry-dependent consumers need it to prove the store carries the VALIDATED calibration
+  (``s4d.rwlearn.gate.check_store_calibration``); a store without it is refused for them;
+* optional ``sync_sets(ep)`` -> ``{"cameras", "frames" (F_ref,V), "surface_disp_m" (F_ref,)}``: the cross-camera sets
+  with their robot motion (criterion M5, ``sync_index``); the compact store requires schema >= 1.1.0 for it.
 
 Loader-side indexes (``sync_index``, ``camera_runs``) are pure functions of timestamps and segments: nothing derived
 from them is written back.
@@ -69,6 +76,9 @@ def runs_from(times_ns: np.ndarray, segment: np.ndarray, max_gap_factor: float =
     return np.concatenate([[0], np.cumsum(brk)]).astype(np.int32)
 
 
+MAX_SET_MOTION_M = 0.005  # criterion M5 (s4d.realworld.train_store.MAX_SET_MOTION_M)
+
+
 @dataclass
 class SyncIndex:
     """Synchronised multi-camera time steps of one episode: step s uses frame ``frames[s, v]`` of camera v; camera 0
@@ -81,33 +91,57 @@ class SyncIndex:
     segment: np.ndarray  # (S,)
     run: np.ndarray  # (S,) contiguous runs (no pause, no dropped / unsynchronised step inside a run)
     max_sync_error_ns: dict
+    criterion: str = "M5"  # "M5": robot-motion sets of the store; "time": synthetic stores without robot motion
+    counts: dict | None = None
 
 
-def sync_index(store: FrameStore, ep: str, max_sync_ns: int = 30_000_000) -> SyncIndex:
-    """Reference frames whose nearest frame of every other camera lies within ``max_sync_ns``; steps where two
-    reference frames would share one native frame of a camera are dropped (no duplicated multi-view samples)."""
-    from s4d.data.droid.pointworld import nearest_timestamps
+def sync_index(store: FrameStore, ep: str, max_sync_ns: int = 30_000_000, *,
+               max_set_motion_m: float = MAX_SET_MOTION_M) -> SyncIndex:
+    """Synchronised multi-view steps, criterion M5 (coordinator decision 2026-11-06, PREP2's sync review): the MUTUAL
+    nearest frame of every camera to each reference frame, without a time cap (the cameras are free-running with
+    constant phase offsets up to half a period), accepted iff the robot surface moved at most ``max_set_motion_m``
+    across the set's timestamps. Stores that hold the per-set robot motion (``sync_sets``: the compact training store,
+    schema >= 1.1.0) are REQUIRED to use it; a compact store without it refuses. Only stores that cannot know the robot
+    motion (``MemoryStore`` / ``ProcessedEpisodeStore``: tests, synthetic data) fall back to the former time bound
+    ``max_sync_ns`` on the mutual nearest pairs (``criterion`` "time"). Steps whose frames lie in different
+    recording segments are dropped. Single-view consumers never use this (``transitions.timelines(multiview=False)``,
+    DynaMo windows): they need only each camera's own robot <-> camera sync."""
+    from s4d.realworld.train_store import mutual_sync
 
     cams = list(store.cameras(ep))
     stamps = {c: np.asarray(store.timestamps(ep, c), np.int64) for c in cams}
     ref = stamps[cams[0]]
-    matched = np.stack([nearest_timestamps(stamps[c], ref) for c in cams], 1)
-    err = np.stack([np.abs(stamps[c][matched[:, v]] - ref) for v, c in enumerate(cams)], 1)
-    keep = (err <= max_sync_ns).all(1)
-    for v in range(len(cams)):  # among in-tolerance steps, two sharing one native frame are both dropped
-        idx = np.flatnonzero(keep)
-        same = matched[idx[1:], v] == matched[idx[:-1], v]
-        keep[idx[1:][same]] = False
-        keep[idx[:-1][same]] = False
+    sets = store.sync_sets(ep) if hasattr(store, "sync_sets") else None
+    if sets is not None:
+        order = [sets["cameras"].index(c) for c in cams]
+        matched = np.asarray(sets["frames"], np.int64)[:, order]
+        disp = np.asarray(sets["surface_disp_m"], np.float64)
+        complete = (matched >= 0).all(1)
+        keep = complete & (disp <= max_set_motion_m)
+        criterion = "M5"
+        counts = {"complete_sets": int(complete.sum()), "accepted": int(keep.sum()),
+                  "max_set_motion_m": float(max_set_motion_m)}
+    else:
+        matched, _ = mutual_sync([stamps[c] for c in cams], None)
+        matched = matched.astype(np.int64)
+        complete = (matched >= 0).all(1)
+        err = np.stack([np.where(matched[:, v] >= 0, np.abs(stamps[c][np.maximum(matched[:, v], 0)] - ref), 0)
+                        for v, c in enumerate(cams)], 1)
+        keep = complete & (err <= max_sync_ns).all(1)
+        criterion = "time"
+        counts = {"complete_sets": int(complete.sum()), "accepted": int(keep.sum()), "max_sync_ns": int(max_sync_ns)}
+    safe = np.maximum(matched, 0)
+    err = np.stack([np.abs(stamps[c][safe[:, v]] - ref) for v, c in enumerate(cams)], 1)
     seg_all = [np.asarray(store.segments(ep, c)) for c in cams]
-    keep &= np.all([seg_all[v][matched[:, v]] == seg_all[0][matched[:, 0]] for v in range(len(cams))], 0)
+    keep &= np.all([seg_all[v][safe[:, v]] == seg_all[0][safe[:, 0]] for v in range(len(cams))], 0)
     k = np.flatnonzero(keep)
     seg = seg_all[0][matched[k, 0]]
     period = float(np.median(np.diff(ref))) if len(ref) > 1 else None
     latest = np.max([stamps[c][matched[k, v]] for v, c in enumerate(cams)], axis=0) if len(k) else ref[k]
     return SyncIndex(cameras=cams, frames=matched[k], times=ref[k], latest_times=latest, segment=seg,
                      run=runs_from(ref[k], seg, period_ns=period),
-                     max_sync_error_ns={c: int(err[k, v].max()) if len(k) else None for v, c in enumerate(cams)})
+                     max_sync_error_ns={c: int(err[k, v].max()) if len(k) else None for v, c in enumerate(cams)},
+                     criterion=criterion, counts=counts)
 
 
 def camera_runs(store: FrameStore, ep: str, cam: str) -> np.ndarray:
@@ -189,6 +223,18 @@ class MemoryStore:
 
     def raw_recording(self, ep):
         return self._eps[ep].get("raw")
+
+    def raw_sha256(self, ep):
+        return self._eps[ep].get("raw_sha256", "")
+
+    def upstream(self, ep):
+        return dict(self._eps[ep].get("upstream") or {})
+
+    def sync_sets(self, ep):
+        """Optional stored M5 sets (``{"cameras", "frames", "surface_disp_m"}``) of a synthetic episode; None when the
+        episode carries no robot motion (``sync_index`` then uses the time fallback)."""
+        sets = self._eps[ep].get("sync_sets")
+        return None if sets is None else dict(sets)
 
 
 class ProcessedEpisodeStore:
@@ -312,7 +358,18 @@ class ProcessedEpisodeStore:
 
     def raw_recording(self, ep):
         prov = self._meta[ep].provenance
-        return str(Path(prov.source_root) / prov.source_files[0].path)
+        return str(Path(prov.source_root) / prov.source_files[0].path) if prov.source_files else ""
+
+    def raw_sha256(self, ep):
+        prov = self._meta[ep].provenance
+        return str(prov.source_files[0].sha256 or "") if prov.source_files else ""
+
+    def upstream(self, ep):
+        from s4d.realworld import io as rio
+
+        _, root, e = self._eps[ep]
+        rec = rio.read_record(rio.stage_dir(root, e, "calibrate"))
+        return {"calibrate": rio.build_id(rec)} if rec else {}
 
 
 register_store("processed", lambda spec: ProcessedEpisodeStore(
@@ -337,8 +394,14 @@ register_store("compact", _open_compact)
 
 def split_episodes(store: FrameStore, validation_fraction: float = 0.1, seed: int = 0) -> dict:
     """Per task: a seeded permutation of its sorted episodes, the first ceil(fraction * n) are validation (none when a
-    task has a single episode). A joint (two-task) split is the union of the per-task splits."""
+    task has a single episode); a store with several tasks gets the union of the per-task splits. Preserve actual
+    store keys and refuse missing/duplicate raw provenance so one recording cannot enter both partitions."""
     import hashlib
+
+    from s4d.rwlearn.identity import match_recordings, store_identities
+
+    identities = store_identities(store)
+    match_recordings(identities, identities)
 
     out = {"train": [], "validation": [], "seed": int(seed), "validation_fraction": float(validation_fraction)}
     by_task: dict[str, list[str]] = {}

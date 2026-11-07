@@ -18,8 +18,10 @@ import yaml
 from s4d.rwlearn import actions as A
 from s4d.rwlearn import fql_data as FD
 from s4d.rwlearn.fql import FQLAgent
+from s4d.rwlearn.gate import QA_FAMILIES
 from s4d.rwlearn.inference import OfflinePolicy, checkpoint_payload, replay
 from s4d.rwlearn.store import MemoryStore
+from tests.test_rwlearn_gate import gate_identities
 
 REPO = Path(__file__).resolve().parents[1]
 FIXTURE = Path(__file__).parent / "fixtures" / "rwlearn" / "raw_mug_hanging_ep3_actions.npz"
@@ -188,7 +190,8 @@ def test_export_mismatch_is_refused(tmp_path, exports):
     assert check_dataset_gate(path, None, steps=100)["smoke"]
     with pytest.raises(RuntimeError, match="no passed full-data gate"):
         check_dataset_gate(path, None, steps=1_000_000)
-    report = {"tasks": {"mug-hanging": {"passed": True, "store_episodes": [ep]}}}
+    report = {"tasks": {"mug-hanging": {"passed": True, **gate_identities(store)}},
+              "families": {"mug-hanging": {f: {"passed": True} for f in QA_FAMILIES}}}
     assert not check_dataset_gate(path, report, steps=None, split={"train": [ep], "validation": []})["smoke"]
     with pytest.raises(RuntimeError, match="partition"):
         check_dataset_gate(path, report, steps=None, split={"train": [], "validation": []})
@@ -199,3 +202,164 @@ def test_export_mismatch_is_refused(tmp_path, exports):
     torch.save(checkpoint_payload(agent, data, "dynamo", 0), tmp_path / "p.pt")
     with pytest.raises(ValueError, match="differs"):
         OfflinePolicy(tmp_path / "p.pt", export_path=exports / "snerl.pt")
+
+
+def test_fql_build_preserves_raw_identity_across_pipeline_names(tmp_path):
+    import json
+
+    from s4d.rwlearn import gate, outcomes
+    from s4d.rwlearn.store import split_episodes
+    from tests.test_rwlearn_gate import entry
+
+    store = store_on_fixture(n=8, hw=32)
+    old = store.episodes()[0]
+    ep = "mug-hanging/mug-hanging-000003"
+    store._eps[ep] = store._eps.pop(old)
+    raw_sha = FD.sha256_file(FIXTURE)
+    store._eps[ep]["raw_sha256"] = raw_sha
+    rec = entry("mug-hanging", 3, sha=raw_sha)
+    rec["filename"] = FIXTURE.name
+    manifest = {"schema": gate.SCHEMA, "schema_version": gate.SCHEMA_VERSION,
+                "episodes": {"mug-hanging/ingest-record-3": rec},
+                "counts": {"mug-hanging": {"complete": True, "target": 1}}}
+    report = gate.evaluate(manifest, ["mug-hanging"], target=1)
+    assert report["passed"]
+    path = tmp_path / "e2e_identity.h5"
+    FD.build_fql_dataset(store, "e2e_cnn", None, path, episodes=[ep], outcomes=outcomes.outcome_labels([ep]))
+    with h5py.File(path, "r") as f:
+        identity = json.loads(f.attrs["raw_identities"])[ep]
+        assert identity["raw_recording"] == str(FIXTURE) and identity["raw_sha256"] == raw_sha
+    assert not gate.check_dataset_gate(path, report, steps=None, split=split_episodes(store))["smoke"]
+    for value in ({}, {ep: {**identity, "raw_recording": "other.npz"}},
+                  {ep: {**identity, "raw_sha256": "f" * 64}}):
+        with h5py.File(path, "r+") as f:
+            f.attrs["raw_identities"] = json.dumps(value)
+        with pytest.raises(RuntimeError, match="raw identity"):
+            gate.check_dataset_gate(path, report, steps=None)
+
+
+# ---------------------------------------------------------------------------------------------- end-to-end CNN + FQL
+def test_e2e_cnn_dataset_pixel_sampling_joint_training_and_policy(tmp_path):
+    """e2e_cnn: transitions without features; frames read once per camera from the store; the camera is random per
+    sample and fixed through the 3-frame history and the paired next observation; the IMPALA encoders are trained
+    jointly (parameters move); checkpoint -> OfflinePolicy.act -> robot command."""
+    from s4d.rwlearn import outcomes as O
+    from s4d.rwlearn import pixel as PX
+
+    store = store_on_fixture(hw=32)
+    ep = store.episodes()[0]
+    path = tmp_path / "e2e.h5"
+    with pytest.raises(ValueError, match="takes no encoder export"):
+        FD.build_fql_dataset(store, "e2e_cnn", FIXTURE, path, episodes=[ep], assume_final_success=True)
+    with pytest.raises(ValueError, match="needs its encoder export"):
+        FD.build_fql_dataset(store, "dynamo", None, path, episodes=[ep], assume_final_success=True)
+    doc = O.outcome_labels([ep])
+    info = FD.build_fql_dataset(store, "e2e_cnn", None, path, episodes=[ep], outcomes=doc)
+    assert info["transitions"] > 0
+    with h5py.File(path, "r") as f:
+        assert f.attrs["condition"] == "e2e_cnn" and f.attrs["export_sha256"] == ""
+        assert sorted(f["episodes"][ep]) == sorted(store.cameras(ep))
+        assert all("features" not in g for g in f["episodes"][ep].values())
+        assert __import__("json").loads(f.attrs["outcomes"])["document"]["schema"] == "rw-outcomes"
+        assert f.attrs["extra_inputs"] == "none"
+    with pytest.raises(ValueError, match="OfflinePixelTransitions"):
+        FD.OfflineTransitions(path)
+    data = PX.OfflinePixelTransitions(path, store, p_aug=None)
+    assert np.abs(data.actions.numpy()).max() <= 1 - 1e-5 + 1e-7  # official action clipping
+    gen = torch.Generator().manual_seed(0)
+    b = data.sample(48, gen)
+    px = b["observations"]["pixels"]
+    assert px.shape == (48, 32, 32, 9) and px.dtype == torch.uint8
+    assert b["next_observations"]["pixels"].shape == px.shape
+    spans = [(base, base + n, name) for _ep, name, base, n in data.timelines]
+    idx = torch.randint(data.size, (300,), generator=gen)
+    hit = set()
+    for i in idx.tolist():
+        o, n = data.obs_idx[i].tolist(), data.next_idx[i].tolist()
+        (cam_o,) = {name for a, z, name in spans for x in o if a <= x < z}
+        (cam_n,) = {name for a, z, name in spans for x in n if a <= x < z}
+        assert cam_o == cam_n  # one camera for the whole history and its next observation
+        assert n[-1] == o[-1] + 1 and n[:2] == o[1:]  # next history = history shifted by one step
+        hit.add(cam_o)
+    assert hit == set(store.cameras(ep))  # random camera per sample: every camera drawn
+    # the stacked pixels are exactly the store frames of that camera, oldest first (official channel order)
+    i = int(idx[0])
+    one = data.batch(torch.tensor([i]))["observations"]["pixels"][0].numpy()
+    a, _, cam = next(s for s in spans if s[0] <= int(data.obs_idx[i, 0]) < s[1])
+    frames = store.rgb(ep, cam, (data.obs_idx[i] - a).numpy())
+    np.testing.assert_array_equal(one, np.concatenate(list(frames), axis=-1))
+
+    aug = PX.OfflinePixelTransitions(path, store, p_aug=1.0)
+    ab = aug.sample(8, torch.Generator().manual_seed(1), torch.Generator().manual_seed(2))
+    assert ab["observations"]["pixels"].shape == (8, 32, 32, 9)
+
+    enc = data.encoder_factory()
+    agent = FQLAgent.create(0, enc().out_dim, A.ACTION_DIM, {"actor_hidden_dims": (32, 32), "value_hidden_dims": (32, 32),
+                                                              "batch_size": 16}, encoder=enc)
+    assert agent.critic.encoder.out_dim == 512 + A.PROPRIO_DIM and agent.critic.encoder is not agent.actor_bc_flow.encoder
+    before = {n: [p.detach().clone() for p in getattr(agent, n).encoder.parameters()]
+              for n in ("critic", "actor_bc_flow", "actor_onestep_flow")}
+    for _ in range(2):
+        out = agent.update(aug.sample(16, gen, gen))
+    assert all(np.isfinite(v) for v in out.values())
+    for n, ps in before.items():  # trained jointly, never frozen: every network's own encoder moves
+        assert any(not torch.equal(p0, p1) for p0, p1 in zip(ps, getattr(agent, n).encoder.parameters())), n
+    ckpt = tmp_path / "policy.pt"
+    torch.save(checkpoint_payload(agent, data, "e2e_cnn", 2), ckpt)
+    policy = OfflinePolicy(ckpt)
+    assert policy.meta["encoder_config"]["stack_sizes"] == [16, 32, 32]
+    with h5py.File(path, "r") as f:
+        g = f["episodes"][ep][cam]
+        k = int(np.flatnonzero(g["transition_ok"][:])[2])
+        pose = A.matrix_to_pose7(g["measured_pose"][k])
+        grip = A.GRIPPER_OPEN_REGISTER + A.GRIPPER_SPAN * float(g["proprio"][k, -1])
+        run = g["run"][:]
+    hist = [max(k - j, int(np.flatnonzero(run == run[k])[0])) for j in (2, 1, 0)]
+    rgb = store.rgb(ep, cam, hist)[:, None]
+    act = policy.act({"rgb": rgb}, pose, grip, noise=torch.zeros(1, A.ACTION_DIM))
+    assert act["flange_pose"].shape == (7,) and 3 <= int(act["gripper_register"]) <= 230
+    # same observation through the training batch path and the policy path -> same action
+    proprio = data.proprio[a + k][None]
+    direct = agent.sample_actions({"pixels": PX.stack_frames(torch.from_numpy(rgb[:, 0])[None]), "proprio": proprio},
+                                  torch.zeros(1, A.ACTION_DIM))
+    np.testing.assert_allclose(direct.numpy()[0], act["action_norm"], atol=1e-5)
+    rep = replay(policy, path, ep, cam, store=store)
+    with h5py.File(path, "r") as f:
+        assert rep["transitions"] == int(f["episodes"][ep][cam]["transition_ok"][:].sum())
+    with pytest.raises(ValueError, match="needs the training store"):
+        replay(policy, path, ep, cam)
+    # the pixels are pinned: changed RGB content behind the same store is refused (loader and replay)
+    store._eps[ep]["cameras"][cam]["rgb"][0, 0, 0, 0] ^= 1
+    with pytest.raises(ValueError, match="rgb_sha256"):
+        PX.OfflinePixelTransitions(path, store)
+    with pytest.raises(ValueError, match="rgb_sha256"):
+        replay(policy, path, ep, cam, store=store)
+
+
+def test_geometric_condition_dataset_needs_the_validated_calibration(tmp_path, exports):
+    from s4d.rwlearn.gate import check_dataset_gate
+
+    store = store_on_fixture(n=8)
+    ep = store.episodes()[0]
+    store._eps[ep]["upstream"] = {"calibrate": "cal-1"}
+    path = tmp_path / "snerl.h5"
+    FD.build_fql_dataset(store, "snerl", exports / "snerl.pt", path, episodes=[ep], assume_final_success=True)
+    with h5py.File(path, "r") as f:
+        cal = __import__("json").loads(f.attrs["calibration"])
+        assert cal[ep] == {"calibrate": "cal-1", "cameras": sorted(store.cameras(ep))}
+        assert "camera poses" in f.attrs["extra_inputs"] and "+2 RGB views" in f.attrs["extra_inputs"]
+    base = {"tasks": {"mug-hanging": {"passed": True, **gate_identities(store)}},
+            "families": {"mug-hanging": {f: {"passed": True} for f in QA_FAMILIES}}}
+    with pytest.raises(RuntimeError, match="calibration hold released"):
+        check_dataset_gate(path, base, steps=None)
+    hold = lambda build, cams=None: {**base, "calibration_hold": {"mug-hanging": {  # noqa: E731
+        "passed": True, "episodes": {ep: {"calibrate_build_id": build, "cameras": cams or sorted(store.cameras(ep))}}}}}
+    res = check_dataset_gate(path, hold("cal-1"), steps=None)
+    assert res["geometry_dependent"] and not res["smoke"]
+    with pytest.raises(RuntimeError, match="store built from calibrate"):
+        check_dataset_gate(path, hold("cal-0"), steps=None)
+    with pytest.raises(RuntimeError, match="no validated calibration"):
+        check_dataset_gate(path, hold("cal-1", sorted(store.cameras(ep))[:2]), steps=None)
+    with pytest.raises(RuntimeError, match="calibration hold released"):  # short runs are held too (geometric)
+        check_dataset_gate(path, base, steps=100)
+    assert check_dataset_gate(path, base, steps=100, smoke_without_calibration=True)["smoke"]  # explicit opt-in only

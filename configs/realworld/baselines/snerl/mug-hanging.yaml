@@ -2,13 +2,14 @@
 # edit by hand). Base: configs/baselines/snerl/drawer-open.yaml (accepted Meta-World protocol);
 # every other key is the documented protocol value. Overrides and reasons:
 #   dataset.hdf5_path = /home/compu/kaist/sunho/realworld/learning_inputs/mug-hanging/store.yaml: for source realworld this key holds the FrameStore descriptor (s4d/rwlearn/store.py; compact per-camera training store, centre crop 128 px), not an HDF5 file; the trainers pass it through unchanged
-#   data_interface.split_manifest = /home/compu/kaist/sunho/realworld/learning_inputs/mug-hanging/split_seed0.json: seeded per-task 90/10 episode split (s4d/rwlearn/store.py::split_episodes; union of both tasks for joint)
+#   data_interface.split_manifest = /home/compu/kaist/sunho/realworld/learning_inputs/mug-hanging/split_seed0.json: seeded per-task 90/10 EPISODE-level split, fixed and recorded (s4d/rwlearn/store.py::split_episodes, seed 0); validation episodes are never trained on
 #   data_interface.gate_report = /home/compu/kaist/sunho/realworld/learning_inputs/mug-hanging/gate_report.json: full-data gate evidence (s4d/rwlearn/gate.py); runs > 10k steps refuse without a passed report whose episode sets equal the store's
+#   data_interface.consumer = snerl: GEOMETRY-DEPENDENT consumer (s4d/rwlearn/gate.py CONSUMERS): also needs the calibration hold released (calibration_validated per episode) and a store built from the validated calibration
 #   data_interface.source = realworld: selects the real-world dataset classes (per-episode cameras, loader-side sync, run-bounded windows)
 #   data_interface.target = mug-hanging: task(s) in the store
 #   data_interface.lookat = [0.334, -0.031, 0.353]: normalised scene origin: least-squares intersection of the three optical axes (Meta-World: rig look-at)
 #   data_interface.pose_scale = 3.79: cameras 4 official units from the origin, as official / Meta-World (median distance 1.055 m); official near/far 2/6 -> 0.53-1.58 m camera depth, which holds the workspace (68.5 % of all valid depth of the centre-cropped views; the rest is distant room background)
-#   dataset.num_inputs = 3: official encoder input count; the rig has exactly 3 cameras, so every target view is also an input view (Meta-World: 3 of 6)
+#   dataset.num_inputs = 3: 3 input cameras (user decision 2026-11-06): the rig has exactly 3, so every training target view is also an input view (Meta-World: 3 of 6). Validation (separate episodes) reports input-view reconstruction and leave-one-camera-out novel-view reconstruction separately (s4d/rwlearn/snerl_eval.py)
 # Plan rows only through scripts/realworld_learning.py plan (full-data gate); see docs/realworld_baselines.md.
 dataset:
   hdf5_path: /home/compu/kaist/sunho/realworld/learning_inputs/mug-hanging/store.yaml
@@ -65,6 +66,7 @@ data_interface:
   - 0.353
   pose_scale: 3.79
   gate_report: /home/compu/kaist/sunho/realworld/learning_inputs/mug-hanging/gate_report.json
+  consumer: snerl
   source: realworld
   target: mug-hanging
 dino:

@@ -39,37 +39,56 @@ SHORT_RUN_STEPS = 10_000
 
 # ----------------------------------------------------------------------------------------------- gate evidence
 def check_gate(store: FrameStore, gate_report: str | Path | dict | None, *, steps: int | None,
-               split: dict | None = None, target: str | None = None, caps: dict | None = None) -> dict:
+               split: dict | None = None, target: str | None = None, caps: dict | None = None,
+               consumer: str | None = None, smoke_without_calibration: bool = False) -> dict:
     """Pretraining on real-world data needs the user's full-data gate (``s4d.rwlearn.gate``). Beyond
     ``SHORT_RUN_STEPS`` (smoke / plumbing runs may go without it, flagged ``smoke``) all of these must hold:
 
-    * a passed report whose validated episode set equals, per task, the store's episodes;
-    * the store's task set equals the requested ``target`` (``drawer-open``, ``mug-hanging`` or ``joint``);
+    * a passed report whose validated episode set equals, per task, the store's episodes; for a GEOMETRY-DEPENDENT
+      ``consumer`` (``gate.CONSUMERS``; an unknown or missing consumer counts as one) also the released calibration
+      hold, a store built from each episode's validated calibration and only validated cameras
+      (``gate.check_store_calibration``);
+    * the store's task set equals the requested ``target`` (``drawer-open`` or ``mug-hanging``: task-specific
+      encoders only, user decision 2026-11-06);
     * the run's ``split`` is a disjoint train / validation partition of exactly the store's episodes;
     * no data cap truncates anything (``caps``: ``max_episodes`` / ``num_episodes`` None, ``max_frames_per_demo``
-      None or at least the longest camera stream)."""
+      None or at least the longest camera stream).
+
+    A geometry-dependent consumer's short run also needs the validated calibration unless ``smoke_without_calibration``
+    is set explicitly (synthetic plumbing only; ``gate.short_run_allowed``)."""
     report = gate_report
     if isinstance(report, (str, Path)):
         report = json.loads(Path(report).read_text())
+    from s4d.rwlearn import gate as G
+
     store_tasks = {store.task(ep) for ep in store.episodes()}
-    smoke = not (report and all((report.get("tasks") or {}).get(t, {}).get("passed") for t in store_tasks))
+    smoke = not (report and all(G.task_passed(report, t, consumer) for t in store_tasks))
     if smoke:
-        if steps is None or steps > SHORT_RUN_STEPS:
-            raise RuntimeError("no passed full-data gate report for this store; refusing a real-world pretraining run "
+        if not G.short_run_allowed(consumer, steps, SHORT_RUN_STEPS, smoke_without_calibration):
+            held = " (geometry-dependent consumer: the calibration hold must be released too)" \
+                if G.consumer_info(consumer).geometry else ""
+            raise RuntimeError(f"no passed full-data gate report for this store{held}; refusing a real-world run "
                                f"of {steps} steps (only <= {SHORT_RUN_STEPS}-step smoke runs may skip the gate)")
-        return {"smoke": True}
+        return {"smoke": True, "consumer": consumer, "geometry_dependent": G.consumer_info(consumer).geometry}
     by_task: dict[str, list[str]] = {}
     for ep in store.episodes():
         by_task.setdefault(store.task(ep), []).append(ep)
+    from s4d.rwlearn.identity import store_identities
+
+    report = G.bind_store_episodes(report, by_task, store_identities(store))
     for task, eps in by_task.items():
         gate = report["tasks"].get(task)
         if gate is None or not gate.get("passed"):
             raise RuntimeError(f"{task}: not passed in the gate report")
         if sorted(gate["store_episodes"]) != sorted(eps):
             raise RuntimeError(f"{task}: store episodes differ from the gate's validated + preprocessed set")
+    if G.consumer_info(consumer).geometry:
+        G.check_store_calibration(report, by_task, getattr(store, "upstream", None), store.cameras)
     if target is not None:
         from s4d.rwlearn.launch import TARGET_TASKS
 
+        if target not in TARGET_TASKS:
+            raise RuntimeError(f"unknown target {target!r} (task-specific targets only: {sorted(TARGET_TASKS)})")
         if sorted(by_task) != sorted(TARGET_TASKS[target]):
             raise RuntimeError(f"store tasks {sorted(by_task)} != target {target} tasks {TARGET_TASKS[target]}")
     if split is not None:
@@ -87,7 +106,8 @@ def check_gate(store: FrameStore, gate_report: str | Path | dict | None, *, step
             limit = len(store.episodes())
         if int(value) < limit:
             raise RuntimeError(f"data cap {name}={value} would truncate the full-data set")
-    return {"smoke": False, "tasks": sorted(by_task)}
+    return {"smoke": False, "tasks": sorted(by_task), "consumer": consumer,
+            "geometry_dependent": G.consumer_info(consumer).geometry}
 
 
 def _episodes(store: FrameStore, episodes, max_episodes):
@@ -371,15 +391,22 @@ def _derive_per_sample_forward():
 sincro_forward_per_sample_cameras = _derive_per_sample_forward()
 
 
-def realworld_classes(interface: dict, steps: int | None, locator, caps: dict | None = None) -> dict:
+def realworld_classes(interface: dict, steps: int | None, locator, caps: dict | None = None, *,
+                      consumer: str) -> dict:
     """Trainer hook for ``data_interface.source: realworld`` (Meta-World runs never import this module): checks the
     full-data gate evidence (``data_interface.gate_report``) against the store, the run's split manifest, its target
-    and its data caps (``check_gate``), and returns the dataset classes + SinCro's forward."""
+    and its data caps (``check_gate``) AT THE CALLING TRAINER's consumer level, and returns the dataset classes +
+    SinCro's forward. ``consumer`` is the trainer's fixed identity (``scripts/train_<b>.py``); a configuration that
+    declares another ``data_interface.consumer`` is refused, so a config can never downgrade a geometric trainer."""
     if interface.get("source") != "realworld":
         raise ValueError(f"not a real-world data interface: {interface.get('source')!r}")
+    declared = interface.get("consumer")
+    if declared is not None and declared != consumer:
+        raise ValueError(f"data_interface.consumer {declared!r} conflicts with the trainer's consumer {consumer!r}")
     split = json.loads(Path(interface["split_manifest"]).read_text()) if interface.get("split_manifest") else None
     check_gate(open_store(locator), interface.get("gate_report"), steps=steps, split=split,
-               target=interface.get("target"), caps=caps)
+               target=interface.get("target"), caps=caps, consumer=consumer,
+               smoke_without_calibration=interface.get("smoke_without_calibration") is True)  # literal True only
     return {"sincro": RealworldSinCroWindows, "reviwo": RealworldReViWoStates, "dynamo": RealworldDynaMoWindows,
             "mvp3d": RealworldMVPTimeSteps, "snerl": RealworldSNeRLScenes,
             "sincro_forward": sincro_forward_per_sample_cameras}

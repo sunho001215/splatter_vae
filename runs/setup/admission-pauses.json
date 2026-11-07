@@ -142,6 +142,38 @@
     "ds-pre-snerl-sweep-into",
     "ds-pre-snerl-drawer-open"
    ]
+  },
+  {
+   "name": "rwng-learning-inputs-20261107",
+   "active": true,
+   "prefixes": [
+    "rwng-20261106-"
+   ],
+   "since": "2026-11-07T01:55:00+09:00",
+   "by": "coordinator",
+   "reason": "real-world non-geometric rows fail at start: learning_inputs/<task>/split_seed0.json missing because scripts/realworld_learning.py inputs refuses the real stores (gate store_episode_id episode_NNNNNN vs pipeline store key task-NNNNNN; fix rw-epid-20261107 in progress). Lift after the fix is released, inputs are written and the failed rows are reset. UPDATE 02:30: SUPERSEDED (permanent): replaced by rwng-20261107-* rows pinned to 782f140 (retries would keep the first launch commit c9fc448); learning inputs written 02:28 under learning_inputs/<task>/ with 782f140."
+  },
+  {
+   "name": "rwng-mounts-20261107",
+   "active": false,
+   "prefixes": [
+    "rwng-20261107-"
+   ],
+   "since": "2026-11-07T02:35:00+09:00",
+   "by": "coordinator",
+   "reason": "rwng-20261107 pretrainings exit 1: learning_inputs/<task>/split_seed0.json exists on the remote host but is not visible inside the scheduler job containers (mounts); pause until the mount/path is fixed, then reset or re-register LIFTED 03:09 after 080f330 (read-only real-world mounts) merged; retries keep commit 782f140.",
+   "lifted": "2026-11-07T03:09:30+09:00"
+  },
+  {
+   "name": "rwng-fqldata-20261107",
+   "active": true,
+   "prefixes": [
+    "rwng-20261107-fqldata-",
+    "rwng-20261107-fql-"
+   ],
+   "since": "2026-11-07T07:10:30+09:00",
+   "by": "coordinator",
+   "reason": "fqldata builds exit 1 on attempt 1 (diagnosing); pause datasets + FQL runs to keep retries UPDATE 07:53: SUPERSEDED (permanent) by rwng-20261107b-* dataset/FQL rows pinned to ee07b2e (FQL store->raw frame mapping); retries would keep commit 782f140."
   }
  ]
 }

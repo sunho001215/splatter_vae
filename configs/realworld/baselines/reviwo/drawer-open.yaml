@@ -2,8 +2,9 @@
 # edit by hand). Base: configs/baselines/reviwo/drawer-open.yaml (accepted Meta-World protocol);
 # every other key is the documented protocol value. Overrides and reasons:
 #   dataset.hdf5_path = /home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/store.yaml: for source realworld this key holds the FrameStore descriptor (s4d/rwlearn/store.py; compact per-camera training store, centre crop 128 px), not an HDF5 file; the trainers pass it through unchanged
-#   data_interface.split_manifest = /home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/split_seed0.json: seeded per-task 90/10 episode split (s4d/rwlearn/store.py::split_episodes; union of both tasks for joint)
+#   data_interface.split_manifest = /home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/split_seed0.json: seeded per-task 90/10 EPISODE-level split, fixed and recorded (s4d/rwlearn/store.py::split_episodes, seed 0); validation episodes are never trained on
 #   data_interface.gate_report = /home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/gate_report.json: full-data gate evidence (s4d/rwlearn/gate.py); runs > 10k steps refuse without a passed report whose episode sets equal the store's
+#   data_interface.consumer = reviwo: non-geometric consumer (s4d/rwlearn/gate.py CONSUMERS): RGB / timestamps only, not held by calibration
 #   data_interface.source = realworld: selects the real-world dataset classes (per-episode cameras, loader-side sync, run-bounded windows)
 #   data_interface.target = drawer-open: task(s) in the store
 #   dataset.camera_num = 3: all three cameras
@@ -91,5 +92,6 @@ wandb:
 data_interface:
   split_manifest: /home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/split_seed0.json
   gate_report: /home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/gate_report.json
+  consumer: reviwo
   source: realworld
   target: drawer-open

@@ -177,6 +177,137 @@ def _dataset(built, **kw):
         return RealworldWindowDataset([built["tmp"] / "store"], split="all", **kw)
 
 
+@pytest.fixture
+def pipeline_named_store(built, tmp_path):
+    """The REAL writer, with dispatcher episode ids and recorded raw filenames (no HDF5 attribute patching)."""
+    import hashlib
+    import shutil
+
+    from s4d.rwlearn import gate
+    from tests.test_rwlearn_gate import entry
+
+    root, paths, episodes = tmp_path / "processed", [], {}
+    for i in range(2):
+        eid, filename = f"drawer-open-{i:06d}", f"episode_{i:06d}.h5"
+        shutil.copytree(rio.episode_dir(built["root"], built["ep"]), rio.episode_dir(root, eid))
+        meta_path = rio.episode_dir(root, eid) / "normalized" / "episode.json"
+        meta = json.loads(meta_path.read_text())
+        sha = hashlib.sha256(f"synthetic raw {i}".encode()).hexdigest()
+        meta["episode_id"] = eid
+        meta["provenance"]["source_files"] = [{"path": filename, "sha256": sha, "bytes": 15}]
+        meta_path.write_text(json.dumps(meta))
+        out = tmp_path / "compact" / eid
+        TS.write_episode(root, eid, out, task="drawer-open", depth_stage="sensor_depth", allow_mock=True)
+        paths.append(out / TS.FILE)
+        rec = entry("drawer-open", i, sha=sha, validated=True)
+        rec["filename"] = filename
+        stages = rec["preprocessing"]["stages"]
+        build = rio.build_id(rio.read_record(rio.stage_dir(root, eid, "calibrate")))
+        stages["calibrate"]["metrics"]["build_id"] = build
+        stages[gate.CALIBRATION_STAGE]["metrics"].update(calibrate_build_id=build, cameras=["rig0", "rig1"])
+        episodes[f"drawer-open/{filename}"] = rec
+    manifest = {"schema": gate.SCHEMA, "schema_version": gate.SCHEMA_VERSION, "episodes": episodes,
+                "counts": {"drawer-open": {"target": 2, "complete": True}}}
+    with pytest.warns(UserWarning, match="MOCK"):
+        store = TS.CompactStore(paths)
+    yield store, gate.evaluate(manifest, ["drawer-open"], target=2), paths
+    store.close()
+
+
+def test_pipeline_names_pass_inputs_outcomes_split_and_both_gates(pipeline_named_store, tmp_path):
+    import subprocess
+
+    import yaml
+
+    from s4d.rwlearn import gate, outcomes
+    from s4d.rwlearn.baseline_data import check_gate
+    from s4d.rwlearn.identity import store_identities
+    from s4d.rwlearn.store import split_episodes
+
+    store, report, paths = pipeline_named_store
+    eps = store.episodes()
+    assert eps == [f"drawer-open/drawer-open-{i:06d}" for i in range(2)]
+    assert [store.raw_recording(ep) for ep in eps] == [f"episode_{i:06d}.h5" for i in range(2)]
+    split = split_episodes(store)
+    assert set(split["train"]) | set(split["validation"]) == set(eps)
+    assert len(split["validation"]) == 1 and not set(split["train"]) & set(split["validation"])
+    assert not check_gate(store, report, steps=None, split=split, target="drawer-open", consumer="snerl")["smoke"]
+    bound = gate.bind_store_episodes(report, {"drawer-open": eps}, store_identities(store))
+    assert bound["tasks"]["drawer-open"]["store_episodes"] == eps
+    assert set(bound["calibration_hold"]["drawer-open"]["episodes"]) == set(eps)
+    ending = {"schema": outcomes.REPORT_SCHEMA, "episodes": {
+        f"drawer-open/episode_{i:06d}": {"path": f"/relocated/drawer-open/episode_{i:06d}.h5",
+            "decision": "needs_image_review", "flags": [{"code": f"review_{i}", "severity": "review"}]}
+        for i in range(2)}}
+    labels = outcomes.outcome_labels(eps, ending_report=ending, store=store)
+    assert outcomes.load_outcomes(labels) == dict.fromkeys(eps, True)
+    assert [labels["episodes"][ep]["ending_flags"] for ep in eps] == [["review_0"], ["review_1"]]
+    locator, gate_path, ending_path = (tmp_path / name for name in ("store.yaml", "gate.json", "ending.json"))
+    locator.write_text(yaml.safe_dump({"kind": "compact", "paths": list(map(str, paths))}))
+    gate_path.write_text(json.dumps(report))
+    ending_path.write_text(json.dumps(ending))
+    out = tmp_path / "inputs"
+    result = subprocess.run([sys.executable, "-I", str(REPO / "scripts/realworld_learning.py"), "inputs",
+                             "--store", str(locator), "--gate-report", str(gate_path), "--task", "drawer-open",
+                             "--out-dir", str(out), "--ending-report", str(ending_path)],
+                            capture_output=True, text=True, timeout=120)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert json.loads((out / "outcomes.json").read_text()) == labels
+    assert json.loads((out / "split_seed0.json").read_text()) == split
+    saved = json.loads((out / "gate_report.json").read_text())
+    assert saved == bound
+    assert not check_gate(store, saved, steps=None, consumer="snerl")["smoke"]
+    # FQL's trainer gate uses the same provenance and store keys, including geometric calibration evidence.
+    dataset = tmp_path / "gated_dataset.h5"
+    with h5py.File(dataset, "w") as f:
+        f.attrs.update(episodes=json.dumps(eps), condition="snerl", raw_identities=json.dumps(store_identities(store)),
+                       calibration=json.dumps({ep: {"calibrate": store.upstream(ep)["calibrate"],
+                                                     "cameras": store.cameras(ep)} for ep in eps}))
+        for ep in eps:
+            f.create_group(f"episodes/{ep}/sync").attrs["task"] = store.task(ep)
+    for evidence in (report, saved):
+        assert not gate.check_dataset_gate(dataset, evidence, steps=None, split=split)["smoke"]
+
+
+@pytest.mark.parametrize("attribute,value", [("raw_recording", "episode_999999.h5"),
+                                             ("raw_recording", ""), ("raw_sha256", "f" * 64)])
+def test_pipeline_names_cannot_hide_wrong_raw_identity(pipeline_named_store, attribute, value):
+    from s4d.rwlearn.baseline_data import check_gate
+
+    store, report, paths = pipeline_named_store
+    store.close()
+    with h5py.File(paths[0], "r+") as f:
+        f.attrs[attribute] = value
+    with pytest.warns(UserWarning, match="MOCK"):
+        changed = TS.CompactStore(paths)
+    try:
+        with pytest.raises(RuntimeError, match="raw identity"):
+            check_gate(changed, report, steps=None, consumer="e2e_cnn")
+    finally:
+        changed.close()
+
+
+@pytest.mark.parametrize("problem", ["missing", "mismatch", "duplicate", "sha256", "missing_path"])
+def test_pipeline_outcome_flags_require_unambiguous_raw_identity(pipeline_named_store, problem):
+    from s4d.rwlearn import outcomes
+
+    store, _, _ = pipeline_named_store
+    records = {f"drawer-open/raw_{i}": {"path": f"episode_{i:06d}.h5", "decision": "needs_image_review",
+                                       "flags": []} for i in range(2)}
+    if problem == "missing":
+        records.pop("drawer-open/raw_0")
+    elif problem == "mismatch":
+        records["drawer-open/raw_0"]["path"] = "episode_999999.h5"
+    elif problem == "missing_path":
+        records["drawer-open/raw_0"].pop("path")
+    elif problem == "duplicate":
+        records["drawer-open/alias"] = dict(records["drawer-open/raw_0"])
+    else:
+        records["drawer-open/raw_0"]["sha256"] = "f" * 64
+    with pytest.raises(RuntimeError, match="raw identity"):
+        outcomes.outcome_labels(store.episodes(), ending_report={"episodes": records}, store=store)
+
+
 def test_store_layout_versions_and_idempotence(built):
     rec = built["rec"]
     s = rec["summary"]
@@ -198,6 +329,90 @@ def test_store_layout_versions_and_idempotence(built):
         assert "xyz" not in g and not any("window" in k for k in f)  # no dense XYZ, no window copies
         assert f.attrs["MOCK_MODEL_OUTPUTS"]
     assert set(s["bytes"]["stored"]) == {"rgb", "depth", "semantic", "tracks", "robot", "sync", "camera_meta"}
+
+
+def test_accepted_episode_is_byte_identical_to_the_pre_change_writer(built, tmp_path, monkeypatch):
+    """Run the frozen release writer and this writer on the SAME synthetic inputs, with volatile provenance pinned."""
+    monkeypatch.setattr(TS, "_code_commit", lambda: "2a35cfb" + "0" * 33)
+    monkeypatch.setattr(TS.time, "time", lambda: 1793923200.0)
+    namespace = dict(vars(TS))
+    oracle = REPO / "tests/fixtures/realworld/train_store_v2_writer.py.txt"
+    exec(compile(oracle.read_text(), str(oracle), "exec"), namespace)
+    kw = dict(task="synthetic", depth_stage="sensor_depth", allow_mock=True)
+    old = namespace["write_episode"](built["root"], built["ep"], tmp_path / "old", **kw)
+    new = TS.write_episode(built["root"], built["ep"], tmp_path / "new", **kw)
+    assert (tmp_path / "old" / TS.FILE).read_bytes() == (tmp_path / "new" / TS.FILE).read_bytes()
+    assert old["fingerprint"] == new["fingerprint"] and old["config"] == new["config"]
+    assert "layout" not in new["summary"]
+    # An already exported accepted episode is reused in place, without any re-export.
+    before = (tmp_path / "old" / TS.FILE).read_bytes()
+    assert TS.write_episode(built["root"], built["ep"], tmp_path / "old", **kw)["skipped"]
+    assert (tmp_path / "old" / TS.FILE).read_bytes() == before
+
+
+@pytest.mark.parametrize("status,all_cameras", [("rejected", True), ("held", True), ("missing", True),
+                                               ("rejected", False)])
+def test_unaccepted_calibration_keeps_every_rgb_robot_timeline(built, tmp_path, status, all_cameras):
+    import shutil
+
+    from s4d.realworld.pipeline import load_meta, read_frames
+    from s4d.rwlearn.store import sync_index
+    from s4d.rwlearn.transitions import timelines
+
+    root, ep = tmp_path / "root", built["ep"]
+    shutil.copytree(built["root"], root)
+    meta = load_meta(root, ep)
+    cal_dir = rio.stage_dir(root, ep, "calibrate")
+    for rig in ("rig0", "rig1", "rig2") if all_cameras else ("rig0",):
+        path = cal_dir / f"{rig}__left.json"
+        if status == "missing":
+            path.unlink()
+        else:
+            cal = json.loads(path.read_text())
+            cal.update(status=status, reasons=["motion coverage below 0.05 m"])
+            path.write_text(json.dumps(cal))
+    if all_cameras:
+        # Calibration rejection may leave no lifted/fused products or complete geometry-stage records.
+        for stage in ("sensor_depth", "track2d", "lift3d", "track_motion"):
+            shutil.rmtree(rio.stage_dir(root, ep, stage))
+    out = tmp_path / "store"
+    # Even if the upstream record ids stayed the same, the new layout marker invalidates a store that omitted views.
+    shutil.copytree(built["tmp"] / "store", out)
+    rec = TS.write_episode(root, ep, out, task="synthetic", depth_stage="sensor_depth", allow_mock=True)
+    assert not rec["skipped"] and rec["fingerprint"] != built["rec"]["fingerprint"]
+    assert rec["summary"]["layout"] == TS.CALIBRATION_OPTIONAL_LAYOUT
+    assert TS.manifest_fields(rec)["calibration_status"]["rig0"] == status
+    with pytest.warns(UserWarning, match="MOCK"):
+        store = TS.CompactStore([out])
+    key = store.episodes()[0]
+    ef = store.episode(key)
+    assert ef.cameras == ["rig0", "rig1", "rig2"]
+    for cam in ef.cameras:
+        stream = f"{cam}/left"
+        stamps = meta.stream_timestamps_ns[stream]
+        np.testing.assert_array_equal(ef.timestamps(cam), stamps)
+        expected = read_frames(root, ep, stream, list(range(len(stamps))))
+        box = TS.square_box(*expected.shape[1:3])
+        np.testing.assert_array_equal(ef.rgb(cam, np.arange(len(stamps))),
+                                      np.stack([CR.crop_rgb(im, box, 128) for im in expected]))
+        assert ef.robot(cam)["ok"].all()
+        assert len(ef.robot(cam)["joint_positions"]) == len(stamps)
+        g = ef.file[f"cameras/{cam}"]
+        expected_status = status if all_cameras or cam == "rig0" else "accepted"
+        assert json.loads(g.attrs["calibration"])["status"] == expected_status
+        if all_cameras or cam == "rig0":
+            assert not any(field in g for field in ("w2c", "tracks", "depth"))
+        elif cam == "rig1":
+            assert all(field in g for field in ("w2c", "tracks", "depth"))
+    assert "gripper_visible" not in ef.sync()
+    assert len(timelines(store, key, multiview=False)) == 3
+    for access in (lambda: store.sync_sets(key), lambda: sync_index(store, key),
+                   lambda: timelines(store, key, multiview=True), lambda: ef.w2c("rig0"),
+                   lambda: ef.tracks("rig0"), lambda: ef.track_index("rig0"),
+                   lambda: RealworldWindowDataset(store, num_views=1)):
+        with pytest.raises(ValueError, match="geometry held"):
+            access()
+    store.close()
 
 
 def test_frames_depth_semantics_and_calibration_match_the_preprocessing_outputs(built):
@@ -508,3 +723,48 @@ def test_visualization_geometry_store_is_compact_native_depth(built):
     np.testing.assert_array_equal(K2, K)
     with h5py.File(built["tmp"] / "vis" / FILE, "r") as f:
         assert f["cameras/rig1/depth"].dtype == np.uint16 and "w2c" in f["cameras/rig1"]
+
+
+def test_store_records_m5_sets_and_the_loader_filters_by_robot_motion(built, tmp_path):
+    """Criterion M5 (coordinator decision 2026-11-06): mutual nearest sets without a time cap, the per-set robot-surface
+    motion stored once, the loader's configurable threshold (default 5 mm), counts recorded in the store and the stage
+    summary; the train_data version is bumped so every episode is re-exported."""
+    import shutil
+
+    assert TS.WRITER_VERSION == "2" and TS.SCHEMA_VERSION == "1.1.0" and TS.MAX_SET_MOTION_M == 0.005
+    s = built["rec"]["summary"]
+    assert s["sync"]["criterion"] == "M5" and s["sync"]["max_set_motion_m"] == 0.005
+    assert TS.manifest_fields(built["rec"])["sync"] == s["sync"]
+    path = built["tmp"] / "store" / TS.FILE
+    with h5py.File(path, "r") as f:
+        sg = f["sync"]
+        disp, frames = sg["surface_disp_m"][:], sg["frames"][:]
+        assert disp.dtype == np.float64 and disp.shape == (len(frames),)  # counts and loaders compare the same values
+        assert sg.attrs["criterion"] == "M5" and sg.attrs["cross_camera_cap_ns"] == -1
+        assert json.loads(sg.attrs["counts"]) == {k: v for k, v in s["sync"].items() if k != "criterion"}
+        assert int(f.attrs["max_sync_ns"]) == int(sg.attrs["robot_sync_max_ns"])  # robot <-> camera tolerance only
+    complete = (frames >= 0).all(1)
+    assert s["sync"]["complete_sets"] == int(complete.sum())
+    assert s["sync"]["accepted"] == int((complete & (disp <= 0.005)).sum())
+    full = _dataset(built)
+    assert full.counts["sync_criterion"] == "M5" and full.counts["accepted_sets"] <= full.counts["complete_sets"]
+    moving = disp[complete & np.isfinite(disp)]
+    assert (moving > 0).any()  # the synthetic robot moves
+    try:  # a threshold below the smallest moving set keeps only the still sets (possibly none: no window at all)
+        strict = _dataset(built, max_set_motion_m=float(moving[moving > 0].min()) / 2)
+        assert strict.counts["accepted_sets"] < full.counts["accepted_sets"] and len(strict) < len(full)
+    except ValueError as exc:
+        assert "empty split" in str(exc)
+    with pytest.raises(ValueError, match="only for stores without"):
+        _dataset(built, sync_criterion="time")
+    legacy = tmp_path / "legacy"
+    legacy.mkdir()
+    shutil.copy(path, legacy / TS.FILE)
+    with h5py.File(legacy / TS.FILE, "a") as f:
+        del f["sync/surface_disp_m"]
+    with pytest.raises(ValueError, match="re-export"):
+        with pytest.warns(UserWarning):
+            RealworldWindowDataset([legacy / TS.FILE], split="all")
+    with pytest.warns(UserWarning):
+        old = RealworldWindowDataset([legacy / TS.FILE], split="all", sync_criterion="time")
+    assert len(old) > 0 and old.counts["sync_criterion"] == "time"

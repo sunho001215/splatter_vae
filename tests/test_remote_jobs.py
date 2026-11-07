@@ -10,6 +10,7 @@ import pytest
 import yaml
 
 from ops.remote import artifact_check as remote_artifact_check
+from ops.containers.mounts import REALWORLD_READ_ROOTS
 from ops.jobs import remote_backend as remote
 from ops.resources.gpu_guard import APPROVED_HOST_GPUS
 from ops.resources.nvidia_query import QueryUnavailable
@@ -49,7 +50,7 @@ def write_queue(tmp_path, job_list, **remote_overrides):
     return path
 
 
-def inspected(run_id="r", attempt=1, status="running", code=0, gpu=REMOTE, gpu_backend="cdi"):
+def inspected(run_id="r", attempt=1, status="running", code=0, gpu=REMOTE, gpu_backend="cdi", realworld=False):
     device = f"nvidia.com/gpu={gpu}" if gpu_backend == "cdi" else gpu
     visible = "void" if gpu_backend == "cdi" else gpu
     return {"Name": f"/s4d-{run_id}-a{attempt}", "Id": CONTAINER_ID, "Image": IMAGE,
@@ -74,7 +75,8 @@ def inspected(run_id="r", attempt=1, status="running", code=0, gpu=REMOTE, gpu_b
                             f"{remote.ROOT}/releases/{COMMIT}/provenance.json", False),
                            (f"{remote.ROOT}/data/metaworld/splatter4d_v1",
                             "/home/ws/data/metaworld/splatter4d_v1", False),
-                       ]], "pids": {123}}
+                       ] + ([(root, root, False) for root in REALWORLD_READ_ROOTS] if realworld else [])],
+            "pids": {123}}
 
 
 class FakeClient:
@@ -114,7 +116,8 @@ class FakeBackend:
         current = jobs.read_registry(self.registry)[payload["id"]]
         assert current["status"] == "launching" and current["attempts"] == payload["attempt"]
         self.launches.append(payload)
-        item = inspected(payload["id"], payload["attempt"], gpu_backend=payload["gpu_backend"])
+        item = inspected(payload["id"], payload["attempt"], gpu_backend=payload["gpu_backend"],
+                         realworld=payload.get("role", "").startswith("realworld_"))
         self.value.containers[payload["container"]] = item
         if self.launch_error:
             raise self.launch_error
@@ -228,9 +231,95 @@ def test_launch_response_loss_reconciles_same_container_once(tmp_path):
     assert state["r"]["status"] == "running" and not state["r"]["unknown"]
     assert state["r"]["attempts"] == 1 and len(backend.launches) == 1
     assert state["r"]["gpu_backend"] == backend.launches[0]["gpu_backend"] == "cdi"
+    assert state["r"]["role"] == backend.launches[0]["role"] == "realworld_pretrain"
     events = [json.loads(line) for line in (tmp_path / "registry.jsonl").read_text().splitlines()]
     reconnected = [event for event in events if event["event"] == "host_reconnected"]
     assert len(reconnected) == 1 and reconnected[0]["duration_seconds"] >= 0
+
+
+def test_input_only_realworld_role_survives_launch_event_and_reconciliation(tmp_path):
+    queued = write_queue(tmp_path, [job(role=None, script="scripts/train.py",
+                                      args=["--name", "r", "--output-root", "runs"],
+                                      inputs=[remote.ROOT + "/realworld/learning_inputs/drawer-open/store.yaml"])])
+    backend = FakeBackend(tmp_path / "runs")
+    backend.launch_error = remote.RemoteUnreachable("response lost")
+    tick(tmp_path, queued, backend)
+    current = jobs.read_registry(tmp_path / "registry.jsonl")["r"]
+    assert current["role"] == "realworld_pretrain" and current["unknown"]
+    assert "inputs" not in current  # the spec's role carries the classification evidence
+    backend.launch_error = None
+    tick(tmp_path, queued, backend)
+    current = jobs.read_registry(tmp_path / "registry.jsonl")["r"]
+    assert current["status"] == "running" and not current["unknown"]
+    assert current["attempts"] == 1 and len(backend.launches) == 1
+
+
+@pytest.mark.parametrize("persisted_role", [False, True])
+@pytest.mark.parametrize("run_id,script,task,status", [
+    ("rwng-20261107-dynamo-drawer-open-pre", "train_dynamo.py", "drawer-open", "exited"),
+    ("rwng-20261107-dynamo-mug-hanging-pre", "train_dynamo.py", "mug-hanging", "exited"),
+    ("rwng-20261107-reviwo-drawer-open-pre", "train_reviwo.py", "drawer-open", "running"),
+])
+def test_realworld_mount_mismatch_unknown_recovers_same_attempt(tmp_path, monkeypatch, persisted_role,
+                                                               run_id, script, task, status):
+    baseline = "dynamo" if script == "train_dynamo.py" else "reviwo"
+    args = ["--config", f"configs/realworld/baselines/{baseline}/{task}.yaml",
+            "--name", run_id, "--output-root", "runs"]
+    queued = write_queue(tmp_path, [job(run_id, script="scripts/" + script, args=args)])
+    registry = tmp_path / "registry.jsonl"
+    launch_event(tmp_path, run_id, script="scripts/" + script, args=args,
+                 **({"role": "realworld_pretrain"} if persisted_role else {}))
+    jobs.record({"event": "unknown", "id": run_id, "host": "remote",
+                 "reason": "container identity/isolation mismatch"}, registry)
+    before = jobs.read_registry(registry)[run_id]
+    assert before["status"] == "running" and before["unknown"]
+    assert before["reason"] == "container identity/isolation mismatch"
+    backend = FakeBackend(tmp_path / "runs")
+    backend.value.containers[before["container"]] = inspected(run_id, status=status, code=0, realworld=True)
+    backend.backup_ready = False
+    original_sync = backend.sync_results
+    numeric = {"train": {"seed": 0, "steps": 10}}
+    digest = hashlib.sha256(json.dumps(numeric, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+    def trained(run_id, final=False, **kwargs):
+        result = original_sync(run_id, final, **kwargs)
+        path = backend.runs / run_id / "provenance.json"
+        report = json.loads(path.read_text())
+        report.update(numeric_config=numeric, config_sha256=digest)
+        data = json.dumps(report).encode()
+        path.write_bytes(data)
+        result["files"]["provenance.json"] = hashlib.sha256(data).hexdigest()
+        return result
+
+    monkeypatch.setattr(backend, "sync_results", trained)
+    tick(tmp_path, queued, backend)
+    current = jobs.read_registry(registry)[run_id]
+    assert not current["unknown"] and not backend.launches
+    assert current["status"] == ("running" if status == "running" else "sync_pending")
+    if status == "running":
+        assert not backend.inspections and not backend.syncs
+    else:
+        assert current["code"] == 0 and current["remote_verified"]["attempt"] == before["attempt"]
+        assert backend.inspections == [run_id]
+        assert jobs.dependency_ready({"host": "remote"}, current)
+        assert not jobs.dependency_ready({"host": "local"}, current)
+    backend.backup_ready = True
+    tick(tmp_path, queued, backend)
+    current = jobs.read_registry(registry)[run_id]
+    assert not current["unknown"] and not backend.launches
+    assert current["status"] == ("running" if status == "running" else "done")
+    assert current["attempt"] == current["attempts"] == before["attempt"] == 1
+    assert current["attempt_since"] == before["attempt_since"] and current["failures"] == 0
+    assert current["attempt_containers"] == before["attempt_containers"]
+    assert current["container_id"] == CONTAINER_ID
+    events = [json.loads(line) for line in registry.read_text().splitlines()]
+    assert not any(event["event"] == "launching" for event in events)
+    assert sum(event["event"] == "launched" for event in events) == (2 if status == "running" else 1)
+    if status == "exited":
+        assert current["sync"]["final"] and current["sync"]["verified"]
+        assert jobs.dependency_ready({"host": "local"}, current)
+        assert {"remote_exited", "remote_verified", "results_synced", "exited"} <= {
+            event["event"] for event in events}
 
 
 @pytest.mark.parametrize("status", ["running", "exited"])
@@ -708,6 +797,67 @@ def test_container_identity_and_isolation_fail_closed(field):
         remote.validate_container(item, "r", state)
 
 
+@pytest.mark.parametrize("role,script,args,realworld", [
+    ("realworld_pretrain", "train_reviwo.py", [], True),
+    ("realworld_fql", "train_fql.py", [], True),
+    ("realworld_preprocess", "preprocess.py", [], True),
+    (None, "train_dynamo.py", ["--config", "configs/realworld/base.yaml"], True),
+    (None, "realworld_fql_dataset.py", ["build"], True),
+    ("metaworld", "train_dynamo.py", ["--config", "configs/metaworld/base.yaml"], False),
+    (None, "train.py", ["--config", "configs/metaworld/base.yaml"], False),
+    ("droid_pretrain", "train_dynamo.py", ["--config", "configs/droid/base.yaml"], False),
+    (None, "realworld_viewer.py", [], False),
+    (None, "train.py", [], False),
+])
+def test_container_realworld_mounts_match_launcher_role_rule(tmp_path, role, script, args, realworld):
+    launch_event(tmp_path, role=role, script="scripts/" + script, args=args)
+    state = jobs.read_registry(tmp_path / "registry.jsonl")["r"]
+    remote.validate_container(inspected(realworld=realworld), "r", state)
+    with pytest.raises(remote.RemoteJobError, match="mount mapping mismatch"):
+        remote.validate_container(inspected(realworld=not realworld), "r", state)
+
+
+@pytest.mark.parametrize("realworld", [False, True])
+@pytest.mark.parametrize("role,script,args", [
+    (None, "train_dynamo.py", ["--config", "configs/realworld/base.yaml", "configs/droid/base.yaml"]),
+    ("realworld_pretrain", "train_dynamo.py", ["--config", "configs/metaworld/base.yaml"]),
+    ("realworld_fql", "train_rl.py", []),
+    ("realworld_typo", "train_dynamo.py", []),
+])
+def test_container_mount_role_fails_closed(tmp_path, realworld, role, script, args):
+    launch_event(tmp_path, role=role, script="scripts/" + script, args=args)
+    state = jobs.read_registry(tmp_path / "registry.jsonl")["r"]
+    with pytest.raises(remote.RemoteJobError, match="mount role mismatch"):
+        remote.validate_container(inspected(realworld=realworld), "r", state)
+
+
+@pytest.mark.parametrize("root", REALWORLD_READ_ROOTS)
+@pytest.mark.parametrize("fault", ["missing", "duplicate", "source", "destination", "writable", "volume",
+                                   "missing_permissions"])
+def test_container_realworld_mount_identity_and_permissions_fail_closed(tmp_path, root, fault):
+    launch_event(tmp_path, role="realworld_pretrain")
+    state = jobs.read_registry(tmp_path / "registry.jsonl")["r"]
+    item = inspected(realworld=True)
+    remote.validate_container(item, "r", state)
+    mount = next(mount for mount in item["Mounts"] if mount["Destination"] == root)
+    if fault == "missing":
+        item["Mounts"].remove(mount)
+    elif fault == "duplicate":
+        item["Mounts"].append(dict(mount))
+    elif fault == "source":
+        mount["Source"] += "/other"
+    elif fault == "destination":
+        mount["Destination"] += "/other"
+    elif fault == "writable":
+        mount["RW"] = True
+    elif fault == "volume":
+        mount["Type"] = "volume"
+    else:
+        mount.pop("RW")
+    with pytest.raises(remote.RemoteJobError, match="mount .* mismatch"):
+        remote.validate_container(item, "r", state)
+
+
 def test_legacy_injection_requires_explicit_legacy_identity():
     item = inspected(gpu_backend="legacy")
     state = {"container": "s4d-r-a1", "container_id": CONTAINER_ID, "attempts": 1,
@@ -859,6 +1009,44 @@ def test_launch_spec_is_safe_immutable_and_exact_uuid(tmp_path):
         backend.prepare(job(script="../outside.py"), REMOTE, 2, host, evidence)
     with pytest.raises(ValueError, match="identity"):
         remote.container_name("../escape", 1)
+
+
+@pytest.mark.parametrize("role,script,extra", [
+    ("realworld_pretrain", "train_reviwo.py", []),
+    ("realworld_pretrain", "train_dynamo.py", []),
+    (None, "train_snerl.py", ["--config", "configs/realworld/baselines/snerl/drawer-open.yaml"]),
+    ("realworld_fql", "realworld_fql_dataset.py", ["build"]),
+    ("realworld_fql", "train_realworld_fql.py", []),
+    (None, "train.py", []),  # classification evidence only in inputs must survive serialization
+])
+def test_prepare_preserves_realworld_role_and_local_launcher_accepts_spec(tmp_path, role, script, extra):
+    from ops.containers.launch import REALWORLD_READ_ROOTS, build_remote_command, validate_spec
+
+    backend = remote.RemoteBackend(REPO, tmp_path / "runs", FakeClient())
+    host = {"commit": COMMIT, "image_digest": IMAGE, "host_ram_reserve_gb": 120,
+            "limits": {REMOTE: {"max_jobs": 2, "max_mem_gb": 40}}}
+    queued = job(role=role, script="scripts/" + script,
+                 args=["--name", "r", "--output-root", "runs", *extra],
+                 inputs=[remote.ROOT + "/realworld/learning_inputs/drawer-open/store.yaml"])
+    path, spec = backend.prepare(queued, REMOTE, 1, host, {})
+    assert spec["role"] == (role or "realworld_pretrain")
+    validated = validate_spec(json.loads(path.read_text()))
+    command = build_remote_command(validated, DATA, "e" * 40, "f" * 64, {"tests.json": "1" * 64},
+                                   [(remote.ROOT + "/data/hammer.hdf5", "d" * 64)])
+    assert all(f"src={root},dst={root},readonly" in command for root in REALWORLD_READ_ROOTS)
+
+
+@pytest.mark.parametrize("role,configs", [
+    (None, ["configs/realworld/base.yaml", "configs/droid/base.yaml"]),
+    ("realworld_pretrain", ["configs/metaworld/base.yaml"]),
+])
+def test_prepare_rejects_ambiguous_or_contradictory_realworld_role(tmp_path, role, configs):
+    backend = remote.RemoteBackend(REPO, tmp_path / "runs", FakeClient())
+    host = {"commit": COMMIT, "image_digest": IMAGE, "limits": {REMOTE: {"max_jobs": 2, "max_mem_gb": 40}}}
+    with pytest.raises(ValueError, match="remote job role"):
+        backend.prepare(job(role=role, script="scripts/train_dynamo.py", args=["--config", *configs]),
+                        REMOTE, 1, host, {})
+    assert not (tmp_path / "runs/remote/jobs").exists()
 
 
 def test_backend_snapshot_persists_reachability_without_discarding_last_state(tmp_path):
@@ -1735,3 +1923,337 @@ def test_remote_export_must_read_its_producers_verified_checkpoint_at_the_produc
     for registry in (producer(steps=20), producer(files=()), producer(digest="0" * 64), producer(attempt=0), {}):
         with pytest.raises(remote.RemoteJobError):
             jobs._verify_remote_export(state, archive, registry)
+
+
+# ---- campaign-owned co-tenants (rwprep containers outside the scheduler, 2026-11-06) ----
+OTHER = APPROVED_HOST_GPUS["remote"][1]
+COTENANT_ID = "e" * 64
+
+
+def cotenant(name="s4d-rwprep-x-a1", gpu=REMOTE, role="rwprep", identity=COTENANT_ID, mem=34 * GIB, ram=48 * GIB,
+             request=None, **labels):
+    """A running container as rwprep_launch.py starts it (CDI device = its s4d.gpu label, s4d.managed=false)."""
+    tags = {"s4d.project": "splatter4d", "s4d.owner": "kaist-sunho", "s4d.managed": "false", "s4d.role": role,
+            "s4d.host": "remote", "s4d.gpu": gpu or "none", "s4d.mem_bytes": str(mem), "s4d.ram_bytes": str(ram),
+            **labels}
+    requests = ([request or {"Driver": "cdi", "Count": 0, "DeviceIDs": [f"nvidia.com/gpu={gpu}"],
+                             "Capabilities": None, "Options": None}] if gpu else [])
+    return {"Name": "/" + name, "Id": identity, "State": {"Status": "running"}, "Config": {"Labels": tags},
+            "HostConfig": {"DeviceRequests": requests, "Devices": [], "Memory": ram, "NanoCpus": 16 * 10**9}}
+
+
+def add_cotenant(snapshot, item, pids=(777,), used_mib=30 * 1024, ram_used=None, gpu_used_mib=None):
+    """Registers the co-tenant in a FakeBackend snapshot; its processes share ``used_mib`` on its bound GPU."""
+    found = remote.identify_cotenant(item, set(pids), ram_used)
+    assert found is not None
+    snapshot.cotenants[item["Name"][1:]] = found
+    gpu = found["gpu"]
+    if gpu is not None:
+        snapshot.usage[gpu] += [(pid, used_mib / len(pids)) for pid in pids]
+        previous = snapshot.gpu_memory.get(gpu, (97887, 0))[1]
+        snapshot.gpu_memory[gpu] = (97887, previous + (used_mib if gpu_used_mib is None else gpu_used_mib))
+    return found
+
+
+def wide_queue(tmp_path, job_list, max_mem_gb=90, max_jobs=4):
+    return write_queue(tmp_path, job_list, limits={REMOTE: {"max_jobs": max_jobs, "max_mem_gb": max_mem_gb},
+                                                   OTHER: {"max_jobs": max_jobs, "max_mem_gb": max_mem_gb}})
+
+
+def launched(backend):
+    return [(payload["id"], payload["gpu"]) for payload in backend.launches]
+
+
+def cotenant_snapshot_output(items, ram_used=None, gpu_memory=True):
+    rows = snapshot_output().removesuffix("__S4D_END__\n").splitlines()
+    rows.append("__S4D_GPU_MEMORY__")
+    if gpu_memory:
+        rows += [f"{uuid}, 97887, {1000 * (index + 1)}" for index, uuid in enumerate(APPROVED_HOST_GPUS["remote"])]
+    rows.append("__S4D_COTENANTS__")
+    for item, pids in items:
+        identity = item["Id"] if isinstance(item, dict) else COTENANT_ID
+        rows += [json.dumps(item) if isinstance(item, dict) else item, f"__S4D_TOP__ {identity}", "PID", *map(str, pids)]
+        if ram_used is not None:
+            rows.append(f"__S4D_RAM_USED__ {ram_used}")
+        rows.append("__S4D_END_TOP__")
+    return "\n".join([*rows, "__S4D_END__"]) + "\n"
+
+
+def test_snapshot_identifies_only_positively_labelled_and_bound_cotenants():
+    def ident(index):
+        return f"{index:x}" * 64 if index < 16 else hashlib.sha256(str(index).encode()).hexdigest()
+    cases = {  # name -> (container, expected bound GPU or None, identified)
+        "s4d-rwprep-ok-a1": (cotenant("s4d-rwprep-ok-a1", identity=ident(1)), REMOTE, True),
+        "s4d-calstudy-a": (cotenant("s4d-calstudy-a", gpu=None, role="rwprep-study", identity=ident(2)), None, True),
+        "s4d-rwprepmaint-x": (cotenant("s4d-rwprepmaint-x", gpu=None, role="rwprep-maint", identity=ident(3)), None,
+                              True),
+        "s4d-other-owner": (cotenant("s4d-other-owner", identity=ident(4), **{"s4d.owner": "someone"}), None, False),
+        "s4d-other-project": (cotenant("s4d-other-project", identity=ident(5), **{"s4d.project": "x"}), None, False),
+        "s4d-managed": (cotenant("s4d-managed", identity=ident(6), **{"s4d.managed": "true"}), None, False),
+        "s4d-unmanaged-label-missing": (cotenant("s4d-unmanaged-label-missing", identity=ident(7),
+                                                 **{"s4d.managed": ""}), None, False),
+        "s4d-fetch": (cotenant("s4d-fetch", role="rwprep-fetch", identity=ident(8)), None, False),
+        "kimi-rwprep": (cotenant("kimi-rwprep", identity=ident(9)), None, False),
+        "s4d-label-other-gpu": (cotenant("s4d-label-other-gpu", identity=ident(10), **{"s4d.gpu": OTHER}), None, True),
+        "s4d-legacy": (cotenant("s4d-legacy", identity=ident(11), request={
+            "Driver": "nvidia", "Count": 0, "DeviceIDs": [REMOTE], "Capabilities": [["gpu"]]}), None, True),
+        "s4d-all": (cotenant("s4d-all", identity=ident(12), request={
+            "Driver": "cdi", "Count": -1, "DeviceIDs": [f"nvidia.com/gpu={REMOTE}"]}), None, True),
+        "s4d-two": (cotenant("s4d-two", identity=ident(13), request={
+            "Driver": "cdi", "Count": 0, "DeviceIDs": [f"nvidia.com/gpu={REMOTE}", f"nvidia.com/gpu={OTHER}"]}),
+            None, True),
+        "s4d-no-mem": (cotenant("s4d-no-mem", identity=ident(14), **{"s4d.mem_bytes": ""}), None, True),
+        "s4d-foreign-gpu": (cotenant("s4d-foreign-gpu", gpu="GPU-1aa64fba-f45e-ee28-f83e-a272cb624cb4",
+                                     identity=ident(15)), None, True),
+        "s4d-exited": (cotenant("s4d-exited", identity=ident(16)), None, False),
+        # values the remote guard could not read as one record: unidentified (Codex review)
+        "s4d-separator": (cotenant("s4d-separator", identity=ident(18), **{"s4d.gpu": REMOTE + "|x"}), None, False),
+        "s4d-newline": (cotenant("s4d-newline", identity=ident(19), **{"s4d.role": "rwprep\nrwprep"}), None, False),
+        "s4d-bad-device": (cotenant("s4d-bad-device", identity=ident(20), request={
+            "Driver": "cdi", "Count": 0, "DeviceIDs": [f"nvidia.com/gpu={REMOTE};/"]}), None, False),
+        # byte counts must be canonical bounded decimals (the guard's shell arithmetic reads a leading zero as octal)
+        "s4d-octal-mem": (cotenant("s4d-octal-mem", identity=ident(22), **{"s4d.mem_bytes": "085899345920"}), None,
+                          False),
+        "s4d-zero-mem": (cotenant("s4d-zero-mem", identity=ident(23), **{"s4d.mem_bytes": "00"}), None, False),
+        "s4d-huge-ram": (cotenant("s4d-huge-ram", identity=ident(24), ram=10**15), None, False),
+    }
+    cases["s4d-exited"][0]["State"]["Status"] = "exited"
+    devices = cotenant("s4d-devices", identity=ident(17))
+    devices["HostConfig"]["Devices"] = [{"PathOnHost": "/dev/nvidia1"}]
+    cases["s4d-devices"] = (devices, None, True)
+    output = cotenant_snapshot_output([(item, [100 + index]) for index, (item, _, _) in enumerate(cases.values())]
+                                      + [("{not json", [999])], ram_used=5 * GIB)
+    value = remote.parse_snapshot(output)
+    assert value.resources_ready and value.gpu_memory[REMOTE] == (97887, 1000)
+    assert set(value.cotenants) == {name for name, (_, _, identified) in cases.items() if identified}
+    for name, (_, gpu, _) in cases.items():
+        if name in value.cotenants:
+            found = value.cotenants[name]
+            assert found["gpu"] == gpu and found["ram_used_bytes"] == 5 * GIB and found["ram_limit_bytes"] == 48 * GIB
+            assert found["gpu_verified"] == (gpu is not None or name in ("s4d-calstudy-a", "s4d-rwprepmaint-x"))
+    label_only = cotenant("s4d-label-only", identity=ident(21))  # Memory 0: a label alone bounds nothing
+    label_only["HostConfig"]["Memory"] = 0
+    assert remote.identify_cotenant(label_only, set(), None)["ram_limit_bytes"] is None
+    assert value.cotenants["s4d-rwprep-ok-a1"]["pids"] == {100} and value.cotenants["s4d-rwprep-ok-a1"]["cpus"] == 16
+    # only bound co-tenants' processes become known, and only on their GPU
+    charges = remote.cotenant_charges(value)
+    assert set(charges["gpus"]) == {REMOTE} and charges["gpus"][REMOTE]["pids"] == {100}
+    # the pre-2026-11-06 snapshot format: no co-tenants, no GPU memory (co-tenant processes stay foreign)
+    old = remote.parse_snapshot(snapshot_output([inspected()]))
+    assert old.cotenants == {} and old.gpu_memory == {} and old.containers["s4d-r-a1"]["pids"] == {123}
+    assert remote.parse_snapshot(cotenant_snapshot_output([(cotenant(), [5])], gpu_memory=False)).gpu_memory == {}
+    # an inspect failure other than removal marks the snapshot not ready (no co-tenant reservation silently lost)
+    assert not remote.parse_snapshot(cotenant_snapshot_output([("__S4D_QUERY_ERROR__", [5])])).resources_ready
+    command = remote.snapshot_command(remote.ROOT)
+    assert "label=s4d.managed=false" in command and "memory.total,memory.used" in command
+    assert "|| ids=" not in command and "No such object" in command  # a failed listing fails the snapshot
+    assert subprocess.run(["bash", "-n"], input=command, text=True, capture_output=True).returncode == 0
+
+
+def test_cotenant_charges_take_the_larger_of_measured_and_declared():
+    snapshot = remote.RemoteSnapshot({uuid: [] for uuid in APPROVED_HOST_GPUS["remote"]}, 200, 1000 * GIB, 800 * GIB,
+                                     {"s4d-r-a1": {**inspected(), "pids": {123}}})
+    add_cotenant(snapshot, cotenant("s4d-rwprep-a-a1", identity="1" * 64), pids=(1, 2), used_mib=20 * 1024,
+                 ram_used=8 * GIB)
+    add_cotenant(snapshot, cotenant("s4d-rwprep-b-a1", identity="2" * 64), pids=(3,), used_mib=35 * 1024)
+    add_cotenant(snapshot, cotenant("s4d-calstudy", gpu=None, role="rwprep-study", identity="3" * 64,
+                                    ram=12 * GIB), pids=(4,), ram_used=2 * GIB)
+    snapshot.usage[REMOTE].append((123, 1024))  # the scheduler's own job: 1 GiB of its 5 GiB in use
+    snapshot.gpu_memory[REMOTE] = (97887, 56 * 1024 + 300)
+    charges = remote.cotenant_charges(snapshot, [(REMOTE, "s4d-r-a1", 5), (REMOTE, "s4d-new-a1", 3), (OTHER, "x", 9)])
+    gpu = charges["gpus"][REMOTE]
+    assert gpu["jobs"] == 2 and gpu["load"] == 2.0 and gpu["pids"] == {1, 2, 3}
+    assert gpu["mem_gb"] == pytest.approx(34 + 35)
+    assert gpu["pending_gb"] == pytest.approx(14 + 0 + 4 + 3)  # declared - measured, never negative
+    assert gpu["free_gb"] == pytest.approx((97887 - 56 * 1024 - 300) / 1024 - 21)
+    assert charges["ram_declared_bytes"] == (48 + 48 + 12) * GIB
+    assert charges["ram_pending_bytes"] == (40 + 48 + 10) * GIB  # unmeasured: the whole limit
+    assert charges["cpus"] == 48 and charges["unbounded"] == []
+    del snapshot.gpu_memory[REMOTE]
+    assert remote.cotenant_charges(snapshot)["gpus"][REMOTE]["free_gb"] == 0  # no reading: nothing fits
+    unbounded = cotenant("s4d-calstudy-x", gpu=None, role="rwprep-study", identity="4" * 64, ram=0)
+    del unbounded["Config"]["Labels"]["s4d.ram_bytes"]
+    add_cotenant(snapshot, unbounded, pids=(5,))
+    assert remote.cotenant_charges(snapshot)["unbounded"] == ["s4d-calstudy-x"]
+    assert remote.cotenant_charges(remote.RemoteSnapshot({}, 1, 1, 1, {}))["gpus"] == {}
+
+
+def test_known_cotenant_processes_are_not_foreign_and_are_charged(tmp_path):
+    backend = FakeBackend(tmp_path / "runs")
+    backend.value.usage[REMOTE] = [(777, 30 * 1024)]  # an rwprep process without its container record: foreign
+    queued = write_queue(tmp_path, [job()])
+    messages = tick(tmp_path, queued, backend)
+    assert not backend.launches and f"foreign processes on remote/{REMOTE}; not launching there" in messages
+    backend.value.usage[REMOTE] = []
+    add_cotenant(backend.value, cotenant())  # 30 GiB used of 34 GiB declared: charged 34 (+5 = 39 <= 40)
+    messages = tick(tmp_path, queued, backend)
+    assert launched(backend) == [("r", REMOTE)]
+    assert not any("foreign" in message for message in messages)
+    assert any(message.startswith("remote co-tenants: 1 known") for message in messages)
+
+
+@pytest.mark.parametrize("case", ["unknown_pid", "pid_on_other_gpu", "unbound", "static_cap", "count", "free",
+                                  "no_gpu_memory", "ram", "unbounded_ram"])
+def test_cotenant_never_relaxes_other_limits(tmp_path, case):
+    backend = FakeBackend(tmp_path / "runs")
+    queued = write_queue(tmp_path, [job()])
+    item = cotenant()
+    if case == "unknown_pid":
+        add_cotenant(backend.value, item)
+        backend.value.usage[REMOTE].append((999, 10))  # another user's process next to a known co-tenant
+    elif case == "pid_on_other_gpu":
+        add_cotenant(backend.value, cotenant(gpu=OTHER))
+        backend.value.usage[REMOTE].append((777, 10))  # the co-tenant's process outside its bound GPU
+    elif case == "unbound":
+        add_cotenant(backend.value, cotenant(**{"s4d.gpu": OTHER}), pids=(777,))  # label and device disagree
+        backend.value.usage[REMOTE].append((777, 30 * 1024))
+    elif case == "static_cap":
+        add_cotenant(backend.value, cotenant(mem=36 * GIB))  # 36 + 5 > 40
+    elif case == "count":
+        queued = write_queue(tmp_path, [job()], limits={REMOTE: {"max_jobs": 1, "max_mem_gb": 40}})
+        add_cotenant(backend.value, cotenant(mem=GIB), used_mib=512)
+    elif case == "free":
+        queued = wide_queue(tmp_path, [job(gpu="any")])
+        add_cotenant(backend.value, item, gpu_used_mib=97887 - (5 + 4 + 4) * 1024 + 1)  # 4 GiB pending, 4 margin
+        backend.value.gpu_memory[OTHER] = (97887, 0)
+        add_cotenant(backend.value, cotenant("s4d-rwprep-o-a1", gpu=OTHER, identity="1" * 64),
+                     gpu_used_mib=97887 - (5 + 4 + 4) * 1024 + 1)
+    elif case == "no_gpu_memory":
+        add_cotenant(backend.value, item)
+        backend.value.gpu_memory.clear()
+    elif case == "ram":
+        add_cotenant(backend.value, cotenant(ram=151 * GIB), ram_used=0)  # 200 - 151 - 10 < 40 reserve
+    elif case == "unbounded_ram":
+        unbounded = cotenant("s4d-calstudy", gpu=None, role="rwprep-study", ram=0)
+        unbounded["Config"]["Labels"]["s4d.ram_bytes"] = str(48 * GIB)  # declared, but no enforced Docker limit
+        add_cotenant(backend.value, item)
+        add_cotenant(backend.value, unbounded, pids=(5,))
+    messages = tick(tmp_path, queued, backend)
+    assert not backend.launches, messages
+    if case == "ram":
+        assert any("waiting for host RAM" in message for message in messages)
+    if case == "unbounded_ram":
+        assert any("without an enforced RAM limit" in message for message in messages)
+
+
+def test_measured_free_memory_admits_up_to_the_margin_and_counts_this_ticks_launches(tmp_path):
+    backend = FakeBackend(tmp_path / "runs")
+    # exactly 5 (job) + 4 (margin) GiB free after the co-tenant's 4 GiB pending reservation: one job fits, not two
+    add_cotenant(backend.value, cotenant(), gpu_used_mib=97887 - 13 * 1024)
+    queued = wide_queue(tmp_path, [job("a"), job("b")])
+    tick(tmp_path, queued, backend)
+    assert launched(backend) == [("a", REMOTE)]
+    # the next tick sees job a's container (no memory allocated yet): its whole reservation is pending
+    tick(tmp_path, queued, backend)
+    assert launched(backend) == [("a", REMOTE)]
+
+
+def reference_choose_gpu(job, limits, running, foreign, approved):
+    """scheduler.choose_gpu as released before the co-tenant change (b5ab9a6), for the equality check below."""
+    host = job.get("host", "local")
+    candidates = list(limits) if job.get("gpu", "any") == "any" else [job["gpu"]]
+    best = None
+    for uuid in candidates:
+        if uuid not in approved[host]:
+            raise ValueError(f"job {job['id']} requests non-authorized GPU {uuid} on {host}")
+        if uuid in foreign or uuid not in limits:
+            continue
+        here = [item for item in running if item.get("host", "local") == host and item["gpu"] == uuid]
+        memory = sum(item["mem_gb"] for item in here) + float(job["mem_gb"])
+        if len(here) < limits[uuid]["max_jobs"] and memory <= limits[uuid]["max_mem_gb"]:
+            if best is None or memory < best[0]:
+                best = (memory, uuid)
+    return None if best is None else best[1]
+
+
+def test_choose_gpu_without_cotenants_equals_the_released_rule():
+    import random
+
+    rng = random.Random(20261106)
+    for _ in range(3000):
+        host = rng.choice(["local", "remote"])
+        gpus = list(APPROVED_HOST_GPUS[host])
+        limits = {uuid: {"max_jobs": rng.randint(1, 4), "max_mem_gb": rng.choice([20, 40, 90])}
+                  for uuid in rng.sample(gpus, rng.randint(1, len(gpus)))}
+        running = [{"host": rng.choice(["local", "remote"]), "gpu": rng.choice(gpus), "mem_gb": rng.uniform(1, 30)}
+                   for _ in range(rng.randint(0, 8))]
+        foreign = set(rng.sample(gpus, rng.randint(0, 2)))
+        queued = {"id": "x", "host": host, "mem_gb": rng.uniform(1, 40),
+                  "gpu": rng.choice(["any", *gpus])}
+        expected = reference_choose_gpu(queued, limits, running, foreign, APPROVED_HOST_GPUS)
+        for shared in (None, {}):
+            assert jobs.choose_gpu(queued, limits, running, foreign, shared) == expected
+        assert jobs.choose_gpu(queued, limits, running, foreign) == expected
+
+
+def test_tick_without_cotenants_is_identical_with_or_without_gpu_memory_readings(tmp_path):
+    """No co-tenant: the new snapshot sections change no admission decision, message or registry event."""
+    results = []
+    for readings in (False, True):
+        root = tmp_path / str(readings)
+        root.mkdir()
+        backend = FakeBackend(root / "runs")
+        if readings:
+            backend.value.gpu_memory.update({uuid: (97887, 97000) for uuid in APPROVED_HOST_GPUS["remote"]})
+        launch_event(root, "old", status="running")
+        backend.value.containers["s4d-old-a1"] = inspected("old")
+        backend.value.usage[OTHER] = [(555, 10)]  # a foreign process
+        queued = wide_queue(root, [job("old"), job("a", gpu="any"), job("b", gpu="any", mem_gb=80),
+                                   job("c", gpu=OTHER), job("d", gpu="any", ram_gb=500)])
+        messages = [tick(root, queued, backend) for _ in range(2)]
+        events = [{key: value for key, value in json.loads(line).items() if key not in ("time", "spec_path")}
+                  for line in (root / "registry.jsonl").read_text().splitlines()]
+        results.append((messages, events, launched(backend)))
+    assert results[0] == results[1]
+    assert results[0][2] == [("a", REMOTE), ("b", REMOTE)]  # c: foreign GPU; d: host RAM
+
+
+def test_remote_driver_charges_cotenants_before_any_placement(tmp_path):
+    """The driver's co-tenant block, run in isolation (importing an ops.campaign module runs the whole pass): load
+    units, charged memory and the measured-free floor reach the single memory test of place() and the pool; an
+    unreadable snapshot or a co-tenant without a RAM limit holds every admission and pool move."""
+    source = (REPO / "ops/campaign/remote_campaign_driver.py").read_text()
+    start = source.index("# Campaign-owned co-tenants (the rwprep containers")
+    block = source[start:source.index("reviwo = sum(", start)]
+    assert "if POOL_READY and not DRY and not held and ROLES is not None and COTENANT is not None:" in source
+    gpus = list(APPROVED_HOST_GPUS["remote"])
+
+    def run(snapshot):
+        class Backend:
+            def __init__(self, *args):
+                pass
+
+            def snapshot(self):
+                if isinstance(snapshot, Exception):
+                    raise snapshot
+                return snapshot
+        names = {"candidates": [{"id": "x"}], "POOL_READY": False, "DRY": False, "ROLES": {}, "REPO": tmp_path,
+                 "active": {"own": {"gpu": REMOTE, "container": "s4d-own-a1"}}, "by_id": {"own": {"mem_gb": 5}},
+                 "gpu_load": {g: 0.5 if g == REMOTE else 0.0 for g in gpus},
+                 "gpu_mem": {g: 5.0 if g == REMOTE else 0.0 for g in gpus}, "reserved": 6 * GIB, "messages": [],
+                 "RemoteBackend": Backend, "cotenant_charges": remote.cotenant_charges, "json": json,
+                 "COTENANT_GPU_MARGIN_GB": remote.COTENANT_GPU_MARGIN_GB, "subprocess": subprocess}
+        exec(block, names)
+        return names
+
+    snapshot = remote.RemoteSnapshot({uuid: [] for uuid in gpus}, 200, 1000 * GIB, 800 * GIB, {})
+    names = run(snapshot)  # no co-tenant: nothing changes
+    assert names["gpu_load"][REMOTE] == 0.5 and names["gpu_mem"][REMOTE] == 5 and names["reserved"] == 6 * GIB
+    assert names["candidates"] and names["COTENANT"] is not None and not names["messages"]
+    add_cotenant(snapshot, cotenant(), used_mib=30 * 1024, gpu_used_mib=97887 - 20 * 1024)
+    names = run(snapshot)
+    free = 20 - 4 - 5  # measured free less the co-tenant's and the own job's pending reservations
+    assert names["gpu_load"][REMOTE] == 1.5 and names["reserved"] == 6 * GIB + 48 * GIB
+    assert names["gpu_mem"][REMOTE] == pytest.approx(max(5 + 34, 90 - free + 4))
+    fits = lambda mem: names["gpu_mem"][REMOTE] + mem <= 90  # noqa: E731  (place(): the single memory test)
+    assert fits(free - 4) and not fits(free - 4 + 0.01)
+    assert names["messages"][0].startswith("COTENANT {") and names["candidates"]
+    not_ready = remote.RemoteSnapshot({uuid: [] for uuid in gpus}, 200, 1000 * GIB, 800 * GIB, {}, False)
+    for failure in (remote.RemoteJobError("query"), remote.RemoteUnreachable("ssh"), not_ready):
+        names = run(failure)
+        assert names["candidates"] == [] and names["COTENANT"] is None and "evidence unavailable" in names["messages"][0]
+    unbounded = cotenant("s4d-calstudy", gpu=None, role="rwprep-study", identity="9" * 64, ram=0)
+    del unbounded["Config"]["Labels"]["s4d.ram_bytes"]
+    add_cotenant(snapshot, unbounded, pids=(5,))
+    names = run(snapshot)
+    assert names["candidates"] == [] and names["COTENANT"] is None and "without an enforced RAM limit" in names["messages"][0]

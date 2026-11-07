@@ -7361,3 +7361,94 @@ Chamfer and the simplified loss set stay. The completed baselines are reused and
   held-out AUC +1.3 [+0.1, +2.6]); cst50 vs csw4 nR +0.116 [+0.028, +0.200] -> the chl-vs-csw4 gap came from random
   75 % masking, not the stem/width changes. With n=3 seeds and one pretraining seed per arm, {full, cst50, chl} beat
   csw4 and the rest but cannot be ordered among themselves. End-to-end CNN still leads training nR (+0.213 over cst50).
+
+## 2026-11-06 11:20-13:30 KST — User decisions (real world), evaluator recovery, calibration study, four-arm local campaign registered
+
+- **User decisions 11:20** (memory `rw-decisions-calibration-upload-20261106`): all uploaded episodes successful (final
+  observation = success proxy; reset/reversal endings flagged); `action/flange_pose` = sent command (contract kept); FQL
+  alpha 10, no sweep; continuous gripper; task-specific encoders; SNeRL 3 input cameras with input- vs novel-view
+  validation on separate episodes; +1 end-to-end random-init CNN + FQL baseline; calibration must be validated before
+  geometry is accepted; TrackEverything keeps fast GPU inference with pinned provenance; unused FoundationStereo
+  diagnostics removed; all preprocessing may run on 192.168.10.22; temporary upload boost 2 -> 4 -> 8 MiB/s with
+  automatic restore; reconciliation of `cst50-drm-stick-push-s2002-eval` authorized.
+- **Evaluator recovery:** `reconcile_unlaunched_remote.py cst50-drm-stick-push-s2002-eval` 11:25 (evidence
+  `runs/setup/reconcile-cst50-drm-stick-push-s2002-eval-20261106-112540.json`: deterministic container never existed,
+  output absent, trainer run dir + 100 snapshots present) -> reset. The remote admission hold was lifted for one pass
+  (only admissible pending remote row; every other is paused and role-refused; log
+  `runs/setup/remote-hold-lift-20261106.log`): the driver admitted it at 12:12/12:17 on fd5e950, but the scheduler
+  refuses every allowlisted remote GPU because the campaign's rwprep containers count as foreign processes. Hold restored
+  byte-identical (sha256 b0d6bb48…). The evaluator stays pending; agent SCHED (branch cotenant-20261106) makes the
+  scheduler recognise and account campaign rwprep containers (also needed for real-world training next to
+  preprocessing). Trainer untouched.
+- **Preprocessing (agent PREP2):** FoundationStereo stage now keeps only `depth` + `valid` (branch rw-fsdiag-20261106 @
+  6cb8277; stage fingerprint unchanged, layout marker 2); 69 completed episodes repacked atomically with bitwise
+  verification: **129.26 GB reclaimed** (du; df +112 GB net while jobs wrote). TE records hardware/runtime provenance.
+  14 mug-hanging episodes `needs_review`: 45-56 = free-running camera phase offset 30-33 ms > the 30 ms raw sync cap
+  (0 three-camera sets); 62/75 = calibration motion-coverage gate (0.049/0.048 < 0.05 m).
+- **Sync criterion (coordinator decision on PREP2 evidence, `realworld-ops/pre/reviews/sync-criterion-20261106.md`):**
+  the raw time caps (30 / 20 ms) had no motion basis; robot-surface motion within a set is typically 1.4-3.9 mm (worst
+  7.0 mm, ~1 px at 128 px, below the 7.8 mm held-out geometric residual). Multi-view sets = mutual-nearest frames with
+  robot-surface motion <= 5 mm (M5; keeps 22,429/22,563 mug-hanging and 14,850/14,850 drawer-open sets, no episode
+  without windows); single-view consumers need only robot<->camera sync (worst 6.2 ms nearest). Implemented by FQL2
+  (train_data@2, s4d.realworld.train/1.1.0).
+- **Calibration study (agent CAL, `realworld-ops/calib/README.md`):** robot-only calibration is ambiguous (near-best
+  multistart poses 0.5-2.2 deg / up to 24 mm apart; frame subsets up to 3.4 deg / 37 mm; local covariance 0.12-0.21 deg);
+  independent robot evidence cannot separate the candidates; per-link residuals are systematic (URDF / gripper mount /
+  depth bias). Cameras verified physically fixed for all of 11-05 (image registration <= 0.1 px). Acceptance = one
+  128-px training pixel (spread <= 0.35 deg / 8 mm, held-out depth <= 12 mm, explained >= 0.70, fixedness <= 0.25 px):
+  current per-episode and pooled poses fail by 2-6x -> all calibrated episodes HELD for geometry-dependent consumers.
+  The 0.05 m coverage gate is not supported by the data. Missing constraint: an orientation observation independent of
+  the robot model and depth scale (calibration board seen by all three cameras; asked the user); software fallback (joint
+  3-camera static-feature solve + per-link offsets) in progress. Branch rw-calib-20261106 @ add6d0f held back until a
+  validated shared calibration exists.
+- **Real-world training plan (agent FQL2, branch rwfql-decisions-20261106):** outcomes success for all 200 (ending
+  detector: 0 suspected reversals; final-frame montages checked); e2e CNN + FQL = official impala_small pixel path
+  (3 FQL updates reproduced vs official code); per-consumer calibration hold in the gate (geometric: ours, SNeRL,
+  3D-MVP, SinCro; not held: ReViWo, DynaMo, e2e CNN); plan 10 pretrainings + 14 dataset builds + 42 FQL runs (alpha 10,
+  seeds 0-2, 1M steps). Integration branch release-20261106b = b5ab9a6 + rw-fsdiag + rwfql-decisions (671/672 tests;
+  the new e2e GPU resume test fails bitwise on a MIG -> back to FQL2).
+- **Four-arm local campaign (user 12:00; agent ARM4; `runs/setup/arm4-definition-20261106.json`):** A `ocsw4` = Original
+  + CSW4 encoder (stem patch_cnn, width 256, depth 4, heads 4); B `ochf` = Original + Chamfer (5.0, 4096 points, 0.01 m
+  voxel; hard-depth 0.5 / depth-grad 0.5 / visibility 1.0 kept); C `c50dg` = cst50 + depth_grad 0.5; D `c50vis` = cst50
+  + visibility 1.0. Resolved diffs against the reference runs' stored configs are exactly these keys (tests/
+  test_arm4_configs.py, 47 tests); no YAML/default drift; A/C/D start from cst50's exact parameters, B from Original's;
+  GPU smoke of each arm (pretrain 400 steps -> export -> DrM 6k -> eval) exit 0; evaluator layout pinned to the
+  reference's (A/B 3x8, C/D 6x8; evaluation is layout-sensitive). Analysis plan registered before results (primary:
+  training-camera success AUC, task-stratified bootstrap; delta 5 pp descriptive only; held-out/moving vetoes;
+  Bonferroni replacement family; render endpoints with episode-cluster resampling). Codex gpt-6.1-sol + claude-opus-5-5
+  reviews recorded. **Registered 13:17: 304 local rows** (32 pretrain, 32 export, 96 DrM, 96 eval, 48 render;
+  proof `runs/setup/arm4-registration-eight-task-20261106.json`). Release f7c07cc (driver registration entry + tests):
+  local full suite running; admission starts after the merge + evidence adoption. ETA ~88 h (80-102 h) from first
+  admission, RAM-limited (~11 concurrent pretrainings).
+
+## 2026-11-06 16:30-18:40 KST — Resume after the usage limit; CSW4 tube ratio FINAL; calibration capture held; uploads retired
+
+- **Recovery 16:30:** upload boost had retired at 14:09 after 200/200 episodes per task were transferred and verified
+  (levels 2.05 / 4.10 / 8.15 MiB/s measured; at 8 MiB/s control-echo p90 rose to 152 ms so the controller stepped back
+  to 4 MiB/s; original 600 KiB/s restored, `realworld-ops/ingest/upload-boost/retired.json`). main ff to ca9561e
+  (arm4 + co-tenant accounting; local suite 1887/0 adopted); bookkeeping 7d1a926. Remote hold lifted 16:33 (file kept as
+  `runs/setup/remote-hold-admissions.lifted-20261106-1633`).
+- **cst50-drm-stick-push-s2002-eval:** launched 16:4x on remote GPU 6122c7a9 (attempt 2, fd5e950) next to rwprep via the
+  co-tenant accounting; exited 0 at 17:25, results synced.
+- **CSW4 tube ratio FINAL (pre-registered, all 8 tasks 3/3 seeds, 48/48 evaluations):** primary training-camera
+  success AUC cst75 - cst50 **-8.75 pp [-12.92, -4.54]**, cst75 higher on 3/8 tasks -> SUPPORTED (lower at 75 %).
+  Last-5 -14.46 [-21.18, -6.80]; final -13.78 [-20.80, -5.76]; moving-camera success AUC -9.11 [-13.03, -5.23]; train nR
+  last-5 -0.313 [-0.419, -0.204]; held-out success AUC -1.96 [-3.81, +0.01] (not supported), held-out last-5 -3.56
+  [-5.58, -1.46]; early AUC <=250k +0.40 [-4.74, +5.68], <=500k -4.12 [-8.60, +0.58] (neither supported). Validator
+  train PSNR -0.72 dB, moving EPE +0.95 mm; the 22-camera render diagnostic remains unavailable. Pretraining cost 168.1
+  vs 177.2 device-hours. Interim (S8, stick-push n=2: -9.4 [-13.5, -5.2]) superseded; S7 dropped (not registered).
+  Eight-task ranking (8 headline criteria): full 1.38 [1.00, 2.75] P(best) 0.649; cst50 1.75 [1.25, 3.25] 0.314; chl 3.00;
+  csw4 5.00; ... cst75 7.38. Full vs cst50 includes 0 on every criterion. Files:
+  `/home/ws/ws/presentation-assets-tools/work/arch_compare/{FINAL_SUMMARY.md,report.txt,data/,figures/}`.
+- **Calibration capture** (`/home/ws/data/real_world/test/calibration.h5`, calibration-only, read-only; Zivid ZVDA-CB01,
+  6x7 inner corners, 4x4 ArUco ID 1): phase 1 (Codex) 5 stationary placements seen by all cameras, reprojection
+  0.28-0.37 px PASS, leave-one-placement-out 0.117-0.233 deg / 1.7-3.9 mm FAIL (gate 0.1 deg / 2 mm; placements nearly
+  co-planar, narrow depth range); phase 2 (CAL) rig-to-base registration: held-out robot depth 6.0-7.4 mm PASS,
+  fixedness PASS, spread across task workspaces 0.51 deg / 13.3 mm FAIL (systematic robot-model bias). HELD; re-capture
+  requested (>= 6 diverse placements, board in gripper at ~10 poses over both workspaces, empty before/after).
+  Detector: branch rw-calib-20261106 38ac54b. Reports: `realworld-ops/calib/capture-20261106/PHASE2.md`,
+  `splatter4d/.worktrees/rwcalib/.calib-capture-20261106/REPORT.md`.
+- **arm4 analysis frozen 17:45** (Codex; `reports/results-artifact/arm4/analysis-freeze-20261106.json`; revision 7 in the
+  definition; no arm endpoint inspected; partial pretraining logs predate the freeze, recorded).
+- **Real-world release candidate 0722e67** (main 7d1a926 + per-family contracts 79f841e + FS diagnostics removal + FQL
+  decisions incl. M5 sync): remote release chain running (local suite does not fit: arm4 pretrainings hold the budget).

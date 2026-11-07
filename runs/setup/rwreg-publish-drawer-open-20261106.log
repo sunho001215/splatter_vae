@@ -1,0 +1,19 @@
+Evaluated 2026-11-06T21:24:36.523442+09:00
+PUBLISH CHECK: 14 new rows; 14 refused rows
+Pinned commit c9fc448ac0926ea7c40f5cf53f960c6c7828547f; image sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a
+Manifest sha256 839f914aa8f71dc4a48cff7fb95709344c7b7d5f82b8d277fb379de42a47bcb6
+drawer-open: 100/100 ready; singleview=PASS, multiview=PASS, geometry=PASS; calibration_validated=0
+  reviwo: PASS
+  dynamo: PASS
+  fql_reviwo: PASS
+  e2e_cnn: PASS
+  New rows: {"dataset": 3, "fql": 9, "pretrain": 2}; once all non-geometric gates pass: {"dataset": 3, "fql": 9, "pretrain": 2}
+mug-hanging: 12/100 ready; singleview=REFUSED, multiview=REFUSED, geometry=REFUSED; calibration_validated=0
+  reviwo: REFUSED: mug-hanging/episode_000015.h5: train_data output_format 's4d.realworld.train/1.0.0'; requires s4d.realworld.train/1.1.0 or later; mug-hanging/episode_000016.h5: train_data output_format 's4d.realworld.train/1.0.0'; requires s4d.realworld.train/1.1.0 or later; mug-hanging/episode_000017.h5: train_data output_format 's4d.realworld.train/1.0.0'; requires s4d.realworld.train/1.1.0 or later
+  dynamo: REFUSED: mug-hanging/episode_000015.h5: train_data output_format 's4d.realworld.train/1.0.0'; requires s4d.realworld.train/1.1.0 or later; mug-hanging/episode_000016.h5: train_data output_format 's4d.realworld.train/1.0.0'; requires s4d.realworld.train/1.1.0 or later; mug-hanging/episode_000017.h5: train_data output_format 's4d.realworld.train/1.0.0'; requires s4d.realworld.train/1.1.0 or later
+  fql_reviwo: REFUSED: mug-hanging/episode_000015.h5: train_data output_format 's4d.realworld.train/1.0.0'; requires s4d.realworld.train/1.1.0 or later; mug-hanging/episode_000016.h5: train_data output_format 's4d.realworld.train/1.0.0'; requires s4d.realworld.train/1.1.0 or later; mug-hanging/episode_000017.h5: train_data output_format 's4d.realworld.train/1.0.0'; requires s4d.realworld.train/1.1.0 or later
+  e2e_cnn: REFUSED: mug-hanging/episode_000015.h5: train_data output_format 's4d.realworld.train/1.0.0'; requires s4d.realworld.train/1.1.0 or later; mug-hanging/episode_000016.h5: train_data output_format 's4d.realworld.train/1.0.0'; requires s4d.realworld.train/1.1.0 or later; mug-hanging/episode_000017.h5: train_data output_format 's4d.realworld.train/1.0.0'; requires s4d.realworld.train/1.1.0 or later
+  New rows: {}; once all non-geometric gates pass: {"dataset": 3, "fql": 9, "pretrain": 2}
+Geometry consumers are excluded from this registrar regardless of calibration status.
+Proposed release: /home/ws/ws/splatter4d/runs/setup/role-release.proposed.json; activation_required=false
+REGISTERED 14 rows; proof /home/ws/ws/splatter4d/runs/setup/rw-registration-nongeometric-20261106-a9689ae42800.json

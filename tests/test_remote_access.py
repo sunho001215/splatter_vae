@@ -778,6 +778,65 @@ class RemoteAccessTests(unittest.TestCase):
         record = json.loads((self.client.network_dir / "results-checkpoints" / "weights.json").read_text())
         self.assertTrue(record["verified"] and record["final"] and record["scope"] == "checkpoints")
 
+    def test_essential_required_paths_include_only_named_files_outside_default_patterns(self):
+        required = ["dataset.h5", "checkpoints/result.bin", "snapshots/selected.bin", "media/required.png"]
+        remote = self.remote_fixture({name: b"required" for name in required} | {
+            "metrics.jsonl": b"m", "other.h5": b"large", "nested/dataset.h5": b"large",
+            "checkpoints/other.pt": b"large", "checkpoints/debug.json": b"{}",
+            "snapshots/state.json": b"{}", "media/other.png": b"large"})
+
+        def manifest(command, **kwargs):
+            return subprocess.run(["sh", "-c", command], capture_output=True, text=True, check=True)
+
+        calls = []
+        with patch.object(self.client, "ensure_remote_path", return_value=str(remote)), \
+                patch.object(self.client, "checked_ssh", side_effect=manifest), \
+                patch.object(self.client, "_rsync", side_effect=self.fake_rsync(remote, calls)):
+            result = self.client.sync_results("required", final=True, scope="essential", required_files=required)
+            self.assertEqual(set(result["files"]), set(required) | {"metrics.jsonl"})
+            self.assertEqual([call[4] for call in calls], ["dependency"])
+            self.assertTrue((self.client.state_dir / "media-required.lock").exists())
+            with self.assertRaisesRegex(access.RemoteCommandError, "Required result files are missing"):
+                self.client.sync_results("missing", final=True, scope="essential", required_files=["absent.h5"])
+        for name in ("../outside.h5", "/outside.h5", "*.h5", "a/[b].h5", "a\nb.h5", "a/../b.h5",
+                     "replay/buffer.h5", "a/wandb/data.h5", ".cache/data.h5", "a//b.h5"):
+            with self.subTest(name=name), self.assertRaisesRegex(ValueError, "Unsafe required result path"):
+                self.client.sync_results("unsafe", scope="essential", required_files=[name])
+        with self.assertRaisesRegex(ValueError, "essential sync only"):
+            self.client.sync_results("unsafe", scope="media", required_files=["dataset.h5"])
+
+    def test_metaworld_essential_selection_matches_the_pre_fix_snapshot(self):
+        from ops.remote import sync_media
+
+        # Captured from the unmodified selector at cfc4b21 for real queue rows, using representative local artifacts.
+        snapshot = json.loads((REPO / "tests/fixtures/remote_essential_metaworld.json").read_text())
+        for kind, row in snapshot.items():
+            with self.subTest(kind=kind, run_id=row["id"]):
+                remote = self.repo / ("remote-" + kind)
+                for name in row["remote_files"]:
+                    path = remote / name
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    path.write_bytes(b"fixture artifact")
+                current = {"required_results": row["required_results"],
+                           "remote_verified": {"files": dict.fromkeys(row["remote_verified_files"], "0" * 64)}}
+                weights = sync_media.required_checkpoints(current)
+
+                def manifest(command, **kwargs):
+                    return subprocess.run(["sh", "-c", command], capture_output=True, text=True, check=True)
+
+                with patch.object(self.client, "ensure_remote_path", return_value=str(remote)), \
+                        patch.object(self.client, "checked_ssh", side_effect=manifest), \
+                        patch.object(self.client, "_rsync", side_effect=self.fake_rsync(remote, [])):
+                    original = self.client.sync_results(row["id"] + "-original", checkpoints=bool(weights), final=True,
+                                                        scope="essential", only_checkpoints=weights or None)
+                    backup = self.client.sync_results(row["id"], checkpoints=bool(weights), final=True,
+                                                      scope="essential", only_checkpoints=weights or None,
+                                                      required_files=sync_media.required_backup_files(current))
+                self.assertEqual(sorted(original["files"]), row["selected_files"])
+                self.assertEqual(sorted(backup["files"]), row["selected_files"])
+                self.assertEqual(backup["files"], original["files"])
+                self.assertEqual(backup.get("checkpoints"), original.get("checkpoints"))
+
     def test_bulk_backs_off_when_a_dependency_is_announced_after_it_won_the_budget(self):
         import threading
         calls = {"n": 0}

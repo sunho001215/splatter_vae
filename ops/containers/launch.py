@@ -11,8 +11,11 @@ from pathlib import Path, PurePosixPath
 
 from ops.resources.gpu_guard import APPROVED_HOST_GPUS, LOCAL_MIG_PARENTS
 from ops.remote.access import REMOTE_ROOT, RemoteClient, RemoteCommandError, RemoteUnreachable, sha256
-from ops.jobs.remote_backend import OWNERSHIP_LABELS, commit_source_sha256
+from ops.jobs.host_roles import job_class
+from ops.jobs.remote_backend import (COTENANT_GPU_MARGIN_GB, COTENANT_LABELS, COTENANT_ROLES, OWNERSHIP_LABELS,
+                                     commit_source_sha256)
 from ops.containers.verification import validate_verification, verification_artifacts, verification_output
+from ops.containers.mounts import REALWORLD_READ_ROOTS, realworld_mounts
 
 CONTAINER_REPO = "/workspace/splatter4d"
 RAM_RESERVE_BYTES = 120 * 1024**3
@@ -112,6 +115,9 @@ def validate_spec(spec: dict) -> dict:
         raise ValueError("Job arguments must be a list")
     for argument in arguments:
         _text(argument, "job argument")
+    classification = job_class(spec)
+    if classification.cls in ("invalid", "ambiguous"):
+        raise ValueError(f"Invalid or ambiguous remote job role: {classification.evidence}")
     validate_output_arguments(str(script), arguments, job_id)
     oom = spec.get("oom_score_adj", 500)
     if isinstance(oom, bool) or not isinstance(oom, int) or not 0 <= oom <= 1000:
@@ -281,6 +287,7 @@ def build_remote_command(spec: dict, data_identity: str, origin_commit: str, pro
               (cache, f"{CONTAINER_REPO}/.cache", False), (runtime, runtime, False),
               (acceptance, acceptance, True), (proof, proof, True),
               (data, "/home/ws/data/metaworld/splatter4d_v1", True)]
+    mounts += realworld_mounts(spec)
     docker = ["docker", "run", "-d", "--name", name, "--read-only", "--pid=host", "--user", "1000:1000",
               "--oom-score-adj", str(spec["oom_score_adj"]),
               "--workdir", CONTAINER_REPO, "--init", "--shm-size", "8g"]
@@ -423,14 +430,41 @@ def build_remote_command(spec: dict, data_identity: str, origin_commit: str, pro
             raise ValueError("Invalid data checksum")
         lines.append("bounded " + q(path))
         lines.append('test "$(sha256sum -- ' + q(path) + " | cut -d' ' -f1)\" = " + q(digest))
-    lines += ['apps="$(nvidia-smi --query-compute-apps=gpu_uuid,pid --format=csv,noheader,nounits)"',
+    cotenant_filters = " ".join("--filter " + q(f"label={key}={value}")
+                                for key, value in sorted(COTENANT_LABELS.items()))
+    # name|role|enforced RAM limit|s4d.gpu|s4d.mem_bytes|other devices|device requests (driver,count,capabilities,
+    # options,ids;/ each); a label value is printed only when present. Only a record of exactly this shape, with
+    # values in the character sets of remote_backend.identify_cotenant, is read (no separator or newline injection).
+    label = '{{with index .Config.Labels "s4d.%s"}}{{.}}{{end}}'
+    cotenant_format = ("{{.Name}}|" + label % "role" + "|{{.HostConfig.Memory}}|" + label % "gpu" + "|"
+                       + label % "mem_bytes" + "|{{len .HostConfig.Devices}}|"
+                       "{{range .HostConfig.DeviceRequests}}{{.Driver}},{{.Count}},{{len .Capabilities}},"
+                       "{{len .Options}},{{range .DeviceIDs}}{{.}};{{end}}/{{end}}")
+    value, device = "[A-Za-z0-9_.-]*", "[A-Za-z0-9_.=/:-]*"
+    count = "[1-9][0-9]{0,14}"  # byte counts: canonical, bounded decimals (a leading zero would be read as octal)
+    cotenant_record = (f"/[A-Za-z0-9][A-Za-z0-9_.-]*\\|{value}\\|(0|{count})\\|{value}\\|({count})?\\|[0-9]+\\|"
+                       f"({device},-?[0-9]+,[0-9]+,[0-9]+,({device};)*/)*")
+    if not all(re.fullmatch(r"[a-z][a-z-]*", role) for role in COTENANT_ROLES):
+        raise ValueError("Invalid co-tenant role")
+    lines += ['apps="$(nvidia-smi --query-compute-apps=gpu_uuid,pid,used_memory --format=csv,noheader,nounits)"',
               'indices="$(nvidia-smi --query-gpu=index,uuid --format=csv,noheader,nounits)"',
               'selected_index="$(printf \'%s\\n\' "$indices" | awk -F, -v gpu="$gpu" '
               '\'{gsub(/ /,"",$2); if($2==gpu)print $1}\')"; test -n "$selected_index"',
               'table="$(nvidia-smi)"; graphics="$(printf \'%s\\n\' "$table" | awk -v gpu="$selected_index" '
               '\'$1=="|" && $2==gpu && $5 ~ /^[0-9]+$/ && $6 ~ /^[CG+]+$/ {print $5}\')"',
               'owned="$(docker ps --filter label=s4d.managed=true --filter label=s4d.host=remote --format \'{{.Names}}\')"',
+              # Include graphics-only memory; C+G processes can appear in both sources, so use the larger
+              # per-PID reading before summing each container's memory.
+              'graphics_memory="$(printf \'%s\\n\' "$table" | awk -v gpu="$gpu" -v idx="$selected_index" '
+              '\'$1=="|" && $2==idx && $5 ~ /^[0-9]+$/ && $6 ~ /^[CG+]+$/ '
+              '{m=$(NF-1); sub(/MiB$/,"",m); if(m ~ /^[0-9]+$/) print gpu "," $5 "," m}\')"',
+              # GPU memory (bytes) used on the selected GPU by the processes in $1 (whitespace-separated PIDs)
+              'gpu_used() { printf \'%s\\n\' "$apps" "$graphics_memory" | awk -F, -v gpu="$gpu" -v pids=" $(printf \'%s \' $1)" '
+              '\'{gsub(/ /,"",$1); gsub(/ /,"",$2); gsub(/ /,"",$3); '
+              'if ($1==gpu && $3 ~ /^[0-9]+$/ && index(pids, " " $2 " ") && $3>mem[$2]) mem[$2]=$3} '
+              'END {for(p in mem)s+=mem[p]; printf "%.0f", s*1048576}\'; }',
               'owned_pids=""; reserved_disk=0; ramp_ram=0; gpu_jobs=0; gpu_reserved=0; now="$(date +%s)"',
+              'own_pending=0; own_extra=0; co_here=0; co_pending=0',
               'for own in $owned; do case "$own" in s4d-*) ;; *) exit 1;; esac; '
               'pids="$(docker top "$own" -eo pid | awk \'NR>1 && $1 ~ /^[0-9]+$/ {print $1}\')"; '
               'owned_pids="$owned_pids $pids"; '
@@ -439,7 +473,10 @@ def build_remote_command(spec: dict, data_identity: str, origin_commit: str, pro
               'own_gpu="$(docker inspect --format \'{{index .Config.Labels "s4d.gpu"}}\' "$own")"; '
               'if [ "$own_gpu" = "$gpu" ]; then gpu_jobs=$((gpu_jobs+1)); '
               'declared="$(docker inspect --format \'{{index .Config.Labels "s4d.mem_bytes"}}\' "$own")"; '
-              'case "$declared" in ""|*[!0-9]*) exit 1;; esac; gpu_reserved=$((gpu_reserved+declared)); fi; '
+              'case "$declared" in ""|*[!0-9]*) exit 1;; esac; gpu_reserved=$((gpu_reserved+declared)); '
+              'used="$(gpu_used "$pids")"; '
+              'if [ "$declared" -gt "$used" ]; then own_pending=$((own_pending+declared-used)); '
+              'else own_extra=$((own_extra+used-declared)); fi; fi; '
               'started="$(docker inspect --format \'{{.State.StartedAt}}\' "$own")"; start="$(date -d "$started" +%s)"; '
               f'if [ "$((now-start))" -lt {spec["ramp_seconds"]} ]; then '
               'declared="$(docker inspect --format \'{{index .Config.Labels "s4d.ram_bytes"}}\' "$own")"; '
@@ -449,6 +486,42 @@ def build_remote_command(spec: dict, data_identity: str, origin_commit: str, pro
               'case "$pss" in ""|*[!0-9]*) measured=0; break;; esac; measured=$((measured+pss)); '
               'else measured=0; break; fi; done; '
               'if [ "$declared" -gt "$measured" ]; then ramp_ram=$((ramp_ram+declared-measured)); fi; fi; done',
+              # Campaign-owned co-tenants (remote_backend.identify_cotenant; the real-world preprocessing containers,
+              # s4d.managed=false): host RAM = their RAM limit less measured anon + shmem; on the selected GPU, only when
+              # bound to it exactly (CDI request = s4d.gpu label, no other device, declared s4d.mem_bytes), their
+              # processes are known and they count as a job holding max(measured, declared) GPU memory. Any other
+              # process on the GPU stays foreign.
+              'co_ids="$(docker ps -q --no-trunc ' + cotenant_filters + ')"',
+              'for co in $co_ids; do case "$co" in ""|*[!0-9a-f]*) exit 1;; esac',
+              # one inspect per co-tenant: a container removed since the listing holds nothing (its processes, if
+              # still in $apps, stay foreign); any other inspect failure refuses; a malformed record: unidentified
+              '  if ! info="$(docker inspect --format ' + q(cotenant_format) + ' "$co" 2>/dev/null)"; then '
+              'gone="$(docker inspect --format \'{{.Id}}\' "$co" 2>&1 >/dev/null)" || true; '
+              'case "$gone" in *"No such object"*|*"No such container"*) continue;; esac; '
+              'printf \'Co-tenant inspect failed\\n\' >&2; exit 1; fi',
+              '  [ "$(printf \'%s\\n\' "$info" | grep -c \'\')" = 1 ] && '
+              'printf \'%s\\n\' "$info" | grep -Eqx ' + q(cotenant_record) + ' || continue',
+              "  IFS='|' read -r co_name role limit co_gpu declared co_devices co_request <<S4D_COTENANT",
+              '$info',
+              'S4D_COTENANT',
+              '  case "$role" in ' + "|".join(sorted(COTENANT_ROLES)) + ') ;; *) continue;; esac',
+              '  case "$co_name" in /s4d-*) ;; *) continue;; esac',
+              # an enforced Docker memory limit is required (a label bounds nothing)
+              '  case "$limit" in ""|0|*[!0-9]*) printf \'Co-tenant without a RAM limit\\n\' >&2; exit 1;; esac',
+              '  stat="/sys/fs/cgroup/system.slice/docker-$co.scope/memory.stat"; used=0',
+              '  if [ -r "$stat" ]; then '
+              'used="$(awk \'$1=="anon" || $1=="shmem" {s+=$2} END {printf "%.0f", s}\' "$stat")"; fi',
+              '  case "$used" in ""|*[!0-9]*) used=0;; esac',
+              '  if [ "$limit" -gt "$used" ]; then ramp_ram=$((ramp_ram+limit-used)); fi',
+              '  test "$co_gpu" = "$gpu" && test "$co_devices" = 0 || continue',
+              '  test "$co_request" = "cdi,0,0,0,nvidia.com/gpu=$gpu;/" || continue',
+              '  case "$declared" in ""|0|*[!0-9]*) continue;; esac',
+              '  pids="$(docker top "$co" -eo pid | awk \'NR>1 && $1 ~ /^[0-9]+$/ {print $1}\')"',
+              '  used="$(gpu_used "$pids")"',
+              '  owned_pids="$owned_pids $pids"; co_here=$((co_here+1)); gpu_jobs=$((gpu_jobs+1))',
+              '  if [ "$used" -gt "$declared" ]; then gpu_reserved=$((gpu_reserved+used)); '
+              'else gpu_reserved=$((gpu_reserved+declared)); co_pending=$((co_pending+declared-used)); fi',
+              'done',
               'owned_pids="$(printf \'%s\\n\' "$owned_pids" | tr \'\\n\' \' \')"',
               'foreign="$(printf \'%s\\n\' "$apps" | awk -F, -v gpu="$gpu" '
               '\'{gsub(/ /,"",$1); gsub(/ /,"",$2); if ($1==gpu) print $2}\')"',
@@ -464,7 +537,18 @@ def build_remote_command(spec: dict, data_identity: str, origin_commit: str, pro
               'available="$(awk \'$1=="MemAvailable:" {printf "%.0f", $2*1024}\' /proc/meminfo)"; test -n "$available"',
               f'test "$((available-ramp_ram-{spec["ram_bytes"]}))" -ge {spec["reserve_bytes"]}',
               f'test "$gpu_jobs" -lt {spec["max_jobs"]}',
-              f'test "$((gpu_reserved+{spec["gpu_bytes"]}))" -le {spec["gpu_cap_bytes"]}']
+              # Keep admission unchanged without co-tenants; with one, charge max(measured, declared) for own jobs.
+              'if [ "$co_here" -gt 0 ]; then gpu_reserved=$((gpu_reserved+own_extra)); fi',
+              f'test "$((gpu_reserved+{spec["gpu_bytes"]}))" -le {spec["gpu_cap_bytes"]}',
+              # with co-tenants on the GPU: the measured free memory less every known tenant's declared but not yet
+              # allocated reservation must hold this job plus the margin (scheduler.choose_gpu applies the same rule)
+              'if [ "$co_here" -gt 0 ]; then '
+              'gpu_free="$(nvidia-smi --query-gpu=uuid,memory.total,memory.used --format=csv,noheader,nounits '
+              '| awk -F, -v gpu="$gpu" \'{gsub(/ /,"",$1); gsub(/ /,"",$2); gsub(/ /,"",$3); '
+              'if ($1==gpu && $2 ~ /^[0-9]+$/ && $3 ~ /^[0-9]+$/) printf "%.0f", ($2-$3)*1048576}\')"; '
+              'case "$gpu_free" in ""|*[!0-9]*) exit 1;; esac; '
+              f'test "$((gpu_free-co_pending-own_pending-{math.ceil(COTENANT_GPU_MARGIN_GB * 1024**3)}))" '
+              f'-ge {spec["gpu_bytes"]} || {{ printf \'Co-tenant GPU memory\\n\' >&2; exit 1; }}; fi']
     if purpose is not None:
         output = verification_output(purpose, spec["id"], spec["attempt"])
         lines += ["bounded " + q(output), "mkdir -p -- " + q(str(PurePosixPath(output).parent))]

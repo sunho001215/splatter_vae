@@ -1,0 +1,393 @@
+{
+ "rounds": [
+  {
+   "id": "arm4-a",
+   "kind": "config audit (resolved diffs, drift, combinations, DrM path)",
+   "model": "gpt-6.1-sol",
+   "provider": "cliproxyapi",
+   "effort": "xhigh",
+   "verdict": "NO-GO as supplied (malformed excerpt; evaluator invocation) -> resolved",
+   "findings": [
+    {
+     "n": 1,
+     "tag": "BLOCKER",
+     "finding": "duplicated line in the pasted loop excerpt",
+     "decision": "rejected",
+     "reason": "transcription artefact of the prompt (line 500 printed twice by two sed ranges); the source parses and is imported by every test and the fingerprints"
+    },
+    {
+     "n": 2,
+     "tag": "OK",
+     "finding": "per-arm diffs exactly the intended interventions",
+     "decision": "none"
+    },
+    {
+     "n": 3,
+     "tag": "OK",
+     "finding": "no sub-setting missing; B correctly omits occlusion / motion_feature_render; A inherits tube",
+     "decision": "accepted: effective mask_mode tube recorded in the audit (per_task tube block)"
+    },
+    {
+     "n": 4,
+     "tag": "OK",
+     "finding": "omitting train.stop_step is sound; optional pin for hammer / pick-place",
+     "decision": "optional pin rejected",
+     "reason": "uniform rows across tasks; end step identical; documented in the definition"
+    },
+    {
+     "n": 5,
+     "tag": "MINOR",
+     "finding": "fingerprints establish bounded equivalence only",
+     "decision": "accepted",
+     "change": "scope wording in drift.findings; GPU step-0 evidence from the smoke added"
+    },
+    {
+     "n": 6,
+     "tag": "OK",
+     "finding": "loss assembly supports all combinations",
+     "decision": "none"
+    },
+    {
+     "n": 7,
+     "tag": "MINOR",
+     "finding": "random-stream divergence wider than the M3D sample",
+     "decision": "accepted",
+     "change": "drift.findings.random_stream"
+    },
+    {
+     "n": 8,
+     "tag": "OK",
+     "finding": "DrM 226d8ae -> release changes keep the frozen-encoder path",
+     "decision": "none"
+    },
+    {
+     "n": 9,
+     "tag": "MAJOR",
+     "finding": "evaluator layout 6 x 8 vs Original 3 x 8 not shown invariant",
+     "decision": "accepted",
+     "change": "measured (arm4-evalcheck-20261106.json: not bit-reproducible even with one layout; layout difference larger than a repeat in one comparison); A / B evaluators pinned to 3 x 8, C / D 6 x 8; asserted in the registration"
+    },
+    {
+     "n": 10,
+     "tag": "MINOR",
+     "finding": "initialisation matched per architecture only",
+     "decision": "accepted",
+     "change": "wording \"matched to each architecture's reference\""
+    },
+    {
+     "n": 11,
+     "tag": "MINOR",
+     "finding": "export routing / seeds / export step not asserted",
+     "decision": "accepted",
+     "change": "explicit expected-argument assertions per row in the registration tool"
+    }
+   ]
+  },
+  {
+   "id": "arm4-b",
+   "kind": "code review (routing, registration, render wrapper, tests)",
+   "model": "gpt-6.1-sol",
+   "provider": "cliproxyapi",
+   "effort": "xhigh",
+   "verdict": "NO-GO -> resolved / rejected with reasons",
+   "findings": [
+    {
+     "n": 1,
+     "tag": "BLOCKER",
+     "finding": "evaluators depend on the export, not on their trainer",
+     "decision": "rejected",
+     "reason": "the established companion pattern of every DrM campaign (cst50 / chl / s3 rows): the evaluator polls the trainer's snapshots and the driver admits it only with its trainer active, done or admitted in the same pass; eval_rl.py stops on final.json or the trainer's failed registry status. A trainer-done dependency would serialise 100 evaluations after training and change the template protocol"
+    },
+    {
+     "n": 2,
+     "tag": "MAJOR",
+     "finding": "head-of-line reservation limits backfill",
+     "decision": "rejected (kept)",
+     "reason": "existing driver policy (2026-10-29) shared by every registration; changing it is outside minimal routing and would alter other campaigns' admission; only ready rows reserve (dependency-waiting rows never block); the task-major order places ready DrM trainers of finished chains before later pretrainings; modelled in the ETA"
+    },
+    {
+     "n": 3,
+     "tag": "MAJOR",
+     "finding": "render rows at priority 0 jump ahead of training and can hold the reservation",
+     "decision": "accepted",
+     "change": "render rows priority 1, registered after every chain row"
+    },
+    {
+     "n": 4,
+     "tag": "MAJOR",
+     "finding": "--recover weakens placement checks and omits the registry lock",
+     "decision": "accepted",
+     "change": "both locks, exact tail equality, host == pin_host == local, hash from the locked snapshot"
+    },
+    {
+     "n": 5,
+     "tag": "MAJOR",
+     "finding": "promised orig reproduction check absent",
+     "decision": "accepted",
+     "change": "run_arm4_render: orig compares every array with chl/render/<task>__ref200.npz and records the result in done.json (smoke: bitwise equal on hammer)"
+    },
+    {
+     "n": 6,
+     "tag": "OK",
+     "finding": "append preserves existing rows; comment too strong",
+     "decision": "accepted",
+     "change": "driver comment and definition wording name the existing order rules"
+    },
+    {
+     "n": 7,
+     "tag": "OK",
+     "finding": "local routing safeguards hold",
+     "decision": "none"
+    },
+    {
+     "n": 8,
+     "tag": "OK",
+     "finding": "renaming correct; add independent expected-path assertions",
+     "decision": "accepted",
+     "change": "independent assertions on export, DrM and evaluator arguments and dependencies"
+    },
+    {
+     "n": 9,
+     "tag": "OK",
+     "finding": "OUT redirect sufficient; require the four outputs, atomic done.json",
+     "decision": "accepted",
+     "change": "explicit four outputs; done.json via tmp + os.replace"
+    },
+    {
+     "n": 10,
+     "tag": "MINOR",
+     "finding": "tests do not prove coefficient application; absent vs None",
+     "decision": "accepted (partly)",
+     "change": "test_the_restored_term_enters_the_total_with_its_coefficient (B / C / D); ABSENT sentinel in tests and tools",
+     "rejected_part": "testing generated registration rows from the suite (the tool lives in untracked bookkeeping and reads run directories); the tool asserts them itself"
+    }
+   ]
+  },
+  {
+   "id": "arm4-c",
+   "kind": "statistical review of the analysis plan",
+   "model": "gpt-6.1-sol",
+   "provider": "cliproxyapi",
+   "effort": "xhigh",
+   "verdict": "changes required -> applied",
+   "findings": [
+    {
+     "n": 1,
+     "tag": "OK",
+     "finding": "keep training success AUC primary; fix the variance wording; define AUC",
+     "decision": "accepted"
+    },
+    {
+     "n": 2,
+     "tag": "MAJOR",
+     "finding": "delta needs a practical justification; split direction and margin",
+     "decision": "accepted"
+    },
+    {
+     "n": 3,
+     "tag": "MAJOR",
+     "finding": "percentile bootstrap with 3 seeds undercovers; add Welch-Satterthwaite",
+     "decision": "accepted"
+    },
+    {
+     "n": 4,
+     "tag": "MAJOR",
+     "finding": "conditionality must constrain the claims; add the task-level interval",
+     "decision": "accepted"
+    },
+    {
+     "n": 5,
+     "tag": "MAJOR",
+     "finding": "C / D vs Original decide candidacy: define the decision family",
+     "decision": "accepted",
+     "change": "replacement decision family = A, B, C, D vs Original at 98.75 %"
+    },
+    {
+     "n": 6,
+     "tag": "MAJOR",
+     "finding": "pin one geometry endpoint; dynamic preservation explicit",
+     "decision": "accepted",
+     "change": "held-out depth error decision endpoint; smallest effects; \"dynamic preservation unresolved\" fails the gate"
+    },
+    {
+     "n": 7,
+     "tag": "MAJOR",
+     "finding": "render bootstrap unit = episode cluster; conditional wording; task-level interval",
+     "decision": "accepted"
+    },
+    {
+     "n": 8,
+     "tag": "MAJOR",
+     "finding": "host / code confounding: qualify \"isolates\"",
+     "decision": "accepted",
+     "change": "\"intended_change\" + caveat; A vs B host-free contrast; environment frozen and recorded"
+    },
+    {
+     "n": 9,
+     "tag": "MAJOR",
+     "finding": "operational failure / missing rules; ragged cells",
+     "decision": "accepted"
+    },
+    {
+     "n": 10,
+     "tag": "MINOR",
+     "finding": "finish secondary, ranking and tie definitions",
+     "decision": "accepted"
+    }
+   ]
+  },
+  {
+   "id": "arm4-c-claude",
+   "kind": "complementary statistical review (same prompt)",
+   "model": "claude-opus-5-5",
+   "provider": "cliproxyapi",
+   "effort": "xhigh",
+   "availability": "the proxy's /v1/models lists 17 Claude models (claude-opus-5-5, claude-opus-5, claude-sonnet-5-5, claude-haiku-5-5, claude-opus-4-8 ...); a trivial Codex ping with -m claude-opus-5-5 returned READY (Codex warns: model metadata not found, fallback metadata)",
+   "verdict": "changes required -> applied",
+   "findings": [
+    {
+     "n": "1-3",
+     "finding": "primary OK; floor / ceiling flags; IQM of AUC as a different estimand",
+     "decision": "accepted"
+    },
+    {
+     "n": 2,
+     "tag": "MAJOR",
+     "finding": "held-out and moving must be decision vetoes",
+     "decision": "accepted",
+     "change": "guards with a veto when a loss larger than delta is supported"
+    },
+    {
+     "n": "4-6",
+     "finding": "precision paragraph; Welch; split loss labels (\"within delta\" qualifies)",
+     "decision": "accepted"
+    },
+    {
+     "n": 7,
+     "finding": "conditionality wording; task-level t + sign-flip",
+     "decision": "accepted"
+    },
+    {
+     "n": 9,
+     "finding": "Bonferroni for the replacement decision",
+     "decision": "accepted"
+    },
+    {
+     "n": "10-13",
+     "finding": "reconstruction: episode clusters, task-level decision interval, smallest effects, construction-confound of Chamfer for B / C / D, held-out PSNR guard, whole-scene vs task-relevant labels",
+     "decision": "accepted",
+     "note": "one held-out depth endpoint for all comparisons instead of a per-comparison table (simpler, not constructed by any arm's loss)"
+    },
+    {
+     "n": 10,
+     "finding": "optional extra pretraining seed (seed 1) on 2-3 tasks to calibrate the noise floor",
+     "decision": "not adopted here",
+     "reason": "changes the user's pretraining-seed policy; offered to the coordinator / user"
+    },
+    {
+     "n": 14,
+     "tag": "MAJOR",
+     "finding": "bridging evaluation of Original / remote cst50 snapshots locally",
+     "decision": "not registered",
+     "reason": "those snapshots exist only on the remote (role: real-world); fetching ~0.8 GB at the 200 KiB/s budget is a coordinator decision; offered"
+    },
+    {
+     "n": "15-22",
+     "finding": "no wall-clock logic; decision rule gaps; failure rules; ragged n; per-task display; early learning; rankings; frozen inputs",
+     "decision": "accepted"
+    }
+   ]
+  },
+  {
+   "id": "arm4-d",
+   "kind": "verification of arm4-a/b/c resolutions + new issues",
+   "model": "gpt-6.1-sol",
+   "provider": "cliproxyapi",
+   "effort": "xhigh",
+   "verdict": "NO-GO (4 MAJOR) -> resolved",
+   "findings": [
+    {
+     "n": 1,
+     "tag": "MAJOR",
+     "finding": "guard veto mislabelled (\"loss larger than delta supported\" needs upper < -delta)",
+     "decision": "accepted",
+     "change": "conservative veto chosen explicitly and described accurately (upper < 0 AND lower <= -delta); unresolved guards do not veto"
+    },
+    {
+     "n": 2,
+     "tag": "MAJOR",
+     "finding": "no final rule for diverged / exhausted runs",
+     "decision": "accepted",
+     "change": "failed_run rule: partial curve descriptive, ragged cell in the primary, no candidacy reading; relaunch only for infrastructure causes, same seed, decided blind, logged"
+    },
+    {
+     "n": 3,
+     "tag": "MAJOR",
+     "finding": "orig reproduction check informational only",
+     "decision": "accepted",
+     "change": "enforced in run_arm4_render: images bitwise, alpha / depth <= 1e-4, else exit non-zero without done.json (reproduction.json written); smoke stick-push bitwise"
+    },
+    {
+     "n": 4,
+     "tag": "MAJOR",
+     "finding": "reconstruction decision level unspecified",
+     "decision": "accepted",
+     "change": "98.75 % task-level intervals for the PSNR and geometry decision endpoints; guards 95 %"
+    },
+    {
+     "n": "minor",
+     "finding": "pre-lock publication checks; backfill / order wording; geometry denominator; architecture-level wording; dynamic branch wording; n = 2 exception; \"covered\" wording",
+     "decision": "accepted",
+     "change": "all applied (in-lock re-checks incl. registry ids; wording; r_t definition)"
+    }
+   ]
+  },
+  {
+   "id": "arm4-e",
+   "kind": "verification of the arm4-d resolutions",
+   "model": "gpt-6.1-sol",
+   "provider": "cliproxyapi",
+   "effort": "xhigh",
+   "verdict": "NO-GO on one MAJOR (small cells) -> resolved; no further round (remaining items minor and applied)",
+   "findings": [
+    {
+     "tag": "OK",
+     "finding": "guard veto, reproduction enforcement, reconstruction level, in-lock checks, geometry denominator, wording"
+    },
+    {
+     "tag": "MAJOR",
+     "finding": "n <= 1 cells and absent encoders not covered",
+     "decision": "accepted",
+     "change": "small_cells rule: n >= 2 enters with its n; n <= 1 or no encoder -> task excluded from that comparison (k-task result, df k - 1), no candidacy reading, cell counts always reported"
+    },
+    {
+     "tag": "MINOR",
+     "finding": "row order vs admission order wording",
+     "decision": "accepted",
+     "change": "rows.order separates serialised order from the driver sort"
+    },
+    {
+     "tag": "MINOR",
+     "finding": "task-relevant branch level / LPIPS OR",
+     "decision": "accepted",
+     "change": "dynamic-region PSNR at 98.75 %; LPIPS supporting only"
+    },
+    {
+     "tag": "MINOR",
+     "finding": "\"bitwise\" computed numerically",
+     "decision": "accepted",
+     "change": "literal dtype + bytes comparison; images must be bitwise; re-verified on stick-push"
+    }
+   ]
+  }
+ ],
+ "revisions": [
+  "2026-11-06 (before registration): evaluator layout matched to each reference (A / B 3 x 8, C / D 6 x 8) after the measured layout check (Codex arm4-a #9)",
+  "2026-11-06 (before registration): render rows priority 0 -> 1, registered last (Codex arm4-b #3); --recover hardened (#4); orig reproduction check (#5); explicit row assertions (#8); explicit outputs + atomic done.json (#9); coefficient test + ABSENT sentinel (#10)",
+  "2026-11-06 (before registration): analysis plan revised after arm4-c (gpt-6.1-sol) and arm4-c-claude (claude-opus-5-5): direction / margin split, Welch and task-level sensitivities, replacement decision family at 98.75 %, guard vetoes, pinned reconstruction decision endpoints with smallest effects, episode-cluster resampling, failure / missing rules, frozen analysis inputs",
+  "2026-11-06 (before registration): arm4-d resolutions - explicit conservative guard veto, failed-run rule, enforced orig reproduction, reconstruction decision level 98.75 %, in-lock publication re-checks, wording fixes",
+  "2026-11-06 (before registration): arm4-e resolutions - small-cell / absent-encoder rule, order wording, task-relevant level, literal bitwise reproduction",
+  "2026-11-06 (before registration): arm B prefix 'ocham' -> 'ochf' ('ocham' is a substring of existing enc-abl-nochamfer-* ids; prefixes now collide with no id substring in queue / registry / runs)"
+ ],
+ "prompts_and_outputs": "/home/ws/ws/validation-20261031/codex/arm4"
+}
