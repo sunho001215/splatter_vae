@@ -111,8 +111,14 @@ def _select_one(k):
     fr = frames[k]
     T, alpha, tau = state["T"][fr.cam], state["alpha"][fr.cam], state["tau"][fr.cam]
     X, N, V = surf.posed(fr)
+    if abs(tau) > 1e-3:  # render the support at the effective robot time t + tau
+        X = X + tau * V(np.arange(len(X)))
+        X0, V0 = X, V
+        V = (lambda ids, V0=V0: V0(ids))
     rng = np.random.default_rng(cfg.seed + 7919 * k)
     ff, st = rr.frame_factors(fr.cam, X, N, V, T, fr.K, fr.ev(), cfg, rng, alpha=alpha, tau=tau)
+    if ff is not None and abs(tau) > 1e-3:  # factors store points at the camera timestamp t (residuals add tau V)
+        ff.X = ff.X - tau * ff.V
     # visible-surface speed at this frame: max over the model points that carry factors
     if ff is not None:
         sp = np.linalg.norm(ff.V, axis=1)

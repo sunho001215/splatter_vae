@@ -157,10 +157,9 @@ def run_episode(model, a, root, episode_id, out_path):
             # cycle consistency: warp_AB at uv_a vs uv_b and warp_BA at uv_b vs uv_a
             m_t = m[None, None]  # (1,1,N,4)
             fwd = bhwc_grid_sample(preds["warp_AB"], m_t[..., :2], mode="bilinear", align_corners=False)[0, 0]
-            if preds.get("warp_BA") is not None:
-                bwd = bhwc_grid_sample(preds["warp_BA"], m_t[..., 2:], mode="bilinear", align_corners=False)[0, 0]
-            else:
-                bwd = m[:, :2]
+            if preds.get("warp_BA") is None:
+                raise RuntimeError("cycle consistency needs a bidirectional RoMa setting (e.g. 'precise')")
+            bwd = bhwc_grid_sample(preds["warp_BA"], m_t[..., 2:], mode="bilinear", align_corners=False)[0, 0]
             uv_a, uv_b = model.to_pixel_coordinates(m, H, W, H, W)
             fa, fb = model.to_pixel_coordinates(torch.cat([bwd, fwd], -1), H, W, H, W)
             cyc = torch.maximum((fa - uv_a).norm(dim=-1), (fb - uv_b).norm(dim=-1))

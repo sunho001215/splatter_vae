@@ -11,7 +11,9 @@ Variants (``--variant``): ``full`` (all fit episodes), ``half:<seed>`` (random h
 second half of the fit episodes in recording order), ``loco:<camera>`` (robot factors without that camera),
 ``start:<k>`` (common-pose perturbation k of the multistart), ``mask:<erode|dilate>`` (robot masks eroded/dilated
 2 px), ``depth:sensor`` (sensor depth instead of FS), ``all`` (fit on all 100 episodes; no held-out),
-``matchseed:<s>`` (match subsampling seed), ``extonly`` / ``robotonly`` (ablations)."""
+``matchseed:<s>`` (match subsampling seed), ``extonly`` / ``robotonly`` (ablations), ``alpha0`` (depth scale fixed:
+FS metric trusted), ``kinds:<digits>`` (robot factor kinds: 0 m2o, 1 o2m, 2 depth), ``spacing:<m>`` (visual-mesh sample
+spacing), ``notau`` (no time offsets)."""
 
 from __future__ import annotations
 
@@ -90,18 +92,31 @@ def perturb_common(s: State, k: int, rot_deg: float = 4.0, trans_m: float = 0.04
 
 
 def explained_and_depth(frames, surf, state: State, cfg: RobotTermConfig, use_alpha: bool):
-    """Held-out robot statistics per camera on full frames: along-ray depth residual |s d_obs - z_model| at observed
-    robot pixels covered by the rendered model (median, mm), explained fraction (observed robot pixels with valid depth
-    whose lifted point is within 2 cm of the posed model surface) and silhouette IoU."""
+    """Held-out robot statistics per camera on full frames with FIXED (pose-independent) denominators:
+    * along-ray depth |s d_obs - z_model| at observed robot pixels (valid depth) covered by the rendered model
+      (median / p90, mm) and the coverage of those pixels by the render;
+    * explained fraction: observed robot pixels with valid depth whose lifted point lies within 2 cm of the posed
+      visible model surface (pixels with no rendered model count as unexplained);
+    * o2m_fixed: observed robot-mask boundary pixels (pose-independent exclusions: image border, object/fixture
+      adjacency, observed occluding edges) -> distance (px) to the rendered silhouette boundary;
+    * silhouette IoU. Robot geometry is posed at t + tau."""
+    from scipy import ndimage
     from scipy.spatial import cKDTree
+
+    from s4d.realworld.rig_dw_robot import boundary
 
     out = {}
     for fr in frames:
         T = state.T[fr.cam]
-        X, _, _ = surf.posed(fr)
+        X, _, Vf = surf.posed(fr)
+        tau = state.tau[fr.cam]
+        if abs(tau) > 1e-4:
+            X = X + tau * Vf(np.arange(len(X)))
         Pc = X @ T[:3, :3].T + T[:3, 3]
         rend = render(Pc, fr.K, fr.crop, cfg.closing)
-        robot = fr.sem == fr.class_names.index("robot")
+        names = fr.class_names
+        robot = fr.sem == names.index("robot")
+        other = np.isin(fr.sem, [names.index(c) for c in ("object", "fixture") if c in names])
         d = fr.depth * (np.exp(state.alpha[fr.cam]) if use_alpha else 1.0)
         ok = robot & (d > 0)
         both = ok & rend.mask
@@ -112,19 +127,42 @@ def explained_and_depth(frames, surf, state: State, cfg: RobotTermConfig, use_al
         K = fr.K
         P = np.stack([(u[:, 0] - K[0, 2]) / K[0, 0], (u[:, 1] - K[1, 2]) / K[1, 1], np.ones(len(u))], 1) * d[ok][:, None]
         front = np.unique(rend.front[rend.front >= 0])
-        vis = Pc[front]
-        dist = cKDTree(vis).query(P, k=1, workers=1)[0] if len(P) and len(vis) else np.zeros(0)
-        st = out.setdefault(fr.cam, {"depth_res": [], "explained": [], "iou": []})
+        if len(P) and len(front):
+            dist = cKDTree(Pc[front]).query(P, k=1, workers=1)[0]
+            expl = float((dist <= 0.02).mean())
+        else:
+            expl = 0.0 if len(P) else None
+        # pose-independent observed boundary set
+        h, w = robot.shape
+        gi, gj = np.mgrid[0:h, 0:w]
+        gi, gj = gi + y0, gj + x0
+        H, W = fr.hw
+        border = (gi < cfg.border_px) | (gj < cfg.border_px) | (gi >= H - cfg.border_px) | (gj >= W - cfg.border_px)
+        near_other = ndimage.binary_dilation(other, iterations=cfg.adjacent_px) if other.any() else np.zeros_like(other)
+        rob_d = np.where(robot & (fr.depth > 0), fr.depth, 0.0)
+        near_rob_d = ndimage.maximum_filter(rob_d, size=7)
+        front_occ = (~robot) & (fr.depth > 0) & (near_rob_d > 0) & (fr.depth < near_rob_d - cfg.occluder_m)
+        bo = boundary(robot) & ~border & ~near_other & ~ndimage.binary_dilation(front_occ, iterations=2)
+        rb = boundary(rend.mask)
+        o2m = ndimage.distance_transform_edt(~rb)[bo] if rb.any() else np.full(int(bo.sum()), 1e3)
+        st = out.setdefault(fr.cam, {"depth_res": [], "explained": [], "iou": [], "coverage": [], "o2m": []})
         st["depth_res"].append(res)
-        if len(dist):
-            st["explained"].append(float((dist <= 0.02).mean()))
+        if expl is not None:
+            st["explained"].append(expl)
+        st["coverage"].append(float(both.sum() / max(1, ok.sum())))
+        st["o2m"].append(o2m)
         st["iou"].append(float((rend.mask & robot).sum() / max(1, (rend.mask | robot).sum())))
     res = {}
     for cam, st in out.items():
         allres = np.concatenate(st["depth_res"]) if st["depth_res"] else np.zeros(0)
+        o2m = np.concatenate(st["o2m"]) if st["o2m"] else np.zeros(0)
         res[cam] = {"depth_median_mm": float(1e3 * np.median(allres)) if len(allres) else None,
                     "depth_p90_mm": float(1e3 * np.percentile(allres, 90)) if len(allres) else None,
+                    "depth_coverage": float(np.median(st["coverage"])),
                     "explained_fraction": float(np.median(st["explained"])) if st["explained"] else None,
+                    "explained_fraction_mean": float(np.mean(st["explained"])) if st["explained"] else None,
+                    "o2m_fixed_median_px": float(np.median(o2m)) if len(o2m) else None,
+                    "o2m_fixed_le2px": float((o2m <= 2.0).mean()) if len(o2m) else None,
                     "iou_median": float(np.median(st["iou"])), "frames": len(st["iou"])}
     return res
 
@@ -134,7 +172,7 @@ def heldout_robot(prob: RigProblem, frames, state: State, surf, cfg: RobotTermCo
     saved = prob.frames, prob.support, prob.support_stats, prob._pack_cache
     prob.frames = frames
     prob.select(state)
-    pk = prob._packed()
+    pk = pack([f for f in prob.support if f is not None])  # every camera (also the one a loco fit withheld)
     stats = {}
     for cam, p in pk.items():
         r, _ = packed_residuals(p, state.T[cam], prob.K[cam], state.alpha[cam], state.tau[cam], cfg, jac=False)
@@ -157,30 +195,50 @@ def heldout_robot(prob: RigProblem, frames, state: State, surf, cfg: RobotTermCo
 
 
 def heldout_extext(state: State, K, Mh: ee.MatchSet) -> dict:
+    """Held-out static correspondences: symmetric point-to-epipolar-line distance (px, depth-free; mean of the
+    distances in both images), Sampson distance, depth-lifted transfer a->b and b->a (px, alpha-corrected depths) and
+    3D consistency of both lifted ends (mm)."""
+    from s4d.realworld.rig_dw_geom import project, skew
+
     st = ee.reduced_residual_stats(state.T, state.alpha, K, Mh)
-    out = {}
+    out, allv = {}, {"line": [], "tba": [], "d3": []}
     for a, b, ids in Mh._groups:
+        R = state.T[b][:3, :3] @ state.T[a][:3, :3].T
+        t = state.T[b][:3, 3] - R @ state.T[a][:3, 3]
+        F = np.linalg.inv(K[b]).T @ skew(t) @ R @ np.linalg.inv(K[a])
+        xa = np.column_stack((Mh.uv_a[ids], np.ones(len(ids))))
+        xb = np.column_stack((Mh.uv_b[ids], np.ones(len(ids))))
+        la, lb = xb @ F, xa @ F.T  # line in a (F^T x_b), line in b (F x_a)
+        num = np.abs(np.sum(xb * lb, axis=1))
+        line = 0.5 * (num / np.hypot(lb[:, 0], lb[:, 1]) + num / np.hypot(la[:, 0], la[:, 1]))
+        ok = np.isfinite(Mh.d_b[ids]) & (Mh.d_b[ids] > 0)
+        Pb = (np.column_stack((Mh.uv_b[ids][ok], np.ones(ok.sum()))) @ np.linalg.inv(K[b]).T) \
+            * (np.exp(state.alpha[b]) * Mh.d_b[ids][ok])[:, None]
+        uva, _ = project((Pb - t) @ R, K[a])
+        tba = np.linalg.norm(uva - Mh.uv_a[ids][ok], axis=1)
+        e, tr = st["epipolar_px"][ids], st["transfer_px"][ids]
         key = f"{a[:12]}-{b[:12]}"
-        e, t = st["epipolar_px"][ids], st["transfer_px"][ids]
-        out[key] = {"epipolar_median_px": float(np.nanmedian(e)), "epipolar_p90_px": float(np.nanpercentile(e, 90)),
-                    "transfer_median_px": float(np.nanmedian(t)), "n": int(len(ids))}
-    e, t = st["epipolar_px"], st["transfer_px"]
-    out["all"] = {"epipolar_median_px": float(np.nanmedian(e)), "transfer_median_px": float(np.nanmedian(t))}
-    # 3D consistency: both ends lifted with their (alpha-corrected) depths
-    d3 = []
-    for a, b, ids in Mh._groups:
-        ok = np.isfinite(Mh.d_a[ids]) & np.isfinite(Mh.d_b[ids]) & (Mh.d_a[ids] > 0) & (Mh.d_b[ids] > 0)
-        i = ids[ok]
-        if not len(i):
-            continue
-        def lift(uv, d, Kc, T, al):
-            ray = np.column_stack((uv, np.ones(len(uv)))) @ np.linalg.inv(Kc).T
-            Pc = ray * (np.exp(al) * d)[:, None]
-            return (Pc - T[:3, 3]) @ T[:3, :3]
-        Xa = lift(Mh.uv_a[i], Mh.d_a[i], K[a], state.T[a], state.alpha[a])
-        Xb = lift(Mh.uv_b[i], Mh.d_b[i], K[b], state.T[b], state.alpha[b])
-        d3.append(np.linalg.norm(Xa - Xb, axis=1))
-    out["all"]["consistency3d_median_mm"] = float(1e3 * np.median(np.concatenate(d3))) if d3 else None
+        out[key] = {"line_median_px": float(np.nanmedian(line)), "line_p90_px": float(np.nanpercentile(line, 90)),
+                    "sampson_median_px": float(np.nanmedian(e)), "transfer_ab_median_px": float(np.nanmedian(tr)),
+                    "transfer_ba_median_px": float(np.nanmedian(tba)) if len(tba) else None, "n": int(len(ids))}
+        allv["line"].append(line)
+        allv["tba"].append(tba)
+        both = np.isfinite(Mh.d_a[ids]) & np.isfinite(Mh.d_b[ids]) & (Mh.d_a[ids] > 0) & (Mh.d_b[ids] > 0)
+        i = ids[both]
+        if len(i):
+            def lift(uv, d, Kc, T, al):
+                ray = np.column_stack((uv, np.ones(len(uv)))) @ np.linalg.inv(Kc).T
+                return (ray * (np.exp(al) * d)[:, None] - T[:3, 3]) @ T[:3, :3]
+            Xa = lift(Mh.uv_a[i], Mh.d_a[i], K[a], state.T[a], state.alpha[a])
+            Xb = lift(Mh.uv_b[i], Mh.d_b[i], K[b], state.T[b], state.alpha[b])
+            d3 = np.linalg.norm(Xa - Xb, axis=1)
+            allv["d3"].append(d3)
+            out[key]["consistency3d_median_mm"] = float(1e3 * np.median(d3))
+    out["all"] = {"line_median_px": float(np.nanmedian(np.concatenate(allv["line"]))),
+                  "sampson_median_px": float(np.nanmedian(st["epipolar_px"])),
+                  "transfer_ab_median_px": float(np.nanmedian(st["transfer_px"])),
+                  "transfer_ba_median_px": float(np.nanmedian(np.concatenate(allv["tba"]))),
+                  "consistency3d_median_mm": float(1e3 * np.median(np.concatenate(allv["d3"]))) if allv["d3"] else None}
     return out
 
 
@@ -234,6 +292,14 @@ def main(argv=None):
         mcfg = replace(mcfg, seed=int(arg))
     elif v == "extonly":
         scfg = replace(scfg, use_robot=False)
+    elif v == "alpha0":
+        scfg = replace(scfg, fix_alpha=True)
+    elif v == "kinds":
+        scfg = replace(scfg, robot_kinds=tuple(int(ch) for ch in arg))
+    elif v == "spacing":
+        a.spacing_m = float(arg)
+    elif v == "notau":
+        scfg = replace(scfg, estimate_tau=False)
     elif v == "robotonly":
         scfg = replace(scfg, use_extext=False)
     elif v != "full" and v != "mask":
@@ -272,6 +338,7 @@ def main(argv=None):
     stages = ("shape", "common", "full")
     if v == "extonly":
         stages = ("shape",)
+        prob.select(s0)  # robot support (diagnostics only; not used by the ext-ext solve)
     if v == "robotonly":
         stages = ("full",)
     log = []
@@ -289,7 +356,7 @@ def main(argv=None):
               "match_stats": m["stats"], "n_frames": len(frames), "pivot": pivot.tolist(),
               "surface": surf.vs.provenance()}
     # fit statistics (fixed support at the solution)
-    pk = prob._packed()
+    pk = prob._packed() if prob.support is not None else {}
     fit_stats = {}
     for cam, p in pk.items():
         r, _ = packed_residuals(p, s.T[cam], prob.K[cam], s.alpha[cam], s.tau[cam], rcfg, jac=False)
@@ -301,9 +368,11 @@ def main(argv=None):
     result["information"] = info
     result["moves_vs_init"] = {c: list(pose_distance(s0.T[c], s.T[c])) for c in CAMS}
     if held and not a.no_heldout:
-        mh = load_matches([mdir / f"{e}.npz" for e in held], list(CAMS), replace(mcfg, seed=mcfg.seed + 1))
+        # protected evaluation configuration, identical for every variant: FS depth, match subsampling seed 1
+        mh = load_matches([mdir / f"{e}.npz" for e in held], list(CAMS), MatchConfig(per_frame_pair=a.per_frame_pair,
+                                                                                      seed=1))
         Mh = matchset(mh, a.sigma_px, a.sigma_logd)
-        hframes = load_frames([edir / f"{e}.npz" for e in held], list(CAMS), depth_stage=depth_stage,
+        hframes = load_frames([edir / f"{e}.npz" for e in held], list(CAMS), depth_stage="foundation_stereo_depth",
                               max_frames_per_camera=a.heldout_frames_per_camera)
         result["heldout"] = {"extext": heldout_extext(s, prob.K, Mh),
                              "robot": heldout_robot(prob, hframes, s, surf, rcfg),

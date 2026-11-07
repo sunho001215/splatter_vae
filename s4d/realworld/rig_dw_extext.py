@@ -380,3 +380,16 @@ def reduced_residual_stats(T, alpha, K, M):
         uv, _ = project(pc @ R.T + t, K[b])
         transfer[ids[valid]] = np.linalg.norm(uv - M.uv_b[ids][valid], axis=1)
     return dict(epipolar_px=epi, transfer_px=transfer)
+
+
+def factor_cost(T, alpha, K, M, P, cauchy_c=3.0, *, chunk_size=50_000):
+    """Robust cost sum c^2 log1p(chi2/c^2) of all factors at fixed points (same value as ``normal_equations``'s
+    ``cost``) without the Schur accumulation: for LM trial evaluation."""
+    cost = 0.0
+    for a, b, ids in _chunks(M, chunk_size):
+        r, _, _, _ = _linearize(T, alpha, K, M, np.asarray(P)[ids], a, b, ids)
+        if not np.isfinite(r).all():
+            raise ValueError("points must be finite and in front of both cameras")
+        chi = np.einsum("nr,nr->n", r, r)
+        cost += float(np.sum(chi if np.isinf(cauchy_c) else cauchy_c**2 * np.log1p(chi / cauchy_c**2)))
+    return cost

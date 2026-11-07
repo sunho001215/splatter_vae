@@ -45,6 +45,7 @@ class SolveConfig:
     use_extext: bool = True
     use_robot: bool = True
     robot_cameras: tuple | None = None  # leave-camera-out: robot factors only from these cameras
+    fix_alpha: bool = False  # trust the depth source's metric scale (alpha = 0 for every camera)
 
 
 @dataclass
@@ -111,11 +112,14 @@ class RigProblem:
 
     def basis(self, s: State, stage: str) -> np.ndarray:
         n = self.n
+        def ok(j):
+            return not (self.cfg.fix_alpha and j % NPC == 6) and (self.cfg.estimate_tau or j % NPC != 7)
+
         if stage == "full":
-            cols = [j for k in range(len(self.cams)) for j in range(k * NPC, k * NPC + (8 if self.cfg.estimate_tau else 7))]
+            cols = [j for j in range(n) if ok(j)]
             return np.eye(n)[:, cols]
         if stage == "shape":  # camera 0 pose + alpha fixed, no tau
-            cols = [j for k in range(1, len(self.cams)) for j in range(k * NPC, k * NPC + 7)]
+            cols = [j for k in range(1, len(self.cams)) for j in range(k * NPC, k * NPC + 7) if ok(j)]
             return np.eye(n)[:, cols]
         if stage == "common":
             B = np.zeros((n, 7 + (len(self.cams) if self.cfg.estimate_tau else 0)))
@@ -123,7 +127,7 @@ class RigProblem:
                 B[k * NPC:k * NPC + 6, :6] = -adjoint(s.T[c])
                 C = camera_centre(s.T[c])
                 B[k * NPC + 3:k * NPC + 6, 6] = -s.T[c][:3, :3] @ (C - self.pivot)
-                B[k * NPC + 6, 6] = 1.0
+                B[k * NPC + 6, 6] = 0.0 if self.cfg.fix_alpha else 1.0
                 if self.cfg.estimate_tau:
                     B[k * NPC + 7, 7 + k] = 1.0
             return B
@@ -166,7 +170,7 @@ class RigProblem:
     def cost(self, s: State, robot=True, extext=True):
         c = 0.0
         if extext and self.M is not None and self.cfg.use_extext:
-            c += ee.normal_equations(s.T, s.alpha, self.K, self.M, s.P, self.idx_ee, self.cfg.cauchy_ee)["cost"]
+            c += ee.factor_cost(s.T, s.alpha, self.K, self.M, s.P, self.cfg.cauchy_ee)
         if robot and self.support is not None and self.cfg.use_robot:
             c += rf.robot_cost_packed(self._packed(), s.as_dict(), self.K, self.rcfg, self.cfg.cauchy_robot,
                                       kinds=self.cfg.robot_kinds)
@@ -202,8 +206,31 @@ class RigProblem:
         return stats
 
     # ------------------------------------------------------------------ LM at fixed support
+    def retract(self, s: State, stage: str, B: np.ndarray, dz: np.ndarray) -> State:
+        """Apply a step. ``common``: an exact Sim(3) of the whole rig (rigid motion eta in the base frame about the
+        origin, then scale exp(rho) of the camera centres about the pivot with alpha += rho) - its derivative is the
+        ``basis('common')`` columns; other stages: independent left SE(3) / alpha / tau updates."""
+        if stage != "common":
+            return self.apply(s, B @ dz)
+        from s4d.realworld.rig_dw_geom import se3_exp
+
+        out = s.copy()
+        G = se3_exp(dz[:6])  # base-frame rigid motion: T_c' = T_c G^-1
+        rho = dz[6]
+        for k, c in enumerate(self.cams):
+            T = s.T[c] @ np.linalg.inv(G)
+            C = camera_centre(T)
+            Cn = self.pivot + np.exp(rho) * (C - self.pivot)
+            T[:3, 3] = -T[:3, :3] @ Cn
+            out.T[c] = T
+            out.alpha[c] = s.alpha[c] + (0.0 if self.cfg.fix_alpha else rho)
+            if self.cfg.estimate_tau:
+                out.tau[c] = s.tau[c] + dz[7 + k]
+        return out
+
     def lm(self, s: State, stage: str, iters: int, robot=True, extext=True, log=None):
         lam = self.cfg.lm_lambda
+        use_ee = extext and self.M is not None and self.cfg.use_extext
         if s.P is None:
             s = s.copy()
             s.P = self._ee_points(s, iters=5)
@@ -215,14 +242,15 @@ class RigProblem:
             accepted = False
             for _ in range(10):
                 dz = ee.solve_step(Hb, gb, lam)
-                trial = self.apply(s, B @ dz)
-                try:
-                    trial.P = self._ee_points(trial) if (extext and self.M is not None and self.cfg.use_extext) else s.P
-                    Ht, gt, ct, pt = self.normal(trial, robot=robot, extext=extext)
+                trial = self.retract(s, stage, B, dz)
+                try:  # cost first (cheap); normal equations only for an accepted step
+                    trial.P = self._ee_points(trial) if use_ee else s.P
+                    ct = self.cost(trial, robot=robot, extext=extext)
                 except (ValueError, np.linalg.LinAlgError):
                     ct = np.inf
                 if ct < cost:
-                    s, H, g, cost, parts = trial, Ht, gt, ct, pt
+                    s = trial
+                    H, g, cost, parts = self.normal(s, robot=robot, extext=extext)
                     lam = max(lam * 0.3, 1e-9)
                     accepted = True
                     break
@@ -272,22 +300,37 @@ class RigProblem:
         return np.asarray(d)
 
     def information(self, s: State) -> dict:
-        """Data-only (no priors, no damping) information in tolerance units, separately for ext-ext, robot and
-        combined, with the weakest directions; marginal per-camera rotation / centre standard deviations."""
-        D = np.diag(self.scales())
-        out = {}
+        """Data-only (no priors, no damping) information in tolerance units (``scales``), separately for ext-ext,
+        robot and combined: eigenvalues, the weakest directions and, for the combined system, marginal per-camera
+        standard deviations in which unidentified directions (scaled eigenvalue < 1e-6 of the largest) are reported
+        as unbounded instead of being pseudo-inverted to zero variance. Fixed tau columns are removed."""
+        keep = np.array([j for j in range(self.n) if self.cfg.estimate_tau or j % NPC != 7])
+        D = np.diag(self.scales()[keep])
+        out = {"columns": keep.tolist()}
         for name, kw in (("extext", dict(robot=False, extext=True)), ("robot", dict(robot=True, extext=False)),
                          ("combined", dict(robot=True, extext=True))):
+            if name != "extext" and self.support is None:
+                continue
             H, _, _, _ = self.normal(s, priors=False, **kw)
-            if not self.cfg.estimate_tau:
-                for k in range(len(self.cams)):
-                    H[k * NPC + 7, k * NPC + 7] += 1e12
-            Hs = D @ H @ D
+            Hs = D @ H[np.ix_(keep, keep)] @ D
             w, V = np.linalg.eigh((Hs + Hs.T) / 2)
             out[name] = {"eig": w.tolist(), "weakest": [V[:, i].tolist() for i in range(4)]}
             if name == "combined":
-                cov = np.linalg.pinv(H)
-                out["marginal"] = self.marginal(s, cov)
+                tol = 1e-6 * max(w[-1], 1e-300)
+                ident = w > tol
+                cov_s = (V[:, ident] / w[ident]) @ V[:, ident].T
+                cov = np.zeros((self.n, self.n))
+                cov[np.ix_(keep, keep)] = D @ cov_s @ D
+                null = V[:, ~ident]
+                out["unidentified_directions"] = int((~ident).sum())
+                res = self.marginal(s, cov)
+                if null.size:  # parameters touched by a null direction have unbounded variance
+                    touched = np.zeros(self.n, bool)
+                    touched[keep] = np.abs(null).max(1) > 1e-6
+                    for k, c in enumerate(self.cams):
+                        if touched[k * NPC:k * NPC + 6].any():
+                            res[c]["rot_sd_deg"] = res[c]["centre_sd_m"] = float("inf")
+                out["marginal"] = res
                 out["cov"] = cov
         return out
 

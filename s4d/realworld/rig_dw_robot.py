@@ -92,6 +92,36 @@ class Render:
     mask: np.ndarray  # (h, w) bool on the crop
     zbuf: np.ndarray  # (h, w) camera-z of the front sample (inf where empty)
     front: np.ndarray  # (h, w) int index into the posed sample arrays (-1 where empty)
+    idx: np.ndarray | None = None  # in-crop sample indices
+    pix: np.ndarray | None = None  # their crop pixel (flat)
+    uv: np.ndarray | None = None  # their continuous full-image pixel coordinates
+
+
+def outward_normals(mask: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Unit outward normal field (gx, gy) of a binary mask: gradient of its (slightly smoothed) signed distance."""
+    sd = ndimage.gaussian_filter(sdf_of_mask(mask).astype(np.float64), 0.7)
+    gy, gx = np.gradient(sd)
+    n = np.hypot(gx, gy)
+    n = np.where(n > 1e-9, n, 1.0)
+    return gx / n, gy / n
+
+
+def extreme_contour_samples(rend: "Render", pix_sel: np.ndarray, nx: np.ndarray, ny: np.ndarray) -> tuple:
+    """For each selected boundary pixel (flat crop index), the sample projecting into it that lies furthest along the
+    outward normal there (the best estimate of the silhouette edge inside that pixel; every sample counts, the outline
+    is the union of all projections). Returns (pixels that have a sample, their sample indices)."""
+    want = np.zeros(len(rend.front.ravel()), bool)
+    want[pix_sel] = True
+    m = want[rend.pix]
+    if not m.any():
+        return np.zeros(0, np.int64), np.zeros(0, np.int64)
+    pix, ids, uv = rend.pix[m], rend.idx[m], rend.uv[m]
+    score = uv[:, 0] * nx.ravel()[pix] + uv[:, 1] * ny.ravel()[pix]
+    order = np.lexsort((-score, pix))
+    ps = pix[order]
+    first = np.ones(len(ps), bool)
+    first[1:] = ps[1:] != ps[:-1]
+    return ps[first], ids[order[first]]
 
 
 def render(Pc: np.ndarray, K: np.ndarray, crop, closing: int = 1) -> Render:
@@ -119,6 +149,7 @@ def render(Pc: np.ndarray, K: np.ndarray, crop, closing: int = 1) -> Render:
     zbuf[pix_s[first]] = z[win]
     front, zbuf = front.reshape(h, w), zbuf.reshape(h, w)
     mask = front >= 0
+    extra = dict(idx=idx, pix=pix, uv=uv[idx])
     if closing:
         closed = ndimage.binary_closing(mask, iterations=closing, border_value=0)
         fill = closed & ~mask
@@ -127,7 +158,7 @@ def render(Pc: np.ndarray, K: np.ndarray, crop, closing: int = 1) -> Render:
             front[fill] = front[ii[fill], jj[fill]]
             zbuf[fill] = zbuf[ii[fill], jj[fill]]
         mask = closed
-    return Render(mask, zbuf, front)
+    return Render(mask, zbuf, front, **extra)
 
 
 @dataclass
@@ -145,6 +176,7 @@ class FrameFactors:
     n2: np.ndarray  # (M,2) image normal (sil_o2m)
     obs_ray: np.ndarray  # (M,3) d * K^-1 [u,1] (depth; camera frame, before the scale exp(alpha))
     nrm: np.ndarray  # (M,3) model normal (base frame) (depth)
+    sig: np.ndarray | None = None  # (M,) depth-term whitening (m), frozen at support selection
     episode: str = ""
     t_index: int = -1
 
@@ -190,7 +222,8 @@ def frame_factors(cam, X_posed, N_posed, V_posed, T, K, ev: dict, cfg: RobotTerm
     bi, bj = np.nonzero(bm)
     if cfg.contour_stride > 1:
         bi, bj = bi[::cfg.contour_stride], bj[::cfg.contour_stride]
-    fid = rend.front[bi, bj]
+    rnx, rny = outward_normals(rend.mask)
+    _, fid = extreme_contour_samples(rend, bi * w + bj, rnx, rny)
     Xs.append(Xt[fid])
     Vs.append(V_posed(fid))
     kinds.append(np.zeros(len(fid), np.int8))
@@ -204,7 +237,13 @@ def frame_factors(cam, X_posed, N_posed, V_posed, T, K, ev: dict, cfg: RobotTerm
     outside = ~robot
     # an observed boundary pixel is an occlusion boundary if a neighbouring non-robot pixel is an occluder
     occl_edge = ndimage.binary_dilation(occl & outside, iterations=2)
-    bo &= ~bad & ~occl_edge
+    # pose-independent part (observed depth only): a non-robot pixel within 2 px that is clearly in front of the
+    # robot's observed depth nearby
+    rob_d = np.where(robot & (depth > 0), depth, 0.0) if depth is not None else np.zeros_like(sem, float)
+    near_rob_d = ndimage.maximum_filter(rob_d, size=7)
+    front_occ = outside & (depth > 0) & (near_rob_d > 0) & (depth < near_rob_d - cfg.occluder_m)
+    occl_obs = ndimage.binary_dilation(front_occ, iterations=2)
+    bo &= ~bad & ~occl_edge & ~occl_obs
     oi, oj = np.nonzero(bo)
     if cfg.contour_stride > 1:
         oi, oj = oi[::cfg.contour_stride], oj[::cfg.contour_stride]
@@ -212,16 +251,25 @@ def frame_factors(cam, X_posed, N_posed, V_posed, T, K, ev: dict, cfg: RobotTerm
     if len(oi) and rb.any():
         _, (ni, nj) = ndimage.distance_transform_edt(~rb, return_indices=True)
         mi, mj = ni[oi, oj], nj[oi, oj]
-        sdf_mod = sdf_of_mask(rend.mask)
-        gy, gx = np.gradient(sdf_mod)
-        n2 = np.stack([gx[mi, mj], gy[mi, mj]], 1)
-        nn = np.linalg.norm(n2, axis=1)
-        ok = nn > 1e-6
-        fid = rend.front[mi[ok], mj[ok]]
+        # model contour point: the extreme sample of the nearest rendered boundary pixel; observed contour point:
+        # the observed boundary pixel's edge (centre + half a pixel along the observed outward normal)
+        pix_m, fid_m = extreme_contour_samples(rend, mi * w + mj, rnx, rny)
+        lut = np.full(h * w, -1, np.int64)
+        lut[pix_m] = fid_m
+        fid_all = lut[mi * w + mj]
+        onx, ony = outward_normals(robot)
+        ok = fid_all >= 0
+        fid = fid_all[ok]
+        oi, oj, mi, mj = oi[ok], oj[ok], mi[ok], mj[ok]
+        n2 = np.stack([rnx[mi, mj], rny[mi, mj]], 1)
+        step = -sdf_obs[oi, oj]  # pixel centre -> zero level of the observed SDF along its normal (same contour as m2o)
+        ob = np.stack([oj + x0 + 0.5 + step * onx[oi, oj], oi + y0 + 0.5 + step * ony[oi, oj]], 1)
+        ok = np.ones(len(fid), bool)
+        nn = np.ones(len(fid))
         Xs.append(Xt[fid])
         Vs.append(V_posed(fid))
         kinds.append(np.ones(len(fid), np.int8))
-        bs.append(np.stack([oj[ok] + x0 + 0.5, oi[ok] + y0 + 0.5], 1))
+        bs.append(ob)
         n2s.append(n2[ok] / nn[ok, None])
         rays.append(np.zeros((len(fid), 3)))
         nrms.append(np.zeros((len(fid), 3)))
@@ -255,6 +303,10 @@ def frame_factors(cam, X_posed, N_posed, V_posed, T, K, ev: dict, cfg: RobotTerm
         return None, stats
     ff = FrameFactors(cam, np.concatenate(kinds), np.concatenate(Xs), np.concatenate(Vs), sdf_obs, crop,
                       np.concatenate(bs), np.concatenate(n2s), np.concatenate(rays), np.concatenate(nrms))
+    # depth whitening frozen at this estimate (a weight, not part of the residual's derivative)
+    nc = ff.nrm @ T[:3, :3].T
+    proj = np.einsum("mi,mi->m", nc, np.exp(alpha) * ff.obs_ray)
+    ff.sig = np.sqrt((cfg.sigma_depth_rel * proj) ** 2 + cfg.sigma_model_m ** 2)
     # fixed-denominator coverage statistics at this estimate
     stats["iou"] = float((rend.mask & robot).sum() / max(1, (rend.mask | robot).sum()))
     return ff, stats
@@ -301,7 +353,9 @@ def residuals_and_jacobians(ff: FrameFactors, T: np.ndarray, K: np.ndarray, alph
         nc = ff.nrm[s] @ R.T
         Xo = np.exp(alpha) * ff.obs_ray[s]
         raw = np.einsum("mi,mi->m", nc, Xo - Pc[s])
-        sig = np.sqrt((cfg.sigma_depth_rel * np.einsum("mi,mi->m", nc, Xo)) ** 2 + cfg.sigma_model_m ** 2)
+        if ff.sig is None:
+            raise ValueError("depth factors need the whitening frozen at support selection (FrameFactors.sig)")
+        sig = ff.sig[s]
         r[s] = raw / sig
         J[s, :3] = np.cross(nc, Xo) / sig[:, None]
         J[s, 3:6] = -nc / sig[:, None]
@@ -322,6 +376,7 @@ class Packed:
     n2: np.ndarray
     obs_ray: np.ndarray
     nrm: np.ndarray
+    sig: np.ndarray
     frame: np.ndarray  # (M,) index into ``frames``
     atlas: np.ndarray  # flat float32
     geo: np.ndarray  # (F, 5) int: atlas offset, h, w, y0, x0
@@ -347,7 +402,8 @@ def pack(factors: list) -> dict:
         out[cam] = Packed(cam, np.concatenate([ff.kind for ff in lst]), np.concatenate([ff.X for ff in lst]),
                           np.concatenate([ff.V for ff in lst]), np.concatenate([ff.b for ff in lst]),
                           np.concatenate([ff.n2 for ff in lst]), np.concatenate([ff.obs_ray for ff in lst]),
-                          np.concatenate([ff.nrm for ff in lst]), frame, np.concatenate(atl),
+                          np.concatenate([ff.nrm for ff in lst]), np.concatenate([ff.sig for ff in lst]),
+                          frame, np.concatenate(atl),
                           np.asarray(geo, np.int64), [(ff.episode, ff.t_index) for ff in lst])
     return out
 
@@ -410,7 +466,7 @@ def packed_residuals(pk: Packed, T: np.ndarray, K: np.ndarray, alpha: float, tau
         nc = pk.nrm[s] @ R.T
         Xo = np.exp(alpha) * pk.obs_ray[s]
         proj = np.einsum("mi,mi->m", nc, Xo)
-        sig = np.sqrt((cfg.sigma_depth_rel * proj) ** 2 + cfg.sigma_model_m ** 2)
+        sig = pk.sig[s]
         r[s] = np.einsum("mi,mi->m", nc, Xo - Pc[s]) / sig
         if jac:
             J[s, :3] = np.cross(nc, Xo) / sig[:, None]
