@@ -1,0 +1,345 @@
+"""Driver of the board-free per-task rig calibration (``rig_dw``): one solve variant on one task + task-internal
+held-out validation. Inputs are the RoMa match files (``workers/romav2_match_worker.py``), the robot evidence files
+(``rig_dw_data``) and the current per-episode calibration (only as an INITIALISATION and for comparison). Board data
+are never read here.
+
+    python -m s4d.realworld.rig_dw_run --task drawer-open --matches DIR --evidence DIR --cal1 cal1_poses.json \
+        --out OUT.json [--variant full] [--frames-per-camera 6] [--seed 0] ...
+
+Variants (``--variant``): ``full`` (all fit episodes), ``half:<seed>`` (random half of the fit episodes),
+``group:<g>`` (one of two workspace groups: 2-means of the episodes' mean flange position), ``block:<b>`` (first /
+second half of the fit episodes in recording order), ``loco:<camera>`` (robot factors without that camera),
+``start:<k>`` (common-pose perturbation k of the multistart), ``mask:<erode|dilate>`` (robot masks eroded/dilated
+2 px), ``depth:sensor`` (sensor depth instead of FS), ``all`` (fit on all 100 episodes; no held-out),
+``matchseed:<s>`` (match subsampling seed), ``extonly`` / ``robotonly`` (ablations)."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import time
+from dataclasses import asdict, replace
+from pathlib import Path
+
+import numpy as np
+
+from s4d.realworld import rig_dw_extext as ee
+from s4d.realworld.rig_dw_frames import load_frames, Surface
+from s4d.realworld.rig_dw_geom import camera_centre, pose_distance, se3_exp
+from s4d.realworld.rig_dw_matches import MatchConfig, load_matches
+from s4d.realworld.rig_dw_robot import RobotTermConfig, pack, packed_residuals, render
+from s4d.realworld.rig_dw_solve import RigProblem, SolveConfig, State, median_pose
+
+CAMS = ("135122070988/color", "135122073201/color", "135122076054/color")
+URDF = "/home/ws/ws/validation-20261031/panda_assets/panda_robotiq_2f85_droid_iso50.urdf"
+
+
+def episode_split(episodes: list[str], holdout_mod: int = 5, holdout_rem: int = 2):
+    eps = sorted(episodes, key=lambda e: int(e.rsplit("-", 1)[1]))
+    held = [e for k, e in enumerate(eps) if k % holdout_mod == holdout_rem]
+    fit = [e for e in eps if e not in held]
+    return fit, held
+
+
+def workspace_groups(evidence_dir: Path, eps: list[str], seed: int = 0) -> dict:
+    """2-means of the episodes' mean flange (panda_link8) position over their evidence frames."""
+    from s4d.realworld.rig_dw_data import load_episode
+
+    pts = []
+    for e in eps:
+        doc, a = load_episode(evidence_dir / f"{e}.npz")
+        li = doc["links"].index("panda_link7") if "panda_link7" in doc["links"] else 0
+        p = [a[f"{c['key']}/fk"][:, li, :3, 3] for c in doc["cameras"].values() if c["frames"]]
+        pts.append(np.concatenate(p).mean(0))
+    X = np.asarray(pts)
+    rng = np.random.default_rng(seed)
+    cen = X[rng.choice(len(X), 2, replace=False)]
+    for _ in range(50):
+        lab = np.argmin(((X[:, None] - cen[None]) ** 2).sum(-1), 1)
+        cen = np.stack([X[lab == k].mean(0) if (lab == k).any() else cen[k] for k in range(2)])
+    return {e: int(l) for e, l in zip(eps, lab)}
+
+
+def matchset(m: dict, sigma_px: float, sigma_logd: float) -> ee.MatchSet:
+    cams = np.array(CAMS)
+    return ee.MatchSet(cams[m["cam_a"].astype(int)], cams[m["cam_b"].astype(int)], m["uv_a"], m["uv_b"],
+                       m["d_a"], m["d_b"], sigma_px, sigma_logd)
+
+
+def perturb_common(s: State, k: int, rot_deg: float = 4.0, trans_m: float = 0.04, pivot=None) -> State:
+    """Multistart k: a deterministic common rigid perturbation of the whole rig about the workspace pivot."""
+    if k == 0:
+        return s.copy()
+    rng = np.random.default_rng(1000 + k)
+    ax = rng.normal(size=3)
+    ax /= np.linalg.norm(ax)
+    dt = rng.normal(size=3)
+    dt *= trans_m / np.linalg.norm(dt)
+    from s4d.realworld.rig_dw_geom import so3_exp
+
+    Q = so3_exp(np.radians(rot_deg) * ax)
+    p = np.zeros(3) if pivot is None else pivot
+    G = np.eye(4)
+    G[:3, :3] = Q
+    G[:3, 3] = p - Q @ p + dt
+    out = s.copy()
+    for c in out.T:
+        out.T[c] = s.T[c] @ np.linalg.inv(G)
+    out.P = None
+    return out
+
+
+def explained_and_depth(frames, surf, state: State, cfg: RobotTermConfig, use_alpha: bool):
+    """Held-out robot statistics per camera on full frames: along-ray depth residual |s d_obs - z_model| at observed
+    robot pixels covered by the rendered model (median, mm), explained fraction (observed robot pixels with valid depth
+    whose lifted point is within 2 cm of the posed model surface) and silhouette IoU."""
+    from scipy.spatial import cKDTree
+
+    out = {}
+    for fr in frames:
+        T = state.T[fr.cam]
+        X, _, _ = surf.posed(fr)
+        Pc = X @ T[:3, :3].T + T[:3, 3]
+        rend = render(Pc, fr.K, fr.crop, cfg.closing)
+        robot = fr.sem == fr.class_names.index("robot")
+        d = fr.depth * (np.exp(state.alpha[fr.cam]) if use_alpha else 1.0)
+        ok = robot & (d > 0)
+        both = ok & rend.mask
+        res = np.abs(d[both] - rend.zbuf[both])
+        y0, y1, x0, x1 = fr.crop
+        ii, jj = np.nonzero(ok)
+        u = np.stack([jj + x0 + 0.5, ii + y0 + 0.5], 1)
+        K = fr.K
+        P = np.stack([(u[:, 0] - K[0, 2]) / K[0, 0], (u[:, 1] - K[1, 2]) / K[1, 1], np.ones(len(u))], 1) * d[ok][:, None]
+        front = np.unique(rend.front[rend.front >= 0])
+        vis = Pc[front]
+        dist = cKDTree(vis).query(P, k=1, workers=1)[0] if len(P) and len(vis) else np.zeros(0)
+        st = out.setdefault(fr.cam, {"depth_res": [], "explained": [], "iou": []})
+        st["depth_res"].append(res)
+        if len(dist):
+            st["explained"].append(float((dist <= 0.02).mean()))
+        st["iou"].append(float((rend.mask & robot).sum() / max(1, (rend.mask | robot).sum())))
+    res = {}
+    for cam, st in out.items():
+        allres = np.concatenate(st["depth_res"]) if st["depth_res"] else np.zeros(0)
+        res[cam] = {"depth_median_mm": float(1e3 * np.median(allres)) if len(allres) else None,
+                    "depth_p90_mm": float(1e3 * np.percentile(allres, 90)) if len(allres) else None,
+                    "explained_fraction": float(np.median(st["explained"])) if st["explained"] else None,
+                    "iou_median": float(np.median(st["iou"])), "frames": len(st["iou"])}
+    return res
+
+
+def heldout_robot(prob: RigProblem, frames, state: State, surf, cfg: RobotTermConfig) -> dict:
+    """Silhouette / point-to-plane statistics at the given state on frames NOT used for fitting."""
+    saved = prob.frames, prob.support, prob.support_stats, prob._pack_cache
+    prob.frames = frames
+    prob.select(state)
+    pk = prob._packed()
+    stats = {}
+    for cam, p in pk.items():
+        r, _ = packed_residuals(p, state.T[cam], prob.K[cam], state.alpha[cam], state.tau[cam], cfg, jac=False)
+        sil0, sil1 = np.abs(r[p.kind == 0]) * cfg.sigma_sil_px, np.abs(r[p.kind == 1]) * cfg.sigma_sil_px
+        s = p.kind == 2
+        R = state.T[cam][:3, :3]
+        nc = p.nrm[s] @ R.T
+        Xo = np.exp(state.alpha[cam]) * p.obs_ray[s]
+        Pc = (p.X[s] + state.tau[cam] * p.V[s]) @ R.T + state.T[cam][:3, 3]
+        ptp = 1e3 * np.abs(np.einsum("mi,mi->m", nc, Xo - Pc))
+        signed_m2o = np.clip(r[p.kind == 0] * cfg.sigma_sil_px, -20, 20)
+        stats[cam] = {"m2o_median_px": float(np.median(sil0)), "o2m_median_px": float(np.median(sil1)),
+                      "contour_median_px": float(np.median(np.concatenate([sil0, sil1]))),
+                      "m2o_signed_mean_px": float(np.mean(signed_m2o)),
+                      "ptp_median_mm": float(np.median(ptp)) if len(ptp) else None,
+                      "n": {"m2o": int(len(sil0)), "o2m": int(len(sil1)), "ptp": int(len(ptp))}}
+    stats["robust_cost_per_residual"] = None
+    prob.frames, prob.support, prob.support_stats, prob._pack_cache = saved
+    return stats
+
+
+def heldout_extext(state: State, K, Mh: ee.MatchSet) -> dict:
+    st = ee.reduced_residual_stats(state.T, state.alpha, K, Mh)
+    out = {}
+    for a, b, ids in Mh._groups:
+        key = f"{a[:12]}-{b[:12]}"
+        e, t = st["epipolar_px"][ids], st["transfer_px"][ids]
+        out[key] = {"epipolar_median_px": float(np.nanmedian(e)), "epipolar_p90_px": float(np.nanpercentile(e, 90)),
+                    "transfer_median_px": float(np.nanmedian(t)), "n": int(len(ids))}
+    e, t = st["epipolar_px"], st["transfer_px"]
+    out["all"] = {"epipolar_median_px": float(np.nanmedian(e)), "transfer_median_px": float(np.nanmedian(t))}
+    # 3D consistency: both ends lifted with their (alpha-corrected) depths
+    d3 = []
+    for a, b, ids in Mh._groups:
+        ok = np.isfinite(Mh.d_a[ids]) & np.isfinite(Mh.d_b[ids]) & (Mh.d_a[ids] > 0) & (Mh.d_b[ids] > 0)
+        i = ids[ok]
+        if not len(i):
+            continue
+        def lift(uv, d, Kc, T, al):
+            ray = np.column_stack((uv, np.ones(len(uv)))) @ np.linalg.inv(Kc).T
+            Pc = ray * (np.exp(al) * d)[:, None]
+            return (Pc - T[:3, 3]) @ T[:3, :3]
+        Xa = lift(Mh.uv_a[i], Mh.d_a[i], K[a], state.T[a], state.alpha[a])
+        Xb = lift(Mh.uv_b[i], Mh.d_b[i], K[b], state.T[b], state.alpha[b])
+        d3.append(np.linalg.norm(Xa - Xb, axis=1))
+    out["all"]["consistency3d_median_mm"] = float(1e3 * np.median(np.concatenate(d3))) if d3 else None
+    return out
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--task", required=True)
+    ap.add_argument("--matches", required=True)
+    ap.add_argument("--evidence", required=True)
+    ap.add_argument("--cal1", required=True)
+    ap.add_argument("--out", required=True)
+    ap.add_argument("--variant", default="full")
+    ap.add_argument("--frames-per-camera", type=int, default=6)
+    ap.add_argument("--heldout-frames-per-camera", type=int, default=12)
+    ap.add_argument("--per-frame-pair", type=int, default=200)
+    ap.add_argument("--processes", type=int, default=8)
+    ap.add_argument("--sigma-px", type=float, default=0.5)
+    ap.add_argument("--sigma-logd", type=float, default=0.01)
+    ap.add_argument("--spacing-m", type=float, default=0.0015)
+    ap.add_argument("--no-heldout", action="store_true")
+    ap.add_argument("--init", default=None, help="JSON with a State (T_cam_base, alpha, tau_s) to start from")
+    a = ap.parse_args(argv)
+    t0 = time.time()
+    mdir, edir = Path(a.matches), Path(a.evidence)
+    all_eps = sorted(p.stem for p in edir.glob(f"{a.task}-*.npz"))
+    fit, held = episode_split(all_eps)
+    v, _, arg = a.variant.partition(":")
+    mcfg = MatchConfig(per_frame_pair=a.per_frame_pair)
+    rcfg = RobotTermConfig()
+    scfg = SolveConfig(processes=a.processes)
+    depth_stage = "foundation_stereo_depth"
+    fit_eps = list(fit)
+    start = 0
+    if v == "half":
+        rng = np.random.default_rng(int(arg))
+        fit_eps = sorted(rng.choice(fit, len(fit) // 2, replace=False).tolist())
+    elif v == "group":
+        groups = workspace_groups(edir, fit)
+        fit_eps = [e for e in fit if groups[e] == int(arg)]
+    elif v == "block":
+        fit_eps = fit[: len(fit) // 2] if int(arg) == 0 else fit[len(fit) // 2:]
+    elif v == "loco":
+        scfg = replace(scfg, robot_cameras=tuple(c for c in CAMS if not c.startswith(arg)))
+    elif v == "start":
+        start = int(arg)
+    elif v == "depth":
+        mcfg = replace(mcfg, depth_source="sensor")
+        depth_stage = "sensor_depth"
+    elif v == "all":
+        fit_eps, held = sorted(all_eps), []
+    elif v == "matchseed":
+        mcfg = replace(mcfg, seed=int(arg))
+    elif v == "extonly":
+        scfg = replace(scfg, use_robot=False)
+    elif v == "robotonly":
+        scfg = replace(scfg, use_extext=False)
+    elif v != "full" and v != "mask":
+        raise SystemExit(f"unknown variant {a.variant}")
+
+    m = load_matches([mdir / f"{e}.npz" for e in fit_eps], list(CAMS), mcfg)
+    M = matchset(m, a.sigma_px, a.sigma_logd)
+    frames = load_frames([edir / f"{e}.npz" for e in fit_eps], list(CAMS), depth_stage=depth_stage,
+                         max_frames_per_camera=a.frames_per_camera)
+    if v == "mask":
+        from scipy import ndimage
+
+        for fr in frames:
+            rid = fr.class_names.index("robot")
+            rob = fr.sem == rid
+            new = ndimage.binary_erosion(rob, iterations=2) if arg == "erode" else ndimage.binary_dilation(rob, iterations=2)
+            sem = fr.sem.copy()
+            sem[rob & ~new] = 0
+            sem[new & ~rob] = rid
+            fr.sem = sem
+    K = {}
+    for fr in frames:
+        K[fr.cam] = fr.K
+    from s4d.realworld.robot import URDFModel
+
+    model = URDFModel.from_file(URDF)
+    surf = Surface(model, a.spacing_m)
+    pivot = np.mean([fr.fk[fr.links.index("panda_link7")][:3, 3] for fr in frames], 0)
+    cal = json.loads(Path(a.cal1).read_text())
+    T0 = {c: median_pose([np.asarray(cal[e][c.split("/")[0]]["T"]) for e in fit_eps if e in cal]) for c in CAMS}
+    s0 = State(T0, {c: 0.0 for c in CAMS}, {c: 0.0 for c in CAMS})
+    if a.init:
+        d = json.loads(Path(a.init).read_text())["state"]
+        s0 = State({c: np.asarray(d["T_cam_base"][c]) for c in CAMS}, dict(d["alpha"]), dict(d["tau_s"]))
+    prob = RigProblem(CAMS, K, M, frames, surf, rcfg, scfg, pivot=pivot)
+    stages = ("shape", "common", "full")
+    if v == "extonly":
+        stages = ("shape",)
+    if v == "robotonly":
+        stages = ("full",)
+    log = []
+    if start:
+        # the relative rig is solved first; the multistart perturbs the COMMON pose of the whole rig
+        s_shape = prob.solve(s0, stages=("shape",), log=log)
+        s0 = perturb_common(s_shape, start, pivot=pivot)
+        stages = ("common", "full")
+    s = prob.solve(s0, stages=stages, log=log)
+    result = {"task": a.task, "variant": a.variant, "fit_episodes": fit_eps, "heldout_episodes": held,
+              "state": s.to_json(), "init_state": s0.to_json(), "log": log,
+              "config": {"match": asdict(mcfg), "robot": asdict(rcfg), "solve": asdict(scfg),
+                         "frames_per_camera": a.frames_per_camera, "sigma_px": a.sigma_px,
+                         "sigma_logd": a.sigma_logd, "spacing_m": a.spacing_m, "depth_stage": depth_stage},
+              "match_stats": m["stats"], "n_frames": len(frames), "pivot": pivot.tolist(),
+              "surface": surf.vs.provenance()}
+    # fit statistics (fixed support at the solution)
+    pk = prob._packed()
+    fit_stats = {}
+    for cam, p in pk.items():
+        r, _ = packed_residuals(p, s.T[cam], prob.K[cam], s.alpha[cam], s.tau[cam], rcfg, jac=False)
+        fit_stats[cam] = {f"k{k}_median_whitened": float(np.median(np.abs(r[p.kind == k]))) for k in (0, 1, 2)}
+    result["fit_robot"] = fit_stats
+    result["fit_extext"] = heldout_extext(s, prob.K, M)
+    info = prob.information(s)
+    info.pop("cov", None)
+    result["information"] = info
+    result["moves_vs_init"] = {c: list(pose_distance(s0.T[c], s.T[c])) for c in CAMS}
+    if held and not a.no_heldout:
+        mh = load_matches([mdir / f"{e}.npz" for e in held], list(CAMS), replace(mcfg, seed=mcfg.seed + 1))
+        Mh = matchset(mh, a.sigma_px, a.sigma_logd)
+        hframes = load_frames([edir / f"{e}.npz" for e in held], list(CAMS), depth_stage=depth_stage,
+                              max_frames_per_camera=a.heldout_frames_per_camera)
+        result["heldout"] = {"extext": heldout_extext(s, prob.K, Mh),
+                             "robot": heldout_robot(prob, hframes, s, surf, rcfg),
+                             "robot_raw_depth": explained_and_depth(hframes, surf, s, rcfg, use_alpha=False),
+                             "robot_alpha_depth": explained_and_depth(hframes, surf, s, rcfg, use_alpha=True)}
+        # the current calibration (per-episode calibrate@1 poses) on the same held-out evidence, for comparison
+        if v == "full":
+            cmp = {"cal1_median_fit": State(T0, {c: 0.0 for c in CAMS}, {c: 0.0 for c in CAMS})}
+            result["heldout_cal1_median"] = {
+                "extext": heldout_extext(cmp["cal1_median_fit"], prob.K, Mh),
+                "robot": heldout_robot(prob, hframes, cmp["cal1_median_fit"], surf, rcfg),
+                "robot_raw_depth": explained_and_depth(hframes, surf, cmp["cal1_median_fit"], rcfg, use_alpha=False)}
+            per_ep = {}
+            for e in held:
+                if e not in cal:
+                    continue
+                se = State({c: np.asarray(cal[e][c.split("/")[0]]["T"]) for c in CAMS}, {c: 0.0 for c in CAMS},
+                           {c: 0.0 for c in CAMS})
+                fe = [f for f in hframes if f.episode == e]
+                me = mh["episode"] == mh["episodes"].index(e) if e in mh["episodes"] else None
+                per_ep[e] = {"robot": heldout_robot(prob, fe, se, surf, rcfg),
+                             "robot_raw_depth": explained_and_depth(fe, surf, se, rcfg, use_alpha=False)}
+                if me is not None and me.any():
+                    from s4d.realworld.rig_dw_matches import subset
+
+                    per_ep[e]["extext"] = heldout_extext(se, prob.K, matchset(subset(mh, me), a.sigma_px,
+                                                                               a.sigma_logd))["all"]
+            result["heldout_cal1_per_episode"] = per_ep
+    result["seconds"] = round(time.time() - t0, 1)
+    out = Path(a.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    tmp = out.with_suffix(".tmp")
+    tmp.write_text(json.dumps(result, indent=1, default=lambda x: x.tolist() if hasattr(x, "tolist") else str(x)))
+    tmp.replace(out)
+    print(json.dumps({"out": str(out), "seconds": result["seconds"]}))
+
+
+if __name__ == "__main__":
+    main()
