@@ -1,0 +1,34 @@
+=== 2026-11-08 21:20:20 release chain a3f34dc22ce29c70f72da3c6a761876dce7f71c8 (merge rig_loma + optional s2m2_depth stage onto 930b408)
+21:20:47 /home/ws/ws/splatter4d/.worktrees/rwcalib-int/s4d/remote_access.py sync-code a3f34dc22ce29c70f72da3c6a761876dce7f71c8 -> 0 /home/compu/kaist/sunho/releases/a3f34dc22ce29c70f72da3c6a761876dce7f71c8/code 
+21:20:47 /home/compu/kaist/sunho/releases/a3f34dc22ce29c70f72da3c6a761876dce7f71c8/code
+21:20:53 sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a --tag cc -> 0 /home/ws/ws/splatter4d/runs/remote/verification/native-a3f34dc-cc-queue.yaml 
+21:21:45 launched verify-native-a3f34dc-cc on remote/GPU-ca65e1b7-c0ac-6757-7d3f-816c3119a4c1 (s4d-verify-native-a3f34dc-cc-a1, attempt 1)
+21:21:45 wait {'verify-native-a3f34dc-cc': 'running'}
+21:23:05 verify-native-a3f34dc-cc: live result sync unavailable; job remains running
+21:23:05 foreign processes on remote/GPU-ca65e1b7-c0ac-6757-7d3f-816c3119a4c1; not launching there
+21:23:05 wait {'verify-native-a3f34dc-cc': 'running'}
+21:24:18 wait {'verify-native-a3f34dc-cc': 'running'}
+21:25:36 wait {'verify-native-a3f34dc-cc': 'running'}
+21:26:52 wait {'verify-native-a3f34dc-cc': 'running'}
+21:28:11 wait {'verify-native-a3f34dc-cc': 'running'}
+21:29:26 wait {'verify-native-a3f34dc-cc': 'running'}
+21:30:46 wait {'verify-native-a3f34dc-cc': 'running'}
+21:32:00 wait {'verify-native-a3f34dc-cc': 'running'}
+21:33:20 wait {'verify-native-a3f34dc-cc': 'running'}
+21:34:36 wait {'verify-native-a3f34dc-cc': 'running'}
+21:35:56 wait {'verify-native-a3f34dc-cc': 'running'}
+21:37:09 wait {'verify-native-a3f34dc-cc': 'running'}
+21:38:31 wait {'verify-native-a3f34dc-cc': 'running'}
+21:39:45 wait {'verify-native-a3f34dc-cc': 'running'}
+21:40:50 done {'verify-native-a3f34dc-cc': 'done'}
+21:40:51 {"exit_code": 0, "counts": {"passed": 2238, "error": 0, "failed": 0, "skipped": 0}, "full_suite_passed": true}
+21:40:56 sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a --tag cc -> 0 /home/ws/ws/splatter4d/runs/remote/verification/isolation-a3f34dc-cc-queue.yaml 
+21:43:14 launched verify-isolation-0-a3f34dc-cc on remote/GPU-4391fcee-537f-d408-d138-10d8a3866eea (s4d-verify-isolation-0-a3f34dc-cc-a1, attempt 1)
+21:43:14 launched verify-isolation-1-a3f34dc-cc on remote/GPU-6122c7a9-eaa6-b539-6005-f20e339da4ea (s4d-verify-isolation-1-a3f34dc-cc-a1, attempt 1)
+21:43:14 launched verify-isolation-2-a3f34dc-cc on remote/GPU-9e9f1e97-b2ca-04e0-eb2a-8035398daa79 (s4d-verify-isolation-2-a3f34dc-cc-a1, attempt 1)
+21:43:14 launched verify-isolation-3-a3f34dc-cc on remote/GPU-ca65e1b7-c0ac-6757-7d3f-816c3119a4c1 (s4d-verify-isolation-3-a3f34dc-cc-a1, attempt 1)
+21:43:14 wait {'verify-isolation-0-a3f34dc-cc': 'running', 'verify-isolation-1-a3f34dc-cc': 'running', 'verify-isolation-2-a3f34dc-cc': 'running', 'verify-isolation-3-a3f34dc-cc': 'running'}
+21:44:38 done {'verify-isolation-0-a3f34dc-cc': 'done', 'verify-isolation-1-a3f34dc-cc': 'done', 'verify-isolation-2-a3f34dc-cc': 'done', 'verify-isolation-3-a3f34dc-cc': 'done'}
+21:44:39 sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a --tag cc -> 0 ACCEPTED /home/ws/ws/splatter4d/runs/remote/acceptance/a3f34dc-cc/manifest.json ac8c4d5f16a6f5019b221ca5e223dfd1a38f579a70daf3714bc7af8efdc04ea9 56bd8ce9c59e 
+21:44:39 ACCEPTED /home/ws/ws/splatter4d/runs/remote/acceptance/a3f34dc-cc/manifest.json ac8c4d5f16a6f5019b221ca5e223dfd1a38f579a70daf3714bc7af8efdc04ea9 56bd8ce9c59e
+chain exit 0
