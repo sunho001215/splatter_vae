@@ -1,0 +1,35 @@
+05:46:30 /home/ws/ws/splatter4d/.worktrees/rwcalib-ops/s4d/remote_access.py sync-code ae23ff0b5 -> 1  Local Git provenance check failed: fatal: Needed a single revision
+chain exit 1
+=== 05:46:48 rerun with the full sha (previous attempt: mistyped prefix, refused at provenance check, nothing launched)
+05:47:14 /home/ws/ws/splatter4d/.worktrees/rwcalib-ops/s4d/remote_access.py sync-code ae23ff07e849629af71424e2b3136ba9aead1f12 -> 0 /home/compu/kaist/sunho/releases/ae23ff07e849629af71424e2b3136ba9aead1f12/code 
+05:47:14 /home/compu/kaist/sunho/releases/ae23ff07e849629af71424e2b3136ba9aead1f12/code
+05:47:21 sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a --tag cc -> 0 /home/ws/ws/splatter4d/runs/remote/verification/native-ae23ff0-cc-queue.yaml 
+05:49:03 launched verify-native-ae23ff0-cc on remote/GPU-ca65e1b7-c0ac-6757-7d3f-816c3119a4c1 (s4d-verify-native-ae23ff0-cc-a1, attempt 1)
+05:49:03 wait {'verify-native-ae23ff0-cc': 'running'}
+05:50:29 wait {'verify-native-ae23ff0-cc': 'running'}
+05:51:44 wait {'verify-native-ae23ff0-cc': 'running'}
+05:53:10 wait {'verify-native-ae23ff0-cc': 'running'}
+05:56:46 verify-native-ae23ff0-cc: live result sync unavailable; job remains running
+05:56:47 wait {'verify-native-ae23ff0-cc': 'running'}
+05:59:08 wait {'verify-native-ae23ff0-cc': 'running'}
+06:00:32 wait {'verify-native-ae23ff0-cc': 'running'}
+06:01:46 verify-native-ae23ff0-cc: live result sync unavailable; job remains running
+06:01:47 wait {'verify-native-ae23ff0-cc': 'running'}
+06:03:11 wait {'verify-native-ae23ff0-cc': 'running'}
+06:06:25 verify-native-ae23ff0-cc: live result sync unavailable; job remains running
+06:06:26 wait {'verify-native-ae23ff0-cc': 'running'}
+06:11:37 verify-native-ae23ff0-cc: live result sync unavailable; job remains running
+06:11:38 wait {'verify-native-ae23ff0-cc': 'running'}
+06:16:33 done {'verify-native-ae23ff0-cc': 'done'}
+06:16:33 {"exit_code": 0, "counts": {"passed": 2250, "error": 0, "failed": 0, "skipped": 0}, "full_suite_passed": true}
+06:16:40 sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a --tag cc -> 0 /home/ws/ws/splatter4d/runs/remote/verification/isolation-ae23ff0-cc-queue.yaml 
+06:19:06 launched verify-isolation-0-ae23ff0-cc on remote/GPU-4391fcee-537f-d408-d138-10d8a3866eea (s4d-verify-isolation-0-ae23ff0-cc-a1, attempt 1)
+06:19:06 launched verify-isolation-1-ae23ff0-cc on remote/GPU-6122c7a9-eaa6-b539-6005-f20e339da4ea (s4d-verify-isolation-1-ae23ff0-cc-a1, attempt 1)
+06:19:06 launched verify-isolation-2-ae23ff0-cc on remote/GPU-9e9f1e97-b2ca-04e0-eb2a-8035398daa79 (s4d-verify-isolation-2-ae23ff0-cc-a1, attempt 1)
+06:19:06 launched verify-isolation-3-ae23ff0-cc on remote/GPU-ca65e1b7-c0ac-6757-7d3f-816c3119a4c1 (s4d-verify-isolation-3-ae23ff0-cc-a1, attempt 1)
+06:19:07 wait {'verify-isolation-0-ae23ff0-cc': 'running', 'verify-isolation-1-ae23ff0-cc': 'running', 'verify-isolation-2-ae23ff0-cc': 'running', 'verify-isolation-3-ae23ff0-cc': 'running'}
+06:20:23 verify-isolation-3-ae23ff0-cc exited with 0 on remote; results checksum verified
+06:20:24 done {'verify-isolation-0-ae23ff0-cc': 'done', 'verify-isolation-1-ae23ff0-cc': 'done', 'verify-isolation-2-ae23ff0-cc': 'done', 'verify-isolation-3-ae23ff0-cc': 'done'}
+06:20:25 sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a --tag cc -> 0 ACCEPTED /home/ws/ws/splatter4d/runs/remote/acceptance/ae23ff0-cc/manifest.json c0036347424acd0a1ef5337c64da89a8df7c7731cb41e3a54385ce686c49166c 56bd8ce9c59e 
+06:20:25 ACCEPTED /home/ws/ws/splatter4d/runs/remote/acceptance/ae23ff0-cc/manifest.json c0036347424acd0a1ef5337c64da89a8df7c7731cb41e3a54385ce686c49166c 56bd8ce9c59e
+chain exit 0
