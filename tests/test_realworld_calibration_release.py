@@ -6,7 +6,9 @@ add-only visual-mesh tool. Synthetic fixtures only."""
 from __future__ import annotations
 
 import json
+import os
 import shutil
+import stat
 import subprocess
 import sys
 from pathlib import Path
@@ -134,6 +136,7 @@ def test_add_visual_meshes_tool_is_add_only(tmp_path):
         (src / r).parent.mkdir(parents=True, exist_ok=True)
         (src / r).write_text(f"mesh {i}")
     (dst / "robot_assets/src/pkg/meshes/collision").mkdir(parents=True)
+    os.chmod(dst / "robot_assets/src/pkg/meshes", 0o555)  # the asset copy is write-protected
     import hashlib
 
     sha = {r: hashlib.sha256((src / r).read_bytes()).hexdigest() for r in rel}
@@ -149,13 +152,22 @@ def test_add_visual_meshes_tool_is_add_only(tmp_path):
     assert dry.returncode == 0 and not (dst / rel[0]).exists()
     assert json.loads((tmp_path / "dry.json").read_text())["counts"]["add"] == 2
     assert run(report="dry.json").returncode != 0  # never overwrites its own report either
-    (dst / rel[1]).parent.mkdir(parents=True)
-    (dst / rel[1]).write_text("mesh 1")  # identical file already present: left alone
-    out = run("--apply", report="apply.json")
+    out = run("--apply", report="apply1.json")
     assert out.returncode == 0, out.stderr
-    rep = json.loads((tmp_path / "apply.json").read_text())
-    assert rep["counts"] == {"add": 0, "added": 1, "present": 1} and all(f["verified_sha256"] for f in rep["files"])
+    meshes = dst / "robot_assets/src/pkg/meshes"
+    assert stat.S_IMODE(os.stat(meshes).st_mode) == 0o555  # restored exactly
+    assert stat.S_IMODE(os.stat(meshes / "visual").st_mode) == 0o555
+    assert stat.S_IMODE(os.stat(dst / rel[0]).st_mode) == 0o444
+    rep = json.loads((tmp_path / "apply1.json").read_text())
+    assert rep["counts"] == {"add": 0, "added": 2, "present": 0} and all(f["verified_sha256"] for f in rep["files"])
+    assert rep["directories_created"] == ["robot_assets/src/pkg/meshes/visual"]
     assert (dst / rel[0]).read_text() == "mesh 0" and not list(dst.rglob(".*adding*"))
+    again = run("--apply", report="apply.json")  # idempotent: identical files are present, nothing written
+    assert again.returncode == 0
+    rep = json.loads((tmp_path / "apply.json").read_text())
+    assert rep["counts"] == {"add": 0, "added": 0, "present": 2}
+    os.chmod(meshes / "visual", 0o755)
+    os.chmod(dst / rel[0], 0o644)
     # a conflicting target file aborts before any write; a source that does not match the manifest aborts
     (dst / rel[0]).write_text("other")
     conflict = run("--apply", report="c.json")

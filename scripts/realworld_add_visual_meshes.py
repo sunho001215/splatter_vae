@@ -8,7 +8,10 @@ the target copy. ADD ONLY: it never overwrites, truncates or deletes anything. E
 manifest; a target file that already exists must match too (then it is left alone) - any mismatch aborts before the
 first write. Each file is written to a temporary name in its target directory, fsync'd, hard-linked to its final name
 (``os.link`` fails if the name exists, so a concurrent writer can never be overwritten), re-hashed and the temporary
-name removed. Stdlib only (runs with the host's python3). Dry run by default.
+name removed. The asset copy is write-protected (directories 0555, files 0444): only the existing directories that
+receive a new entry get u+w for the duration of the add and their exact modes are restored afterwards (also on
+failure); new directories end as 0555 and new files as 0444. Stdlib only (runs with the host's python3). Dry run by
+default.
 
     python3 realworld_add_visual_meshes.py --manifest visual_meshes.sha256 --source SRC_ASSET_ROOT \
         --target DST_ASSET_ROOT --report report.json [--apply]
@@ -23,6 +26,7 @@ import hashlib
 import json
 import os
 import re
+import stat
 import sys
 import time
 from pathlib import Path
@@ -78,8 +82,44 @@ def plan(rows, source: Path, target: Path) -> list[dict]:
     return out
 
 
-def add_file(src: Path, dst: Path, sha: str) -> None:
-    dst.parent.mkdir(parents=True, exist_ok=True)  # adds directories only (exist_ok never alters an existing one)
+class Writable:
+    """Temporarily add u+w to existing directories that receive new entries; restore exact modes on exit; new
+    directories are created 0755 and set to ``dir_mode`` on exit (deepest first)."""
+
+    def __init__(self, dir_mode: int = 0o555):
+        self.saved, self.created, self.dir_mode = {}, [], dir_mode
+
+    def ensure_dir(self, d: Path) -> None:
+        missing = []
+        while not d.exists():
+            missing.append(d)
+            d = d.parent
+        self.open(d)
+        for m in reversed(missing):
+            os.mkdir(m, 0o755)
+            self.created.append(m)
+
+    def open(self, d: Path) -> None:
+        if d not in self.saved and d not in self.created:
+            mode = stat.S_IMODE(os.stat(d).st_mode)
+            self.saved[d] = mode
+            if not mode & stat.S_IWUSR:
+                os.chmod(d, mode | stat.S_IWUSR)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        for d in sorted(self.created, key=lambda x: -len(x.parts)):
+            os.chmod(d, self.dir_mode)
+        for d, mode in self.saved.items():
+            os.chmod(d, mode)
+        return False
+
+
+def add_file(src: Path, dst: Path, sha: str, w: Writable | None = None, file_mode: int = 0o444) -> None:
+    w = w or Writable()
+    w.ensure_dir(dst.parent)  # adds directories only; an existing one only gets u+w until the add is done
     tmp = dst.with_name(f".{dst.name}.adding.{os.getpid()}")
     fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
     try:
@@ -90,6 +130,7 @@ def add_file(src: Path, dst: Path, sha: str) -> None:
             os.fsync(f.fileno())
         if sha256_file(tmp) != sha:
             raise SystemExit(f"copy of {src} does not match its sha256")
+        os.chmod(tmp, file_mode)
         os.link(tmp, dst)  # FileExistsError if the name appeared meanwhile: never overwritten
     finally:
         if tmp.exists():
@@ -120,15 +161,21 @@ def main(argv=None) -> int:
     rows = read_manifest(Path(a.manifest))
     actions = plan(rows, source, target)  # every check passes before the first write
     if a.apply:
-        for act in actions:
-            if act["action"] == "add":
-                add_file(source / act["path"], target / act["path"], act["sha256"])
-                act["action"] = "added"
+        with Writable() as w:
+            for act in actions:
+                if act["action"] == "add":
+                    add_file(source / act["path"], target / act["path"], act["sha256"], w)
+                    act["action"] = "added"
+        out_modes = {"directories_created": [str(d.relative_to(target)) for d in w.created],
+                     "directories_temporarily_writable": {str(d.relative_to(target)) if d != target else ".":
+                                                          oct(m) for d, m in w.saved.items()}}
         for act in actions:  # final verification of every listed file
             act["verified_sha256"] = sha256_file(target / act["path"]) == act["sha256"]
+    else:
+        out_modes = {}
     out = {"tool": "realworld_add_visual_meshes", "applied": bool(a.apply), "at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
            "source": str(source), "target": str(target), "manifest": str(a.manifest),
-           "manifest_sha256": sha256_file(Path(a.manifest)), "files": actions,
+           "manifest_sha256": sha256_file(Path(a.manifest)), "files": actions, **out_modes,
            "counts": {k: sum(x["action"] == k for x in actions) for k in ("add", "added", "present")}}
     report.write_text(json.dumps(out, indent=1))
     print(json.dumps(out["counts"]))

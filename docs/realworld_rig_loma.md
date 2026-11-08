@@ -1,6 +1,8 @@
 # Render-to-image robot 2D-3D rig calibration (`rig_loma`)
 
-Status: development study (branch `rw-calib-loma-20261108`, LOMA stream of the 2026-11-08 calibration directive).
+Status: development study (branch `rw-calib-loma-20261108`, LOMA stream of the 2026-11-08 calibration directive);
+frozen a935aef, held-out batch done; release path (gate change, rig documents, records, depth scale, gripper map,
+visual meshes): [realworld_calibration_release.md](realworld_calibration_release.md).
 Notes / results / freeze proposal: `/home/ws/ws/realworld-ops/calib-loma/loma/` (NOTES.md, FREEZE_PROPOSAL.md,
 results/). Predecessor: `rig_dw` (docs/realworld_rig_dw.md; both tasks HELD).
 

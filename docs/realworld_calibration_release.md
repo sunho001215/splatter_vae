@@ -1,0 +1,206 @@
+# Real-world calibration release (`rig_loma`, 2026-11-08)
+
+Status: release CODE (branch `rw-calib-rel-20261108`); no `calibration_validated` record has been written, no dataset
+regenerated and no job registered - the coordinator runs the runbook below. Working notes and evidence:
+`/home/ws/ws/realworld-ops/calib-loma/rel/` (NOTES.md, `rig/` published documents, `results/`). Calibration method and
+held-out study: [realworld_rig_loma.md](realworld_rig_loma.md), `realworld-ops/calib-loma/loma/{FREEZE.md,
+HELDOUT_REPORT.md}`.
+
+## 1. What is released
+
+One fixed rig per task (no per-episode pose refinement anywhere): the SAM-free LoMa-G rig calibration `rig_loma` of
+frozen commit a935aef, FoundationStereo depth, poses of the `all` refit on all 100 episodes of the task. Published by
+`python -m s4d.realworld.rig_loma_publish publish` as `calibration_rig` documents (format
+`s4d.realworld.rig_calibration/1`, consumed by the calibrate rig mode):
+
+| task | document (rel/rig/) | cameras | depth_scale fs / sensor / s2m2 (070988; 073201; 076054) |
+|---|---|---|---|
+| drawer-open | `rig-loma-drawer-open.json` (name `rig-loma-drawer-open-a935aef`, sha256 6a9be3db...) | all validated | 0.9968 / 0.9989 / 0.9979; 1.0142 / 1.0003 / 1.0149; 1.0249 / 1.0172 / 1.0267 |
+| mug-hanging | `rig-loma-mug-hanging.json` (name `rig-loma-mug-hanging-a935aef`, sha256 d83637e7...) | 076054 validated; 070988 / 073201 held by G5a only, exception-eligible, exception EMPTY | 0.9948 / 0.9974 / 0.9955; 1.0116 / 0.9983 / 1.0120; 1.0252 / 1.0172 / 1.0271 |
+
+Each document records: per camera `T_cam_base`, `depth_scale` {stage: exp(alpha)} (fs from the published solve;
+sensor / s2m2 from their independent frozen solves, published only because their poses agree with fs within 0.05 deg /
+1 mm - measured <= 0.015 deg / 0.22 mm), `checks` G1-G6, `held_by`, held-out validation, SAM G6 as `diagnostics.g6_sam`,
+the per-task gripper-mount estimate (diagnostic, NOT applied: the frozen validation used the nominal mount);
+`reference_sha256` (+ `.reference.npz`, the G5a registration reference of `calib-dw/results/fixedness-1seg-<task>`);
+`fixedness_rule` `g5ab/1`, `fixedness_config` (the G5a configuration: 1 segment), `fixedness_evidence` (per camera and
+episode: G5a registration and G5b epipolar class of the verdict), `fixedness_exception`, `episode_checks` (robot depth
+<= 12 mm, explained >= 0.70 = rig_dw RigConfig), `robot_model` (`robotiq_2f85_register_3_230/2`, visual meshes),
+`gate_version` and `provenance` (frozen commit a935aef8, sha256 of FREEZE.md, the frozen verdict JSON, full.json,
+all.json, fixedness inputs and depth-source results; the user decision text). The publisher recomputes the G1-G6
+verdict from the stored results and refuses to publish unless it equals the frozen verdict JSON exactly; it never
+replaces an existing document.
+
+## 2. Gate change (user decision update 2026-11-08 ~22:00 KST) and justification
+
+`gate_version` = `rig_loma-release/1: G1-G5 = rig_dw DESIGN v1.1 (G5 amended), thresholds unchanged; G6 = SAM-free
+corr_challenge primary; SAM G6 diagnostic`.
+
+* **G6 primary = SAM-free `corr_challenge`** exactly as in frozen commit a935aef (`rig_loma_run.py`, committed before
+  the freeze record, untuned): 12 common rig perturbations of the G6 tolerance size (+-0.35 deg about the base axes
+  through the workspace pivot, +-8 mm along them), scored on held-out LoMa-G robot 2D-3D correspondences; each must be
+  rejected by frame AND episode one-sided sign tests (p < 0.01) with a frame majority. Held-out (fs): all 12 rejected
+  for both tasks (drawer weakest rotx- 542/720 frames, 20/20 episodes). The publisher re-derives every `rejected` flag
+  from the stored counts and refuses inconsistent records.
+* **SAM G6 = diagnostic.** drawer-open failed it only on roty+ (242/445 frames, p = 0.036 > 0.01; episode test 18/20,
+  p = 2e-4). Justification (FREEZE.md): the calibration is SAM-free by directive; SAM silhouettes are a different
+  evidence type with their own boundary bias (+-2 px mask change = 1.4-2 % scale), so the SAM-based perturbation test is
+  kept and reported, but the primary criterion uses the evidence the method is built on, on held-out episodes. Caveat
+  kept from the held-out report: the SAM-free challenge is the same evidence type as the fit (held-out episodes only).
+* G1-G5 unchanged (no threshold relaxed). Effective verdict: drawer-open all three cameras; mug-hanging 076054; 070988 /
+  073201 pending the fixedness exception (section 3).
+
+## 3. Camera fixedness in rig mode and the fixedness exception
+
+Rig mode (`calibrate` with `rig_calibration=<document>`, `calibration_rig.release_fixedness`) applies the verdict's rule
+per episode instead of the strict 4-segment test (which fails its own reference, DESIGN v1.1 G5 amendment):
+
+* G5a: the episode's whole-episode-median image is registered to the document's reference with its `fixedness_config`;
+  motion is detected only when the registration is VERIFIABLE (>= 6 and >= 60 % consistent patches). An unverifiable
+  registration is reported (`registration.verifiable = false`), never counted as moved (as in the verdict: drawer-open
+  97-99 / 100 episodes are not verifiable). Registration metrics (`segments`, shifts, inliers) are always reported.
+* G5b: the per-episode epipolar consistency of the rig solve stored in `fixedness_evidence`; an episode flagged `moved`,
+  or an episode the document has no evidence for, is rejected.
+* A camera published `held` with `held_by == ["G5a"]` is rejected in EVERY episode ("held by the registration-
+  fixedness check G5a ...; no valid fixedness exception") until the document carries a valid exception; with a valid
+  exception, episodes whose registration detects motion are accepted and the note "covered by the fixedness exception"
+  is recorded. G5b violations are never covered.
+
+**Exception procedure** (mug-hanging 070988 / 073201; FIXREG stream = independent pre-registered static-RGB feature
+registration on the existing recordings):
+
+1. FIXREG writes its method + criterion before results, then its verdict file(s).
+2. If there is no credible evidence of physical camera movement, the coordinator records the decision and creates a NEW
+   document (the published one is never modified; its sha256 is recorded as `supersedes`):
+
+       python -m s4d.realworld.rig_loma_publish fill-exception --rig rel/rig/rig-loma-mug-hanging.json \
+           --cameras 135122070988/color 135122073201/color --evidence <FIXREG verdict json> [<report>] \
+           --decision accepted --decided-by coordinator --reference "<HANDOFF line / FIXREG report>" \
+           --out rel/rig/rig-loma-mug-hanging-fx.json
+
+   (sha256 of every evidence file is computed now; only eligible cameras; `--decision rejected` keeps them held.)
+3. A valid exception = eligible camera listed, decision `accepted`, every evidence entry with path + sha256, decided_by /
+   decided_at / reference present (`calibration_rig.fixedness_exception_problem`). The new document has a new sha256, so
+   every calibrate record built with it gets a new fingerprint and build id.
+4. If FIXREG finds movement: do not fill; the cameras stay held and mug-hanging geometry consumers stay held.
+
+## 4. Per-camera depth scale (single source of truth = the accepted calibration record)
+
+The rig solve estimates each camera's metric depth scale jointly with its pose (`log z = log d + alpha`); the pose is
+consistent only with depth multiplied by exp(alpha) (device IR geometry: ~-0.3..+2.5 %, shared by FS / S2M2 / native,
+s2m2/REPORT.md section 6). Rig mode copies the document's `depth_scale` map (and `robot_model`) into each ACCEPTED
+`calibrate/<camera>.json`; consumers read it only through `pipeline`:
+
+* `accepted_calibration_doc` / `accepted_calibration` (pose) / `calibration_depth_scale(root, ep, cam, stage)`: 1.0 for
+  legacy records without a map or cameras without an accepted calibration; a record with a map but without `stage`
+  raises (a scale is never borrowed from another depth source); factors outside 0.9-1.1 raise.
+* `calibrated_view_depth` = `view_depth` x factor (raw `view_depth` / `load_view_depth` stay raw).
+* Applied in: TrackEverything input depth (track2d / lift3d), training store (stored depth + gripper-visibility depth
+  test of geometry cameras), window export (depth + gripper depth test), `vis_geometry` store, rwlearn
+  `ProcessedEpisodeStore.depth`, viewer `view_rgbd`; track_motion receives it through lift3d.
+* Fingerprints / versions: `calibrated_geometry_config` adds `depth_scale` {stage, factors, rule} (and `robot_model`)
+  to a stage's config ONLY when a factor differs from 1 (or the robot model from the legacy one), and
+  `calibrated_version` bumps the stage version with `+cal1` (`2-trackeverything+cal1`, `track_motion 1+cal1`,
+  `train_data 2+cal1`, `export 1+cal1`, `vis_geometry 1+cal1`). Legacy calibrations keep their fingerprints, versions and
+  bytes (train store byte-identity test), so existing outputs are never invalidated or rebuilt in place.
+* The calibrate rig mode itself multiplies the episode depth of its `depth_stage` before the robot-depth checks and
+  refuses a release document without a scale for that stage.
+
+## 5. Gripper mapping (Robotiq 2F-85 register -> finger joint)
+
+`robot.GRIPPER_MAP_LEGACY` = `register_linear_255/1` (theta = reg / 255 x 0.8 rad) is wrong for this gripper;
+`robot.GRIPPER_MAP_2F85` = `robotiq_2f85_register_3_230/2` (theta = clip((reg - 3) / 227, 0, 1) x 0.8 rad). Evidence
+(`rel/tools/gripper_evidence.py` -> `rel/results/gripper_register_evidence.json`, read-only scan of all 200 raw
+recordings; `loma/notes/robot_model_check.md`; `loma/results/fz/g3corr_*.json`):
+
+| evidence | observation |
+|---|---|
+| recorder convention | command closure c -> register 3 + 227 c (DROID; adapter note "Robotiq position 3 + 227 * closure") |
+| open plateau | request 3 -> register exactly 3 with object status 3 (position reached) in 100 / 100 mug and 91 / 100 drawer episodes; the register equals the request whenever the position is reached (requests 4-62, 211) |
+| closure plateau | every mug-hanging close command (request 230, all 100 episodes) stops at register 207-211 with object status 2 (contact while closing = object detected); no recording closes on nothing, so the closed end 230 rests on the convention + Robotiq (2F-85 reports ~227-230 fully closed in parallel mode) |
+| URDF | pads touch at 0.80 rad, 85.0 mm gap at 0 |
+| rendered pad width | legacy: open register 3 renders 84.2 mm (0.8 mm too closed), mug grasp (211) 15.9 mm gap (pads ~4 mm too open each); corrected: 85.0 mm and 7.8 mm |
+| image evidence (held-out SAM, fs, supplementary) | mug fixed o2m 1.994 / 1.990 / 1.912 px -> 1.991 / 1.924 / 1.782 corrected (1.872 / 1.864 / 1.414 with the estimated mount); drawer unchanged (register <= 49) |
+
+Implementation: `gripper_joint_value(..., mapping=)` (refuses the 2F-85 map for any other gripper / state semantics);
+`RobotGeometry(meta, gripper_map=, surface=)` poses `q` with it; `closure()` (the proprioceptive closure stored for
+learners) keeps the legacy map, so non-geometric consumers never change. The map reaches consumers only through the
+accepted calibration record (`robot_model`, written by rig mode from the release document):
+`calibrated_robot_geometry` in track_motion, export and the training store's gripper target points; the training
+store's M5 set motion and probe state keep the legacy geometry (identical sets / proprioception). The map id enters
+the fingerprint (`robot_model`) -> new build ids, version `+cal1`.
+
+## 6. Visual meshes: fail closed + remote asset fix
+
+* `robot_visual.require_visual_meshes` raises `MissingVisualMeshError` listing every mesh geometry without a visual
+  COLLADA mesh; `VisualSurface.build`, `rig_dw_frames.Surface` and `rig_loma_render.build_robot_mesh` fail closed
+  unless `allow_collision_fallback=True` is passed explicitly (diagnostics / synthetic tests); `RobotSurface.
+  build_visual` / `RobotGeometry(surface="visual")` never fall back. (Before: the remote asset copy had only collision
+  meshes and every remote rig_dw run silently used them.)
+* `scripts/realworld_add_visual_meshes.py` (stdlib, add-only; manifest `rel/tools/visual_meshes.sha256`): run once on
+  2026-11-08 13:09 UTC on the remote host: source `calib-loma/assets/validation-20261031` -> target
+  `/home/compu/kaist/sunho/realworld/assets/validation-20261031`: 20 files added (10 Franka fer `visual/*.dae`, 10
+  Robotiq 2F-85 `visual/2f_85/*.dae`), every sha256 verified after the add, nothing overwritten or deleted, the two
+  parent directories made writable only during the add and restored to 0555, new dirs 0555 / files 0444; the original
+  `SHA256SUMS` still verifies 23 / 23. Report: `rel/results/visual_meshes_apply.json` (hashes = `loma/notes/
+  visual_mesh_sha256.txt`).
+
+## 7. calibration_validated records
+
+`python -m s4d.realworld.calibration_release plan|apply` (module docstring). Per task, every valid manifest episode
+must have a done calibrate record (same sha256) whose on-disk record is a rig-mode build with EXACTLY the release
+document (input hash + reference hash), build id = the manifest's, every document camera accepted with the document's
+pose / depth scales / robot model, fixedness verified, and every document camera effectively validated (a G5a-held
+camera only with a valid exception). Any failure refuses the whole task. Record: status done, `output_format`
+`rw-calibration-validation/1`, `code_version` `calibration_validated@1+rig_release`, `input_sha256` = episode sha256,
+`metrics` = {decision accepted, calibrate_build_id, cameras (serials), gate_version, shared_calibration {name, sha256,
+reference_sha256}, evidence {frozen_commit, verdict_sha256, freeze_record_sha256, user_decision, calibrate_fingerprint,
+fixedness_exception}, depth_scale, robot_model, per_camera {fixedness, held-out robot depth, explained, depth scale
+applied}}. `apply` is a dry run unless `--apply`; it re-checks the live manifest (sha256, current calibrate build id)
+and writes only through `ingest_worker.set_stage`.
+
+## 8. Operator runbook (coordinator)
+
+Preconditions: this branch released through the normal chain (`release_chain.py`), visual meshes present in the
+asset copy (done), mug-hanging exception decided (section 3) before mug-hanging step 2. Never touch running jobs or the
+existing release root; everything below writes NEW roots / records.
+
+1. **Rig-mode calibrate per task into a new variant root that reuses depth and masks.** For every episode create
+   `processed/calrel-<commit>/<task>/<ep>/episodes/<ep>/` with symlinks to the existing release stages
+   (`normalized`, `derived/sensor_depth`, `derived/foundation_stereo_depth`, `derived/sam3_masks`; `run_stage` refuses
+   to rebuild a symlinked stage, so they are reused, never modified). Root config = the release config with
+
+       stages.calibrate: {evidence: rgbd, depth_stage: foundation_stereo_depth, robot_mask_stage: sam3_masks,
+                          every: 2, max_frames: 200, landmark_links: [], overlays: 4,
+                          rig_calibration: <rel/rig/rig-loma-<task>[-fx].json (copied to the remote)>}
+
+   and run `s4d.realworld.cli run --config <cfg> --episode <ep> --stages calibrate` (container with the asset copy
+   mounted; the document's robot model needs the visual meshes and fails closed otherwise). Expected per camera:
+   `init_method rig_shared`, `status accepted`, `diagnostics.release`, `depth_scale`, `robot_model`.
+2. **Records.** Sync the new calibrate stage records into the manifest (PRE dispatcher / `sync_stage_records.py`, so
+   `stages.calibrate` names the new root and build id), then on the remote (read-only mounts):
+   `python -m s4d.realworld.calibration_release plan --manifest <copy> --rig <task>=<doc> --path-map ... --out
+   plan.json`; locally `... apply --plan plan.json --state-dir /home/ws/ws/realworld-ops/ingest` (dry run), then with
+   `--apply`. A refused task writes nothing; fix the cause, never edit records by hand.
+3. **Regenerate geometry stages** in the same variant root (reusing depth / masks):
+   `--stages track_everything,track_motion,train_data[,vis_geometry]` (versions `+cal1`, new build ids; the training
+   store is written to `<root>/train_data/<ep>`), then the per-episode QA with families (rwprep qa, rwprep-qa/3) and
+   sync the stage records (track2d, lift3d, track_motion, train_data, qa) into the manifest. The gate requires
+   `calibration_validated.metrics.calibrate_build_id` = the current calibrate build id: rebuild order 1 -> 2 -> 3,
+   and do not re-run calibrate afterwards (a new build id would void the records).
+4. **Gate report:** `python -I scripts/realworld_learning.py gate --out <report>`; check `calibration_hold[task].passed`
+   (100 / 100 validated) and that trainers' `check_store_calibration` sees the new stores (upstream calibrate = the
+   validated build id, every store camera validated).
+5. **Scheduler:** `python -I scripts/realworld_learning.py plan --tasks <passed tasks> --commit <release> --out
+   plan.yaml` (rows only for consumers whose gate level passed), review, register through the normal scheduler
+   workflow (`scripts/jobs.py`), priorities per the campaign rules. Running non-geometric experiments keep their
+   existing stores (their non-geometric content is identical in the new stores).
+
+## 9. Risks / limitations
+
+* The gripper-mount estimate is not applied (nominal mount everywhere, as in the frozen SAM validation); gripper
+  surface error up to ~3 mm / 1.5 deg.
+* G5a is unverifiable for most drawer-open episodes and G5b lacks one camera pair in many mug episodes: per-episode
+  fixedness rests on "no detected motion" (the verdict's rule), not on positive verification of every episode.
+* Depth scales are per depth source; a new depth stage needs its own solve before it can be used with these poses.
+* Not covered by the uncertainty spreads: common base-frame yaw / robot-scale confound, LoMa-G template bias.
