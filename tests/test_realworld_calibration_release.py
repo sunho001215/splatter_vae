@@ -699,17 +699,24 @@ def test_calibration_validated_records_satisfy_the_gate_and_refuse_failures(tmp_
     assert not calls and rep["tasks"]["drawer-open"]["would_write"] == 3
     rep = apply(p, state, write=True, set_stage=lambda *a: calls.append(a))
     assert len(calls) == 3 and {c[2] for c in calls} == {"calibration_validated"}
-    # the real ingest-worker writer accepts the records (field whitelist, sha256 check) and the gate releases them
-    real = tmp_path / "state-real"
-    real.mkdir()
-    (real / "manifest.json").write_text(json.dumps(manifest))
-    rep = apply(p, real, write=True)
-    assert rep["tasks"]["drawer-open"]["written"] == 3
-    written = json.loads((real / "manifest.json").read_text())
-    for key in t["records"]:
-        stages = written["episodes"][key]["preprocessing"]["stages"]
-        assert stages["calibration_validated"]["status"] == "done"
-        assert calibration_record_problem(stages, sha[key]) is None
+    # the real ingest-worker writer accepts the records (field whitelist, sha256 check) and the gate releases them;
+    # inside the release containers the runs/ bind mount hides the tracked worker (as tests/test_ops_layout.py
+    # tool_path): that part runs on every host checkout, and its absence is only accepted inside a container
+    from s4d.realworld.calibration_release import INGEST_WORKER
+
+    if not INGEST_WORKER.is_file():
+        assert Path("/.dockerenv").exists(), f"{INGEST_WORKER} is missing"
+    else:
+        real = tmp_path / "state-real"
+        real.mkdir()
+        (real / "manifest.json").write_text(json.dumps(manifest))
+        rep = apply(p, real, write=True)
+        assert rep["tasks"]["drawer-open"]["written"] == 3
+        written = json.loads((real / "manifest.json").read_text())
+        for key in t["records"]:
+            stages = written["episodes"][key]["preprocessing"]["stages"]
+            assert stages["calibration_validated"]["status"] == "done"
+            assert calibration_record_problem(stages, sha[key]) is None
     changed = json.loads(json.dumps(manifest))
     changed["episodes"]["drawer-open/episode_000001.h5"]["preprocessing"]["stages"]["calibrate"]["metrics"][
         "build_id"] = "z" * 32
