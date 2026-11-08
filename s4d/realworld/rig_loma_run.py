@@ -205,12 +205,16 @@ def main(argv=None):
     ap.add_argument("--split", default="final", choices=["final", "dev"],
                     help="final: rig_dw split (held-out = every 5th episode, k %% 5 == 2); dev: the final held-out "
                          "episodes are excluded and every 5th remaining episode is the development hold-out")
+    ap.add_argument("--episodes", nargs="*", default=None, help="restrict to these episodes (diagnostics)")
+    ap.add_argument("--mount", action="store_true", help="estimate the per-task gripper-mount correction (6 DoF)")
     ap.add_argument("--dispoff", action="store_true", help="estimate per-camera inverse-depth (disparity) offsets")
     ap.add_argument("--per-episode", action="store_true", help="G5b per-episode epipolar consistency (validation)")
     a = ap.parse_args(argv)
     t0 = time.time()
     cdir, mdir, fdir = Path(a.corr), Path(a.matches), Path(a.flags)
     all_eps = sorted({p.stem for p in cdir.glob(f"{a.task}-*.npz")} & {p.stem for p in mdir.glob(f"{a.task}-*.npz")})
+    if a.episodes:
+        all_eps = [e for e in all_eps if e in set(a.episodes)]
     fit, held = episode_split(all_eps)
     if a.split == "dev":  # development: the global held-out episodes are never loaded; dev-held = every 5th fit episode
         held = [e for k, e in enumerate(fit) if k % 5 == 4]
@@ -327,13 +331,14 @@ def main(argv=None):
 
         result["mount_information"] = mount_information(s, prob.Keff(s), corr, gl, {c: cs.T7 for c, cs in corr.items()},
                                                         a.sigma_px, a.cauchy)
-        if v == "mount":  # diagnostic: alternate gripper-mount estimate (fixed rig) and rig re-solve
+        if v == "mount" or a.mount:  # alternate gripper-mount estimate (fixed rig) and rig re-solve
             from s4d.realworld.rig_loma_solve import apply_mount, estimate_mount
 
             mlog, dM = [], np.zeros(6)
             for _ in range(3):
-                em = estimate_mount(s, prob.Keff(s), apply_mount(corr, gl, dM) if dM.any() else corr, gl,
-                                    a.sigma_px, a.cauchy)
+                mc = {c: cs for c, cs in corr.items() if lcfg.corr_cameras is None or c in lcfg.corr_cameras}
+                em = estimate_mount(s, prob.Keff(s), apply_mount(mc, gl, dM) if dM.any() else mc, gl,
+                                    a.sigma_px, a.cauchy)  # loco: the withheld camera's matches stay unused
                 dM = dM + np.asarray(em["dM_rad_m"])
                 prob.corr = apply_mount(corr, gl, dM)
                 s = prob.solve(s, stages=("common", "full"), log=log)
