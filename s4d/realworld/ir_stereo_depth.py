@@ -25,6 +25,12 @@ goes through ``depth_stages.load_view_depth``: depth, valid, attrs). ``STAGE_VER
 the fingerprint key: depth and valid are computed exactly as before, so completed layout-1 outputs stay valid inputs
 (downstream stages fingerprint the build id only) and are compacted in place by the operational repack, which records
 ``output_layout`` "2" and its provenance in the completion record.
+
+Stage ``s2m2_depth`` (candidate, study 2026-11-08, ``s2m2_ir_depth``): S2M2 (worker ``s2m2_worker.py``, same task and
+outputs as the FoundationStereo worker) on the same IR pairs with exactly the same conversion, validity rules,
+registration and persisted layout, so calibration, TrackEverything, lifting and the training store switch by stage
+name (their ``depth_stage`` option). Optional ``frames`` subset (e.g. calibration pool frames): full-length datasets,
+uncomputed frames invalid, plus a ``computed`` flag per frame. Not part of the standard stage graph.
 """
 
 from __future__ import annotations
@@ -38,6 +44,7 @@ import numpy as np
 from s4d.realworld import io as rio
 
 STAGE_VERSION = "2"  # computation version (fingerprint key); unchanged by the layout change
+S2M2_STAGE_VERSION = "1"  # computation version of the S2M2 candidate stage ``s2m2_depth``
 OUTPUT_LAYOUT = "2"  # persisted datasets: depth, valid (layout "1" also stored the per-pixel diagnostics)
 PERSISTED = ("depth", "valid")
 
@@ -52,22 +59,71 @@ def ir_stereo_depth(root: Path, episode_id: str, spec, runner, *, chunk: int = 8
     """B1: FoundationStereo on every device IR pair (remote worker ``foundation_stereo`` task ``ir_pair_disparity``),
     disparity -> metric depth -> colour grid (``ir_disparity_to_color`` kernel)."""
     from s4d.realworld.baseline_stages import worker_identity
+
+    config = {"chunk": chunk, "valid_iters": valid_iters, "hiera": hiera, "min_disparity": min_disparity,
+              "min_depth_m": min_depth_m, "max_depth_m": max_depth_m, "splat": splat,
+              "worker_identity": worker_identity(spec), "kernel": "ir_disparity_to_color"}
+    return _ir_pair_stage(root, episode_id, spec, runner, config=config, version=STAGE_VERSION,
+                          worker_params={"valid_iters": valid_iters, "hiera": hiera}, output_stage=output_stage,
+                          chunk_prefix="fs", source="FoundationStereo on the device IR pair (left reference), "
+                                                    "z = fx*B/d, registered by z-buffer forward warp exactly as the "
+                                                    "native depth", force=force)
+
+
+def s2m2_ir_depth(root: Path, episode_id: str, spec, runner, *, chunk: int = 8, model_type: str = "XL",
+                  num_refine: int = 3, precision: str = "fp16", allow_negative: bool = False,
+                  min_disparity: float = 0.5, min_depth_m: float = 0.1, max_depth_m: float = 6.0, splat: int = 2,
+                  frames: dict | None = None, output_stage: str = "s2m2_depth", force: bool = False) -> dict:
+    """Candidate parallel to B1 (study 2026-11-08): S2M2 (worker ``s2m2``, task ``ir_pair_disparity``, the same
+    inputs and outputs as the FoundationStereo worker) on every device IR pair, then EXACTLY the B1 conversion
+    (``ir_disparity_to_color``: z = fx*B/d, the same validity rules, the same z-buffer registration) and the same
+    persisted layout (``depth``/``valid`` per colour stream, same attrs), so consumers switch by stage name.
+
+    ``frames`` (optional) {colour stream id: [frame indices]} computes only those frames (e.g. the calibration pool
+    frames of a rig document); the datasets keep the full episode length, uncomputed frames are depth 0 / invalid and
+    a ``computed`` (N,) bool dataset names the computed frames. ``frames=None`` computes every frame."""
+    from s4d.realworld.baseline_stages import worker_identity
+
+    if model_type not in ("S", "M", "L", "XL") or precision not in ("fp16", "fp32"):
+        raise ValueError(f"S2M2 model_type {model_type!r} / precision {precision!r}")
+    config = {"chunk": chunk, "model_type": model_type, "num_refine": num_refine, "precision": precision,
+              "allow_negative": bool(allow_negative), "min_disparity": min_disparity, "min_depth_m": min_depth_m,
+              "max_depth_m": max_depth_m, "splat": splat, "worker_identity": worker_identity(spec),
+              "kernel": "ir_disparity_to_color"}
+    if frames is not None:
+        frames = {str(k): sorted({int(i) for i in v}) for k, v in frames.items()}
+        config["frames"] = frames
+    return _ir_pair_stage(root, episode_id, spec, runner, config=config, version=S2M2_STAGE_VERSION,
+                          worker_params={"model_type": model_type, "num_refine": num_refine, "precision": precision,
+                                         "allow_negative": bool(allow_negative)},
+                          output_stage=output_stage, chunk_prefix="s2m2", frames=frames,
+                          source=f"S2M2-{model_type} (num_refine {num_refine}, {precision}) on the device IR pair "
+                                 "(left reference), z = fx*B/d, registered by z-buffer forward warp exactly as the "
+                                 "native depth", force=force)
+
+
+def _ir_pair_stage(root: Path, episode_id: str, spec, runner, *, config: dict, version: str, worker_params: dict,
+                   output_stage: str, chunk_prefix: str, source: str, frames: dict | None = None,
+                   force: bool = False) -> dict:
+    """Shared body of the IR-pair stereo stages: worker ``ir_pair_disparity`` -> ``ir_disparity_to_color`` kernel ->
+    ``<stage>/<colour stream>.h5`` (depth, valid; + ``computed`` for a frame subset)."""
     from s4d.realworld.depth_stages import view_K
     from s4d.realworld.pipeline import _record_fp, load_meta, read_frames
 
+    chunk = int(config["chunk"])
+    min_disparity, min_depth_m, max_depth_m = config["min_disparity"], config["min_depth_m"], config["max_depth_m"]
+    splat = config["splat"]
     meta = load_meta(root, episode_id)
     rigs = ir_rigs(meta)
     if not rigs:
         raise RuntimeError("no metric device infrared pair in this episode (adapter include_ir and a recorder that "
                            "stores stereo/left|right are required); native depth is never substituted")
-    config = {"chunk": chunk, "valid_iters": valid_iters, "hiera": hiera, "min_disparity": min_disparity,
-              "min_depth_m": min_depth_m, "max_depth_m": max_depth_m, "splat": splat,
-              "worker_identity": worker_identity(spec), "kernel": "ir_disparity_to_color"}
     inputs = {"ingest": _record_fp(root, episode_id, "ingest")}
     directory = rio.stage_dir(root, episode_id, output_stage)
-    store = rio.ChunkStore(directory, rio.stage_fingerprint(output_stage, STAGE_VERSION, config, inputs))
+    store = rio.ChunkStore(directory, rio.stage_fingerprint(output_stage, version, config, inputs))
     if force:
         store.clear()
+    persisted = PERSISTED + (("computed",) if frames is not None else ())
 
     def build(tmp: Path) -> dict:
         summary, identity = {}, None
@@ -81,24 +137,34 @@ def ir_stereo_depth(root: Path, episode_id: str, spec, runner, *, chunk: int = 8
             n = len(meta.stream_timestamps_ns[g.left_stream])
             if n != len(meta.stream_timestamps_ns[cam]):
                 raise ValueError(f"{g.rig_id}: {n} IR pairs vs {len(meta.stream_timestamps_ns[cam])} colour frames")
+            if frames is None:
+                todo = list(range(n))
+                groups = [todo[s:s + chunk] for s in range(0, n, chunk)]
+            else:
+                todo = list(frames.get(cam, []))
+                if any(i < 0 or i >= n for i in todo):
+                    raise ValueError(f"{cam}: requested frames outside [0, {n})")
+                groups = [todo[s:s + chunk] for s in range(0, len(todo), chunk)]
             stats = []
             with h5py.File(tmp / f"{rio.safe_name(cam)}.h5", "w") as f:
                 f.attrs.update(K=K_c, K_ir=K_ir, stream_id=cam, rig_id=g.rig_id, baseline_m=g.baseline_m,
                                T_color_left=g.T_color(), grid="colour sensor pinhole grid (zero distortion)",
                                depth_convention="metric camera-z of the colour camera, 0 invalid",
-                               source="FoundationStereo on the device IR pair (left reference), z = fx*B/d, "
-                                      "registered by z-buffer forward warp exactly as the native depth",
+                               source=source,
                                disparity_convention="left-IR grid, d = x_left - x_right (pixels), right reference by "
                                                     "flip-and-swap; lr_error = |d_L(x) - d_R(x - d_L)|",
-                               output_layout=OUTPUT_LAYOUT, persisted_datasets=json.dumps(list(PERSISTED)),
+                               output_layout=OUTPUT_LAYOUT, persisted_datasets=json.dumps(list(persisted)),
                                diagnostics="IR-grid disparity / left-right error / IR validity and the colour-grid "
                                            "source pixel are summarised per stream in the stage summary only",
                                ir_hw=list(ir_hw))
                 dd = f.create_dataset("depth", (n, *hw), np.float32, chunks=(1, *hw), compression="lzf")
                 vv = f.create_dataset("valid", (n, *hw), bool, chunks=(1, *hw), compression="lzf")
-                for start in range(0, n, chunk):
-                    idx = list(range(start, min(n, start + chunk)))
-                    cid = f"{cam}/{start:05d}-{idx[-1]:05d}"
+                if frames is not None:
+                    done = np.zeros(n, bool)
+                for idx in groups:
+                    contiguous = idx == list(range(idx[0], idx[-1] + 1))
+                    cid = (f"{cam}/{idx[0]:05d}-{idx[-1]:05d}" if contiguous and frames is None
+                           else f"{cam}/s{idx[0]:05d}-{idx[-1]:05d}-n{len(idx)}")
                     # layout-2 chunks carry depth only, under their own id: a layout-1 writer resuming the same build
                     # (same fingerprint) never reads them, and vice versa; both reuse the unchanged model-output chunk
                     got = store.get(f"{cid}/depth")
@@ -107,9 +173,10 @@ def ir_stereo_depth(root: Path, episode_id: str, spec, runner, *, chunk: int = 8
                         if dgot is None:  # model output saved durably before its ack (resumable)
                             left = read_frames(root, episode_id, g.left_stream, idx)
                             right = read_frames(root, episode_id, g.right_stream, idx)
-                            resp, disp, handle = runner.worker(spec, "ir_pair_disparity",
-                                                               {"valid_iters": valid_iters, "hiera": hiera},
-                                                               {"left": left, "right": right}, chunk_id=f"fs/{cid}")
+                            resp, disp, handle = runner.worker(spec, "ir_pair_disparity", dict(worker_params),
+                                                               {"left": left, "right": right},
+                                                               chunk_id=f"{chunk_prefix}/{cid}")
+                            disp = {k: disp[k] for k in ("disparity_left", "disparity_right")}
                             store.put(f"{cid}/disparity", disp, {"model": resp["model"], "meta": resp["meta"]})
                             runner.ack(handle)
                             dgot = store.get(f"{cid}/disparity")
@@ -120,28 +187,41 @@ def ir_stereo_depth(root: Path, episode_id: str, spec, runner, *, chunk: int = 8
                             {"color_hw": list(hw), "min_disparity": min_disparity, "min_depth_m": min_depth_m,
                              "max_depth_m": max_depth_m, "splat": splat, "baseline_m": float(g.baseline_m)},
                             {"disparity_left": disp["disparity_left"], "disparity_right": disp["disparity_right"],
-                             "K_ir": K_ir, "K_color": K_c, "T_color_left": g.T_color()}, chunk_id=f"fs2c/{cid}")
+                             "K_ir": K_ir, "K_color": K_c, "T_color_left": g.T_color()},
+                            chunk_id=f"{chunk_prefix}2c/{cid}")
                         out = {"depth": out["depth"]}  # only what is persisted (the stats are in kmeta)
                         store.put(f"{cid}/depth", out, {**kmeta, "model": resp["model"], "worker_meta": resp["meta"]})
                         runner.ack(handle2)
                         got = (out, {**kmeta, "model": resp["model"], "worker_meta": resp["meta"]})
                     out, kmeta = got
-                    sl = slice(idx[0], idx[-1] + 1)
-                    dd[sl], vv[sl] = out["depth"], out["depth"] > 0
+                    if contiguous:
+                        sl = slice(idx[0], idx[-1] + 1)
+                        dd[sl], vv[sl] = out["depth"], out["depth"] > 0
+                    else:
+                        for k, i in enumerate(idx):
+                            dd[i], vv[i] = out["depth"][k], out["depth"][k] > 0
+                    if frames is not None:
+                        done[idx] = True
                     stats += kmeta["frames"]
                     identity = kmeta["model"]
-            summary[cam] = {"frames": n, "ir_valid_fraction_mean": float(np.mean([s["ir_valid_fraction"] for s in stats])),
+                if frames is not None:
+                    f.create_dataset("computed", data=done)
+            lr = [s["lr_error_median_px"] for s in stats if s["lr_error_median_px"] is not None]
+            summary[cam] = {"frames": n,
+                            "ir_valid_fraction_mean": float(np.mean([s["ir_valid_fraction"] for s in stats]))
+                            if stats else None,
                             "registered_valid_fraction_mean": float(np.mean([s["registered_valid_fraction"]
-                                                                             for s in stats])),
-                            "lr_error_median_px": float(np.median([s["lr_error_median_px"] for s in stats])),
+                                                                             for s in stats])) if stats else None,
+                            "lr_error_median_px": float(np.median(lr)) if lr else None,
                             "ir_rig": g.rig_id, "baseline_m": g.baseline_m}
+            if frames is not None:
+                summary[cam]["frames_computed"] = len(todo)
         summary["model"] = identity
         summary["runner"] = runner.describe()
-        summary["output_layout"], summary["persisted_datasets"] = OUTPUT_LAYOUT, list(PERSISTED)
+        summary["output_layout"], summary["persisted_datasets"] = OUTPUT_LAYOUT, list(persisted)
         return summary
 
-    rec = rio.run_stage(directory, stage=output_stage, version=STAGE_VERSION, config=config, inputs=inputs,
+    rec = rio.run_stage(directory, stage=output_stage, version=version, config=config, inputs=inputs,
                         build=build, force=force)
     store.cleanup()
     return rec
-

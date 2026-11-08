@@ -65,3 +65,22 @@ foundation_stereo:   # own-rig depth (B1: device IR pairs), the standard since t
     pretrained inference only; grayscale IR replicated to 3 channels (issue #80); IR1 = left, IR2 = right (README);
     native 640x480 (scale 1, no hiera); open upstream issues #217/#238/#239 (FlashMultiheadAttention head layout) are
     pinned as-is (validated behaviour); EdgeNeXt constructed without the ImageNet download, then strict checkpoint load
+s2m2:   # CANDIDATE own-rig depth (study 2026-11-08, realworld-ops/calib-loma/s2m2); not in the standard stage graph
+  repo: https://github.com/junhong-3dv/s2m2
+  commit: cbb5d169981e3086be1f959db5a8a0f139adcb17   # 2026-10-16 (default-branch HEAD on 2026-11-08)
+  license: "CC BY-NC 4.0 (LICENSE; README: non-commercial research and education only)"
+  environment: >-
+    isolated s2m2 venv (uv 0.9.7, CPython 3.11.14 of the rwprep image; torch 2.10.0+cu129, torchvision 0.25.0+cu129,
+    numpy 2.4.6, opencv-python-headless 5.0.0.93); upstream imported from <repo>/src (no pip install)
+  checkpoint_source: https://huggingface.co/minimok/s2m2 (revision 880bc49f2a7cf54a42570f8550c46cb57454bac9, cc-by-nc-4.0)
+  checkpoints:   # sha256 of the files = the Hugging Face LFS sha256
+    CH128NTR1.pth: 93f7177d8159d6666506df3abb0cdd75473614fab0e39f25e397acade0f9e241   # S
+    CH192NTR2.pth: 6e767e0977dd0a81a51021429f82b1c8451fd2534862170cb18a0019a33ae8ad   # M
+    CH256NTR3.pth: 770e822272585f843288507a2274349f032f2ef8106d1370bdefa8849b37cf87   # L
+    CH384NTR3.pth: 78dee08652ac6b6d42ff60d2ccd8184021b1e7beb93b091f379f82ba9f0b3032   # XL
+  entrypoint_reference: >-
+    src/s2m2/core/utils/model_utils.py load_model + run_stereo_matching (image_pad(32), autocast fp16, image_crop);
+    model inputs float 0..255 3-channel; outputs disparity (left reference), occlusion (0 = occluded), confidence
+  notes: >-
+    worker s4d/realworld/workers/s2m2_worker.py loads the checkpoint strictly (upstream my_load_state_dict skips
+    mismatched keys silently); grayscale IR replicated to 3 channels as model input only; right reference by flip-and-swap

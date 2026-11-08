@@ -27,18 +27,19 @@ import yaml
 from s4d.realworld import io as rio
 
 STAGES = ("ingest", "sensor_depth", "calibrate", "track_motion", "train_data", "vis_geometry", "export",
-          "foundation_stereo_depth",
+          "foundation_stereo_depth", "s2m2_depth",
           "track_everything")  # optional stages last (dispatch order is in code)
 BASELINE_STAGES = ("sam3_masks",)
 # run only when configured under ``stages``: the depth model, the tracker (no default backend), the motion filter, the
 # training store (it needs the task name), the viewer's native depth store and the former window export (legacy,
 # window-level copies)
 OPTIONAL_STAGES = ("track_motion", "train_data", "vis_geometry", "export", "foundation_stereo_depth",
-                   "track_everything")
+                   "s2m2_depth", "track_everything")
 # stage directories with a completion record (track_everything writes the track2d and lift3d records)
-RECORD_STAGES = ("sensor_depth", "foundation_stereo_depth", "calibrate", "track2d", "lift3d", "track_motion")
+RECORD_STAGES = ("sensor_depth", "foundation_stereo_depth", "s2m2_depth", "calibrate", "track2d", "lift3d", "track_motion")
 # model worker each stage calls (weights are staged only for the workers of the requested stages)
-STAGE_WORKERS = {"foundation_stereo_depth": "foundation_stereo", "track_everything": "trackeverything",
+STAGE_WORKERS = {"foundation_stereo_depth": "foundation_stereo", "s2m2_depth": "s2m2",
+                 "track_everything": "trackeverything",
                  "sam3_masks": "sam3"}
 
 
@@ -194,6 +195,11 @@ def run_stages(cfg, adapter, ep, runner, run, wanted, spec_factory=None):
 
         run("foundation_stereo_depth", lambda f: ir_stereo_depth(root, ep, spec_factory("foundation_stereo"), runner,
                                                                  force=f, **st.get("foundation_stereo_depth", {})))
+    if "s2m2_depth" in wanted:  # candidate IR stereo depth (S2M2; study 2026-11-08), same contract as B1
+        from s4d.realworld.ir_stereo_depth import s2m2_ir_depth
+
+        run("s2m2_depth", lambda f: s2m2_ir_depth(root, ep, spec_factory("s2m2"), runner, force=f,
+                                                  **st.get("s2m2_depth", {})))
     cc = dict(st.get("calibrate", {}))
 
     def calibration(force):
