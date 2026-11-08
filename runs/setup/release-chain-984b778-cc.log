@@ -1,0 +1,77 @@
+=== 2026-11-08 23:35:12 release chain 984b77821871b0ff419970692e20a78e30b7c640 (calibration release code: rig_loma release docs, fixedness exception, calibration_validated builder, depth scale downstream, 2F-85 gripper map, fail-closed visual meshes)
+23:35:40 /home/ws/ws/splatter4d/.worktrees/rwcalib-rel/s4d/remote_access.py sync-code 984b77821871b0ff419970692e20a78e30b7c640 -> 0 /home/compu/kaist/sunho/releases/984b77821871b0ff419970692e20a78e30b7c640/code 
+23:35:40 /home/compu/kaist/sunho/releases/984b77821871b0ff419970692e20a78e30b7c640/code
+23:35:46 sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a --tag cc -> 0 /home/ws/ws/splatter4d/runs/remote/verification/native-984b778-cc-queue.yaml 
+23:36:32 remote co-tenants: 1 known, 45 GB RAM not yet in use charged; GPU-9e9f1e97 1 (16.0 GB charged, 79.6 GB free after pending reservations)
+23:36:32 launched verify-native-984b778-cc on remote/GPU-ca65e1b7-c0ac-6757-7d3f-816c3119a4c1 (s4d-verify-native-984b778-cc-a1, attempt 1)
+23:36:32 wait {'verify-native-984b778-cc': 'running'}
+23:37:53 verify-native-984b778-cc: live result sync unavailable; job remains running
+23:37:53 remote co-tenants: 1 known, 45 GB RAM not yet in use charged; GPU-9e9f1e97 1 (16.0 GB charged, 79.6 GB free after pending reservations)
+23:37:54 wait {'verify-native-984b778-cc': 'running'}
+23:39:07 ocsw4-drm-coffee-push-s2000 exited with 0
+23:39:07 remote co-tenants: 1 known, 45 GB RAM not yet in use charged; GPU-9e9f1e97 1 (16.0 GB charged, 79.6 GB free after pending reservations)
+23:39:07 wait {'verify-native-984b778-cc': 'running'}
+23:40:26 ocsw4-drm-coffee-push-s2000-eval exited with 0
+23:40:26 verify-native-984b778-cc: live result sync unavailable; job remains running
+23:40:26 remote co-tenants: 1 known, 45 GB RAM not yet in use charged; GPU-9e9f1e97 1 (16.0 GB charged, 79.6 GB free after pending reservations)
+23:40:27 wait {'verify-native-984b778-cc': 'running'}
+23:41:40 remote co-tenants: 1 known, 45 GB RAM not yet in use charged; GPU-9e9f1e97 1 (16.0 GB charged, 79.6 GB free after pending reservations)
+23:41:41 wait {'verify-native-984b778-cc': 'running'}
+23:43:00 remote co-tenants: 1 known, 45 GB RAM not yet in use charged; GPU-9e9f1e97 1 (16.0 GB charged, 79.6 GB free after pending reservations)
+23:43:01 wait {'verify-native-984b778-cc': 'running'}
+23:44:14 remote co-tenants: 1 known, 45 GB RAM not yet in use charged; GPU-9e9f1e97 1 (16.0 GB charged, 78.9 GB free after pending reservations)
+23:44:14 wait {'verify-native-984b778-cc': 'running'}
+23:45:33 remote co-tenants: 1 known, 45 GB RAM not yet in use charged; GPU-9e9f1e97 1 (16.0 GB charged, 79.6 GB free after pending reservations)
+23:45:34 wait {'verify-native-984b778-cc': 'running'}
+23:46:45 remote co-tenants: 1 known, 45 GB RAM not yet in use charged; GPU-9e9f1e97 1 (16.0 GB charged, 79.6 GB free after pending reservations)
+23:46:46 wait {'verify-native-984b778-cc': 'running'}
+23:48:08 remote co-tenants: 1 known, 45 GB RAM not yet in use charged; GPU-9e9f1e97 1 (16.0 GB charged, 79.6 GB free after pending reservations)
+23:48:09 wait {'verify-native-984b778-cc': 'running'}
+23:49:22 verify-native-984b778-cc: live result sync unavailable; job remains running
+23:49:22 remote co-tenants: 1 known, 45 GB RAM not yet in use charged; GPU-9e9f1e97 1 (16.0 GB charged, 79.6 GB free after pending reservations)
+23:49:23 wait {'verify-native-984b778-cc': 'running'}
+23:50:42 remote co-tenants: 1 known, 45 GB RAM not yet in use charged; GPU-9e9f1e97 1 (16.0 GB charged, 79.6 GB free after pending reservations)
+23:50:43 wait {'verify-native-984b778-cc': 'running'}
+23:51:56 remote co-tenants: 1 known, 45 GB RAM not yet in use charged; GPU-9e9f1e97 1 (16.0 GB charged, 79.6 GB free after pending reservations)
+23:51:56 wait {'verify-native-984b778-cc': 'running'}
+23:53:16 remote co-tenants: 1 known, 45 GB RAM not yet in use charged; GPU-9e9f1e97 1 (16.0 GB charged, 79.6 GB free after pending reservations)
+23:53:17 wait {'verify-native-984b778-cc': 'running'}
+23:54:59 ocsw4-drm-coffee-push-s2002-eval exited with 0
+23:54:59 verify-native-984b778-cc exited with 1 on remote
+23:54:59 remote co-tenants: 1 known, 45 GB RAM not yet in use charged; GPU-9e9f1e97 1 (16.0 GB charged, 79.6 GB free after pending reservations)
+23:54:59 launched verify-native-984b778-cc on remote/GPU-ca65e1b7-c0ac-6757-7d3f-816c3119a4c1 (s4d-verify-native-984b778-cc-a2, attempt 2)
+23:55:00 wait {'verify-native-984b778-cc': 'running'}
+23:56:24 remote co-tenants: 1 known, 45 GB RAM not yet in use charged; GPU-9e9f1e97 1 (16.0 GB charged, 79.6 GB free after pending reservations)
+23:56:25 wait {'verify-native-984b778-cc': 'running'}
+23:57:40 remote co-tenants: 1 known, 45 GB RAM not yet in use charged; GPU-9e9f1e97 1 (16.0 GB charged, 79.6 GB free after pending reservations)
+23:57:40 wait {'verify-native-984b778-cc': 'running'}
+23:59:01 verify-native-984b778-cc: live result sync unavailable; job remains running
+23:59:01 remote co-tenants: 1 known, 45 GB RAM not yet in use charged; GPU-9e9f1e97 1 (16.0 GB charged, 79.6 GB free after pending reservations)
+23:59:02 wait {'verify-native-984b778-cc': 'running'}
+00:00:14 remote co-tenants: 1 known, 45 GB RAM not yet in use charged; GPU-9e9f1e97 1 (16.0 GB charged, 79.6 GB free after pending reservations)
+00:00:15 wait {'verify-native-984b778-cc': 'running'}
+00:01:34 remote co-tenants: 1 known, 45 GB RAM not yet in use charged; GPU-9e9f1e97 1 (16.0 GB charged, 79.6 GB free after pending reservations)
+00:01:35 wait {'verify-native-984b778-cc': 'running'}
+00:02:48 remote co-tenants: 1 known, 45 GB RAM not yet in use charged; GPU-9e9f1e97 1 (16.0 GB charged, 79.6 GB free after pending reservations)
+00:02:49 wait {'verify-native-984b778-cc': 'running'}
+00:04:11 remote co-tenants: 1 known, 45 GB RAM not yet in use charged; GPU-9e9f1e97 1 (16.0 GB charged, 79.6 GB free after pending reservations)
+00:04:12 wait {'verify-native-984b778-cc': 'running'}
+00:05:29 remote co-tenants: 1 known, 45 GB RAM not yet in use charged; GPU-9e9f1e97 1 (16.0 GB charged, 79.6 GB free after pending reservations)
+00:05:30 wait {'verify-native-984b778-cc': 'running'}
+00:06:53 verify-native-984b778-cc: live result sync unavailable; job remains running
+00:06:53 remote co-tenants: 1 known, 45 GB RAM not yet in use charged; GPU-9e9f1e97 1 (16.0 GB charged, 79.6 GB free after pending reservations)
+00:06:54 wait {'verify-native-984b778-cc': 'running'}
+00:08:07 remote co-tenants: 1 known, 45 GB RAM not yet in use charged; GPU-9e9f1e97 1 (16.0 GB charged, 79.6 GB free after pending reservations)
+00:08:08 wait {'verify-native-984b778-cc': 'running'}
+00:09:32 remote co-tenants: 1 known, 45 GB RAM not yet in use charged; GPU-9e9f1e97 1 (16.0 GB charged, 79.6 GB free after pending reservations)
+00:09:33 wait {'verify-native-984b778-cc': 'running'}
+00:10:46 verify-native-984b778-cc: live result sync unavailable; job remains running
+00:10:46 remote co-tenants: 1 known, 45 GB RAM not yet in use charged; GPU-9e9f1e97 1 (16.0 GB charged, 79.6 GB free after pending reservations)
+00:10:46 wait {'verify-native-984b778-cc': 'running'}
+00:12:08 remote co-tenants: 1 known, 45 GB RAM not yet in use charged; GPU-9e9f1e97 1 (16.0 GB charged, 79.6 GB free after pending reservations)
+00:12:08 wait {'verify-native-984b778-cc': 'running'}
+00:13:21 verify-native-984b778-cc exited with 1 on remote
+00:13:21 verify-native-984b778-cc exhausted restarts; diagnose before retrying
+00:13:21 remote co-tenants: 1 known, 45 GB RAM not yet in use charged; GPU-9e9f1e97 1 (16.0 GB charged, 79.6 GB free after pending reservations)
+00:13:21 FAILED {'verify-native-984b778-cc': 'failed'}
+chain exit 2
