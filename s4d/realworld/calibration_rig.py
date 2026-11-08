@@ -286,6 +286,95 @@ def validate_episode(camera_id: str, frames: list[CalibrationFrame], K: np.ndarr
     return CalibrationResult(camera_id, "rejected" if reasons else "accepted", reasons, T, T, "rig_shared", diag)
 
 
+# ------------------------------------------------------------------ release documents (calibration release 2026-11-08)
+# A rig document with ``fixedness_rule == FIXEDNESS_RULE_G5AB`` (published by ``rig_loma_publish``) is judged per episode
+# by the rule of its verdict (rig_dw DESIGN v1.1, G5 amendment) instead of the strict segment test: (G5a) the whole-
+# episode-median registration to the rig reference detects motion only when it is VERIFIABLE (>= min_inlier_patches and
+# >= min_inlier_fraction consistent patches); (G5b) the per-episode epipolar consistency of the rig solve, stored per
+# camera and episode in ``fixedness_evidence``, must not flag motion; an episode without stored evidence is rejected.
+# Cameras held ONLY by G5a at publication (``held_by == ["G5a"]``) stay held - and every episode is rejected on the
+# registration-fixedness check - unless the document carries a valid ``fixedness_exception`` naming the camera.
+FIXEDNESS_RULE_G5AB = "g5ab/1"
+_SHA256 = __import__("re").compile(r"^[0-9a-f]{64}$")
+
+
+def registration_class(motion: dict, cfg: FixednessConfig) -> dict:
+    """G5a reading of an ``episode_motion`` result: per segment VERIFIABLE iff a registration exists with >=
+    ``min_inlier_patches`` and >= ``min_inlier_fraction`` consistent patches; MOVED iff verifiable and not fixed."""
+    segs = motion.get("segments") or []
+    verifiable, moved = [], []
+    for k, m in enumerate(segs):
+        tot, inl = m.get("patches", 0), m.get("inlier_patches", 0)
+        ok = "shift_px" in m and inl >= cfg.min_inlier_patches and inl >= cfg.min_inlier_fraction * max(1, tot)
+        verifiable.append(bool(ok))
+        if ok and not m.get("fixed", False):
+            moved.append(f"segment {k}: {m.get('reason')}")
+    return {"verifiable": bool(segs) and all(verifiable), "verifiable_segments": int(sum(verifiable)),
+            "segments": len(segs), "moved": bool(moved), "reason": "; ".join(moved) or None,
+            "max_shift_px": motion.get("max_shift_px")}
+
+
+def fixedness_exception_problem(doc: dict, camera_id: str) -> str | None:
+    """Why the document's ``fixedness_exception`` does NOT cover ``camera_id`` (None: it does). Valid only when the
+    camera is eligible (named at publication), the decision is "accepted", the camera is listed, every evidence entry
+    names a file and its sha256, and the decision is attributed (decided_by, decided_at, reference)."""
+    ex = doc.get("fixedness_exception") or {}
+    if camera_id not in (ex.get("eligible_cameras") or []):
+        return "camera not eligible for a fixedness exception"
+    if ex.get("decision") != "accepted":
+        return f"exception decision {ex.get('decision')!r} (empty until the coordinator fills it from FIXREG evidence)"
+    if camera_id not in (ex.get("cameras") or []):
+        return "camera not listed in the exception"
+    evidence = ex.get("evidence") or []
+    if not evidence or not all(isinstance(e, dict) and e.get("path") and _SHA256.match(str(e.get("sha256", "")))
+                               for e in evidence):
+        return "exception evidence missing or without sha256"
+    missing = [k for k in ("decided_by", "decided_at", "reference") if not ex.get(k)]
+    if missing:
+        return f"exception provenance missing {missing}"
+    return None
+
+
+def rig_camera_status(doc: dict, camera_id: str) -> tuple[str, list, dict | None]:
+    """(effective status, reasons, exception summary or None) of a release document's camera: "validated" when
+    published validated, or when held only by G5a and covered by a valid fixedness exception; else "held"."""
+    entry = doc["cameras"][camera_id]
+    if entry.get("status") == "validated":
+        return "validated", [], None
+    if entry.get("status") == "held" and list(entry.get("held_by") or []) == ["G5a"]:
+        why = fixedness_exception_problem(doc, camera_id)
+        if why is None:
+            ex = doc["fixedness_exception"]
+            return "validated", [], {k: ex.get(k) for k in ("decision", "cameras", "evidence", "decided_by",
+                                                              "decided_at", "reference")}
+        return "held", [f"held by the registration-fixedness check G5a ({'; '.join(entry.get('reasons') or [])}); "
+                        f"no valid fixedness exception: {why}"], None
+    return str(entry.get("status") or "held"), list(entry.get("reasons") or []), None
+
+
+def release_fixedness(doc: dict, camera_id: str, episode_id: str, motion: dict, cfg: FixednessConfig) -> dict:
+    """Per-episode fixedness of a camera under ``FIXEDNESS_RULE_G5AB`` (see above); the registration metrics are always
+    reported (``registration``, the ``episode_motion`` segments), also when the camera is rejected."""
+    status, why, exception = rig_camera_status(doc, camera_id)
+    reg = registration_class(motion, cfg)
+    ev = ((doc.get("fixedness_evidence") or {}).get(camera_id) or {}).get(episode_id)
+    problems, notes = [], []
+    if status != "validated" and list(doc["cameras"][camera_id].get("held_by") or []) == ["G5a"]:
+        problems.append(why[0] if why else "camera held by G5a")
+    if reg["moved"]:
+        if exception is not None:
+            notes.append(f"G5a registration detects motion ({reg['reason']}); covered by the fixedness exception")
+        else:
+            problems.append(f"G5a: registration detects motion ({reg['reason']})")
+    if ev is None:
+        problems.append("episode not covered by the rig document's per-episode fixedness evidence (G5b)")
+    elif ev.get("epipolar") == "moved":
+        problems.append("G5b: the per-episode epipolar consistency of the rig solve flags motion")
+    return {**motion, "fixed": not problems, "strict_segment_test_fixed": bool(motion.get("fixed")),
+            "rule": FIXEDNESS_RULE_G5AB, "registration": reg, "evidence": ev, "exception": exception, "notes": notes,
+            **({"reason": "; ".join(problems)} if problems else {"reason": None})}
+
+
 def replicate_spread(T_full: np.ndarray, replicates: list[np.ndarray]) -> dict:
     """Max pairwise rotation / camera-centre distance among the full pooled solve and its replicates."""
     Ts = [np.asarray(T_full, float)] + [np.asarray(T, float) for T in replicates]

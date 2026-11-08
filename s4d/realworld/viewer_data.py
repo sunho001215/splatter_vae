@@ -83,11 +83,14 @@ def view_rgbd(ve: ViewerEpisode, v: int, frame_index: int, source: str, root: Pa
     """RGB of the view and the depth of stage ``source`` read from ``root`` (default: the episode root; a depth variant
     root links the same normalized frames)."""
     from s4d.realworld.depth_stages import load_view_depth
-    from s4d.realworld.pipeline import read_frames
+    from s4d.realworld.pipeline import calibration_depth_scale, read_frames
 
     stream = ve.streams[v]
     rgb = read_frames(ve.root, ve.episode_id, stream, [frame_index])[0]
     depth, valid, K = load_view_depth(root or ve.root, ve.episode_id, stream, [frame_index], source)
+    scale = calibration_depth_scale(ve.root, ve.episode_id, stream, source)  # the pose ve.T was accepted with
+    if scale != 1.0:
+        depth = (depth * np.float32(scale)).astype(np.float32)
     if ve.meta.stream(stream).channel_order == "BGR":
         rgb = rgb[..., ::-1]
     return rgb, depth[0], valid[0], np.asarray(K, float)

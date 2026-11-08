@@ -37,13 +37,15 @@ from s4d.realworld import io as rio
 from s4d.realworld.contract import CONVENTIONS, SCHEMA_VERSION
 from s4d.realworld.geometry import crop_affine, invert_T, resize_affine, warp_affine
 from s4d.realworld.pipeline import (
-    RobotGeometry,
     accepted_calibration,
+    calibrated_geometry_config,
+    calibrated_robot_geometry,
+    calibrated_version,
+    calibrated_view_depth,
     camera_views,
     default_depth_stage,
     load_meta,
     robot_state_at,
-    view_depth,
     view_frames,
 )
 from s4d.realworld.track_motion import MOVING, load_motion
@@ -168,7 +170,10 @@ def export(root: Path, episode_id: str, out: Path, *, strides=(1, 2), resolution
     ref_stamps = meta.stream_timestamps_ns[ref_cam]
     if max_sync_ns is None:
         max_sync_ns = int(np.median(np.diff(ref_stamps)) // 3) if len(ref_stamps) > 1 else 0
-    geom = RobotGeometry(meta)
+    # calibration-derived settings (per-camera depth scale, robot model of the accepted calibration): recorded - and
+    # the version bumped - only when they differ from the legacy calibration
+    cal_extra = calibrated_geometry_config(root, episode_id, meta, depth_stage)
+    geom = calibrated_robot_geometry(root, episode_id, meta)
     rng = np.random.default_rng(0)
     grip_links = geom.gripper_links()
     pool = np.concatenate([geom.surface.link_points[n] for n in grip_links])
@@ -259,7 +264,7 @@ def export(root: Path, episode_id: str, out: Path, *, strides=(1, 2), resolution
                     keep, seg = keep_index(info["chunk"])
                     if keep is not None:
                         pts, vis, seg = pts[:, keep], vis[:, keep], seg[pos]
-                    depth, K = view_depth(root, episode_id, meta, cam, info["frames"], depth_stage)
+                    depth, K = calibrated_view_depth(root, episode_id, meta, cam, info["frames"], depth_stage)
                     imgs = view_frames(root, episode_id, meta, cam, info["frames"])
                     w2c = accepted_calibration(root, episode_id, cam).astype(np.float32)
                     cams.append((cam, pts, vis, seg if keep is not None else None, depth, K, imgs, w2c))
@@ -360,6 +365,7 @@ def export(root: Path, episode_id: str, out: Path, *, strides=(1, 2), resolution
             "upstream_records": {k: rio.build_id(v) for k, v in records.items()},
             "models": {k: records[k]["summary"] for k in (depth_stage, "track2d")},
             "calibration": records["calibrate"]["summary"],
+            **({"calibration_derived": cal_extra} if cal_extra else {}),
             "MOCK_MODEL_OUTPUTS": bool(mock),
             "split_policy": f"windows inside the last {validation_tail_frames} reference frames are validation, "
                             "straddling windows dropped (same episode; not generalisation)",
@@ -367,8 +373,8 @@ def export(root: Path, episode_id: str, out: Path, *, strides=(1, 2), resolution
         rio.atomic_write_json(tmp / "manifest.json", manifest)
         return {"windows": len(windows), "cameras": [c for c, _ in chosen], "mock": bool(mock)}
 
-    return rio.run_stage(Path(out), stage="export", version="1",
-                         config={"strides": list(strides), "resolutions": resolutions, "cameras": cameras,
+    return rio.run_stage(Path(out), stage="export", version=calibrated_version("1", cal_extra),
+                         config={**cal_extra, "strides": list(strides), "resolutions": resolutions, "cameras": cameras,
                                  "allow_infrared_input": allow_infrared_input, "allow_mock": allow_mock,
                                  "max_sync_ns": max_sync_ns, "gripper_points": gripper_points,
                                  "validation_tail_frames": validation_tail_frames,

@@ -66,10 +66,12 @@ class Surface:
     """Dense visual-mesh samples (link frames, float32) used for rendering + normals; posed per frame. ``posed``
     returns the points and LAZY normal/velocity providers (only the selected samples are transformed)."""
 
-    def __init__(self, model, spacing_m: float, seed: int = 0):
+    def __init__(self, model, spacing_m: float, seed: int = 0, allow_collision_fallback: bool = False):
         from s4d.realworld.robot_visual import VisualSurface
 
-        self.vs = VisualSurface.build(model, spacing_m=spacing_m, seed=seed)
+        # fails closed when a visual mesh is missing (no silent collision fallback; release 2026-11-08)
+        self.vs = VisualSurface.build(model, spacing_m=spacing_m, seed=seed,
+                                      allow_collision_fallback=allow_collision_fallback)
         self.links = sorted(self.vs.link_points)
         self.pts = np.concatenate([self.vs.link_points[l] for l in self.links]).astype(np.float32)
         self.nrm = np.concatenate([self.vs.link_normals[l] for l in self.links]).astype(np.float32)

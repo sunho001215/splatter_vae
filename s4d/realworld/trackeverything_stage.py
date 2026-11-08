@@ -19,11 +19,13 @@ from s4d.realworld.geometry import project, transform_points
 from s4d.realworld.pipeline import (
     _record_fp,
     accepted_calibration,
+    calibrated_geometry_config,
+    calibrated_version,
+    calibrated_view_depth,
     camera_views,
     chunk_queries,
     load_meta,
     to_model_rgb,
-    view_depth,
     view_frames,
 )
 from s4d.realworld.tracking import (
@@ -167,10 +169,16 @@ def track_everything(root: Path, episode_id: str, spec, runner, *, depth_stage,
               "inference_frames": "exactly pipeline.chunk_queries, including recording pauses",
               "birth_depth_edge_rel": 0.05, "query_depth_lookup": "floor on resized grid; no depth invention",
               "vis_threshold": 0.5, "allow_mock": allow_mock}
+    # per-camera depth scale of the accepted calibration (TE predicts 3D in the input depth's metric scale and restores
+    # it to base with the pose): only recorded - and the version bumped - when a factor differs from 1
+    cal_extra = calibrated_geometry_config(root, episode_id, meta, depth_stage)
+    cal_extra.pop("robot_model", None)  # TrackEverything never poses the robot
+    config.update(cal_extra)
+    version = calibrated_version(VERSION, cal_extra)
     inputs = {k: _record_fp(root, episode_id, k) for k in ("ingest", depth_stage, "calibrate")}
     directory = rio.stage_dir(root, episode_id, "track2d")
     store = rio.ChunkStore(directory.with_name("trackeverything_clips"),
-                           rio.stage_fingerprint("track2d", VERSION, config, inputs))
+                           rio.stage_fingerprint("track2d", version, config, inputs))
     if force:
         store.clear()
 
@@ -201,7 +209,7 @@ def track_everything(root: Path, episode_id: str, spec, runner, *, depth_stage,
                 got = store.get(cid)
                 if got is None:
                     video = to_model_rgb(view_frames(root, episode_id, meta, cam, idx), stream)
-                    depth, K = view_depth(root, episode_id, meta, cam, idx, depth_stage)
+                    depth, K = calibrated_view_depth(root, episode_id, meta, cam, idx, depth_stage)
                     if video.shape[1:3] != hw or depth.shape != (len(idx), *hw):
                         raise ValueError(f"{cam}: depth and colour must share the original view grid")
                     xy = pixels[:, ::-1] + 0.5
@@ -259,9 +267,9 @@ def track_everything(root: Path, episode_id: str, spec, runner, *, depth_stage,
                             "provenance": te_provenance(models, runner, spec)}
         return summary
 
-    t2d = rio.run_stage(directory, stage="track2d", version=VERSION, config=config, inputs=inputs,
+    t2d = rio.run_stage(directory, stage="track2d", version=version, config=config, inputs=inputs,
                         build=lambda tmp: build(tmp, "track2d"), force=force)
-    t3d = rio.run_stage(rio.stage_dir(root, episode_id, "lift3d"), stage="lift3d", version=VERSION,
+    t3d = rio.run_stage(rio.stage_dir(root, episode_id, "lift3d"), stage="lift3d", version=version,
                         config=config, inputs={**inputs, "track2d": rio.build_id(t2d)},
                         build=lambda tmp: build(tmp, "lift3d"), force=force)
     store.cleanup()

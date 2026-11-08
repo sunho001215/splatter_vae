@@ -75,7 +75,6 @@ def calibrate(root: Path, episode_id: str, landmark_source, *, landmark_links: l
         raise ValueError("a landmark source is required unless cfg.evidence == 'rgbd'")
     depth_stage = depth_stage or default_depth_stage(meta, "calibrate")
     depth_rec = rio.read_record(rio.stage_dir(root, episode_id, depth_stage))
-    geom = RobotGeometry(meta)
     runner = runner or LocalRunner(rio.episode_dir(root, episode_id) / "_work" / "calibrate")
     inputs = {"ingest": _record_fp(root, episode_id, "ingest")}
     if depth_rec is not None:
@@ -95,10 +94,16 @@ def calibrate(root: Path, episode_id: str, landmark_source, *, landmark_links: l
         if not robot_mask_stage:
             raise ValueError("rig_calibration needs robot_mask_stage (dynamic mask of the fixedness check)")
         *rig, rig_fp = load_rig(rig_calibration)  # hashed from the exact bytes used below (no republish race)
-        fix_cfg = FixednessConfig(**(fixedness or {}))
+        # release documents carry the fixedness configuration of their verdict (G5a: 1 segment); overrides on top
+        fix_cfg = FixednessConfig(**{**(rig[0].get("fixedness_config") if rig[0].get("fixedness_rule") else {}),
+                                     **(fixedness or {})})
         config["rig_calibration"] = {"path": str(rig_calibration), "name": rig[0].get("name"),
                                      "format": rig[0].get("format"), "fixedness": asdict(fix_cfg)}
         inputs.update(rig_fp)
+    # the robot model the rig was validated with (release documents: corrected gripper map, visual meshes; fails
+    # closed when the visual meshes are missing); per-episode mode and other documents keep the legacy model
+    model = (rig[0].get("robot_model") if rig is not None else None) or {}
+    geom = RobotGeometry(meta, gripper_map=model.get("gripper_map"), surface=model.get("surface", "collision"))
     directory = rio.stage_dir(root, episode_id, "calibrate")
     store = rio.ChunkStore(directory, rio.stage_fingerprint("calibrate", STAGE_VERSIONS["calibrate"], config, inputs))
     if force:
@@ -248,13 +253,24 @@ def _validate_with_rig(root, episode_id, meta, cam, arrays, cfg, rig, fix_cfg, r
     ``calibrate_camera`` kernel. A rig camera entry may carry ``depth_scale`` {depth stage: factor} (the board-free
     rig calibration ``rig_dw`` estimates the metric scale of each depth source jointly with the poses); the episode's
     depth of that stage is multiplied by it before the robot-depth checks, and the factor is reported."""
+    from dataclasses import replace
+
     from s4d.realworld.calibration import CalibrationFrame, overlay_image
-    from s4d.realworld.calibration_rig import episode_motion, validate_episode
+    from s4d.realworld.calibration_rig import (
+        FIXEDNESS_RULE_G5AB,
+        episode_motion,
+        release_fixedness,
+        rig_camera_status,
+        validate_episode,
+    )
     from s4d.realworld.pipeline import read_frames, to_model_rgb
 
     doc, ref = rig
     if cam not in doc["cameras"]:
         raise ValueError(f"rig calibration {doc.get('name')!r} has no camera {cam}")
+    release = doc.get("fixedness_rule")
+    if release not in (None, FIXEDNESS_RULE_G5AB):
+        raise ValueError(f"rig calibration {doc.get('name')!r}: unknown fixedness rule {release!r}")
     n = len(meta.stream_timestamps_ns[cam])
     pick = np.linspace(0, n - 1, min(fix_cfg.frames, n)).round().astype(int)
     rgb = to_model_rgb(read_frames(root, episode_id, cam, pick), meta.stream(cam))
@@ -263,8 +279,16 @@ def _validate_with_rig(root, episode_id, meta, cam, arrays, cfg, rig, fix_cfg, r
         sem = f["semantic"][()]
     moving = [names.index(c) for c in ("robot", "object") if c in names]
     motion = episode_motion(ref[cam]["grey"], ref[cam]["dynamic"], rgb, np.isin(sem, moving), arrays["K"], fix_cfg)
+    rig_camera = doc["cameras"][cam]
+    if release:  # verdict rule (G5a verifiable registration + stored G5b evidence + fixedness exception)
+        status, why, exception = rig_camera_status(doc, cam)
+        motion = release_fixedness(doc, cam, episode_id, motion, fix_cfg)
+        rig_camera = {**rig_camera, "status": status}
+        cfg = replace(cfg, **(doc.get("episode_checks") or {}))
     depth, masks = arrays.get("depth"), arrays.get("robot_mask")
     depth_scale = float(((doc["cameras"][cam].get("depth_scale") or {}).get(depth_stage)) or 1.0)
+    if release and depth is not None and depth_stage not in (doc["cameras"][cam].get("depth_scale") or {}):
+        raise ValueError(f"release rig {doc.get('name')!r} has no depth scale for {depth_stage!r} of {cam}")
     if depth is not None and depth_scale != 1.0:
         depth = np.asarray(depth) * depth_scale
     frames = [CalibrationFrame(int(arrays["t_index"][k]), int(arrays["timestamp_ns"][k]), arrays["landmarks_base"][k],
@@ -272,13 +296,26 @@ def _validate_with_rig(root, episode_id, meta, cam, arrays, cfg, rig, fix_cfg, r
                                arrays["flange_base"][k], None if depth is None else depth[k],
                                None if masks is None else masks[k]) for k in range(len(arrays["t_index"]))]
     pooled = (doc.get("pool_frames") or {}).get(episode_id, {}).get(cam, [])
-    res = validate_episode(cam, frames, np.asarray(arrays["K"], float), cfg, doc["cameras"][cam], motion,
+    res = validate_episode(cam, frames, np.asarray(arrays["K"], float), cfg, rig_camera, motion,
                            pooled_frames=pooled)
     res.diagnostics["depth_scale_applied"] = {"stage": depth_stage, "factor": depth_scale}
+    if release:
+        if why:
+            res.reasons = list(dict.fromkeys([*res.reasons, *why]))
+        res.diagnostics["release"] = {"rig": doc.get("name"), "gate_version": doc.get("gate_version"),
+                                      "fixedness_rule": release, "effective_rig_status": status,
+                                      "fixedness_exception": exception, "episode_checks": doc.get("episode_checks")}
     overlays = [] if res.T_cam_base is None else [
         overlay_image(img, res.T_cam_base, frames[int(k)], np.asarray(arrays["K"], float), cfg.image_hw)
         for img, k in zip(arrays.get("overlay_images", []), arrays.get("overlay_frames", []))]
     out = {"overlays": np.stack(overlays) if overlays else np.zeros((0, *cfg.image_hw, 3), np.uint8)}
     from s4d.realworld.kernels import _finite, _json_default
 
-    return out, {"result": _finite(json.loads(json.dumps(res.to_json(), default=_json_default)))}
+    result = _finite(json.loads(json.dumps(res.to_json(), default=_json_default)))
+    # what downstream geometry consumers take from the accepted record (single source of truth, pipeline.
+    # accepted_calibration_doc): the per-depth-stage scales and the robot model the rig was validated with
+    if doc["cameras"][cam].get("depth_scale"):
+        result["depth_scale"] = {k: float(v) for k, v in doc["cameras"][cam]["depth_scale"].items()}
+    if doc.get("robot_model"):
+        result["robot_model"] = dict(doc["robot_model"])
+    return out, {"result": result}

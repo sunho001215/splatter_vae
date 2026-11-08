@@ -150,6 +150,39 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
+def _resolve(mesh: str, mesh_root=None) -> str:
+    name = mesh or ""
+    for prefix in ("package://", "file://"):
+        if name.startswith(prefix):
+            name = name[len(prefix):]
+    return name if Path(name).is_absolute() or mesh_root is None else str(Path(mesh_root) / name)
+
+
+class MissingVisualMeshError(FileNotFoundError):
+    """Visual meshes were requested but some mesh geometry has no visual mesh (no silent collision fallback)."""
+
+
+def require_visual_meshes(model, mesh_root=None, links=None) -> dict:
+    """{(link, k-th mesh geometry of the link): (visual mesh path, sha256)} for EVERY mesh geometry of ``model`` (or of
+    ``links``). Raises ``MissingVisualMeshError`` listing every geometry without a visual mesh: a robot surface built
+    for visual-mesh evidence must never fall back to the collision hulls silently (the remote asset copy of 2026-11-08
+    had no visual meshes and every remote run fell back; ``scripts/realworld_add_visual_meshes.py`` adds them)."""
+    found, missing = {}, []
+    for link, geoms in sorted(model.links.items()):
+        if links is not None and link not in links:
+            continue
+        for k, g in enumerate(x for x in geoms if x.kind == "mesh"):
+            vis = visual_mesh_for(_resolve(g.mesh, mesh_root))
+            if vis is None:
+                missing.append(f"{link}: {g.mesh}")
+            else:
+                found[(link, k)] = (vis, _sha256(vis))
+    if missing:
+        raise MissingVisualMeshError(f"visual meshes requested but missing for {len(missing)} mesh geometries "
+                                     f"(no collision fallback): {missing[:6]}")
+    return found
+
+
 def triangle_samples(tri: np.ndarray, spacing_m: float, rng) -> tuple[np.ndarray, np.ndarray]:
     """Area-uniform surface samples (about one per spacing^2) with the triangle normals."""
     e1, e2 = tri[:, 1] - tri[:, 0], tri[:, 2] - tri[:, 0]
@@ -176,9 +209,14 @@ class VisualSurface:
     fallback: list = field(default_factory=list)
 
     @classmethod
-    def build(cls, model, spacing_m: float = 0.004, seed: int = 0, links=None) -> "VisualSurface":
+    def build(cls, model, spacing_m: float = 0.004, seed: int = 0, links=None,
+              allow_collision_fallback: bool = False) -> VisualSurface:
+        """Fails closed (``MissingVisualMeshError``) when any mesh geometry lacks its visual mesh, unless
+        ``allow_collision_fallback`` is passed explicitly (synthetic tests / diagnostics; recorded in ``fallback``)."""
         from s4d.realworld.robot import load_mesh
 
+        if not allow_collision_fallback:
+            require_visual_meshes(model, links=links)
         rng = np.random.default_rng(seed)
         pts, nrm, meshes, fallback = {}, {}, {}, []
         for link, geoms in sorted(model.links.items()):

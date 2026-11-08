@@ -288,6 +288,10 @@ def write_episode(root: Path, episode_id: str, out_dir: Path, *, task: str | Non
     from s4d.realworld.pipeline import (
         RobotGeometry,
         accepted_calibration,
+        calibrated_geometry_config,
+        calibrated_version,
+        calibration_depth_scale,
+        calibration_robot_model,
         camera_views,
         default_depth_stage,
         load_meta,
@@ -353,21 +357,35 @@ def write_episode(root: Path, episode_id: str, out_dir: Path, *, task: str | Non
               "max_set_motion_m": float(max_set_motion_m)}
     if partial:
         config["layout"] = CALIBRATION_OPTIONAL_LAYOUT
+    # calibration-derived settings of the GEOMETRY fields (stored depth and gripper-visibility test x the accepted
+    # per-camera depth scale; gripper target points posed with the accepted robot model). Robot proprioception
+    # (probe_state closure) and the M5 set motion keep the legacy robot geometry, so consumers that use no geometry
+    # see identical data. Recorded - and the writer version bumped - only when they differ from the legacy calibration.
+    cal_extra = calibrated_geometry_config(root, episode_id, meta, depth_stage) if geometry else {}
+    config.update(cal_extra)
+    writer_version = calibrated_version(WRITER_VERSION, cal_extra)
+    scales = {v.stream_id: (calibration_depth_scale(root, episode_id, v.stream_id, depth_stage)
+                            if v.stream_id in geometry else 1.0) for v in chosen}
     inputs = {"ingest": rio.build_id(norm), **{k: rio.build_id(v) for k, v in records.items() if v is not None}}
 
     def build(tmp: Path) -> dict:
         t_start = time.perf_counter()
-        geom = RobotGeometry(meta)
+        geom = RobotGeometry(meta)  # legacy: probe closure + M5 set motion (unchanged for non-geometric consumers)
+        model = cal_extra.get("robot_model")
+        ggeom = geom if model is None else RobotGeometry(meta, gripper_map=model["gripper_map"],
+                                                         surface=model["surface"])
+        if model is not None and calibration_robot_model(root, episode_id, meta) != model:
+            raise RuntimeError("robot model changed while writing")
         rng = np.random.default_rng(0)  # the window export's gripper sample (same points)
-        links = geom.gripper_links()
-        pool = np.concatenate([geom.surface.link_points[n] for n in links])
-        pool_link = np.concatenate([[n] * len(geom.surface.link_points[n]) for n in links])
+        links = ggeom.gripper_links()
+        pool = np.concatenate([ggeom.surface.link_points[n] for n in links])
+        pool_link = np.concatenate([[n] * len(ggeom.surface.link_points[n]) for n in links])
         pick = rng.choice(len(pool), min(gripper_points, len(pool)), replace=False)
         source = meta.provenance.source_files[0] if meta.provenance.source_files else None
         timing, calibration_status = {}, {}
         with h5py.File(tmp / FILE, "x") as f:
             f.attrs.update(
-                format=FORMAT, schema_version=SCHEMA_VERSION, writer_version=WRITER_VERSION,
+                format=FORMAT, schema_version=SCHEMA_VERSION, writer_version=writer_version,
                 code_commit=_code_commit() or "unknown", episode_id=episode_id, task=task,
                 episode_schema=EPISODE_SCHEMA, created_unix=time.time(),
                 raw_recording=str(source.path) if source else "", raw_sha256=str(source.sha256) if source else "",
@@ -393,6 +411,8 @@ def write_episode(root: Path, episode_id: str, out_dir: Path, *, task: str | Non
                 max_sync_ns=int(max_sync_ns), MOCK_MODEL_OUTPUTS=bool(mock))
             if partial:
                 f.attrs["layout"] = CALIBRATION_OPTIONAL_LAYOUT
+            if cal_extra:
+                f.attrs["calibration_derived"] = json.dumps(cal_extra)
             tr = meta.trajectory
             g = f.create_group("robot")
             g.create_dataset("timestamps_ns", data=tr.timestamps_ns.astype(np.int64))
@@ -462,6 +482,8 @@ def write_episode(root: Path, episode_id: str, out_dir: Path, *, task: str | Non
                         rgb_ds[start:start + len(idx)] = np.stack([CR.crop_rgb(im, box, S) for im in frames])
                         if has_geometry:
                             depth, valid, _ = load_view_depth(root, episode_id, cam, idx, depth_stage)
+                            if scales[cam] != 1.0:  # the accepted calibration's depth scale (consistent with w2c)
+                                depth = depth * np.float32(scales[cam])
                             depth = training_depth(depth, valid)
                             dep_ds[start:start + len(idx)] = np.stack([nearest_resample(d, box, S) for d in depth])
                         if camera_semantic:
@@ -478,7 +500,8 @@ def write_episode(root: Path, episode_id: str, out_dir: Path, *, task: str | Non
                 probe = np.zeros((n, 7), np.float32)
                 for k in range(n):
                     fk = geom.model.fk(geom.q(q[k], gs[k]))
-                    grip[k] = np.stack([fk[pool_link[i]][:3, :3] @ pool[i] + fk[pool_link[i]][:3, 3] for i in pick])
+                    gfk = fk if ggeom is geom else ggeom.model.fk(ggeom.q(q[k], gs[k]))
+                    grip[k] = np.stack([gfk[pool_link[i]][:3, :3] @ pool[i] + gfk[pool_link[i]][:3, 3] for i in pick])
                     T = fk[meta.robot.flange_frame]
                     probe[k] = np.concatenate([T[:3, 3], Rotation.from_matrix(T[:3, :3]).as_euler("xyz"),
                                                [geom.closure(gs[k])]])
@@ -518,7 +541,7 @@ def write_episode(root: Path, episode_id: str, out_dir: Path, *, task: str | Non
                 for start in range(0, len(rows), chunk):
                     sel = rows[start:start + chunk]
                     depth, valid, _ = load_view_depth(root, episode_id, view.stream_id, frames_sync[sel, v], depth_stage)
-                    depth = np.where(valid, depth, 0.0).astype(np.float32)
+                    depth = np.where(valid, depth * np.float32(scales[view.stream_id]), 0.0).astype(np.float32)
                     for k, t in enumerate(sel):
                         gvis[t, v] = depth_test(ref_grip[t], K_nat, w2c, depth[k], continuous=True)[0]
             if len(geometry) == len(chosen):
@@ -535,7 +558,7 @@ def write_episode(root: Path, episode_id: str, out_dir: Path, *, task: str | Non
                             surface=f"RobotGeometry URDF surface, {n_points} points over "
                                     f"{len(geom.surface.link_points)} links (seed 0)")
         sizes = component_sizes(tmp / FILE)
-        return {"format": FORMAT, "schema_version": SCHEMA_VERSION, "writer_version": WRITER_VERSION,
+        return {"format": FORMAT, "schema_version": SCHEMA_VERSION, "writer_version": writer_version,
                 "code_commit": _code_commit(), "task": task, "cameras": [v.rig_id for v in chosen],
                 "excluded_cameras": excluded, "frames": {v.rig_id: len(t) for v, t in zip(chosen, stamps_all)},
                 "sync_sets": int((frames_sync >= 0).all(1).sum()), "sync": {"criterion": SYNC_CRITERION, **counts},
@@ -546,7 +569,7 @@ def write_episode(root: Path, episode_id: str, out_dir: Path, *, task: str | Non
                 **({"layout": CALIBRATION_OPTIONAL_LAYOUT, "calibration_status": calibration_status}
                    if partial else {})}
 
-    return rio.run_stage(out_dir, stage=STAGE, version=WRITER_VERSION, config=config, inputs=inputs, build=build,
+    return rio.run_stage(out_dir, stage=STAGE, version=writer_version, config=config, inputs=inputs, build=build,
                          force=force)
 
 

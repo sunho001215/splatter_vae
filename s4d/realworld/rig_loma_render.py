@@ -208,7 +208,7 @@ class RobotMesh:
                             normal=self.normal, provenance=json.dumps(self.provenance))
 
     @classmethod
-    def load(cls, path: str | Path) -> "RobotMesh":
+    def load(cls, path: str | Path) -> RobotMesh:
         import json
 
         with np.load(path) as z:
@@ -225,12 +225,16 @@ class RobotMesh:
         return V, N
 
 
-def build_robot_mesh(model, crease_deg: float = 35.0, links=None) -> RobotMesh:
+def build_robot_mesh(model, crease_deg: float = 35.0, links=None, allow_collision_fallback: bool = False) -> RobotMesh:
     """Render mesh from a ``robot.URDFModel`` (composed Panda + Robotiq URDF): every mesh geometry is replaced by the
-    visual COLLADA mesh next to its collision STL (``robot_visual.visual_mesh_for``), STL (grey) where none exists."""
+    visual COLLADA mesh next to its collision STL (``robot_visual.visual_mesh_for``). Fails closed
+    (``robot_visual.MissingVisualMeshError``) when a visual mesh is missing, unless ``allow_collision_fallback`` (then
+    the STL is rendered grey and listed in ``provenance["fallback"]``)."""
     from s4d.realworld.robot import load_mesh
-    from s4d.realworld.robot_visual import visual_mesh_for
+    from s4d.realworld.robot_visual import require_visual_meshes, visual_mesh_for
 
+    if not allow_collision_fallback:
+        require_visual_meshes(model, links=links)
     names, T, L, C, N, prov = [], [], [], [], [], {"meshes": {}, "fallback": []}
     for link, geoms in sorted(model.links.items()):
         if links is not None and link not in links:

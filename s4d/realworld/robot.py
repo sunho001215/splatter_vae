@@ -229,12 +229,39 @@ def panda_dh_fk(q: np.ndarray) -> list[np.ndarray]:
 
 ROBOTIQ_FINGER_JOINT_MAX = {"robotiq_2f_85": 0.8, "robotiq_2f_140": 0.7}  # finger_joint upper limits in the URDFs
 
+# Recorded Robotiq position register (gPO) -> URDF finger joint. Versioned: a stage that poses the robot geometry with a
+# non-legacy map records the map id in its fingerprint, so its outputs get new build ids.
+#
+# * ``GRIPPER_MAP_LEGACY`` (register_linear_255/1): theta = clip(reg, 0, 255) / 255 * theta_max. Kept as the default
+#   for every consumer that did not opt in (unchanged outputs and fingerprints) and for the proprioceptive closure.
+# * ``GRIPPER_MAP_2F85`` (robotiq_2f85_register_3_230/2, calibration release 2026-11-08): theta = clip((reg - 3) / 227,
+#   0, 1) * theta_max. Evidence (docs/realworld_calibration_release.md, "Gripper mapping"): the recorder writes the
+#   command as register 3 + 227 * closure (DROID convention; adapter note); in every recorded episode the register
+#   settles exactly on the request when the gripper reaches it (object status 3), the open plateau is register 3
+#   (191/200 episodes), and every mug-hanging close command (request 230) stops on the mug at 207-211 (object status 2);
+#   a 2F-85 reports ~227-230 when fully closed in parallel mode (Robotiq support), and the URDF pads touch at 0.8 rad.
+#   The legacy map renders the open gripper 0.8 mm too closed and every mug grasp ~4 mm too open per pad; the corrected
+#   map lowers the held-out SAM outline error of mug-hanging (fixed o2m 1.99 / 1.99 / 1.91 -> 1.99 / 1.92 / 1.78 px;
+#   with the estimated mount 1.87 / 1.86 / 1.41) and leaves drawer-open unchanged (register <= 49).
+GRIPPER_MAP_LEGACY = "register_linear_255/1"
+GRIPPER_MAP_2F85 = "robotiq_2f85_register_3_230/2"
+GRIPPER_MAPS = {GRIPPER_MAP_LEGACY: "theta = clip(reg, 0, 255) / 255 * theta_max",
+                GRIPPER_MAP_2F85: "theta = clip((reg - 3) / 227, 0, 1) * theta_max (Robotiq 2F-85 only)"}
+ROBOTIQ_2F85_REGISTER_OPEN, ROBOTIQ_2F85_REGISTER_CLOSED = 3.0, 230.0
 
-def gripper_joint_value(state: float, semantics: str, gripper_model: str, *, closed_value: float | None = None) -> float:
-    """Recorded gripper state -> URDF gripper joint value (assumed linear; VERIFY on the real gripper).
 
-    ``closed_value`` overrides the fully-closed joint value (e.g. the synthetic stand-in gripper).
-    """
+def gripper_joint_value(state: float, semantics: str, gripper_model: str, *, closed_value: float | None = None,
+                        mapping: str = GRIPPER_MAP_LEGACY) -> float:
+    """Recorded gripper state -> URDF gripper joint value.
+
+    ``closed_value`` overrides the fully-closed joint value (e.g. the synthetic stand-in gripper). ``mapping`` selects
+    the register map of ``robotiq_position_register`` states (``GRIPPER_MAPS``); a non-legacy map is defined for the
+    Robotiq 2F-85 register only and is refused for any other gripper or state semantics (fail closed)."""
+    if mapping not in GRIPPER_MAPS:
+        raise ValueError(f"unknown gripper map {mapping!r} (known: {sorted(GRIPPER_MAPS)})")
+    if mapping != GRIPPER_MAP_LEGACY and (semantics != "robotiq_position_register" or gripper_model != "robotiq_2f_85"):
+        raise ValueError(f"gripper map {mapping!r} is defined for the Robotiq 2F-85 position register only "
+                         f"(got {gripper_model!r} / {semantics!r})")
     top = closed_value if closed_value is not None else ROBOTIQ_FINGER_JOINT_MAX.get(gripper_model)
     if semantics == "finger_joint_rad":
         return float(state)
@@ -243,6 +270,9 @@ def gripper_joint_value(state: float, semantics: str, gripper_model: str, *, clo
     if semantics == "normalized_closure":
         return float(np.clip(state, 0, 1)) * top
     if semantics == "robotiq_position_register":
+        if mapping == GRIPPER_MAP_2F85:
+            span = ROBOTIQ_2F85_REGISTER_CLOSED - ROBOTIQ_2F85_REGISTER_OPEN
+            return float(np.clip((float(state) - ROBOTIQ_2F85_REGISTER_OPEN) / span, 0, 1)) * top
         return float(np.clip(state, 0, 255)) / 255.0 * top
     raise ValueError(f"gripper semantics {semantics!r} needs a measured mapping (e.g. opening_width_m)")
 
@@ -322,6 +352,7 @@ class RobotSurface:
 
     model: URDFModel
     link_points: dict  # link -> (n,3) in link frame
+    provenance: dict = field(default_factory=lambda: {"surface": "collision"})
 
     @classmethod
     def build(cls, model: URDFModel, points_per_link: int = 200, seed: int = 0, mesh_root: str | Path | None = None):
@@ -334,6 +365,36 @@ class RobotSurface:
             out[link] = np.concatenate([sample_geometry(g, per, rng, Path(mesh_root) if mesh_root else None)
                                         for g in geoms])
         return cls(model, out)
+
+    @classmethod
+    def build_visual(cls, model: URDFModel, points_per_link: int = 200, seed: int = 0,
+                     mesh_root: str | Path | None = None) -> RobotSurface:
+        """Surface samples from the VISUAL meshes (COLLADA next to each collision STL, ``robot_visual.visual_mesh_for``)
+        instead of the collision hulls. Fails closed: every mesh geometry must have its visual mesh (no silent fallback
+        to collision meshes; primitive collision proxies are skipped as in ``robot_visual.VisualSurface``). The mesh
+        files and their sha256 are recorded in ``provenance``."""
+        from s4d.realworld.robot_visual import MissingVisualMeshError, load_collada, require_visual_meshes
+
+        rng = np.random.default_rng(seed)
+        visual = require_visual_meshes(model, mesh_root)
+        if not visual:
+            raise MissingVisualMeshError("visual meshes requested but the model has no mesh geometry")
+        out, prov = {}, {}
+        for link, geoms in sorted(model.links.items()):
+            meshes = [g for g in geoms if g.kind == "mesh"]
+            if not meshes:
+                continue
+            per = max(1, points_per_link // len(meshes))
+            parts = []
+            for k, g in enumerate(meshes):
+                path, sha = visual[(link, k)]
+                tri = load_collada(path) * np.asarray(g.scale)
+                v, f = tri.reshape(-1, 3), np.arange(3 * len(tri)).reshape(-1, 3)
+                p = _sample_triangles(v, f, per, rng)
+                parts.append(p @ g.T_link_geom[:3, :3].T + g.T_link_geom[:3, 3])
+                prov.setdefault(link, []).append({"file": str(path), "sha256": sha, "kind": "visual_collada"})
+            out[link] = np.concatenate(parts)
+        return cls(model, out, {"surface": "visual", "meshes": prov})
 
     def points(self, q: dict) -> tuple[np.ndarray, np.ndarray]:
         """(N,3) base-frame points and (N,) link indices (into sorted link names)."""

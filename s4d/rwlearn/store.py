@@ -308,10 +308,10 @@ class ProcessedEpisodeStore:
 
     def depth(self, ep, cam, idx):
         from s4d.data.droid.largescale.crop import crop_depth
-        from s4d.realworld.pipeline import view_depth
+        from s4d.realworld.pipeline import calibrated_view_depth
 
-        _, root, e = self._eps[ep]
-        d, K = view_depth(root, e, self._meta[ep], self._sid(ep, cam), np.atleast_1d(idx), self.depth_stage)
+        _, root, e = self._eps[ep]  # depth x the accepted calibration's per-camera scale (consistent with w2c)
+        d, K = calibrated_view_depth(root, e, self._meta[ep], self._sid(ep, cam), np.atleast_1d(idx), self.depth_stage)
         self._remember_K(ep, cam, K)
         box = self._box(ep, cam)
         out = np.stack([crop_depth(x, box, self.image_hw[0]) for x in d]).astype(np.float64)

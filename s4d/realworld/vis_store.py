@@ -42,7 +42,15 @@ def quantize_depth(depth_m: np.ndarray) -> np.ndarray:
 def write_native_geometry(root: Path, episode_id: str, out_dir: Path, *, depth_stage: str | None = None,
                           chunk: int = 16, force: bool = False) -> dict:
     from s4d.realworld.depth_stages import load_view_depth
-    from s4d.realworld.pipeline import accepted_calibration, camera_views, default_depth_stage, load_meta
+    from s4d.realworld.pipeline import (
+        accepted_calibration,
+        calibrated_geometry_config,
+        calibrated_version,
+        calibration_depth_scale,
+        camera_views,
+        default_depth_stage,
+        load_meta,
+    )
 
     root = Path(root)
     meta = load_meta(root, episode_id)
@@ -55,6 +63,10 @@ def write_native_geometry(root: Path, episode_id: str, out_dir: Path, *, depth_s
     norm = rio.read_record(rio.episode_dir(root, episode_id) / "normalized")
     inputs = {"ingest": rio.build_id(norm), depth_stage: rio.build_id(rec),
               **({"calibrate": rio.build_id(cal)} if cal else {})}
+    # depth stored with the accepted calibration's per-camera scale (point clouds of the cameras then overlay)
+    cal_extra = calibrated_geometry_config(root, episode_id, meta, depth_stage) if cal else {}
+    cal_extra.pop("robot_model", None)  # no robot geometry in this store
+    config = {"depth_stage": depth_stage, "schema": SCHEMA_VERSION, **cal_extra}
 
     def build(tmp: Path) -> dict:
         with h5py.File(tmp / FILE, "x") as f:
@@ -75,15 +87,18 @@ def write_native_geometry(root: Path, episode_id: str, out_dir: Path, *, depth_s
                 if w2c is not None:
                     g.create_dataset("w2c", data=np.asarray(w2c, np.float64))
                 ds = g.create_dataset("depth", (len(stamps), H, W), np.uint16, chunks=(1, H, W), shuffle=True, **GZIP)
+                scale = calibration_depth_scale(root, episode_id, cam, depth_stage)
+                if scale != 1.0:
+                    g.attrs["depth_scale"] = scale
                 for start in range(0, len(stamps), chunk):
                     idx = list(range(start, min(len(stamps), start + chunk)))
                     depth, valid, _ = load_view_depth(root, episode_id, cam, idx, depth_stage)
+                    depth = depth if scale == 1.0 else depth * np.float32(scale)
                     ds[start:start + len(idx)] = quantize_depth(np.where(valid, depth, 0.0))
         return {"format": FORMAT, "schema_version": SCHEMA_VERSION, "cameras": [v.rig_id for v in views],
                 "file_bytes": (tmp / FILE).stat().st_size}
 
-    return rio.run_stage(Path(out_dir), stage=STAGE, version="1", config={"depth_stage": depth_stage,
-                                                                         "schema": SCHEMA_VERSION},
+    return rio.run_stage(Path(out_dir), stage=STAGE, version=calibrated_version("1", cal_extra), config=config,
                          inputs=inputs, build=build, force=force)
 
 

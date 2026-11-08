@@ -272,7 +272,15 @@ def track_motion(root: Path, episode_id: str, *, cfg: MotionFilterConfig | None 
     from scipy.spatial import cKDTree
 
     from s4d.realworld.geometry import transform_points
-    from s4d.realworld.pipeline import RobotGeometry, _record_fp, accepted_calibration, load_meta, robot_state_at
+    from s4d.realworld.pipeline import (
+        _record_fp,
+        accepted_calibration,
+        calibrated_geometry_config,
+        calibrated_robot_geometry,
+        calibrated_version,
+        load_meta,
+        robot_state_at,
+    )
 
     cfg = cfg or MotionFilterConfig()
     meta = load_meta(root, episode_id)
@@ -280,10 +288,15 @@ def track_motion(root: Path, episode_id: str, *, cfg: MotionFilterConfig | None 
     if lift is None:
         raise RuntimeError("track_motion needs a complete lift3d stage")
     config = {"cfg": asdict(cfg)}
+    # the robot surface is posed with the accepted calibration's robot model (gripper map, surface); recorded - and the
+    # version bumped - only when it differs from the legacy model (depth enters through lift3d, already scaled)
+    cal_extra = calibrated_geometry_config(root, episode_id, meta)
+    config.update(cal_extra)
+    version = calibrated_version(STAGE_VERSION, cal_extra)
     inputs = {k: _record_fp(root, episode_id, k) for k in ("lift3d", "track2d", "calibrate", "ingest")}
     directory = rio.stage_dir(root, episode_id, "track_motion")
     lift_dir, t2d_dir = rio.stage_dir(root, episode_id, "lift3d"), rio.stage_dir(root, episode_id, "track2d")
-    geom = RobotGeometry(meta, points_per_link=cfg.robot_points_per_link)
+    geom = calibrated_robot_geometry(root, episode_id, meta, points_per_link=cfg.robot_points_per_link)
 
     def build(tmp: Path) -> dict:
         summary, models = {}, {}
@@ -373,7 +386,7 @@ def track_motion(root: Path, episode_id: str, *, cfg: MotionFilterConfig | None 
         return {"cameras": summary, "counts": totals,
                 "note": "tracker inference is unchanged; only the stored/exported tracks are filtered"}
 
-    return rio.run_stage(directory, stage="track_motion", version=STAGE_VERSION, config=config, inputs=inputs,
+    return rio.run_stage(directory, stage="track_motion", version=version, config=config, inputs=inputs,
                          build=build, force=force)
 
 
