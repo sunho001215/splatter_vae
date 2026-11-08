@@ -203,4 +203,12 @@ existing release root; everything below writes NEW roots / records.
 * G5a is unverifiable for most drawer-open episodes and G5b lacks one camera pair in many mug episodes: per-episode
   fixedness rests on "no detected motion" (the verdict's rule), not on positive verification of every episode.
 * Depth scales are per depth source; a new depth stage needs its own solve before it can be used with these poses.
+* The verdict's G2 (robot depth <= 12 mm, explained >= 0.70) was evaluated pooled over the held-out frames; rig mode
+  applies the same thresholds PER EPISODE (with the corrected gripper map and visual meshes, depth x scale). A single
+  episode can therefore be rejected (e.g. little robot visibility); the builder then refuses the whole task and the
+  coordinator must look at that episode - never relax `episode_checks` silently. Use `depth_stage:
+  foundation_stereo_depth` in rig mode (the verdict's G2 depth); `sensor_depth` works with its own published scale.
+* Downstream consumers that pose the robot (track_motion, training-store gripper targets, export) use the accepted
+  record's robot model, i.e. the visual meshes: their containers need the asset copy with the visual meshes (added on
+  the remote; the local copy has them) and fail closed otherwise.
 * Not covered by the uncertainty spreads: common base-frame yaw / robot-scale confound, LoMa-G template bias.
