@@ -160,7 +160,7 @@ def main(argv=None):
     ap.add_argument("--magsac-px", type=float, default=4.0)
     ap.add_argument("--synthetic", default=None)
     ap.add_argument("--device", default="cuda")
-    ap.add_argument("--tmp", default="/ram/tmp/loma")
+    ap.add_argument("--tmp", default=None, help="scratch dir for the PNG crops (default: per process)")
     a = ap.parse_args(argv)
 
     import h5py
@@ -177,7 +177,9 @@ def main(argv=None):
     if a.synthetic:
         r_deg, t_mm, sd = a.synthetic.split(",")
         synth = (float(r_deg), float(t_mm), int(sd))
-    matcher = Matcher(a.matcher, a.num_keypoints, a.filter_threshold, a.tmp)
+    import os
+
+    matcher = Matcher(a.matcher, a.num_keypoints, a.filter_threshold, a.tmp or f"/ram/tmp/loma-{os.getpid()}")
     task_root = Path(a.task_root)
     files = sorted(Path(a.frames).glob("*.npz"))
     if a.episodes:
