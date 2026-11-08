@@ -254,3 +254,67 @@ def mount_information(s: State, K: dict, corr: dict, gripper_links: set, T7: dic
                      "weakest": V[:, 0].tolist(), "cond": float(w_[-1] / max(w_[0], 1e-300))}
     out["units"] = "rotation sd in 0.1 deg, translation sd in 1 mm (link-7 frame, x y z); naive (independent matches)"
     return out
+
+
+def _mount_jac(s: State, K: dict, cs: CorrSet, c: str, g: np.ndarray, sigma_px: float):
+    R, t = s.T[c][:3, :3], s.T[c][:3, 3]
+    X = cs.X[g] + s.tau[c] * cs.V[g]
+    Pc = X @ R.T + t
+    uv, Dpi = project(Pc, K[c])
+    r = (uv - cs.uv[g]) / sigma_px
+    T7c = cs.T7[g]
+    R7 = T7c[:, :3, :3]
+    X7 = np.einsum("mji,mj->mi", R7, X - T7c[:, :3, 3])
+    sk = np.zeros((len(X), 3, 3))
+    sk[:, 0, 1], sk[:, 0, 2] = X7[:, 2], -X7[:, 1]
+    sk[:, 1, 0], sk[:, 1, 2] = -X7[:, 2], X7[:, 0]
+    sk[:, 2, 0], sk[:, 2, 1] = X7[:, 1], -X7[:, 0]
+    dX = np.concatenate([np.einsum("mij,mjk->mik", R7, sk), R7], 2)
+    return r, np.einsum("mij,jk,mkl->mil", Dpi, R, dX) / sigma_px
+
+
+def apply_mount(corr: dict, gripper_links: set, dM: np.ndarray) -> dict:
+    """Corrected correspondences: gripper-link points X' = T7 exp(dM) T7^-1 X (dM twist in the panda_link7 frame)."""
+    from s4d.realworld.rig_dw_geom import se3_exp
+
+    E = se3_exp(np.asarray(dM, float))
+    out = {}
+    for c, cs in corr.items():
+        g = np.isin(cs.link, list(gripper_links))
+        X = cs.X.copy()
+        if g.any():
+            T7 = cs.T7[g]
+            X7 = np.einsum("mji,mj->mi", T7[:, :3, :3], X[g] - T7[:, :3, 3])
+            X7 = X7 @ E[:3, :3].T + E[:3, 3]
+            X[g] = np.einsum("mij,mj->mi", T7[:, :3, :3], X7) + T7[:, :3, 3]
+        n = CorrSet(X, cs.V, cs.uv, cs.episode, cs.frame, cs.link, cs.d, cs.w, dict(cs.meta), cs.T7)
+        out[c] = n
+    return out
+
+
+def estimate_mount(s: State, K: dict, corr: dict, gripper_links: set, sigma_px: float = 1.0, cauchy: float = 3.0,
+                   iters: int = 8, prior_m: float = 0.02, prior_rad: float = 0.05) -> dict:
+    """Gauss-Newton (Cauchy IRLS) estimate of the gripper-mount twist dM at FIXED camera poses (diagnostic), with a weak
+    prior (2 cm / ~3 deg). Returns dM (rad, m) and the robust cost before/after on gripper-link matches."""
+    dM = np.zeros(6)
+    Pinv = np.diag([1 / prior_rad ** 2] * 3 + [1 / prior_m ** 2] * 3)
+    hist = []
+    for _ in range(iters):
+        cc = apply_mount(corr, gripper_links, dM)
+        H, gvec, cost = Pinv.copy(), Pinv @ dM, 0.0
+        for c, cs in cc.items():
+            g = np.isin(cs.link, list(gripper_links))
+            if not g.any() or cs.T7 is None:
+                continue
+            r, J = _mount_jac(s, K, cs, c, g, sigma_px)
+            n2 = (r ** 2).sum(1)
+            w = 1.0 / (1.0 + n2 / cauchy ** 2)
+            cost += float((cauchy ** 2 * np.log1p(n2 / cauchy ** 2)).sum())
+            H += np.einsum("m,mia,mib->ab", w, J, J)
+            gvec += np.einsum("m,mia,mi->a", w, J, r)
+        hist.append(cost)
+        step = -np.linalg.solve(H, gvec)
+        dM = dM + step  # left-composition approx (small steps)
+        if np.abs(step).max() < 1e-7:
+            break
+    return {"dM_rad_m": dM.tolist(), "dM_deg_mm": (np.r_[np.degrees(dM[:3]), 1e3 * dM[3:]]).tolist(), "cost_hist": hist}

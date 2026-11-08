@@ -57,6 +57,45 @@ def corr_groups(corr: dict, episodes: list, seed: int = 0) -> dict:
     return {episodes[k]: int(l) for k, l in zip(keys, lab)}
 
 
+def fit_disparity_offset(s: State, M: ee.MatchSet, cams, huber: float = 0.01) -> dict:
+    """Per-camera inverse-depth offset beta (1/m) of the depth source: true z = exp(alpha) d / (1 + beta d) (a stereo
+    disparity bias delta gives beta = delta / (f b)). Robust (Huber IRLS) fit of r = log z - log d - alpha = a0 - beta d
+    over the depth ends of the static matches at the solution (latent points s.P)."""
+    out = {}
+    for c in cams:
+        rs, ds = [], []
+        for cam, d in ((M.cam_a, M.d_a), (M.cam_b, M.d_b)):
+            sel = (cam == c) & np.isfinite(d) & (d > 0)
+            if not sel.any():
+                continue
+            Pc = s.P[sel] @ s.T[c][:3, :3].T + s.T[c][:3, 3]
+            ok = Pc[:, 2] > 0.1
+            rs.append(np.log(Pc[ok, 2]) - np.log(d[sel][ok]) - s.alpha[c])
+            ds.append(d[sel][ok])
+        if not rs:
+            out[c] = 0.0
+            continue
+        r, d = np.concatenate(rs), np.concatenate(ds)
+        A = np.stack([np.ones_like(d), -d], 1)
+        w = np.ones_like(d)
+        x = np.zeros(2)
+        for _ in range(20):
+            x = np.linalg.lstsq(A * np.sqrt(w)[:, None], r * np.sqrt(w), rcond=None)[0]
+            e = np.abs(r - A @ x)
+            w = np.where(e <= huber, 1.0, huber / np.maximum(e, 1e-12))
+        out[c] = float(x[1])
+    return out
+
+
+def offset_matches(M: ee.MatchSet, beta: dict) -> ee.MatchSet:
+    def corr(cam, d):
+        b = np.array([beta.get(c, 0.0) for c in cam])
+        return np.where(np.isfinite(d) & (d > 0), d / (1.0 + b * d), d)
+
+    return ee.MatchSet(M.cam_a, M.cam_b, M.uv_a, M.uv_b, corr(M.cam_a, M.d_a), corr(M.cam_b, M.d_b), M.sigma_px,
+                       M.sigma_logd)
+
+
 def corr_challenge(prob: LomaProblem, corr: dict, state: State, rot_deg=0.35, trans_m=0.008) -> dict:
     """SAM-free G6 analogue: do held-out robot 2D-3D correspondences reject a common rig perturbation of the tolerance
     size? Per held-out frame robust cost at the solution vs each of 12 perturbations about the workspace pivot; the
@@ -163,11 +202,20 @@ def main(argv=None):
     ap.add_argument("--no-sam-validation", action="store_true")
     ap.add_argument("--challenge", action="store_true")
     ap.add_argument("--ref-result", default=None, help="multistart rescoring: cost of the reference state")
+    ap.add_argument("--split", default="final", choices=["final", "dev"],
+                    help="final: rig_dw split (held-out = every 5th episode, k %% 5 == 2); dev: the final held-out "
+                         "episodes are excluded and every 5th remaining episode is the development hold-out")
+    ap.add_argument("--dispoff", action="store_true", help="estimate per-camera inverse-depth (disparity) offsets")
+    ap.add_argument("--per-episode", action="store_true", help="G5b per-episode epipolar consistency (validation)")
     a = ap.parse_args(argv)
     t0 = time.time()
     cdir, mdir, fdir = Path(a.corr), Path(a.matches), Path(a.flags)
     all_eps = sorted({p.stem for p in cdir.glob(f"{a.task}-*.npz")} & {p.stem for p in mdir.glob(f"{a.task}-*.npz")})
     fit, held = episode_split(all_eps)
+    if a.split == "dev":  # development: the global held-out episodes are never loaded; dev-held = every 5th fit episode
+        held = [e for k, e in enumerate(fit) if k % 5 == 4]
+        fit = [e for e in fit if e not in held]
+        all_eps = sorted(fit + held)
     v, _, arg = a.variant.partition(":")
     mcfg = MatchConfig(per_frame_pair=a.per_frame_pair)
     ccfg = CorrConfig(per_frame=a.per_frame)
@@ -203,7 +251,7 @@ def main(argv=None):
         ee_sigma_logd = 1e3
     elif v == "focal":
         scfg = replace(scfg, estimate_focal=True)
-    elif v not in ("full", "group"):
+    elif v not in ("full", "group", "mount", "dispoff"):
         raise SystemExit(f"unknown variant {a.variant}")
     corr_depth = a.corr_depth_dir if a.corr_depth_dir else None
     corr_all, cstats = load_corr([cdir / f"{e}.npz" for e in fit], list(CAMS), ccfg,
@@ -239,13 +287,28 @@ def main(argv=None):
     s = prob.solve(s0, stages=stages, log=log)
     if s.P is None:
         s.P = prob._ee_points(s, iters=5)
+    beta = None
+    if v == "dispoff" or a.dispoff:  # per-camera inverse-depth offset of the depth source (outer alternation)
+        beta = {c: 0.0 for c in CAMS}
+        dlog = []
+        for _ in range(3):
+            inc = fit_disparity_offset(s, prob.M, CAMS)
+            beta = {c: beta[c] + inc[c] for c in CAMS}
+            prob.M = offset_matches(M, beta)
+            s.P = None
+            s = prob.solve(s, stages=("full",), log=log)
+            s.P = prob._ee_points(s, iters=5)
+            dlog.append({"beta_per_m": dict(beta), "increment": inc, "cost": prob.cost(s)})
+        M = prob.M
     result = {"task": a.task, "variant": a.variant, "method": "rig_loma", "fit_episodes": fit_eps,
-              "heldout_episodes": held, "state": s.to_json(), "init_state": s0.to_json(), "init_file": a.init,
+              "heldout_episodes": held, "split": a.split, "state": s.to_json(), "init_state": s0.to_json(), "init_file": a.init,
               "log": log, "pivot": pivot.tolist(),
               "config": {"match": asdict(mcfg), "corr": asdict(ccfg), "loma": asdict(lcfg), "solve": asdict(scfg),
                          "ee_sigma_px": a.ee_sigma_px, "ee_sigma_logd": ee_sigma_logd, "depth_stage": a.depth_stage,
                          "depth_dir": a.depth_dir, "corr_dir": str(cdir), "flags": str(fdir)},
               "match_stats": m["stats"], "corr_stats": cstats,
+              "disparity_offset": None if beta is None else {"beta_per_m": beta, "log": dlog,
+                                                              "disparity_px_at_fb_30.5": {c: 30.5 * b for c, b in beta.items()}},
               "cost": prob.cost(s), "cost_parts": prob.normal(s)[3]}
     if a.ref_result:
         sref = state_from_json(a.ref_result)
@@ -264,13 +327,36 @@ def main(argv=None):
 
         result["mount_information"] = mount_information(s, prob.Keff(s), corr, gl, {c: cs.T7 for c, cs in corr.items()},
                                                         a.sigma_px, a.cauchy)
+        if v == "mount":  # diagnostic: alternate gripper-mount estimate (fixed rig) and rig re-solve
+            from s4d.realworld.rig_loma_solve import apply_mount, estimate_mount
+
+            mlog, dM = [], np.zeros(6)
+            for _ in range(3):
+                em = estimate_mount(s, prob.Keff(s), apply_mount(corr, gl, dM) if dM.any() else corr, gl,
+                                    a.sigma_px, a.cauchy)
+                dM = dM + np.asarray(em["dM_rad_m"])
+                prob.corr = apply_mount(corr, gl, dM)
+                s = prob.solve(s, stages=("common", "full"), log=log)
+                mlog.append({"dM_deg_mm": (np.r_[np.degrees(dM[:3]), 1e3 * dM[3:]]).tolist(), "cost": prob.cost(s)})
+            result["mount_estimate"] = mlog
+            result["state"] = s.to_json()
+            result["fit_corr"] = prob.corr_stats(s)
+            corr = prob.corr
+            result["mount_dM"] = dM.tolist()
     if held and not a.no_heldout:
         hcorr, hst = load_corr([cdir / f"{e}.npz" for e in held], list(CAMS), replace(ccfg, seed=1),
                                depth_stage=a.depth_stage if corr_depth else None, depth_dir=corr_depth)
         mh = load_matches_samfree([mdir / f"{e}.npz" for e in held], fdir, list(CAMS),
                                   MatchConfig(per_frame_pair=a.per_frame_pair, seed=1), depth_stage=a.depth_stage,
                                   depth_dir=Path(a.depth_dir) if a.depth_dir else None)
-        result["heldout"] = {"extext_samfree": heldout_extext(s, prob.Keff(s), matchset(mh, 0.5, 0.01)),
+        if "mount_dM" in result:
+            from s4d.realworld.rig_loma_solve import apply_mount
+
+            hcorr = apply_mount(hcorr, gl, np.asarray(result["mount_dM"]))
+        Mh_sf = matchset(mh, 0.5, 0.01)
+        if beta is not None:
+            Mh_sf = offset_matches(Mh_sf, beta)
+        result["heldout"] = {"extext_samfree": heldout_extext(s, prob.Keff(s), Mh_sf),
                              "corr": prob.corr_stats(s, hcorr), "corr_load": hst}
         if v == "full" or a.challenge:
             result["heldout"]["corr_challenge"] = corr_challenge(prob, hcorr, s)
@@ -278,6 +364,11 @@ def main(argv=None):
             result["heldout_sam"] = sam_validation(a.task, Path(a.evidence), held, mdir, s, a.processes,
                                                    a.per_frame_pair, a.heldout_frames_per_camera, a.spacing_m,
                                                    challenge=(v == "full" or a.challenge))
+    if a.per_episode or (v in ("full", "all") and a.evidence):
+        from s4d.realworld.rig_dw_run import per_episode_extext
+
+        # SAM-static matches (rig_dw protected evaluation): validation only
+        result["per_episode_extext"] = per_episode_extext(s, prob.Keff(s), mdir, all_eps, a.per_frame_pair)
     result["seconds"] = round(time.time() - t0, 1)
     out = Path(a.out)
     out.parent.mkdir(parents=True, exist_ok=True)

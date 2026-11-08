@@ -103,3 +103,67 @@ def test_rig_recovered_from_corr_and_static_matches():
     info = mount_information(s, {c: K for c in cams}, corr, {5, 6, 7},
                              {c: np.tile(np.eye(4), (len(corr[c]), 1, 1)) for c in cams})
     assert len(info["marginal_over_cameras"]["eig"]) == 6
+
+
+def test_mount_estimate_recovers_known_offset():
+    from s4d.realworld.rig_loma_solve import apply_mount, estimate_mount
+
+    rng = np.random.default_rng(3)
+    Tt = rig()
+    cams = list(Tt)
+    dM = np.array([0.01, -0.02, 0.015, 0.002, -0.003, 0.004])  # rad, m
+    corr = {}
+    for c in cams:
+        cs = corr_for(Tt[c], rng, 600, noise=0.0)
+        n = len(cs)
+        T7 = np.tile(np.eye(4), (n, 1, 1))
+        # random link-7 frames (different configurations), gripper links = 5..7
+        for i in range(n):
+            T7[i] = se3_exp(np.r_[rng.normal(0, 0.5, 3), np.array([0.5, 0.0, 0.5]) + rng.normal(0, 0.1, 3)])
+        cs.T7 = T7
+        cs.link = rng.integers(0, 8, n)
+        corr[c] = cs
+    gl = {5, 6, 7}
+    # observations generated with the TRUE mount (dM applied), model points without it
+    truth = apply_mount(corr, gl, dM)
+    obs = {}
+    for c in cams:
+        uv, _ = project(truth[c].X @ Tt[c][:3, :3].T + Tt[c][:3, 3], K)
+        cs = corr[c]
+        obs[c] = CorrSet(cs.X, np.zeros_like(cs.V), uv, cs.episode, cs.frame, cs.link, None, None, {}, cs.T7)
+    s = State(dict(Tt), {c: 0.0 for c in cams}, {c: 0.0 for c in cams})
+    est = estimate_mount(s, {c: K for c in cams}, obs, gl, iters=10)
+    assert np.allclose(est["dM_rad_m"], dM, atol=2e-4)
+
+
+def test_disparity_offset_fit_recovers_beta():
+    from s4d.realworld.rig_loma_run import fit_disparity_offset, offset_matches
+
+    rng = np.random.default_rng(5)
+    Tt = rig()
+    cams = list(Tt)
+    P = np.array([1.0, 0.0, 0.2]) + rng.uniform(-1.0, 1.0, (3000, 3)) * np.array([1.5, 2.0, 0.5])
+    beta = {"c0": 0.004, "c1": -0.002, "c2": 0.006}
+    ca, cb, da, db, keep = [], [], [], [], []
+    for a, b in ((0, 1), (0, 2), (1, 2)):
+        za = (P @ Tt[cams[a]][:3, :3].T + Tt[cams[a]][:3, 3])[:, 2]
+        zb = (P @ Tt[cams[b]][:3, :3].T + Tt[cams[b]][:3, 3])[:, 2]
+        ok = (za > 0.5) & (zb > 0.5)
+        # observed d with true z = d / (1 + beta d)  ->  d = z / (1 - beta z)
+        ca += [cams[a]] * ok.sum()
+        cb += [cams[b]] * ok.sum()
+        da.append(za[ok] / (1 - beta[cams[a]] * za[ok]))
+        db.append(zb[ok] / (1 - beta[cams[b]] * zb[ok]))
+        keep.append(P[ok])
+    n = sum(len(k) for k in keep)
+    M = ee.MatchSet(np.array(ca), np.array(cb), np.zeros((n, 2)), np.zeros((n, 2)), np.concatenate(da),
+                    np.concatenate(db), 0.5, 0.01)
+    s = State(dict(Tt), {c: 0.0 for c in cams}, {c: 0.0 for c in cams})
+    s.P = np.concatenate(keep)
+    est = fit_disparity_offset(s, M, cams)
+    for c in cams:
+        assert abs(est[c] - beta[c]) < 3e-4, (c, est[c], beta[c])
+    M2 = offset_matches(M, beta)
+    z_true = (s.P @ Tt["c0"][:3, :3].T + Tt["c0"][:3, 3])[:, 2]
+    sel = M2.cam_a == "c0"
+    assert np.allclose(M2.d_a[sel], z_true[sel], rtol=1e-9)

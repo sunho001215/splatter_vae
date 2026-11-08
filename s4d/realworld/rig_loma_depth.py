@@ -38,6 +38,7 @@ class StageReader:
     def __init__(self, template: str, root: str, ep: str, stage: str):
         self.template, self.root, self.ep, self.stage = template, root, ep, stage
         self.cache = {}
+        self.missing = 0  # frames not computed by the stage (subset stages, e.g. s2m2_depth)
 
     def frame(self, cam: str, idx: int):
         import h5py
@@ -48,6 +49,9 @@ class StageReader:
             with h5py.File(p, "r") as f:
                 d = f["depth"][int(idx)].astype(np.float32)
                 v = f["valid"][int(idx)].astype(bool) if "valid" in f else d > 0
+                if "computed" in f and not bool(f["computed"][int(idx)]):  # stage computed on a frame subset only
+                    v = np.zeros_like(v)
+                    self.missing += 1
             d = np.where(v & np.isfinite(d), d, 0.0).astype(np.float32)
             self.cache[key] = (d, local_range(d))
         return self.cache[key]
