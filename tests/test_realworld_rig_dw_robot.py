@@ -152,7 +152,7 @@ def test_three_camera_recovery_from_robot_factors():
     obs = {(c, k): render_obs(T, P, crop, fine=F) for c, T in cams.items() for k, (P, _, F) in enumerate(configs)}
     est = {c: se3_exp(np.r_[rng.normal(size=3) * 0.012, rng.normal(size=3) * 0.01]) @ T for c, T in cams.items()}
     cfg = rr.RobotTermConfig(depth_points=150, sigma_sil_px=1.0)
-    cols = {c: list(range(8 * i, 8 * i + 8)) for i, c in enumerate(cams)}
+    cols = {c: list(range(9 * i, 9 * i + 9)) for i, c in enumerate(cams)}
     state = {"T": est, "alpha": {c: 0.0 for c in cams}, "tau": {c: 0.0 for c in cams}}
     for outer in range(6):
         factors = []
@@ -163,9 +163,9 @@ def test_three_camera_recovery_from_robot_factors():
             factors.append(ff)
         pk = rr.pack(factors)
         for _ in range(5):
-            H, g, cost, _ = robot_normal_equations(pk, state, {c: K for c in cams}, cfg, lambda c: cols[c], 24)
-            free = [j for j in range(24) if j % 8 < 6]  # poses only (alpha, tau fixed)
-            d = np.zeros(24)
+            H, g, cost, _ = robot_normal_equations(pk, state, {c: K for c in cams}, cfg, lambda c: cols[c], 27)
+            free = [j for j in range(27) if j % 9 < 6]  # poses only (alpha, tau, focal fixed)
+            d = np.zeros(27)
             d[free] = solve_step(H[np.ix_(free, free)], g[free], 1e-6)
             state["T"] = {c: se3_exp(d[cols[c][:6]]) @ state["T"][c] for c in cams}
     for c in cams:

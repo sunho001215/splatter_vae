@@ -27,14 +27,32 @@ def _cost(r):
     return c[-1] if c else None
 
 
+EXPECTED = {"multistart": [f"start-{k}" for k in range(1, 9)], "halves": [f"half-{k}" for k in range(5)],
+            "groups": ["group-0", "group-1"], "blocks": ["block-0", "block-1"],
+            "loco": ["loco-135122070988", "loco-135122073201", "loco-135122076054"]}
+
+
+def near_best_starts(R: dict, ref: str = "full", rel_tol: float = 1e-3) -> list:
+    """Multistart solutions whose fit cost, re-scored on the COMMON support of the reference solution
+    (``cost_on_ref_support``), is within ``rel_tol`` of the best (the reference included)."""
+    costs = {ref: None}
+    for n in EXPECTED["multistart"]:
+        c = (R.get(n) or {}).get("cost_on_ref_support")
+        if c:
+            costs[n] = c["solution"]
+            costs[ref] = c["reference"] if costs[ref] is None else min(costs[ref], c["reference"])
+    valid = {k: v for k, v in costs.items() if v is not None and np.isfinite(v)}
+    if not valid:
+        return [ref]
+    best = min(valid.values())
+    return [k for k, v in valid.items() if v <= best * (1 + rel_tol)]
+
+
 def spread_sets(R: dict, ref: str = "full") -> dict:
-    starts = [n for n in R if n.startswith("start-") or n == ref]
-    costs = {n: _cost(R[n]) for n in starts}
-    best = min(c for c in costs.values() if c is not None)
-    return {"multistart_near_best": [n for n in starts if costs[n] is not None and costs[n] <= best * 1.001],
-            "halves": [n for n in R if n.startswith("half-")], "groups": [n for n in R if n.startswith("group-")],
-            "blocks": [n for n in R if n.startswith("block-")],
-            "loco": [n for n in R if n.startswith("loco-")] + [ref]}
+    return {"multistart_near_best": near_best_starts(R, ref),
+            "halves": [n for n in EXPECTED["halves"] if n in R], "groups": [n for n in EXPECTED["groups"] if n in R],
+            "blocks": [n for n in EXPECTED["blocks"] if n in R],
+            "loco": [n for n in EXPECTED["loco"] if n in R] + [ref]}
 
 
 def max_pair(R, names, cam):
@@ -46,23 +64,77 @@ def max_pair(R, names, cam):
             "max_pair_centre_m": float(max(x[1] for x in d))}
 
 
-def verdict(R: dict, fixedness: dict, ref: str = "full") -> dict:
-    """Per-camera gate evaluation (DESIGN v1)."""
+def fixedness_registration(fixed: dict, cam: str) -> dict:
+    """G5(a): whole-episode-median registration (1 segment). Detected motion = a registration that is VERIFIABLE
+    (>= 6 and >= 60 % consistent patches) and exceeds a threshold; otherwise not verifiable."""
+    moved, unver, n = [], [], 0
+    for ep, v in (fixed.get("episodes") or {}).items():
+        if cam not in v:
+            unver.append(ep)
+            continue
+        n += 1
+        for sgm in v[cam].get("segments", []):
+            tot = sgm.get("patches", 0)
+            inl = sgm.get("inlier_patches", 0)
+            verifiable = "shift_px" in sgm and inl >= 6 and inl >= 0.6 * max(1, tot)
+            if not verifiable:
+                unver.append(ep)
+            elif not sgm.get("fixed", False):
+                moved.append(ep)
+    ref = fixed.get("reference_episode")
+    ref_ok = ref in (fixed.get("episodes") or {}) and cam in fixed["episodes"][ref] and \
+        all(sg.get("fixed") for sg in fixed["episodes"][ref][cam].get("segments", []))
+    return {"episodes": n, "moved": sorted(set(moved)), "not_verifiable": sorted(set(unver)),
+            "reference_self_registration_ok": bool(ref_ok)}
+
+
+def fixedness_epipolar(per_ep: dict, cam: str, max_px: float = 1.0, max_excess_px: float = 0.25) -> dict:
+    """G5(b) (pre-registered 2026-11-07 before inspecting values): per episode and camera pair, the median symmetric
+    epipolar line distance under the shared rig must be <= ``max_px`` and its excess over the pair's baseline (median
+    over all episodes) plus 2.58 standard errors <= ``max_excess_px``. A camera is flagged as moved in an episode when
+    BOTH pairs containing it violate; one violating pair is reported. Missing pairs: not verifiable."""
+    key = cam[:12]
+    pairs = sorted({p for v in per_ep.values() for p in v if key in p})
+    base = {p: float(np.median([v[p]["median_px"] for v in per_ep.values() if p in v])) for p in pairs}
+    moved, single, unver = [], [], []
+    for ep, v in per_ep.items():
+        bad = []
+        for p in pairs:
+            if p not in v:
+                unver.append(ep)
+                continue
+            m, se = v[p]["median_px"], v[p]["se_px"]
+            if m > max_px or (m - base[p]) + 2.58 * se > max_excess_px:
+                bad.append(p)
+        if len(bad) == len(pairs) and pairs:
+            moved.append(ep)
+        elif bad:
+            single.append((ep, bad))
+    return {"episodes": len(per_ep), "baseline_px": base, "moved": moved, "single_pair_violations": single,
+            "not_verifiable": sorted(set(unver))}
+
+
+def verdict(R: dict, fixed: dict, ref: str = "full") -> dict:
+    """Per-camera gate evaluation (DESIGN v1 + the G5 amendment); incomplete evidence never passes."""
     full = R[ref]
     h = full["heldout"]
     sets = spread_sets(R, ref)
+    missing = [n for k, v in EXPECTED.items() for n in v if n not in R]
     allnames = sorted(set(sum(sets.values(), [])))
     out = {}
     e = h["extext"]["all"]
     g4 = {"line_median_px": e["line_median_px"], "transfer_ab_median_px": e["transfer_ab_median_px"],
           "transfer_ba_median_px": e["transfer_ba_median_px"]}
-    g4_ok = (e["line_median_px"] <= GATES["epi_line_px"] and e["transfer_ab_median_px"] <= GATES["transfer_px"]
-             and e["transfer_ba_median_px"] <= GATES["transfer_px"])
+    g4_ok = all(np.isfinite(x) for x in g4.values()) and e["line_median_px"] <= GATES["epi_line_px"] and \
+        e["transfer_ab_median_px"] <= GATES["transfer_px"] and e["transfer_ba_median_px"] <= GATES["transfer_px"]
     cc = h.get("common_challenge") or {}
+    per_ep = full.get("per_episode_extext") or {}
     for cam in CAMS:
         reasons = []
         sp = {k: max_pair(R, v, cam) for k, v in sets.items()}
         allsp = max_pair(R, allnames, cam)
+        if missing:
+            reasons.append(f"G1: stability evidence incomplete, missing {missing}")
         if allsp is None:
             reasons.append("G1: no stability solves")
         else:
@@ -72,43 +144,39 @@ def verdict(R: dict, fixedness: dict, ref: str = "full") -> dict:
                 reasons.append(f"G1: centre spread {1e3 * allsp['max_pair_centre_m']:.1f} mm > "
                                f"{1e3 * GATES['spread_centre_m']:.0f}")
         ra, rr, rb = h["robot_alpha_depth"][cam], h["robot_raw_depth"][cam], h["robot"][cam]
-        if ra["depth_median_mm"] is None or ra["depth_median_mm"] > GATES["depth_median_mm"]:
-            reasons.append(f"G2: held-out robot depth median {ra['depth_median_mm']} mm > {GATES['depth_median_mm']}")
-        if ra["explained_fraction"] is None or ra["explained_fraction"] < GATES["explained"]:
-            reasons.append(f"G2: explained {ra['explained_fraction']} < {GATES['explained']}")
-        if rb["contour_median_px"] > GATES["contour_px"]:
-            reasons.append(f"G3: contour median {rb['contour_median_px']:.2f} px > {GATES['contour_px']}")
-        if ra.get("o2m_fixed_median_px") is None or ra["o2m_fixed_median_px"] > GATES["o2m_fixed_px"]:
-            reasons.append(f"G3: fixed o2m median {ra.get('o2m_fixed_median_px')} px > {GATES['o2m_fixed_px']}")
+        dm, ex = ra.get("depth_median_mm"), ra.get("explained_fraction")
+        if dm is None or not np.isfinite(dm) or dm > GATES["depth_median_mm"]:
+            reasons.append(f"G2: held-out robot depth median {dm} mm > {GATES['depth_median_mm']}")
+        if ex is None or not np.isfinite(ex) or ex < GATES["explained"]:
+            reasons.append(f"G2: explained {ex} < {GATES['explained']}")
+        if not np.isfinite(rb["contour_median_px"]) or rb["contour_median_px"] > GATES["contour_px"]:
+            reasons.append(f"G3: contour median {rb['contour_median_px']:.3f} px > {GATES['contour_px']}")
+        o2m = ra.get("o2m_fixed_median_px")
+        if o2m is None or not np.isfinite(o2m) or o2m > GATES["o2m_fixed_px"]:
+            reasons.append(f"G3: fixed o2m median {o2m} px > {GATES['o2m_fixed_px']}")
         if not g4_ok:
             reasons.append(f"G4: static correspondences {g4}")
-        moved = [ep for ep, v in (fixedness.get("episodes") or {}).items()
-                 if cam in v and not v[cam]["fixed"] and _detected_motion(v[cam])]
-        unverifiable = [ep for ep, v in (fixedness.get("episodes") or {}).items()
-                        if cam in v and not v[cam]["fixed"] and not _detected_motion(v[cam])]
-        if moved:
-            reasons.append(f"G5: motion detected in {len(moved)} episodes: {moved[:8]}")
-        if not cc:
-            reasons.append("G6: common-transform challenge missing")
+        f_reg = fixedness_registration(fixed, cam)
+        f_epi = fixedness_epipolar(per_ep, cam) if per_ep else {"moved": [], "not_verifiable": ["all"]}
+        if f_reg["moved"]:
+            reasons.append(f"G5a: registration detects motion in {len(f_reg['moved'])} episodes {f_reg['moved'][:6]}")
+        if f_epi["moved"]:
+            reasons.append(f"G5b: epipolar consistency flags {len(f_epi['moved'])} episodes {f_epi['moved'][:6]}")
+        if not per_ep or len(per_ep) < len(full.get("fit_episodes", [])) + len(full.get("heldout_episodes", [])):
+            reasons.append("G5b: per-episode consistency incomplete")
+        entries = [k for k, v in cc.items() if isinstance(v, dict)]
+        if len(entries) != 12:
+            reasons.append("G6: common-transform challenge missing or incomplete")
         elif not cc.get("all_rejected"):
-            bad = [k for k, v in cc.items() if isinstance(v, dict) and not v["rejected"]]
+            bad = [k for k in entries if not cc[k]["rejected"]]
             reasons.append(f"G6: held-out robot evidence does not reject common perturbations {bad}")
         alpha = full["state"]["alpha"][cam]
         out[cam] = {"status": "validated" if not reasons else "held", "reasons": reasons,
                     "empirical_spread": {**(allsp or {}), "sets": sp},
                     "heldout": {"robot_alpha_depth": ra, "robot_raw_depth": rr, "silhouette": rb, "static": g4},
-                    "fixedness": {"moved": moved, "not_verifiable": unverifiable},
+                    "fixedness": {"registration": f_reg, "epipolar": f_epi},
                     "alpha": alpha, "raw_depth_flag": abs(alpha) > 0.01}
     return out
-
-
-def _detected_motion(m: dict) -> bool:
-    """A segment failed because of a measured shift/rotation/scale (not merely too few registrable patches)."""
-    for s in m.get("segments", []):
-        reason = s.get("reason", "") or ""
-        if s.get("fixed") is False and any(k in reason for k in ("image shift", "in-plane rotation", "scale")):
-            return True
-    return False
 
 
 def main(argv=None):
@@ -145,6 +213,11 @@ def main(argv=None):
                                "T_cam_base": final["state"]["T_cam_base"][cam], "depth_scale": ds,
                                "tau_s": final["state"]["tau_s"][cam], "empirical_spread": v["empirical_spread"],
                                "validation": {k: v[k] for k in ("heldout", "fixedness", "alpha", "raw_depth_flag")},
+                               "final_vs_evaluated_fit": {"rot_deg": float(pose_distance(
+                                   np.asarray(final["state"]["T_cam_base"][cam]),
+                                   np.asarray(R["full"]["state"]["T_cam_base"][cam]))[0]), "centre_m": float(pose_distance(
+                                   np.asarray(final["state"]["T_cam_base"][cam]),
+                                   np.asarray(R["full"]["state"]["T_cam_base"][cam]))[1])},
                                "provenance": {"rig": name}}
     ref = np.load(a.reference)
     publish_rig(a.out, doc, {k: ref[k] for k in ref.files})

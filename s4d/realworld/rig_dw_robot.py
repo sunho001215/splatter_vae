@@ -106,6 +106,19 @@ def outward_normals(mask: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     return gx / n, gy / n
 
 
+def zero_crossing(sdf: np.ndarray, start: np.ndarray, direction: np.ndarray, iters: int = 6) -> np.ndarray:
+    """Points on the zero level of the bilinear ``sdf`` (crop-local continuous coordinates, pixel centres at +.5):
+    Newton/secant steps along a fixed unit ``direction`` from ``start`` (N,2), bounded to +-1.5 px."""
+    t = np.zeros(len(start))
+    for _ in range(iters):
+        p = start + t[:, None] * direction
+        val, gu, gv = bilinear(sdf, p, fill=np.nan)
+        slope = gu * direction[:, 0] + gv * direction[:, 1]
+        ok = np.isfinite(val) & (np.abs(slope) > 1e-6)
+        t = np.where(ok, np.clip(t - np.where(ok, val, 0.0) / np.where(ok, slope, 1.0), -1.5, 1.5), t)
+    return start + t[:, None] * direction
+
+
 def extreme_contour_samples(rend: "Render", pix_sel: np.ndarray, nx: np.ndarray, ny: np.ndarray) -> tuple:
     """For each selected boundary pixel (flat crop index), the sample projecting into it that lies furthest along the
     outward normal there (the best estimate of the silhouette edge inside that pixel; every sample counts, the outline
@@ -262,8 +275,9 @@ def frame_factors(cam, X_posed, N_posed, V_posed, T, K, ev: dict, cfg: RobotTerm
         fid = fid_all[ok]
         oi, oj, mi, mj = oi[ok], oj[ok], mi[ok], mj[ok]
         n2 = np.stack([rnx[mi, mj], rny[mi, mj]], 1)
-        step = -sdf_obs[oi, oj]  # pixel centre -> zero level of the observed SDF along its normal (same contour as m2o)
-        ob = np.stack([oj + x0 + 0.5 + step * onx[oi, oj], oi + y0 + 0.5 + step * ony[oi, oj]], 1)
+        # pixel centre -> the zero level of the (bilinear) observed SDF along its normal: the same contour as m2o
+        dirs = np.stack([onx[oi, oj], ony[oi, oj]], 1)
+        ob = zero_crossing(sdf_obs.astype(np.float64), np.stack([oj + 0.5, oi + 0.5], 1), dirs) + np.array([x0, y0])
         ok = np.ones(len(fid), bool)
         nn = np.ones(len(fid))
         Xs.append(Xt[fid])

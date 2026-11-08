@@ -147,13 +147,12 @@ def explained_and_depth(frames, surf, state: State, cfg: RobotTermConfig, use_al
         front_occ = (~robot) & (fr.depth > 0) & (near_rob_d > 0) & (fr.depth < near_rob_d - cfg.occluder_m)
         bo = boundary(robot) & ~border & ~near_other & ~ndimage.binary_dilation(front_occ, iterations=2)
         # continuous: observed boundary point on the zero level of the observed SDF -> |rendered-mask SDF| there
-        from s4d.realworld.rig_dw_robot import bilinear, outward_normals, sdf_of_mask
+        from s4d.realworld.rig_dw_robot import bilinear, outward_normals, sdf_of_mask, zero_crossing
 
-        sdf_o = sdf_of_mask(robot)
+        sdf_o = sdf_of_mask(robot).astype(np.float64)
         onx, ony = outward_normals(robot)
         oi, oj = np.nonzero(bo)
-        step = -sdf_o[oi, oj]
-        ob = np.stack([oj + 0.5 + step * onx[oi, oj], oi + 0.5 + step * ony[oi, oj]], 1)
+        ob = zero_crossing(sdf_o, np.stack([oj + 0.5, oi + 0.5], 1), np.stack([onx[oi, oj], ony[oi, oj]], 1))
         if rend.mask.any():
             val, _, _ = bilinear(sdf_of_mask(rend.mask).astype(np.float64), ob, fill=np.nan)
             o2m = np.where(np.isfinite(val), np.abs(val), 1e3)
@@ -195,7 +194,7 @@ def heldout_robot(prob: RigProblem, frames, state: State, surf, cfg: RobotTermCo
         s = p.kind == 2
         R = state.T[cam][:3, :3]
         nc = p.nrm[s] @ R.T
-        Xo = np.exp(state.alpha[cam]) * p.obs_ray[s]
+        Xo = np.exp(state.alpha[cam]) * p.obs_ray[s] * np.array([np.exp(-state.focal[cam])] * 2 + [1.0])
         Pc = (p.X[s] + state.tau[cam] * p.V[s]) @ R.T + state.T[cam][:3, 3]
         ptp = 1e3 * np.abs(np.einsum("mi,mi->m", nc, Xo - Pc))
         signed_m2o = np.clip(r[p.kind == 0] * cfg.sigma_sil_px, -20, 20)
@@ -229,6 +228,9 @@ def common_challenge(prob: RigProblem, frames, state: State, cfg: RobotTermConfi
     prob.frames, prob.support, prob.support_stats, prob._pack_cache = saved
     c = 3.0
 
+    episodes = sorted({f.episode for f in factors})
+    ep_of = np.concatenate([[episodes.index(e) for e, _ in pk[k].frames] for k in sorted(pk)])
+
     def per_frame(st: State):
         out = {}
         for cam, p in pk.items():
@@ -258,11 +260,62 @@ def common_challenge(prob: RigProblem, frames, state: State, cfg: RobotTermConfi
                 d = per_frame(st) - base
                 k = int((d > 0).sum())
                 pval = float(binomtest(k, len(d), 0.5, alternative="greater").pvalue)
+                de = np.bincount(ep_of, weights=d, minlength=len(episodes))  # episode clusters
+                ke = int((de > 0).sum())
+                pe = float(binomtest(ke, len(de), 0.5, alternative="greater").pvalue)
                 res[f"{kind}{'xyz'[ax]}{'+' if sgn > 0 else '-'}"] = {
                     "frames_worse": k, "frames": int(len(d)), "fraction_worse": float(k / max(1, len(d))),
-                    "mean_cost_increase": float(d.mean()), "p_value": pval, "rejected": bool(pval < 0.01 and k > len(d) / 2)}
+                    "mean_cost_increase": float(d.mean()), "p_value": pval,
+                    "episodes_worse": ke, "episodes": int(len(de)), "p_value_episode": pe,
+                    "rejected": bool(pval < 0.01 and k > len(d) / 2 and pe < 0.01)}
     res["all_rejected"] = all(v["rejected"] for v in res.values() if isinstance(v, dict))
     return res
+
+
+def fs_over_sensor(mdir: Path, episodes: list) -> dict:
+    """Median FS / sensor depth ratio per camera over the static MAGSAC-inlier matches of ``episodes``."""
+    acc = {c: [] for c in CAMS}
+    for e in episodes:
+        with np.load(mdir / f"{e}.npz") as z:
+            mc = json.loads(str(z["meta"]))["cameras"]
+            ok = z["magsac_inlier"].astype(bool) & (z["dyn_dist_a"] > 9) & (z["dyn_dist_b"] > 9)
+            for end in "ab":
+                for p in np.unique(z["pair"]):
+                    pa, pb = divmod(int(p), 10)
+                    cam = mc[pa if end == "a" else pb]
+                    s = ok & (z["pair"] == p) & (z["fs_" + end] > 0) & (z["sd_" + end] > 0) \
+                        & (z["fs_range_" + end] < 0.02 * z["fs_" + end])
+                    acc[cam].append(z["fs_" + end][s] / z["sd_" + end][s])
+    return {c: float(np.median(np.concatenate(v))) for c, v in acc.items()}
+
+
+def per_episode_extext(state: State, K, mdir: Path, episodes: list, per_frame_pair: int) -> dict:
+    """Fixedness / consistency of every episode with the shared rig: per episode and camera pair the median symmetric
+    epipolar line distance (px) of its static matches (protected subsampling seed 1). A camera that moved in an
+    episode raises both pairs containing it (0.1 deg ~ 1 px)."""
+    from s4d.realworld.rig_dw_geom import skew
+
+    out = {}
+    for e in episodes:
+        m = load_matches([mdir / f"{e}.npz"], list(CAMS), MatchConfig(per_frame_pair=per_frame_pair, seed=1))
+        if not len(m["cam_a"]):
+            continue
+        M = matchset(m, 0.5, 0.01)
+        res = {}
+        for a, b, ids in M._groups:
+            R = state.T[b][:3, :3] @ state.T[a][:3, :3].T
+            t = state.T[b][:3, 3] - R @ state.T[a][:3, 3]
+            F = np.linalg.inv(K[b]).T @ skew(t) @ R @ np.linalg.inv(K[a])
+            xa = np.column_stack((M.uv_a[ids], np.ones(len(ids))))
+            xb = np.column_stack((M.uv_b[ids], np.ones(len(ids))))
+            la, lb = xb @ F, xa @ F.T
+            num = np.abs(np.sum(xb * lb, axis=1))
+            line = 0.5 * (num / np.hypot(lb[:, 0], lb[:, 1]) + num / np.hypot(la[:, 0], la[:, 1]))
+            med = float(np.median(line))
+            se = float(1.2533 * 1.4826 * np.median(np.abs(line - med)) / np.sqrt(max(1, len(line))))
+            res[f"{a[:12]}-{b[:12]}"] = {"median_px": med, "se_px": se, "n": int(len(line))}
+        out[e] = res
+    return out
 
 
 def heldout_extext(state: State, K, Mh: ee.MatchSet) -> dict:
@@ -330,6 +383,8 @@ def main(argv=None):
     ap.add_argument("--spacing-m", type=float, default=0.0015)
     ap.add_argument("--no-heldout", action="store_true")
     ap.add_argument("--challenge", action="store_true", help="run the G6 common-transform challenge for any variant")
+    ap.add_argument("--ref-result", default=None, help="result JSON whose state defines a COMMON support on which this "
+                    "solution's and the reference's fit costs are compared (multistart near-best rule)")
     ap.add_argument("--init", default=None, help="JSON with a State (T_cam_base, alpha, tau_s) to start from")
     a = ap.parse_args(argv)
     t0 = time.time()
@@ -408,6 +463,10 @@ def main(argv=None):
     if a.init:
         d = json.loads(Path(a.init).read_text())["state"]
         s0 = State({c: np.asarray(d["T_cam_base"][c]) for c in CAMS}, dict(d["alpha"]), dict(d["tau_s"]))
+    if scfg.fix_alpha:
+        s0.alpha = {c: 0.0 for c in CAMS}
+    if not scfg.estimate_tau:
+        s0.tau = {c: 0.0 for c in CAMS}
     prob = RigProblem(CAMS, K, M, frames, surf, rcfg, scfg, pivot=pivot)
     stages = ("shape", "common", "full")
     if v == "extonly":
@@ -422,6 +481,7 @@ def main(argv=None):
         s0 = perturb_common(s_shape, start, pivot=pivot)
         stages = ("common", "full")
     s = prob.solve(s0, stages=stages, log=log)
+    s_fit = s
     result = {"task": a.task, "variant": a.variant, "fit_episodes": fit_eps, "heldout_episodes": held,
               "state": s.to_json(), "init_state": s0.to_json(), "log": log,
               "config": {"match": asdict(mcfg), "robot": asdict(rcfg), "solve": asdict(scfg),
@@ -432,6 +492,17 @@ def main(argv=None):
                              for e in fit_eps},
               "surface": surf.vs.provenance()}
     # fit statistics (fixed support at the solution)
+    if a.ref_result:
+        d = json.loads(Path(a.ref_result).read_text())["state"]
+        sref = State({c: np.asarray(d["T_cam_base"][c]) for c in CAMS}, dict(d["alpha"]), dict(d["tau_s"]),
+                     focal=dict(d.get("focal_log") or {c: 0.0 for c in CAMS}))
+        sref.P = prob._ee_points(sref, iters=5)
+        own_support = prob.support, prob.support_stats, prob._pack_cache
+        prob.select(sref)
+        s_eval = s.copy()
+        s_eval.P = prob._ee_points(s_eval, iters=5)
+        result["cost_on_ref_support"] = {"solution": prob.cost(s_eval), "reference": prob.cost(sref)}
+        prob.support, prob.support_stats, prob._pack_cache = own_support
     pk = prob._packed() if prob.support is not None else {}
     fit_stats = {}
     for cam, p in pk.items():
@@ -445,6 +516,12 @@ def main(argv=None):
     result["information"] = info
     result["moves_vs_init"] = {c: list(pose_distance(s0.T[c], s.T[c])) for c in CAMS}
     if held and not a.no_heldout:
+        s_fit = s
+        if v == "depth":  # evaluate on the protected FS evidence with the FS-equivalent depth scale
+            r_fs = fs_over_sensor(mdir, fit_eps)
+            s = s.copy()
+            s.alpha = {c: s.alpha[c] - float(np.log(r_fs[c])) for c in CAMS}
+            result["fs_over_sensor_fit"] = r_fs
         # protected evaluation configuration, identical for every variant: FS depth, match subsampling seed 1
         mh = load_matches([mdir / f"{e}.npz" for e in held], list(CAMS), MatchConfig(per_frame_pair=a.per_frame_pair,
                                                                                       seed=1))
@@ -480,6 +557,10 @@ def main(argv=None):
                     per_ep[e]["extext"] = heldout_extext(se, prob.K, matchset(subset(mh, me), a.sigma_px,
                                                                                a.sigma_logd))["all"]
             result["heldout_cal1_per_episode"] = per_ep
+    if v == "depth":
+        s = s_fit
+    if v in ("full", "all"):
+        result["per_episode_extext"] = per_episode_extext(s, prob.Keff(s), mdir, all_eps, a.per_frame_pair)
     result["seconds"] = round(time.time() - t0, 1)
     out = Path(a.out)
     out.parent.mkdir(parents=True, exist_ok=True)

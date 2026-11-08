@@ -38,10 +38,11 @@ def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--task-root", required=True)
     ap.add_argument("--out", required=True)
+    ap.add_argument("--segments", type=int, default=None, help="temporal segments per episode (default: FixednessConfig)")
     a = ap.parse_args(argv)
     task_root = Path(a.task_root)
     eps = sorted((p.name for p in task_root.iterdir() if p.is_dir()), key=lambda e: int(e.rsplit("-", 1)[1]))
-    cfg = FixednessConfig()
+    cfg = FixednessConfig() if a.segments is None else FixednessConfig(segments=a.segments)
     ref_ep = eps[0]
     cams = [v.stream_id for v in camera_views(load_meta(task_root / ref_ep, ref_ep))]
     ref, ref_arrays = {}, {}

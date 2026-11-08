@@ -355,12 +355,16 @@ class RigProblem:
                 null = V[:, ~ident]
                 out["unidentified_directions"] = int((~ident).sum())
                 res = self.marginal(s, cov)
-                if null.size:  # parameters touched by a null direction have unbounded variance
+                if null.size:  # every quantity touched by a null direction has unbounded variance
                     touched = np.zeros(self.n, bool)
                     touched[keep] = np.abs(null).max(1) > 1e-6
                     for k, c in enumerate(self.cams):
-                        if touched[k * NPC:k * NPC + 6].any():
+                        b = k * NPC
+                        if touched[b:b + 6].any():
                             res[c]["rot_sd_deg"] = res[c]["centre_sd_m"] = float("inf")
+                        for j, key in ((6, "alpha_sd"), (7, "tau_sd_s"), (8, "focal_sd")):
+                            if touched[b + j]:
+                                res[c][key] = float("inf")
                 out["marginal"] = res
                 out["cov"] = cov
         return out

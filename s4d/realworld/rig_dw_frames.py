@@ -181,49 +181,6 @@ def robot_cost_packed(packed, state, Kmap, cfg, cauchy_c: float = 3.0, kinds=(0,
     return cost
 
 
-def _robot_normal_equations_unpacked(factors, state, Kmap, cfg, col_of, n, cauchy_c: float = 3.0, kinds=(0, 1, 2),
-                                     robust: bool = True):
-    """Robot part of the normal equations: H (n,n), g (n,), cost = sum c^2 log(1 + r^2/c^2) (robust) or sum r^2.
-    ``col_of(cam)`` -> 9 global column indices [xi(6), alpha, tau, focal] (entries < 0 are fixed)."""
-    H = np.zeros((n, n))
-    g = np.zeros(n)
-    cost = 0.0
-    nres = 0
-    for ff in factors:
-        if ff is None:
-            continue
-        cam = ff.cam
-        r, J = rr.residuals_and_jacobians(ff, state["T"][cam], Kmap[cam], state["alpha"][cam], state["tau"][cam], cfg)
-        use = np.isin(ff.kind, kinds)
-        r, J = r[use], J[use]
-        if robust:
-            w = 1.0 / (1.0 + (r / cauchy_c) ** 2)
-            cost += float(np.sum(cauchy_c ** 2 * np.log1p((r / cauchy_c) ** 2)))
-        else:
-            w = np.ones_like(r)
-            cost += float(np.sum(r ** 2))
-        nres += len(r)
-        cols = np.asarray(col_of(cam))
-        free = cols >= 0
-        Jf = J[:, free]
-        cf = cols[free]
-        H[np.ix_(cf, cf)] += (Jf * w[:, None]).T @ Jf
-        g[cf] += (Jf * w[:, None]).T @ r
-    return H, g, cost, nres
-
-
-def robot_cost(factors, state, Kmap, cfg, cauchy_c: float = 3.0, kinds=(0, 1, 2)) -> float:
-    cost = 0.0
-    for ff in factors:
-        if ff is None:
-            continue
-        r, _ = rr.residuals_and_jacobians(ff, state["T"][ff.cam], Kmap[ff.cam], state["alpha"][ff.cam],
-                                          state["tau"][ff.cam], cfg)
-        r = r[np.isin(ff.kind, kinds)]
-        cost += float(np.sum(cauchy_c ** 2 * np.log1p((r / cauchy_c) ** 2)))
-    return cost
-
-
 def robot_stats(factors, state, Kmap, cfg) -> dict:
     """Unwhitened residual statistics at fixed support: silhouette distances (px) per direction, point-to-plane depth
     (mm), per camera."""
