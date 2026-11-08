@@ -63,3 +63,31 @@ correspondence filtering and solution selection (validation only).
   (reg 207-211) each pad renders 4.0-4.4 mm too far out; drawer-open <= 1.5 mm. Fingers excluded when reg > 50.
 * Kinematics, units, frames, camera conventions (continuous pixel centres, depth K == colour K + 0.5), time sync:
   consistent; camera stamps are start-of-readout (rolling shutter) -> per-camera tau kept.
+
+## Correspondence accuracy (no SAM)
+* Synthetic (robot rendered with a different appearance over the real frame, known pose; 36 frames per task and
+  perturbation): median error 0.74 px at zero render-pose error, 1.02-1.09 px at 1-8 deg / 10-80 mm, p90 2.2-2.6 px;
+  after pooled MAGSAC + silhouette filter no match > 10 px, 3.5-5.7 % > 3 px; template-attraction bias ~0 at zero
+  error, -0.07..-0.14 px (v) at 1-8 deg -> iterate render-and-match.
+* Real images (fit episodes, RoMa time points, flange <= 0.1 m/s): LoMa matches of two cameras on the same surface
+  point (<= 3 mm) lie 0.98 / 1.09 px (median, drawer / mug) from the epipolar lines of the ext-ext rig; triangulated vs
+  FK 3.9 / 3.6 mm; RoMa ext-ext matches on robot pixels land on the same surface point within 3.3 / 3.0 mm (control
+  33 / 31 mm); per-frame mean residual 0.45 / 0.38 px, lag-1 correlation 0.49 / 0.34; 450-750 matches per frame
+  (DepthWorld: 277).
+
+## Leave-one-camera-out term isolation
+rig_dw code, global split (withheld camera vs the same-combination full solution, deg): ext 2D-only + outline 0.29 /
+0.26 / 0.10 (drawer) but 22-25 mm (translation along the view direction unconstrained); + ext depth 0.56 / 0.58 /
+0.14 (== frozen rig_dw with robot depth 0.55 / 0.58 / 0.15); 2D + outline + robot depth == 2D + outline; visual meshes
+instead of collision meshes: contour 1.5-1.75 -> 1.0-1.1 px, LOCO unchanged (0.61 / 0.61 / 0.19). Mug likewise
+(0.53 / 0.29 / 0.37 2D-only vs 0.85 / 0.69 / 0.52 with depth). **The ext-ext FS-depth rows drive the LOCO rotation
+offset; robot depth and SAM outlines are not the cause.** rig_loma (dev): default sigma_logd 1 %: 0.24 / 0.32 / 0.02
+(drawer), 0.34 / 0.49 / 0.12 (mug); 3 %: 0.07 / 0.16 / 0.04, 0.14 / 0.20 / 0.07; 5 %: 0.03 / 0.09 / 0.04,
+0.06 / 0.06 / 0.02; ext 2D-only: 0.07-0.13 deg but 9-32 mm; the match-depth term changes nothing; S2M2 / native
+depth behave like FS.
+
+## Dev-split results and freeze proposal
+See `/home/ws/ws/realworld-ops/calib-loma/loma/FREEZE_PROPOSAL.md` (sigma_logd 3 % + per-task gripper-mount
+estimate). Dev pre-check with rig_dw's gates: G1 (incl. LOCO) passes for all six cameras, G2 / G3 / G4 pass (SAM
+validation, mug fixed-o2m at 1.90-2.00 px), G6 with SAM evidence fails for drawer-open (roty+; the SAM-free 2D-3D
+challenge rejects all 12 perturbations), mug-hanging G5a fails independently of the solution (as for rig_dw).
