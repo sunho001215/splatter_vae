@@ -87,7 +87,9 @@ Sensitivities (diagnostics, not gated): SAM mask +-2 px = a pure common similari
 (scale -1.4 % / +2.0 %, residual < 1 mm; ~7 mm of camera-to-workspace distance per px of boundary offset; relative
 alphas unchanged); alpha fixed at 0 (FS metric trusted): scale -1.7 %, centres 6-12 mm, all held-out terms worse;
 per-camera focal multiplier: -0.9..-2.7 % (inconsistent between tasks), scale -1.3..-1.7 %; sensor depth instead of FS:
-<= 0.06 deg / 0.7 mm; robot-depth-only grounding drifts 3 deg / 60 mm (not usable); silhouettes-only == full.
+<= 0.07 deg / 1.1 mm; no tau <= 0.05 deg / 0.9 mm; 1.0 mm mesh sampling <= 0.03 deg / 0.6 mm; match-subsampling seed
+<= 0.001 deg (all re-run with the frozen code, both tasks); robot-depth-only grounding drifts 3 deg / 60 mm (not
+usable); silhouettes-only == full (pre-freeze diagnostics).
 Held-out signed silhouette residuals are positive in both directions (+0.9..+2.0 px): the rendered visual-mesh
 silhouette is larger than the SAM masks at the solution (SAM under-segmentation of ~1-2 px is consistent with the
 board's +1 % scale, below).
@@ -140,12 +142,13 @@ Do not release `calibration_validated` for either task (both held by the pre-reg
 should get status done). The rig_dw poses are nevertheless far more consistent than the current per-episode poses
 (static epipolar 0.25-0.28 px vs 4.2-4.4 px; silhouettes 1.5-2.0 px vs 1.8-3.4 px; cross-task 0.08-0.27 deg vs
 0.65-2.0 deg). If the user accepts the residual ambiguity explicitly, the least-risk interim option is to use the
-rig_dw rig (rig documents `realworld-ops/calib-dw/rig/rig-dw-<task>.json`) for geometry consumers only together with
+rig_dw rig (rig documents `realworld-ops/calib-dw/rig/rig-dw-<task>.json`, status held, with per-camera FS and sensor
+`depth_scale`; per-episode record templates `rig/calibration_validated-<task>.template.json`, all status held) for geometry consumers only together with
 consuming its per-camera FS depth scale, documenting the ~1 % common-scale and 0.5-0.8 deg single-camera
 uncertainties; that is a user decision, not a validated release.
 
 ## Codex
 r01 design review, r02 implementation of the ext-ext factor + tests, r03 code review (10 findings fixed), r04
 depth-scale analysis, r05 pre-freeze review (7 findings fixed, G5 amendment rule); r06-r08 (frozen-result and board
-analysis) failed with HTTP 429 (provider rate limit, 6 attempts 14:04-16:10 on 2026-11-08) - those analyses were done
+analysis) failed with HTTP 429 (provider rate limit, 7 attempts 14:04-16:33 on 2026-11-08) - those analyses were done
 without Codex. Prompts/outputs in `realworld-ops/calib-dw/codex/`.
