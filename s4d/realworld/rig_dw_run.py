@@ -386,6 +386,9 @@ def main(argv=None):
     ap.add_argument("--ref-result", default=None, help="result JSON whose state defines a COMMON support on which this "
                     "solution's and the reference's fit costs are compared (multistart near-best rule)")
     ap.add_argument("--init", default=None, help="JSON with a State (T_cam_base, alpha, tau_s) to start from")
+    ap.add_argument("--loco", default=None, help="diagnostic (combinable with any variant): robot factors withheld "
+                    "for the camera whose id starts with this prefix")
+    ap.add_argument("--robot-kinds", default=None, help="diagnostic (combinable): robot factor kinds, e.g. 01")
     a = ap.parse_args(argv)
     t0 = time.time()
     mdir, edir = Path(a.matches), Path(a.evidence)
@@ -433,6 +436,10 @@ def main(argv=None):
         scfg = replace(scfg, use_extext=False)
     elif v != "full" and v != "mask":
         raise SystemExit(f"unknown variant {a.variant}")
+    if a.loco:  # term-isolation diagnostics (LOMA stream): combinable with the other options
+        scfg = replace(scfg, robot_cameras=tuple(c for c in CAMS if not c.startswith(a.loco)))
+    if a.robot_kinds:
+        scfg = replace(scfg, robot_kinds=tuple(int(ch) for ch in a.robot_kinds))
 
     m = load_matches([mdir / f"{e}.npz" for e in fit_eps], list(CAMS), mcfg)
     M = matchset(m, a.sigma_px, a.sigma_logd)
