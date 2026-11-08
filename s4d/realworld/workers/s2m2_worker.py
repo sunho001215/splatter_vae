@@ -9,8 +9,9 @@ size table (S/M/L/XL = feature channels 128/192/256/384, transformers 1/2/3/3), 
 images as float 0..255 3-channel tensors (the model normalises internally to [-1, 1]), forward under
 ``torch.amp.autocast(float16)`` (upstream ``run_stereo_matching``) or float32 (``precision: fp32``). Differences to the
 upstream loader, all on the safe side: the checkpoint is loaded with ``weights_only=True`` exactly as upstream, but every
-key must match in name and shape (upstream ``my_load_state_dict`` silently skips shape mismatches and loads with
-``strict=False``; here any missing/unexpected/mis-shaped key is an error), and upstream's module-level ``open3d`` import
+model tensor must be present with its shape (upstream ``my_load_state_dict`` silently skips shape mismatches, loads
+``strict=False``; here a missing or mis-shaped model tensor is an error, and the checkpoint's extra tensors of modules
+the public implementation does not build are listed in the response meta), and upstream's module-level ``open3d`` import
 (used only by its point-cloud helper) is avoided by not importing ``model_utils``.
 
 task ``ir_pair_disparity``: inputs ``left``, ``right`` (N,H,W) uint8 device-rectified infrared pairs (grayscale
@@ -77,13 +78,18 @@ def _model(repo: Path, ckpt: Path, params: dict):
         missing = sorted(set(own) - set(state))
         unexpected = sorted(set(state) - set(own))
         shape = sorted(k for k in set(own) & set(state) if tuple(own[k].shape) != tuple(state[k].shape))
-        if missing or unexpected or shape:
+        if missing or shape:
             raise RuntimeError(f"S2M2 checkpoint does not match the model: missing {missing[:5]} ({len(missing)}), "
-                               f"unexpected {unexpected[:5]} ({len(unexpected)}), shape {shape[:5]} ({len(shape)})")
-        model.load_state_dict(state, strict=True)
+                               f"shape {shape[:5]} ({len(shape)})")
+        # The released checkpoints also carry tensors of modules this public implementation does not build (README:
+        # the attention-based refinement was replaced by a UNet; observed: disp_init.layer_norm1.*,
+        # feature_flow_attn.*). They are unused; every model tensor is loaded (missing == 0, shapes equal).
+        res = model.load_state_dict({k: v for k, v in state.items() if k in own}, strict=True)
+        assert not res.missing_keys and not res.unexpected_keys
         model.cuda().eval()
         _MODELS[key] = (model, {"model_type": model_type, "num_refine": key[2], "allow_negative": key[3],
-                                "n_parameters": int(sum(p.numel() for p in model.parameters()))})
+                                "n_parameters": int(sum(p.numel() for p in model.parameters())),
+                                "checkpoint_unused_keys": unexpected})
     return _MODELS[key]
 
 
