@@ -639,7 +639,7 @@ def test_publisher_applies_the_release_gate_and_documents_it(tmp_path):
 def _fake_calibrate_outputs(root, ep, doc, rig_sha, *, status="accepted", build_id="b" * 32):
     d = rio.stage_dir(root, ep, "calibrate")
     d.mkdir(parents=True, exist_ok=True)
-    rio.atomic_write_json(d / "record.json", {"stage": "calibrate", "build_id": build_id, "fingerprint": "f" * 64,
+    rio.atomic_write_json(d / rio.RECORD, {"stage": "calibrate", "build_id": build_id, "fingerprint": "f" * 64,
                                               "config": {"rig_calibration": {"name": doc["name"]}},
                                               "inputs": {"rig_calibration": rig_sha,
                                                          "rig_reference": doc["reference_sha256"]}})
@@ -744,3 +744,39 @@ def test_calibration_validated_records_satisfy_the_gate_and_refuse_failures(tmp_
     p4 = plan(manifest, {"drawer-open": str(hpath)}, path_map=[("/remote", str(tmp_path / "remote"))])
     assert p4["tasks"]["drawer-open"]["refused"]
     assert any("no valid fixedness exception" in x for x in p4["tasks"]["drawer-open"]["problems"])
+
+
+def test_check_episode_reads_the_completion_record_written_by_run_stage(tmp_path):
+    """Regression (OPS 2026-11-09): the builder must read the calibrate stage's completion record under the name the
+    stage writer uses (``rio.RECORD``, written by ``rio.run_stage``), not a fixture-only ``record.json``."""
+    from s4d.realworld.calibration_release import check_episode
+    from s4d.realworld.calibration_rig import load_rig, publish_rig
+
+    cams = list(CAMS)
+    doc = _release_doc(cams, "t-000000", task="drawer-open")
+    path = tmp_path / "rig.json"
+    publish_rig(path, doc, {f"{c.replace('/', '__')}__{k}": np.zeros((2, 2)) for c in cams for k in ("grey", "dynamic")})
+    doc, _, fp = load_rig(path)
+    ep = "drawer-open-000000"
+    root = tmp_path / "root"
+
+    def build(tmp):
+        for cam, c in doc["cameras"].items():
+            rio.atomic_write_json(tmp / f"{rio.safe_name(cam)}.json", {
+                "status": "accepted", "reasons": [], "T_cam_base": c["T_cam_base"], "init_method": "rig_shared",
+                "depth_scale": c["depth_scale"], "robot_model": doc["robot_model"],
+                "diagnostics": {"release": {"rig": doc["name"]}, "heldout_depth_abs_median_m": 0.007,
+                                "fixedness": {"fixed": True, "rule": "g5ab/1", "registration": {"moved": False},
+                                              "exception": None}}})
+        return {}
+
+    rec = rio.run_stage(rio.stage_dir(root, ep, "calibrate"), stage="calibrate", version="1",
+                        config={"rig_calibration": {"name": doc["name"]}},
+                        inputs={"rig_calibration": fp["rig_calibration"], "rig_reference": doc["reference_sha256"]},
+                        build=build)
+    assert not (rio.stage_dir(root, ep, "calibrate") / "record.json").exists()
+    entry = {"sha256": "a" * 64, "preprocessing": {"stages": {"calibrate": {
+        "status": "done", "input_sha256": "a" * 64, "metrics": {"build_id": rec["build_id"]},
+        "outputs": str(rio.episode_dir(root, ep))}}}}
+    record, problems = check_episode("drawer-open/episode_000000.h5", entry, doc, fp["rig_calibration"])
+    assert problems == [] and record["metrics"]["calibrate_build_id"] == rec["build_id"]

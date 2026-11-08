@@ -76,6 +76,7 @@ def _valid_entries(manifest: dict, task: str) -> dict:
 
 def check_episode(key: str, entry: dict, rig_doc: dict, rig_sha: str, path_map=()) -> tuple[dict | None, list]:
     """(record or None, problems) of one manifest episode."""
+    from s4d.realworld import io as rio
     from s4d.realworld.calibration_rig import rig_camera_status
 
     problems = []
@@ -86,7 +87,7 @@ def check_episode(key: str, entry: dict, rig_doc: dict, rig_sha: str, path_map=(
         return None, [f"{key}: manifest calibrate record not done for this file (status {cal.get('status')!r}, "
                       f"build id {bid!r})"]
     stage_dir = _mapped(str(cal["outputs"]), path_map) / "derived" / "calibrate"
-    rec_path = stage_dir / "record.json"
+    rec_path = stage_dir / rio.RECORD  # the stage's completion record as run_stage writes it (_COMPLETE.json)
     if not rec_path.is_file():
         return None, [f"{key}: no calibrate record at {rec_path}"]
     rec = json.loads(rec_path.read_text())
