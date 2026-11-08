@@ -155,10 +155,10 @@ def test_workers_is_one_package_holding_the_worker_scripts():
     assert not (REPO / "s4d/realworld/workers.py").exists()
     scripts = sorted(p.name for p in workers.WORKER_DIR.glob("*_worker.py"))
     assert scripts == ["dino_snerl_worker.py", "foundation_stereo_worker.py", "loma_render_match_worker.py",
-                       "mock_worker.py", "romav2_match_worker.py", "s4d_kernels_worker.py", "sam3_worker.py",
-                       "static_flags_worker.py", "trackeverything_worker.py"], scripts
+                       "mock_worker.py", "romav2_match_worker.py", "s2m2_worker.py", "s4d_kernels_worker.py",
+                       "sam3_worker.py", "static_flags_worker.py", "trackeverything_worker.py"], scripts
     for name in ("foundation_stereo", "trackeverything", "sam3", "dino_snerl", "s4d_kernels", "mock", "romav2_match",
-                 "loma_render_match", "static_flags"):
+                 "loma_render_match", "static_flags", "s2m2"):
         assert workers.WorkerSpec(name, "python").script_path().is_file(), name
 
 
