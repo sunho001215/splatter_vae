@@ -1,0 +1,54 @@
+=== 2026-11-08 17:57:43 release chain abf9427fc08ab4a7961e8e801464328d06280120 (a383cca + worker-inventory test fix; a383cca suite 2207/1)
+17:58:12 /home/ws/ws/splatter4d/.worktrees/rwcalib-dw/s4d/remote_access.py sync-code abf9427fc08ab4a7961e8e801464328d06280120 -> 0 /home/compu/kaist/sunho/releases/abf9427fc08ab4a7961e8e801464328d06280120/code 
+17:58:12 /home/compu/kaist/sunho/releases/abf9427fc08ab4a7961e8e801464328d06280120/code
+17:58:18 sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a --tag cc -> 0 /home/ws/ws/splatter4d/runs/remote/verification/native-abf9427-cc-queue.yaml 
+17:59:04 launched verify-native-abf9427-cc on remote/GPU-ca65e1b7-c0ac-6757-7d3f-816c3119a4c1 (s4d-verify-native-abf9427-cc-a1, attempt 1)
+17:59:04 wait {'verify-native-abf9427-cc': 'running'}
+18:00:25 verify-native-abf9427-cc: live result sync unavailable; job remains running
+18:00:26 wait {'verify-native-abf9427-cc': 'running'}
+18:01:39 wait {'verify-native-abf9427-cc': 'running'}
+18:02:58 wait {'verify-native-abf9427-cc': 'running'}
+18:04:11 wait {'verify-native-abf9427-cc': 'running'}
+18:05:29 wait {'verify-native-abf9427-cc': 'running'}
+18:06:42 wait {'verify-native-abf9427-cc': 'running'}
+18:08:01 wait {'verify-native-abf9427-cc': 'running'}
+18:09:14 wait {'verify-native-abf9427-cc': 'running'}
+18:10:33 wait {'verify-native-abf9427-cc': 'running'}
+18:11:46 wait {'verify-native-abf9427-cc': 'running'}
+18:13:05 wait {'verify-native-abf9427-cc': 'running'}
+18:14:18 verify-native-abf9427-cc: live result sync unavailable; job remains running
+18:14:18 wait {'verify-native-abf9427-cc': 'running'}
+18:15:36 foreign processes on remote/GPU-ca65e1b7-c0ac-6757-7d3f-816c3119a4c1; not launching there
+18:15:37 wait {'verify-native-abf9427-cc': 'running'}
+18:17:20 verify-native-abf9427-cc exited with 1 on remote
+18:17:20 launched verify-native-abf9427-cc on remote/GPU-ca65e1b7-c0ac-6757-7d3f-816c3119a4c1 (s4d-verify-native-abf9427-cc-a2, attempt 2)
+18:17:21 wait {'verify-native-abf9427-cc': 'running'}
+18:18:47 wait {'verify-native-abf9427-cc': 'running'}
+18:20:18 wait {'verify-native-abf9427-cc': 'running'}
+18:21:31 verify-native-abf9427-cc: live result sync unavailable; job remains running
+18:21:31 wait {'verify-native-abf9427-cc': 'running'}
+18:22:52 wait {'verify-native-abf9427-cc': 'running'}
+18:24:05 verify-native-abf9427-cc: live result sync unavailable; job remains running
+18:24:05 foreign processes on remote/GPU-ca65e1b7-c0ac-6757-7d3f-816c3119a4c1; not launching there
+18:24:05 wait {'verify-native-abf9427-cc': 'running'}
+18:25:25 remote co-tenants: 1 known, 16 GB RAM not yet in use charged; 
+18:25:25 wait {'verify-native-abf9427-cc': 'running'}
+18:26:38 remote co-tenants: 6 known, 187 GB RAM not yet in use charged; 
+18:26:38 wait {'verify-native-abf9427-cc': 'running'}
+18:27:59 remote co-tenants: 8 known, 234 GB RAM not yet in use charged; 
+18:28:00 wait {'verify-native-abf9427-cc': 'running'}
+18:29:12 remote co-tenants: 8 known, 225 GB RAM not yet in use charged; 
+18:29:13 wait {'verify-native-abf9427-cc': 'running'}
+18:30:32 remote co-tenants: 8 known, 219 GB RAM not yet in use charged; 
+18:30:33 wait {'verify-native-abf9427-cc': 'running'}
+18:31:45 remote co-tenants: 8 known, 216 GB RAM not yet in use charged; 
+18:31:46 wait {'verify-native-abf9427-cc': 'running'}
+18:33:05 remote co-tenants: 8 known, 214 GB RAM not yet in use charged; 
+18:33:05 wait {'verify-native-abf9427-cc': 'running'}
+18:34:18 remote co-tenants: 8 known, 214 GB RAM not yet in use charged; 
+18:34:19 wait {'verify-native-abf9427-cc': 'running'}
+18:35:37 verify-native-abf9427-cc: live result sync unavailable; job remains running
+18:35:37 remote co-tenants: 9 known, 248 GB RAM not yet in use charged; 
+18:35:38 wait {'verify-native-abf9427-cc': 'running'}
+18:36:42 FAILED {'verify-native-abf9427-cc': 'failed'}
+chain exit 2

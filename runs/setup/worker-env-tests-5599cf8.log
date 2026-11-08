@@ -1,0 +1,5 @@
+......                                                                   [100%]
+6 passed in 1.66s
+# 2026-11-08 19:1x KST: tests_worker_env at 5599cf8 (release tree /home/compu/kaist/sunho/releases/5599cf8.../code, ro),
+# image s4d-rwprep-f7e075f51c79:20261106, interpreter /opt/envs/foundation_stereo/bin/python (OpenCV 5.0.0 with aruco),
+# pytest/pluggy/iniconfig/packaging copied from /opt/s4d/.venv (pure Python) onto PYTHONPATH, GPU-9e9f1e97 for the guard.

@@ -1,0 +1,48 @@
+=== 2026-11-08 17:17:51 release chain a383cca07ca47b2a03addab50e21eb1928fac341 (DWCAL board-free rig calibration code/tests/docs; both tasks HELD, no gate change)
+17:17:52 /home/ws/ws/splatter4d/.worktrees/rwcalib-dw/s4d/remote_access.py sync-code a383cca07ca47b2a03addab50e21eb1928fac341 -> 1  Local Git provenance check failed:
+chain exit 1
+=== 2026-11-08 17:19:25 release chain retry a383cca07ca47b2a03addab50e21eb1928fac341 (submodules initialised; candidate pushed to origin/splatter4d)
+17:19:54 /home/ws/ws/splatter4d/.worktrees/rwcalib-dw/s4d/remote_access.py sync-code a383cca07ca47b2a03addab50e21eb1928fac341 -> 0 /home/compu/kaist/sunho/releases/a383cca07ca47b2a03addab50e21eb1928fac341/code 
+17:19:54 /home/compu/kaist/sunho/releases/a383cca07ca47b2a03addab50e21eb1928fac341/code
+17:20:00 sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a --tag cc -> 0 /home/ws/ws/splatter4d/runs/remote/verification/native-a383cca-cc-queue.yaml 
+17:20:44 launched verify-native-a383cca-cc on remote/GPU-ca65e1b7-c0ac-6757-7d3f-816c3119a4c1 (s4d-verify-native-a383cca-cc-a1, attempt 1)
+17:20:45 wait {'verify-native-a383cca-cc': 'running'}
+17:22:06 verify-native-a383cca-cc: live result sync unavailable; job remains running
+17:22:06 wait {'verify-native-a383cca-cc': 'running'}
+17:23:19 wait {'verify-native-a383cca-cc': 'running'}
+17:24:40 verify-native-a383cca-cc: live result sync unavailable; job remains running
+17:24:40 foreign processes on remote/GPU-ca65e1b7-c0ac-6757-7d3f-816c3119a4c1; not launching there
+17:24:41 wait {'verify-native-a383cca-cc': 'running'}
+17:25:53 wait {'verify-native-a383cca-cc': 'running'}
+17:27:13 wait {'verify-native-a383cca-cc': 'running'}
+17:28:27 wait {'verify-native-a383cca-cc': 'running'}
+17:29:46 wait {'verify-native-a383cca-cc': 'running'}
+17:30:58 wait {'verify-native-a383cca-cc': 'running'}
+17:32:19 wait {'verify-native-a383cca-cc': 'running'}
+17:33:31 verify-native-a383cca-cc: live result sync unavailable; job remains running
+17:33:31 wait {'verify-native-a383cca-cc': 'running'}
+17:34:49 wait {'verify-native-a383cca-cc': 'running'}
+17:36:02 wait {'verify-native-a383cca-cc': 'running'}
+17:37:20 foreign processes on remote/GPU-ca65e1b7-c0ac-6757-7d3f-816c3119a4c1; not launching there
+17:37:21 wait {'verify-native-a383cca-cc': 'running'}
+17:39:03 verify-native-a383cca-cc exited with 1 on remote
+17:39:03 launched verify-native-a383cca-cc on remote/GPU-ca65e1b7-c0ac-6757-7d3f-816c3119a4c1 (s4d-verify-native-a383cca-cc-a2, attempt 2)
+17:39:04 wait {'verify-native-a383cca-cc': 'running'}
+17:40:25 wait {'verify-native-a383cca-cc': 'running'}
+17:41:37 wait {'verify-native-a383cca-cc': 'running'}
+17:42:56 verify-native-a383cca-cc: live result sync unavailable; job remains running
+17:42:57 wait {'verify-native-a383cca-cc': 'running'}
+17:44:09 wait {'verify-native-a383cca-cc': 'running'}
+17:45:27 wait {'verify-native-a383cca-cc': 'running'}
+17:46:40 wait {'verify-native-a383cca-cc': 'running'}
+17:47:59 wait {'verify-native-a383cca-cc': 'running'}
+17:49:12 wait {'verify-native-a383cca-cc': 'running'}
+17:50:30 wait {'verify-native-a383cca-cc': 'running'}
+17:51:44 wait {'verify-native-a383cca-cc': 'running'}
+17:53:04 wait {'verify-native-a383cca-cc': 'running'}
+17:54:18 wait {'verify-native-a383cca-cc': 'running'}
+17:55:36 wait {'verify-native-a383cca-cc': 'running'}
+17:56:49 verify-native-a383cca-cc exited with 1 on remote
+17:56:49 verify-native-a383cca-cc exhausted restarts; diagnose before retrying
+17:56:50 FAILED {'verify-native-a383cca-cc': 'failed'}
+chain exit 2
