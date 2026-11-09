@@ -48,7 +48,7 @@ def check_gate(store: FrameStore, gate_report: str | Path | dict | None, *, step
       ``consumer`` (``gate.CONSUMERS``; an unknown or missing consumer counts as one) also the released calibration
       hold, a store built from each episode's validated calibration and only validated cameras
       (``gate.check_store_calibration``);
-    * the store's task set equals the requested ``target`` (``drawer-open`` or ``mug-hanging``: task-specific
+    * the store's task set equals the requested ``target`` (``tasks.TARGETS``: task-specific
       encoders only, user decision 2026-11-06);
     * the run's ``split`` is a disjoint train / validation partition of exactly the store's episodes;
     * no data cap truncates anything (``caps``: ``max_episodes`` / ``num_episodes`` None, ``max_frames_per_demo``

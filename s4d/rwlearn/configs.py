@@ -2,7 +2,7 @@
 drawer-open.yaml``) by an explicit list of overrides, each with its reason (docs/realworld_baselines.md). Every other
 key - architecture, optimiser, schedule, step counts, loss weights - stays the documented protocol value.
 
-``python -I scripts/realworld_baselines.py configs`` writes ``configs/realworld/baselines/<b>/<target>.yaml``; a test
+``python -I scripts/realworld_learning.py configs`` writes ``configs/realworld/baselines/<b>/<target>.yaml``; a test
 asserts the committed files equal ``derive_all()``.
 """
 
@@ -13,11 +13,11 @@ from pathlib import Path
 
 import yaml
 
+from s4d.rwlearn.tasks import TARGET_TASKS as TARGET_TASKS  # the authoritative target registry (re-exported)
+from s4d.rwlearn.tasks import TARGETS as TARGETS
+
 REPO = Path(__file__).resolve().parents[2]
 BASELINES = ("snerl", "mvp3d", "sincro", "reviwo", "dynamo")
-# task-specific encoders only (user decision 2026-11-06 ~11:20: no joint-task pretraining by default)
-TARGETS = ("drawer-open", "mug-hanging")
-TARGET_TASKS = {t: (t,) for t in TARGETS}  # task-specific targets only
 REMOTE_REALWORLD_ROOT = "/home/compu/kaist/sunho/realworld"  # remote campaign root of the real-world data (role host)
 NUM_CAMERAS = 3
 
@@ -26,6 +26,29 @@ NUM_CAMERAS = 3
 SNERL_LOOKAT = [0.334, -0.031, 0.353]  # metres, robot base frame
 SNERL_POSE_SCALE = 3.79  # 4 / median camera distance (1.055 m): cameras 4 official units from the origin
 MVP3D_BOUNDS = [-0.15, -0.7, 0.15, 1.05, 0.6, 1.0]  # >= 99 % of robot/object/fixture depth points of both tasks
+
+# Per-target scene geometry. drawer-open / mug-hanging map to exactly the values above. TODO(covering,
+# pick-and-place): None = NOT MEASURED. Raw flange poses fit inside MVP3D_BOUNDS, but they cannot establish the
+# validated camera poses (lookat, pose_scale) or the object/fixture depth extent (bounds). Measure each new task on its
+# calibration-validated processed store (``scripts/realworld_learning.py scene-stats --store <store.yaml>`` =
+# store.scene_statistics: optical-axis least-squares lookat, 4 / median camera distance, >= 99 % robot/object/fixture
+# containment, foreground near/far coverage; docs/realworld_baselines.md), set the measured values here, regenerate
+# the configs and release. Until then the planner refuses the scene-dependent consumers (``pending_scene_parameters``).
+SCENE_PARAMETERS = {
+    "drawer-open": {"lookat": SNERL_LOOKAT, "pose_scale": SNERL_POSE_SCALE, "bounds": MVP3D_BOUNDS},
+    "mug-hanging": {"lookat": SNERL_LOOKAT, "pose_scale": SNERL_POSE_SCALE, "bounds": MVP3D_BOUNDS},
+    "covering": {"lookat": None, "pose_scale": None, "bounds": None},
+    "pick-and-place": {"lookat": None, "pose_scale": None, "bounds": None},
+}
+SCENE_KEYS = {"snerl": ("lookat", "pose_scale"), "mvp3d": ("bounds",)}  # the baselines that read scene geometry
+PENDING_SCENE = ("NOT MEASURED for this task (TODO): measure with store.scene_statistics on its validated processed "
+                 "episodes (docs/realworld_baselines.md); null on purpose, the planner refuses this baseline until "
+                 "then")
+
+
+def pending_scene_parameters(baseline: str, target: str) -> list[str]:
+    """The scene parameters ``baseline`` reads that are not measured yet for ``target`` (empty: ready)."""
+    return [k for k in SCENE_KEYS.get(baseline, ()) if SCENE_PARAMETERS[target][k] is None]
 
 
 def run_inputs_dir(target: str) -> str:
@@ -43,6 +66,7 @@ def _geometry(baseline: str) -> bool:
 
 def overrides(baseline: str, target: str) -> list[tuple[str, object, str]]:
     """(dotted key, value, reason) applied to the Meta-World drawer-open config."""
+    scene = SCENE_PARAMETERS[target]
     common = [
         ("dataset.hdf5_path", f"{run_inputs_dir(target)}/store.yaml",
          "for source realworld this key holds the FrameStore descriptor (s4d/rwlearn/store.py; compact per-camera "
@@ -64,9 +88,9 @@ def overrides(baseline: str, target: str) -> list[tuple[str, object, str]]:
     ]
     spec = {
         "snerl": [
-            ("data_interface.lookat", SNERL_LOOKAT,
+            ("data_interface.lookat", scene["lookat"],
              "normalised scene origin: least-squares intersection of the three optical axes (Meta-World: rig look-at)"),
-            ("data_interface.pose_scale", SNERL_POSE_SCALE,
+            ("data_interface.pose_scale", scene["pose_scale"],
              "cameras 4 official units from the origin, as official / Meta-World (median distance 1.055 m); official "
              "near/far 2/6 -> 0.53-1.58 m camera depth, which holds the workspace (68.5 % of all valid depth of the "
              "centre-cropped views; the rest is distant room background)"),
@@ -97,10 +121,11 @@ def overrides(baseline: str, target: str) -> list[tuple[str, object, str]]:
         ],
         "mvp3d": [
             ("dataset.num_views", NUM_CAMERAS, "fuse all three cameras per time step (the original fused setting)"),
-            ("render.bounds", MVP3D_BOUNDS,
+            ("render.bounds", scene["bounds"],
              "real-world scene bounds in the robot base frame (measured, see docs/realworld_baselines.md)"),
         ],
     }[baseline]
+    spec = [(key, value, PENDING_SCENE if value is None else why) for key, value, why in spec]
     return common + spec
 
 

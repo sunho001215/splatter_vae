@@ -48,6 +48,7 @@ if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
 from ops.jobs.retired import retired_reason  # noqa: E402
+from s4d.rwlearn.tasks import TARGETS  # noqa: E402
 
 ROLES_PATH = REPO / "configs/hosts/roles.yaml"
 OWNERSHIP_DIR = REPO / "runs/setup/ownership"
@@ -158,9 +159,10 @@ def _metaworld_tasks() -> frozenset[str]:
 
 
 METAWORLD_TASKS = _metaworld_tasks()
-# Real-world campaign tasks (user directive 2026-11-06 item 3); drawer-open is also a Meta-World task, so a task flag
-# alone cannot place a row that names it.
-REALWORLD_TASKS = frozenset({"drawer-open", "mug-hanging"})
+# Real-world campaign tasks (user directive 2026-11-06 item 3; covering and pick-and-place 2026-11-09), read from the
+# learning registry s4d/rwlearn/tasks.py; drawer-open is also a Meta-World task, so a task flag alone cannot place a
+# row that names it.
+REALWORLD_TASKS = frozenset(TARGETS)
 
 
 def _named_domains(text: str) -> set[str]:

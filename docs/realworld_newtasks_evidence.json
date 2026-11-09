@@ -1,0 +1,1338 @@
+{
+ "observed_at_utc": "2026-11-09T13:27:12+00:00",
+ "generator": "n01_out/checks/make_newtasks_evidence.py (Claude, 2026-11-09); h5py read-only, no preprocessing/GPU",
+ "scope": "arrivals snapshot: every complete episode_*.h5 under /home/ws/data/real_world/<task>/ (uploads in progress are hidden temp files and are not matched); test recordings are evidence only, never gate or training episodes",
+ "test_covering_is_episode_000000": true,
+ "scene_raw_evidence": {
+  "covering": {
+   "recordings": 36,
+   "recorder_task_names": [
+    "covering"
+   ],
+   "recorder_episode_indices": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22,
+    23,
+    24,
+    25,
+    26,
+    27,
+    28,
+    29,
+    30,
+    31,
+    32,
+    33,
+    34,
+    35,
+    36
+   ],
+   "flange_xyz_min_m": [
+    0.2939,
+    -0.3568,
+    0.4637
+   ],
+   "flange_xyz_max_m": [
+    0.6642,
+    -0.0036,
+    0.6454
+   ],
+   "flange_rows": 45971,
+   "flange_fraction_in_mvp3d_bounds": 1.0,
+   "camera_serials": [
+    "135122070988",
+    "135122073201",
+    "135122076054"
+   ],
+   "recording_segments": [
+    0,
+    1,
+    2
+   ],
+   "embedded_camera_calibration": [
+    false
+   ]
+  },
+  "pick-and-place (test/pick_and_place.h5 only)": {
+   "recordings": 1,
+   "recorder_task_names": [
+    "pick-and-place"
+   ],
+   "recorder_episode_indices": [
+    2
+   ],
+   "flange_xyz_min_m": [
+    0.3678,
+    -0.0465,
+    0.4697
+   ],
+   "flange_xyz_max_m": [
+    0.5682,
+    0.1002,
+    0.5834
+   ],
+   "flange_rows": 1447,
+   "flange_fraction_in_mvp3d_bounds": 1.0,
+   "camera_serials": [
+    "135122070988",
+    "135122073201",
+    "135122076054"
+   ],
+   "recording_segments": [
+    0,
+    1
+   ],
+   "embedded_camera_calibration": [
+    false
+   ]
+  },
+  "drawer-open (reference)": {
+   "recordings": 100,
+   "recorder_task_names": [
+    "drawer-opening",
+    "pick-and-place"
+   ],
+   "recorder_episode_indices": [
+    0,
+    1,
+    3,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22,
+    23,
+    24,
+    25,
+    26,
+    27,
+    28,
+    29,
+    30,
+    31,
+    32,
+    33,
+    34,
+    36,
+    37,
+    38,
+    39,
+    40,
+    41,
+    42,
+    44,
+    45,
+    48,
+    50,
+    51,
+    52,
+    53,
+    55,
+    56,
+    57,
+    58,
+    59,
+    60,
+    61,
+    63,
+    65,
+    66,
+    67,
+    68,
+    69,
+    70,
+    71,
+    74,
+    75,
+    77,
+    78,
+    80,
+    82,
+    83,
+    86,
+    88,
+    90,
+    92,
+    94,
+    96,
+    97,
+    98,
+    100,
+    101,
+    102,
+    103,
+    104,
+    105,
+    106,
+    107,
+    108,
+    110,
+    111,
+    112,
+    113,
+    114,
+    116,
+    117,
+    118,
+    119,
+    120,
+    121,
+    122,
+    123,
+    124,
+    126,
+    128
+   ],
+   "flange_xyz_min_m": [
+    0.3069,
+    -0.1719,
+    0.4869
+   ],
+   "flange_xyz_max_m": [
+    0.5581,
+    0.2478,
+    0.6283
+   ],
+   "flange_rows": 99989,
+   "flange_fraction_in_mvp3d_bounds": 1.0,
+   "camera_serials": [
+    "135122070988",
+    "135122073201",
+    "135122076054"
+   ],
+   "recording_segments": [
+    0,
+    1,
+    2
+   ],
+   "embedded_camera_calibration": [
+    false
+   ]
+  },
+  "mug-hanging (reference)": {
+   "recordings": 100,
+   "recorder_task_names": [
+    "mug-hanging"
+   ],
+   "recorder_episode_indices": [
+    1,
+    3,
+    4,
+    5,
+    7,
+    9,
+    10,
+    11,
+    12,
+    14,
+    15,
+    16,
+    17,
+    18,
+    20,
+    21,
+    22,
+    23,
+    24,
+    25,
+    26,
+    28,
+    29,
+    30,
+    31,
+    32,
+    33,
+    34,
+    35,
+    36,
+    37,
+    38,
+    39,
+    40,
+    41,
+    42,
+    43,
+    44,
+    45,
+    46,
+    47,
+    48,
+    49,
+    50,
+    51,
+    52,
+    53,
+    54,
+    55,
+    56,
+    57,
+    58,
+    59,
+    60,
+    61,
+    62,
+    63,
+    64,
+    65,
+    66,
+    68,
+    69,
+    70,
+    71,
+    72,
+    73,
+    74,
+    75,
+    76,
+    77,
+    78,
+    79,
+    80,
+    82,
+    83,
+    84,
+    85,
+    86,
+    87,
+    89,
+    90,
+    91,
+    92,
+    93,
+    94,
+    95,
+    96,
+    97,
+    98,
+    99,
+    100,
+    102,
+    103,
+    104,
+    105,
+    106,
+    107,
+    108,
+    110,
+    111
+   ],
+   "flange_xyz_min_m": [
+    0.3705,
+    -0.2084,
+    0.5054
+   ],
+   "flange_xyz_max_m": [
+    0.628,
+    0.1769,
+    0.7662
+   ],
+   "flange_rows": 152196,
+   "flange_fraction_in_mvp3d_bounds": 1.0,
+   "camera_serials": [
+    "135122070988",
+    "135122073201",
+    "135122076054"
+   ],
+   "recording_segments": [
+    0,
+    1,
+    2,
+    3
+   ],
+   "embedded_camera_calibration": [
+    false
+   ]
+  },
+  "mvp3d_bounds_m": [
+   -0.15,
+   -0.7,
+   0.15,
+   1.05,
+   0.6,
+   1.0
+  ],
+  "interpretation": "flange containment only; raw files carry no camera calibration, so lookat / pose_scale (validated camera poses) and object/fixture depth extent (bounds) are NOT established; scene parameters stay null for the new tasks until measured on processed stores"
+ },
+ "dataset_endings": {
+  "schema": "rw-ending-flags",
+  "schema_version": 1,
+  "decision": "user decision 2026-11-06 ~11:20 KST: every uploaded episode is a successful demonstration (outcome success); ending flags never change the label",
+  "success_state": "success-state proxy = the recording's FINAL observation: the last recorded frame of every camera (s4d.rwlearn.transitions: r_k = success(s_k+1) - 1, mask_k = 1 - success(s_k+1))",
+  "thresholds": {
+   "clearance_m": 0.03,
+   "push_back_m": 0.05,
+   "min_pull_m": 0.15,
+   "speed_m_s": 0.03,
+   "torque_contact_fraction": 0.5,
+   "min_pull_contact_nm": 0.2,
+   "return_fraction": 0.3,
+   "revisit_leave_m": 0.05,
+   "revisit_m": 0.03,
+   "progress_m": 0.001,
+   "lateral_m": 0.05,
+   "proximity_m": 0.03,
+   "merge_gap_s": 1.0,
+   "open_margin_register": 20
+  },
+  "counts": {
+   "covering": {
+    "episodes": 36,
+    "no_reversal": 35,
+    "reversal_suspected": 0,
+    "needs_image_review": 1,
+    "info_flags": {
+     "return_toward_start": 36
+    }
+   },
+   "pick-and-place": {
+    "episodes": 0,
+    "no_reversal": 0,
+    "reversal_suspected": 0,
+    "needs_image_review": 0,
+    "info_flags": {}
+   }
+  },
+  "episodes": {
+   "covering/episode_000000": {
+    "decision": "no_reversal",
+    "flags": [
+     "return_toward_start:info"
+    ],
+    "final_command": 0.0,
+    "final_gobj": 3,
+    "final_register": 3.0,
+    "transport_xy_m": 0.216,
+    "holding_intervals": 1,
+    "thresholds": {
+     "min_transport_m": 0.1,
+     "open_command_max": 0.1,
+     "open_register_max": 25,
+     "regrasp_m": 0.05,
+     "revisit_leave_m": 0.05,
+     "revisit_m": 0.03
+    },
+    "thresholds_provisional": false
+   },
+   "covering/episode_000001": {
+    "decision": "no_reversal",
+    "flags": [
+     "return_toward_start:info"
+    ],
+    "final_command": 0.0,
+    "final_gobj": 3,
+    "final_register": 3.0,
+    "transport_xy_m": 0.2131,
+    "holding_intervals": 1,
+    "thresholds": {
+     "min_transport_m": 0.1,
+     "open_command_max": 0.1,
+     "open_register_max": 25,
+     "regrasp_m": 0.05,
+     "revisit_leave_m": 0.05,
+     "revisit_m": 0.03
+    },
+    "thresholds_provisional": false
+   },
+   "covering/episode_000002": {
+    "decision": "no_reversal",
+    "flags": [
+     "return_toward_start:info"
+    ],
+    "final_command": 0.0,
+    "final_gobj": 3,
+    "final_register": 3.0,
+    "transport_xy_m": 0.1875,
+    "holding_intervals": 1,
+    "thresholds": {
+     "min_transport_m": 0.1,
+     "open_command_max": 0.1,
+     "open_register_max": 25,
+     "regrasp_m": 0.05,
+     "revisit_leave_m": 0.05,
+     "revisit_m": 0.03
+    },
+    "thresholds_provisional": false
+   },
+   "covering/episode_000003": {
+    "decision": "no_reversal",
+    "flags": [
+     "return_toward_start:info"
+    ],
+    "final_command": 0.0,
+    "final_gobj": 3,
+    "final_register": 3.0,
+    "transport_xy_m": 0.1776,
+    "holding_intervals": 1,
+    "thresholds": {
+     "min_transport_m": 0.1,
+     "open_command_max": 0.1,
+     "open_register_max": 25,
+     "regrasp_m": 0.05,
+     "revisit_leave_m": 0.05,
+     "revisit_m": 0.03
+    },
+    "thresholds_provisional": false
+   },
+   "covering/episode_000004": {
+    "decision": "no_reversal",
+    "flags": [
+     "return_toward_start:info"
+    ],
+    "final_command": 0.0,
+    "final_gobj": 3,
+    "final_register": 3.0,
+    "transport_xy_m": 0.2216,
+    "holding_intervals": 1,
+    "thresholds": {
+     "min_transport_m": 0.1,
+     "open_command_max": 0.1,
+     "open_register_max": 25,
+     "regrasp_m": 0.05,
+     "revisit_leave_m": 0.05,
+     "revisit_m": 0.03
+    },
+    "thresholds_provisional": false
+   },
+   "covering/episode_000005": {
+    "decision": "no_reversal",
+    "flags": [
+     "return_toward_start:info"
+    ],
+    "final_command": 0.0,
+    "final_gobj": 3,
+    "final_register": 3.0,
+    "transport_xy_m": 0.1981,
+    "holding_intervals": 1,
+    "thresholds": {
+     "min_transport_m": 0.1,
+     "open_command_max": 0.1,
+     "open_register_max": 25,
+     "regrasp_m": 0.05,
+     "revisit_leave_m": 0.05,
+     "revisit_m": 0.03
+    },
+    "thresholds_provisional": false
+   },
+   "covering/episode_000006": {
+    "decision": "no_reversal",
+    "flags": [
+     "return_toward_start:info"
+    ],
+    "final_command": 0.0,
+    "final_gobj": 3,
+    "final_register": 3.0,
+    "transport_xy_m": 0.1905,
+    "holding_intervals": 1,
+    "thresholds": {
+     "min_transport_m": 0.1,
+     "open_command_max": 0.1,
+     "open_register_max": 25,
+     "regrasp_m": 0.05,
+     "revisit_leave_m": 0.05,
+     "revisit_m": 0.03
+    },
+    "thresholds_provisional": false
+   },
+   "covering/episode_000007": {
+    "decision": "no_reversal",
+    "flags": [
+     "return_toward_start:info"
+    ],
+    "final_command": 0.0,
+    "final_gobj": 3,
+    "final_register": 3.0,
+    "transport_xy_m": 0.1794,
+    "holding_intervals": 1,
+    "thresholds": {
+     "min_transport_m": 0.1,
+     "open_command_max": 0.1,
+     "open_register_max": 25,
+     "regrasp_m": 0.05,
+     "revisit_leave_m": 0.05,
+     "revisit_m": 0.03
+    },
+    "thresholds_provisional": false
+   },
+   "covering/episode_000009": {
+    "decision": "no_reversal",
+    "flags": [
+     "return_toward_start:info"
+    ],
+    "final_command": 0.0,
+    "final_gobj": 3,
+    "final_register": 3.0,
+    "transport_xy_m": 0.1761,
+    "holding_intervals": 1,
+    "thresholds": {
+     "min_transport_m": 0.1,
+     "open_command_max": 0.1,
+     "open_register_max": 25,
+     "regrasp_m": 0.05,
+     "revisit_leave_m": 0.05,
+     "revisit_m": 0.03
+    },
+    "thresholds_provisional": false
+   },
+   "covering/episode_000010": {
+    "decision": "no_reversal",
+    "flags": [
+     "return_toward_start:info"
+    ],
+    "final_command": 0.0111,
+    "final_gobj": 3,
+    "final_register": 5.0,
+    "transport_xy_m": 0.2125,
+    "holding_intervals": 1,
+    "thresholds": {
+     "min_transport_m": 0.1,
+     "open_command_max": 0.1,
+     "open_register_max": 25,
+     "regrasp_m": 0.05,
+     "revisit_leave_m": 0.05,
+     "revisit_m": 0.03
+    },
+    "thresholds_provisional": false
+   },
+   "covering/episode_000011": {
+    "decision": "no_reversal",
+    "flags": [
+     "return_toward_start:info"
+    ],
+    "final_command": 0.0,
+    "final_gobj": 3,
+    "final_register": 3.0,
+    "transport_xy_m": 0.18,
+    "holding_intervals": 1,
+    "thresholds": {
+     "min_transport_m": 0.1,
+     "open_command_max": 0.1,
+     "open_register_max": 25,
+     "regrasp_m": 0.05,
+     "revisit_leave_m": 0.05,
+     "revisit_m": 0.03
+    },
+    "thresholds_provisional": false
+   },
+   "covering/episode_000012": {
+    "decision": "no_reversal",
+    "flags": [
+     "return_toward_start:info"
+    ],
+    "final_command": 0.0,
+    "final_gobj": 3,
+    "final_register": 3.0,
+    "transport_xy_m": 0.1931,
+    "holding_intervals": 1,
+    "thresholds": {
+     "min_transport_m": 0.1,
+     "open_command_max": 0.1,
+     "open_register_max": 25,
+     "regrasp_m": 0.05,
+     "revisit_leave_m": 0.05,
+     "revisit_m": 0.03
+    },
+    "thresholds_provisional": false
+   },
+   "covering/episode_000013": {
+    "decision": "no_reversal",
+    "flags": [
+     "return_toward_start:info"
+    ],
+    "final_command": 0.0,
+    "final_gobj": 3,
+    "final_register": 3.0,
+    "transport_xy_m": 0.1894,
+    "holding_intervals": 1,
+    "thresholds": {
+     "min_transport_m": 0.1,
+     "open_command_max": 0.1,
+     "open_register_max": 25,
+     "regrasp_m": 0.05,
+     "revisit_leave_m": 0.05,
+     "revisit_m": 0.03
+    },
+    "thresholds_provisional": false
+   },
+   "covering/episode_000014": {
+    "decision": "no_reversal",
+    "flags": [
+     "return_toward_start:info"
+    ],
+    "final_command": 0.0,
+    "final_gobj": 3,
+    "final_register": 3.0,
+    "transport_xy_m": 0.1686,
+    "holding_intervals": 1,
+    "thresholds": {
+     "min_transport_m": 0.1,
+     "open_command_max": 0.1,
+     "open_register_max": 25,
+     "regrasp_m": 0.05,
+     "revisit_leave_m": 0.05,
+     "revisit_m": 0.03
+    },
+    "thresholds_provisional": false
+   },
+   "covering/episode_000015": {
+    "decision": "no_reversal",
+    "flags": [
+     "return_toward_start:info"
+    ],
+    "final_command": 0.0,
+    "final_gobj": 3,
+    "final_register": 3.0,
+    "transport_xy_m": 0.1707,
+    "holding_intervals": 1,
+    "thresholds": {
+     "min_transport_m": 0.1,
+     "open_command_max": 0.1,
+     "open_register_max": 25,
+     "regrasp_m": 0.05,
+     "revisit_leave_m": 0.05,
+     "revisit_m": 0.03
+    },
+    "thresholds_provisional": false
+   },
+   "covering/episode_000016": {
+    "decision": "no_reversal",
+    "flags": [
+     "return_toward_start:info"
+    ],
+    "final_command": 0.0,
+    "final_gobj": 3,
+    "final_register": 3.0,
+    "transport_xy_m": 0.1673,
+    "holding_intervals": 1,
+    "thresholds": {
+     "min_transport_m": 0.1,
+     "open_command_max": 0.1,
+     "open_register_max": 25,
+     "regrasp_m": 0.05,
+     "revisit_leave_m": 0.05,
+     "revisit_m": 0.03
+    },
+    "thresholds_provisional": false
+   },
+   "covering/episode_000017": {
+    "decision": "no_reversal",
+    "flags": [
+     "return_toward_start:info"
+    ],
+    "final_command": 0.0,
+    "final_gobj": 3,
+    "final_register": 3.0,
+    "transport_xy_m": 0.2045,
+    "holding_intervals": 1,
+    "thresholds": {
+     "min_transport_m": 0.1,
+     "open_command_max": 0.1,
+     "open_register_max": 25,
+     "regrasp_m": 0.05,
+     "revisit_leave_m": 0.05,
+     "revisit_m": 0.03
+    },
+    "thresholds_provisional": false
+   },
+   "covering/episode_000018": {
+    "decision": "no_reversal",
+    "flags": [
+     "return_toward_start:info"
+    ],
+    "final_command": 0.0,
+    "final_gobj": 3,
+    "final_register": 3.0,
+    "transport_xy_m": 0.1695,
+    "holding_intervals": 1,
+    "thresholds": {
+     "min_transport_m": 0.1,
+     "open_command_max": 0.1,
+     "open_register_max": 25,
+     "regrasp_m": 0.05,
+     "revisit_leave_m": 0.05,
+     "revisit_m": 0.03
+    },
+    "thresholds_provisional": false
+   },
+   "covering/episode_000019": {
+    "decision": "no_reversal",
+    "flags": [
+     "return_toward_start:info"
+    ],
+    "final_command": 0.0,
+    "final_gobj": 3,
+    "final_register": 3.0,
+    "transport_xy_m": 0.2047,
+    "holding_intervals": 1,
+    "thresholds": {
+     "min_transport_m": 0.1,
+     "open_command_max": 0.1,
+     "open_register_max": 25,
+     "regrasp_m": 0.05,
+     "revisit_leave_m": 0.05,
+     "revisit_m": 0.03
+    },
+    "thresholds_provisional": false
+   },
+   "covering/episode_000020": {
+    "decision": "no_reversal",
+    "flags": [
+     "return_toward_start:info"
+    ],
+    "final_command": 0.0,
+    "final_gobj": 3,
+    "final_register": 3.0,
+    "transport_xy_m": 0.1748,
+    "holding_intervals": 1,
+    "thresholds": {
+     "min_transport_m": 0.1,
+     "open_command_max": 0.1,
+     "open_register_max": 25,
+     "regrasp_m": 0.05,
+     "revisit_leave_m": 0.05,
+     "revisit_m": 0.03
+    },
+    "thresholds_provisional": false
+   },
+   "covering/episode_000021": {
+    "decision": "no_reversal",
+    "flags": [
+     "return_toward_start:info"
+    ],
+    "final_command": 0.0,
+    "final_gobj": 3,
+    "final_register": 3.0,
+    "transport_xy_m": 0.1984,
+    "holding_intervals": 1,
+    "thresholds": {
+     "min_transport_m": 0.1,
+     "open_command_max": 0.1,
+     "open_register_max": 25,
+     "regrasp_m": 0.05,
+     "revisit_leave_m": 0.05,
+     "revisit_m": 0.03
+    },
+    "thresholds_provisional": false
+   },
+   "covering/episode_000022": {
+    "decision": "needs_image_review",
+    "flags": [
+     "revisit_release_location:review",
+     "return_toward_start:info"
+    ],
+    "final_command": 0.0,
+    "final_gobj": 3,
+    "final_register": 3.0,
+    "transport_xy_m": 0.1779,
+    "holding_intervals": 1,
+    "thresholds": {
+     "min_transport_m": 0.1,
+     "open_command_max": 0.1,
+     "open_register_max": 25,
+     "regrasp_m": 0.05,
+     "revisit_leave_m": 0.05,
+     "revisit_m": 0.03
+    },
+    "thresholds_provisional": false
+   },
+   "covering/episode_000023": {
+    "decision": "no_reversal",
+    "flags": [
+     "return_toward_start:info"
+    ],
+    "final_command": 0.0,
+    "final_gobj": 3,
+    "final_register": 3.0,
+    "transport_xy_m": 0.1976,
+    "holding_intervals": 1,
+    "thresholds": {
+     "min_transport_m": 0.1,
+     "open_command_max": 0.1,
+     "open_register_max": 25,
+     "regrasp_m": 0.05,
+     "revisit_leave_m": 0.05,
+     "revisit_m": 0.03
+    },
+    "thresholds_provisional": false
+   },
+   "covering/episode_000024": {
+    "decision": "no_reversal",
+    "flags": [
+     "return_toward_start:info"
+    ],
+    "final_command": 0.0,
+    "final_gobj": 3,
+    "final_register": 3.0,
+    "transport_xy_m": 0.194,
+    "holding_intervals": 1,
+    "thresholds": {
+     "min_transport_m": 0.1,
+     "open_command_max": 0.1,
+     "open_register_max": 25,
+     "regrasp_m": 0.05,
+     "revisit_leave_m": 0.05,
+     "revisit_m": 0.03
+    },
+    "thresholds_provisional": false
+   },
+   "covering/episode_000025": {
+    "decision": "no_reversal",
+    "flags": [
+     "return_toward_start:info"
+    ],
+    "final_command": 0.0,
+    "final_gobj": 3,
+    "final_register": 3.0,
+    "transport_xy_m": 0.2154,
+    "holding_intervals": 1,
+    "thresholds": {
+     "min_transport_m": 0.1,
+     "open_command_max": 0.1,
+     "open_register_max": 25,
+     "regrasp_m": 0.05,
+     "revisit_leave_m": 0.05,
+     "revisit_m": 0.03
+    },
+    "thresholds_provisional": false
+   },
+   "covering/episode_000026": {
+    "decision": "no_reversal",
+    "flags": [
+     "return_toward_start:info"
+    ],
+    "final_command": 0.0,
+    "final_gobj": 3,
+    "final_register": 3.0,
+    "transport_xy_m": 0.1698,
+    "holding_intervals": 1,
+    "thresholds": {
+     "min_transport_m": 0.1,
+     "open_command_max": 0.1,
+     "open_register_max": 25,
+     "regrasp_m": 0.05,
+     "revisit_leave_m": 0.05,
+     "revisit_m": 0.03
+    },
+    "thresholds_provisional": false
+   },
+   "covering/episode_000027": {
+    "decision": "no_reversal",
+    "flags": [
+     "return_toward_start:info"
+    ],
+    "final_command": 0.0,
+    "final_gobj": 3,
+    "final_register": 3.0,
+    "transport_xy_m": 0.1608,
+    "holding_intervals": 1,
+    "thresholds": {
+     "min_transport_m": 0.1,
+     "open_command_max": 0.1,
+     "open_register_max": 25,
+     "regrasp_m": 0.05,
+     "revisit_leave_m": 0.05,
+     "revisit_m": 0.03
+    },
+    "thresholds_provisional": false
+   },
+   "covering/episode_000028": {
+    "decision": "no_reversal",
+    "flags": [
+     "return_toward_start:info"
+    ],
+    "final_command": 0.0,
+    "final_gobj": 3,
+    "final_register": 3.0,
+    "transport_xy_m": 0.1607,
+    "holding_intervals": 1,
+    "thresholds": {
+     "min_transport_m": 0.1,
+     "open_command_max": 0.1,
+     "open_register_max": 25,
+     "regrasp_m": 0.05,
+     "revisit_leave_m": 0.05,
+     "revisit_m": 0.03
+    },
+    "thresholds_provisional": false
+   },
+   "covering/episode_000029": {
+    "decision": "no_reversal",
+    "flags": [
+     "return_toward_start:info"
+    ],
+    "final_command": 0.0,
+    "final_gobj": 3,
+    "final_register": 3.0,
+    "transport_xy_m": 0.185,
+    "holding_intervals": 1,
+    "thresholds": {
+     "min_transport_m": 0.1,
+     "open_command_max": 0.1,
+     "open_register_max": 25,
+     "regrasp_m": 0.05,
+     "revisit_leave_m": 0.05,
+     "revisit_m": 0.03
+    },
+    "thresholds_provisional": false
+   },
+   "covering/episode_000030": {
+    "decision": "no_reversal",
+    "flags": [
+     "return_toward_start:info"
+    ],
+    "final_command": 0.0,
+    "final_gobj": 3,
+    "final_register": 3.0,
+    "transport_xy_m": 0.173,
+    "holding_intervals": 1,
+    "thresholds": {
+     "min_transport_m": 0.1,
+     "open_command_max": 0.1,
+     "open_register_max": 25,
+     "regrasp_m": 0.05,
+     "revisit_leave_m": 0.05,
+     "revisit_m": 0.03
+    },
+    "thresholds_provisional": false
+   },
+   "covering/episode_000031": {
+    "decision": "no_reversal",
+    "flags": [
+     "return_toward_start:info"
+    ],
+    "final_command": 0.0,
+    "final_gobj": 3,
+    "final_register": 3.0,
+    "transport_xy_m": 0.167,
+    "holding_intervals": 1,
+    "thresholds": {
+     "min_transport_m": 0.1,
+     "open_command_max": 0.1,
+     "open_register_max": 25,
+     "regrasp_m": 0.05,
+     "revisit_leave_m": 0.05,
+     "revisit_m": 0.03
+    },
+    "thresholds_provisional": false
+   },
+   "covering/episode_000032": {
+    "decision": "no_reversal",
+    "flags": [
+     "return_toward_start:info"
+    ],
+    "final_command": 0.0,
+    "final_gobj": 3,
+    "final_register": 3.0,
+    "transport_xy_m": 0.1935,
+    "holding_intervals": 1,
+    "thresholds": {
+     "min_transport_m": 0.1,
+     "open_command_max": 0.1,
+     "open_register_max": 25,
+     "regrasp_m": 0.05,
+     "revisit_leave_m": 0.05,
+     "revisit_m": 0.03
+    },
+    "thresholds_provisional": false
+   },
+   "covering/episode_000033": {
+    "decision": "no_reversal",
+    "flags": [
+     "return_toward_start:info"
+    ],
+    "final_command": 0.0,
+    "final_gobj": 3,
+    "final_register": 3.0,
+    "transport_xy_m": 0.1894,
+    "holding_intervals": 1,
+    "thresholds": {
+     "min_transport_m": 0.1,
+     "open_command_max": 0.1,
+     "open_register_max": 25,
+     "regrasp_m": 0.05,
+     "revisit_leave_m": 0.05,
+     "revisit_m": 0.03
+    },
+    "thresholds_provisional": false
+   },
+   "covering/episode_000034": {
+    "decision": "no_reversal",
+    "flags": [
+     "return_toward_start:info"
+    ],
+    "final_command": 0.0,
+    "final_gobj": 3,
+    "final_register": 3.0,
+    "transport_xy_m": 0.1902,
+    "holding_intervals": 1,
+    "thresholds": {
+     "min_transport_m": 0.1,
+     "open_command_max": 0.1,
+     "open_register_max": 25,
+     "regrasp_m": 0.05,
+     "revisit_leave_m": 0.05,
+     "revisit_m": 0.03
+    },
+    "thresholds_provisional": false
+   },
+   "covering/episode_000035": {
+    "decision": "no_reversal",
+    "flags": [
+     "return_toward_start:info"
+    ],
+    "final_command": 0.0,
+    "final_gobj": 3,
+    "final_register": 3.0,
+    "transport_xy_m": 0.1687,
+    "holding_intervals": 1,
+    "thresholds": {
+     "min_transport_m": 0.1,
+     "open_command_max": 0.1,
+     "open_register_max": 25,
+     "regrasp_m": 0.05,
+     "revisit_leave_m": 0.05,
+     "revisit_m": 0.03
+    },
+    "thresholds_provisional": false
+   },
+   "covering/episode_000036": {
+    "decision": "no_reversal",
+    "flags": [
+     "return_toward_start:info"
+    ],
+    "final_command": 0.0,
+    "final_gobj": 3,
+    "final_register": 3.0,
+    "transport_xy_m": 0.1744,
+    "holding_intervals": 1,
+    "thresholds": {
+     "min_transport_m": 0.1,
+     "open_command_max": 0.1,
+     "open_register_max": 25,
+     "regrasp_m": 0.05,
+     "revisit_leave_m": 0.05,
+     "revisit_m": 0.03
+    },
+    "thresholds_provisional": false
+   }
+  }
+ },
+ "flagged": {
+  "covering/episode_000022": {
+   "decision": "needs_image_review",
+   "flags": [
+    {
+     "code": "revisit_release_location",
+     "severity": "review",
+     "message": "arm revisits the released cloth/object; review for displacement/reset",
+     "robot_rows": [
+      727,
+      861
+     ],
+     "t_s": [
+      7.27,
+      8.612
+     ],
+     "frames": {
+      "135122070988": [
+       109,
+       129
+      ],
+      "135122073201": [
+       109,
+       129
+      ],
+      "135122076054": [
+       109,
+       129
+      ]
+     },
+     "evidence": {}
+    }
+   ]
+  }
+ },
+ "test_recordings": {
+  "covering": {
+   "covering/test": {
+    "decision": "no_reversal",
+    "flags": [
+     "return_toward_start:info"
+    ],
+    "final_command": 0.0,
+    "final_gobj": 3,
+    "final_register": 3.0,
+    "transport_xy_m": 0.216,
+    "holding_intervals": 1,
+    "thresholds": {
+     "min_transport_m": 0.1,
+     "open_command_max": 0.1,
+     "open_register_max": 25,
+     "regrasp_m": 0.05,
+     "revisit_leave_m": 0.05,
+     "revisit_m": 0.03
+    },
+    "thresholds_provisional": false
+   }
+  },
+  "pick-and-place": {
+   "pick-and-place/test": {
+    "decision": "no_reversal",
+    "flags": [
+     "return_toward_start:info"
+    ],
+    "final_command": 0.0,
+    "final_gobj": 3,
+    "final_register": 3.0,
+    "transport_xy_m": 0.2233,
+    "holding_intervals": 1,
+    "thresholds": {
+     "min_transport_m": 0.05,
+     "open_command_max": 0.1,
+     "open_register_max": 25,
+     "regrasp_m": 0.05,
+     "revisit_leave_m": 0.05,
+     "revisit_m": 0.03
+    },
+    "thresholds_provisional": true
+   }
+  }
+ },
+ "pick_and_place_test_full": {
+  "episode": "pick-and-place/pick_and_place",
+  "path": "/home/ws/data/real_world/test/pick_and_place.h5",
+  "recorder_task_name": "pick-and-place",
+  "outcome": "success",
+  "decision": "no_reversal",
+  "duration_s": 15.92,
+  "final_frames": {
+   "135122070988": 214,
+   "135122073201": 214,
+   "135122076054": 214
+  },
+  "phases": {
+   "holding_rows": [
+    [
+     406,
+     1007
+    ]
+   ],
+   "gobj_runs": 1,
+   "final_command": 0.0,
+   "final_gobj": 3,
+   "final_register": 3.0,
+   "recording_segments": [
+    0,
+    1
+   ],
+   "grasp_row": 406,
+   "release_row": 1007,
+   "transport_xy_m": 0.2233,
+   "release_frames": {
+    "135122070988": [
+     150
+    ],
+    "135122073201": [
+     150
+    ],
+    "135122076054": [
+     150
+    ]
+   }
+  },
+  "return": {
+   "start_xyz": [
+    0.4208,
+    -0.0068,
+    0.5642
+   ],
+   "task_event_xyz": [
+    0.5655,
+    0.0992,
+    0.4979
+   ],
+   "final_xyz": [
+    0.4913,
+    -0.0413,
+    0.5442
+   ],
+   "event_to_start_m": 0.1912,
+   "final_to_start_m": 0.081,
+   "extent_m": 0.2233,
+   "final_to_release_m": 0.1655
+  },
+  "flags": [
+   {
+    "code": "return_toward_start",
+    "severity": "info",
+    "message": "arm retreats toward its start after release",
+    "robot_rows": [
+     1007,
+     1446
+    ],
+    "t_s": [
+     11.53,
+     15.92
+    ],
+    "frames": {
+     "135122070988": [
+      150,
+      214
+     ],
+     "135122073201": [
+      150,
+      214
+     ],
+     "135122076054": [
+      150,
+      214
+     ]
+    },
+    "evidence": {}
+   }
+  ],
+  "thresholds": {
+   "min_transport_m": 0.05,
+   "open_command_max": 0.1,
+   "open_register_max": 25,
+   "regrasp_m": 0.05,
+   "revisit_leave_m": 0.05,
+   "revisit_m": 0.03
+  },
+  "thresholds_provisional": true
+ },
+ "visual_evidence": {
+  "covering": "Codex n01: cam_135122076054 final frames of episodes 0-7, 9-22 (towel conceals the can, fingers open); first/hold/release/final in all three cameras for 0 and 7; 22 first/release(f109)/revisit(f129)/final in all three cameras. Claude: re-inspected the 22 sheet (towel still over the can at the end; review flag retained) and first/release/final of 23, 25, 27, 29, 31 (cam_135122076054): towel laid over the can, open retreat",
+  "pick-and-place": "test/pick_and_place.h5, all three cameras first/f61/f105/release f150/final f214: banana moved from the table onto the pink plate (a blue plate is also present), open retreat; one recording only, thresholds PROVISIONAL"
+ }
+}

@@ -286,3 +286,90 @@ if ((RAW / "drawer-open" / "episode_000000.h5").is_file()
         assert d["decision"] == "no_reversal" and m["decision"] == "no_reversal"
         assert d["outcome"] == m["outcome"] == "success"
         assert 0.25 < d["phases"]["pull_m"] < 0.40 and d["phases"]["axis_angle_from_base_y_deg"] < 20
+
+
+def transport(task='covering', *, reset=False, revisit=False):
+    """One release, optionally followed by taking the cloth/object back or revisiting it open."""
+    grasp, destination = (0.40, 0.0, 0.48), (0.50, -0.20, 0.53)
+    if task == 'pick-and-place':
+        destination = (0.58, 0.10, 0.50)
+    wp = [(0, START), (3, grasp), (4, grasp), (7, destination), (8.2, destination), (9, START)]
+    wp += [(9.5, destination), (10, destination), (12, grasp), (13, START)] if reset else (
+        [(11, destination), (12, START)] if revisit else [(12, START)])
+    t, xyz = _path(wp)
+    c = np.where((t >= 3.5) & (t < 8.2), 0.9, 0.0)
+    if reset:
+        c[(t >= 9.5) & (t < 12)] = 0.9
+
+    def gobj(gt):
+        held = (gt >= 4) & (gt < 8)
+        if reset:
+            held |= (gt >= 9.6) & (gt < 12)
+        return np.where(held, 2.0, 3.0)
+
+    sig = signals(t, xyz, command=c, gobj=gobj)
+    sig['gripper/position'] = np.where(sig['gripper/object'] == 2, 180.0, 3.0)
+    return sig
+
+
+@pytest.mark.parametrize('task', ['covering', 'pick-and-place'])
+def test_new_task_release_and_open_retreat_preserve_success(task):
+    result = O.CHECKS[task](transport(task))
+    assert not [f for f in result['flags'] if f['severity'] != 'info']
+    assert len(result['phases']['holding_rows']) == 1 and result['phases']['transport_xy_m'] > 0.15
+    assert result['thresholds_provisional'] == (task == 'pick-and-place')
+    ep = task + '/episode_000000'
+    report = {'episodes': {ep: {'decision': 'no_reversal', **result}}}
+    assert O.load_outcomes(O.outcome_labels([ep], ending_report=report)) == {ep: True}
+
+
+@pytest.mark.parametrize('task', ['covering', 'pick-and-place'])
+def test_new_task_reset_regrasps_first_release_and_never_relabels(task):
+    sig = transport(task, reset=True)
+    result = O.CHECKS[task](sig)
+    f = next(f for f in result['flags'] if f['code'] == 'regrasp_at_release_location')
+    assert f['severity'] == 'suspect' and set(f['frames']) == set(CAMS)
+    assert sig['robot/t'][result['phases']['release_row']] - 1000 == pytest.approx(8, abs=0.011)
+    ep = task + '/reset'
+    report = {'episodes': {ep: {'decision': 'reversal_suspected', **result}}}
+    labels = O.outcome_labels([ep], ending_report=report)
+    assert labels['episodes'][ep]['outcome'] == 'success' and not labels['flags_change_labels']
+    assert 'regrasp_at_release_location' in labels['episodes'][ep]['ending_flags']
+
+
+@pytest.mark.parametrize('task', ['covering', 'pick-and-place'])
+def test_new_task_holding_or_closed_end_and_ambiguous_return_are_flagged(task):
+    sig = transport(task)
+    sig['action/gripper'][-10:] = 0.9
+    sig['gripper/object'][-5:] = 2
+    sig['gripper/position'][-5:] = 180
+    result = O.CHECKS[task](sig)
+    codes = {f['code']: f['severity'] for f in result['flags']}
+    assert codes['ends_closed'] == codes['holding_at_end'] == 'suspect'
+    result = O.CHECKS[task](transport(task, revisit=True))
+    assert any(f['code'] == 'revisit_release_location' and f['severity'] == 'review' for f in result['flags'])
+
+
+@pytest.mark.parametrize('task', ['covering', 'pick-and-place'])
+def test_new_task_missing_grasp_short_transport_and_unobserved_release_need_review(task):
+    sig = transport(task)
+    sig['gripper/object'][:] = 3
+    assert 'no_grasp' in {f['code'] for f in O.CHECKS[task](sig)['flags']}
+    sig = transport(task)
+    sig['robot/flange_pose'][:, :3] = START
+    assert 'short_transport' in {f['code'] for f in O.CHECKS[task](sig)['flags']}
+    sig = transport(task)
+    sig['gripper/segment'][sig['gripper/t'] >= 1008] = 1
+    result = O.CHECKS[task](sig)
+    assert any(f['code'] == 'release_across_pause' and f['severity'] == 'review' for f in result['flags'])
+    sig = transport(task)
+    sig['gripper/position'][sig['gripper/t'] >= 1008] = 180
+    assert 'release_not_confirmed_open' in {f['code'] for f in O.CHECKS[task](sig)['flags']}
+
+
+def test_outcome_scan_defaults_use_the_authoritative_task_registry(tmp_path):
+    from s4d.rwlearn.tasks import TARGETS
+
+    report = O.scan(tmp_path)
+    assert tuple(report['counts']) == TARGETS and not report['episodes']
+    assert tuple(O.CHECKS) == TARGETS

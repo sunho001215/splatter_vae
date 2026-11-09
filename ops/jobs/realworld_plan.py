@@ -12,7 +12,9 @@ final.
 
 Gating per row: the 100-episode gate of its task, plus the calibration hold for GEOMETRY-DEPENDENT consumers
 (``s4d.rwlearn.gate.CONSUMERS``). A plan under the hold emits the non-geometric rows and lists the held ones under
-``refused`` with the gate's reasons.
+``refused`` with the gate's reasons. A baseline whose scene geometry is not measured for the task yet
+(``s4d.rwlearn.configs.pending_scene_parameters``: SNeRL / 3D-MVP on covering and pick-and-place) is refused the same
+way, with its FQL conditions; the gate-passed tasks with measured scenes plan exactly as before.
 """
 
 from __future__ import annotations
@@ -20,12 +22,12 @@ from __future__ import annotations
 import hashlib
 import json
 
-from s4d.rwlearn.configs import BASELINES, REMOTE_REALWORLD_ROOT, run_inputs_dir
+from s4d.rwlearn.configs import BASELINES, REMOTE_REALWORLD_ROOT, pending_scene_parameters, run_inputs_dir
 from s4d.rwlearn.configs import TARGET_TASKS as TARGET_TASKS
+from s4d.rwlearn.configs import TARGETS as TASKS  # the authoritative registry, s4d/rwlearn/tasks.py
 from s4d.rwlearn.gate import FQL_CONSUMER, consumer_info, task_passed, task_problems
 
 REMOTE_HOST = "192.168.10.22"
-TASKS = ("drawer-open", "mug-hanging")
 PLACEHOLDER_COMMIT = "<release commit pinned by the coordinator>"
 SEEDS = (0, 1, 2)
 # (GPU GB, host RAM GB): pretraining from the campaign's Meta-World rows of the same trainers (real-world images are the
@@ -124,10 +126,12 @@ def plan(report: dict, tasks, commit: str, *, stage: str = "all", seeds=SEEDS) -
     for task in tasks:
         if task not in TASKS:
             raise ValueError(f"unknown task {task!r} (task-specific targets only: {TASKS})")
-        ok_b = [b for b in BASELINES if task_passed(report, task, b)]
+        scene = {b: [f"scene parameters not measured for {task}: {', '.join(keys)} (configs.SCENE_PARAMETERS)"]
+                 for b in BASELINES if (keys := pending_scene_parameters(b, task))}
+        ok_b = [b for b in BASELINES if task_passed(report, task, b) and b not in scene]
         for b in BASELINES:
             if b not in ok_b:
-                refused[pretrain_row_id(b, task)] = task_problems(report, task, b)
+                refused[pretrain_row_id(b, task)] = task_problems(report, task, b) + scene.get(b, [])
         if stage in ("all", "pretrain"):
             rows += pretrain_rows(task, commit, gate_sha, baselines=ok_b)
         if stage in ("all", "fql"):
@@ -138,7 +142,8 @@ def plan(report: dict, tasks, commit: str, *, stage: str = "all", seeds=SEEDS) -
                 if task_passed(report, task, FQL_CONSUMER[cond]) and all(n in ok_b for n in need):
                     conds.append(cond)
                 else:
-                    refused[f"rw-fql-{cond}-{task}"] = task_problems(report, task, FQL_CONSUMER[cond])
+                    refused[f"rw-fql-{cond}-{task}"] = (task_problems(report, task, FQL_CONSUMER[cond])
+                                                        + [p for n in need for p in scene.get(n, [])])
             rows += fql_rows(task, commit, gate_sha, seeds, tuple(conds))
     return {"rows": rows, "refused": refused, "gate_sha256": gate_sha, "remote_root": REMOTE_REALWORLD_ROOT,
             "remote_host": REMOTE_HOST, "registered": False,
@@ -146,8 +151,8 @@ def plan(report: dict, tasks, commit: str, *, stage: str = "all", seeds=SEEDS) -
 
 
 def plan_preview(commit: str = PLACEHOLDER_COMMIT, seeds=SEEDS) -> dict:
-    """The full plan as it will be emitted once both tasks pass every gate level (documentation and tests; NOT
-    registrable: no gate evidence)."""
+    """The full plan as it will be emitted once all tasks pass every gate level and their scene geometry is measured
+    (documentation and tests; NOT registrable: no gate evidence)."""
     rows = []
     for task in TASKS:
         rows += pretrain_rows(task, commit, "<gate report sha256 at registration>")

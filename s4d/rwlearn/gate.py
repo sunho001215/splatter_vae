@@ -63,6 +63,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from s4d.rwlearn.identity import match_recordings, raw_identity
+from s4d.rwlearn.tasks import TARGETS
 
 MANIFEST = Path("/home/ws/ws/realworld-ops/ingest/manifest.json")
 SCHEMA, SCHEMA_VERSION = "rw-ingest-manifest", 2
@@ -421,7 +422,7 @@ def check_store_calibration(report: dict, task_episodes: dict, upstream, cameras
                 raise RuntimeError(f"{ep}: store cameras {extra} have no validated calibration")
 
 
-def evaluate_file(path: Path = MANIFEST, tasks=("drawer-open", "mug-hanging"), **kw) -> dict:
+def evaluate_file(path: Path = MANIFEST, tasks=TARGETS, **kw) -> dict:
     raw = Path(path).read_bytes()
     report = evaluate(json.loads(raw), list(tasks), **kw)
     report["manifest"] = {"path": str(path), "sha256": hashlib.sha256(raw).hexdigest()}

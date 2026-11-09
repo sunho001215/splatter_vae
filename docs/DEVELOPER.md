@@ -41,7 +41,7 @@ Read in this order to follow one pretraining step: data contract -> dataset -> m
 | Downstream RL | `s4d/rl/` | `protocol.py` (run configuration), `env.py` + `vecenv.py` (Meta-World environments), `encoders.py` (frozen/CNN policy encoders), `agent.py` (DrM), `snerl_sac.py` (standalone SAC), `algorithms.py` (SAC evaluation dispatch), `replay.py`, `evaluate.py`, `camera_suites.py` + `visibility.py` (evaluation camera suites), `run_io.py` (checkpoint/metrics files of the trainers). |
 | Baselines | `s4d/baselines/{sincro,reviwo,snerl,dynamo,mvp3d}/`, `data.py`, `representation.py` | Ports or adapters around pinned upstream code (`s4d/third_party.py` aliases `ops/provenance/upstreams.py`); see docs/BASELINES.md. |
 | Diagnostics | `s4d/diag/` | W&B and local logging, panels, probes, point clouds, tracks, held-out diagnostics. |
-| Real-world learning | `s4d/rwlearn/` | Stores, actions, transitions, gates, baseline configs and FQL. `configs.py` owns `TARGET_TASKS`, the remote deployment root and `run_inputs_dir` (read by `ops.jobs.realworld_plan` and `ops.containers.mounts`; science never imports ops for them). The old `launch.py` aliases `ops.jobs.realworld_plan`. |
+| Real-world learning | `s4d/rwlearn/` | Stores, actions, transitions, gates, baseline configs and FQL. `tasks.py` is the registry of learning targets (`TARGETS`, `TARGET_TASKS`; import-free, re-exported by `configs.py`); `configs.py` owns the remote deployment root and `run_inputs_dir` (read by `ops.jobs.realworld_plan` and `ops.containers.mounts`; science never imports ops for them). The old `launch.py` aliases `ops.jobs.realworld_plan`. |
 | Shared | `s4d/config.py`, `s4d/geometry.py` | Layered YAML configuration; torch pinhole geometry. |
 
 ## Operational code map (`ops/`)
@@ -88,8 +88,9 @@ The separate standalone SAC campaign pause remains in force; keeping SAC softwar
 ## Dependency boundaries
 
 - `ops` may import science implementations. `ops.jobs.realworld_plan` eagerly imports `s4d.rwlearn.configs` and
-  `s4d.rwlearn.gate`; it keeps the configs path facade so science-side root overrides remain visible. Scheduler encoder
-  export lazily imports `s4d.model.encoder`. Upstream identity imports now stay inside `ops.provenance`; container mounts read the real-world deployment root
+  `s4d.rwlearn.gate`; it keeps the configs path facade so science-side root overrides remain visible.
+  `ops.jobs.host_roles` eagerly imports one science module, `s4d.rwlearn.tasks` (the import-free target registry, for
+  `REALWORLD_TASKS`). Scheduler encoder export lazily imports `s4d.model.encoder`. Upstream identity imports now stay inside `ops.provenance`; container mounts read the real-world deployment root
   from `s4d.rwlearn.configs` (an ops -> science edge).
 - Inference still crosses the boundary: `stream_client` eagerly imports `s4d.realworld.workers` and its framing/protocol;
   `command_support` lazily imports `WorkerSpec`. `run_episode` imports the real-world CLI partly eagerly and IO/adapters

@@ -357,14 +357,44 @@ def test_plan_rows_declare_roles_dependencies_and_are_not_registered():
     assert {r["fql_seed"] for r in fql if "fql_seed" in r} == {0, 1, 2}
 
 
-def test_preview_matches_a_fully_passed_plan_and_the_table():
-    rep = gate.evaluate(manifest(validated=True), ["drawer-open", "mug-hanging"])
-    full = launch.plan(rep, ["drawer-open", "mug-hanging"], "c")["rows"]
+def measured_scenes(monkeypatch):
+    """Stand-in for a release whose new-task scene geometry was measured (here: the existing tasks' values)."""
+    from s4d.rwlearn import configs
+
+    for task in NEW_TASKS:
+        monkeypatch.setitem(configs.SCENE_PARAMETERS, task, dict(configs.SCENE_PARAMETERS["drawer-open"]))
+
+
+NEW_TASKS = ("covering", "pick-and-place")
+SCENE_IDS = {f"rw-{b}-{{t}}-pre" for b in ("snerl", "mvp3d")} | {f"rw-fql-{c}-{{t}}" for c in
+                                                                 ("snerl", "mvp3d_multiview", "mvp3d_single")}
+
+
+@pytest.mark.parametrize("scenes", ["pending", "measured"])
+def test_preview_matches_a_fully_passed_plan_and_the_table(scenes, monkeypatch):
+    if scenes == "measured":
+        measured_scenes(monkeypatch)
+    m = manifest(validated=True)
+    for task in NEW_TASKS:
+        m["counts"][task] = {"complete": True, "target": 100}
+        m["episodes"].update({f"{task}/episode_{i:06d}.h5": entry(task, i, validated=True) for i in range(100)})
+    rep = gate.evaluate(m, launch.TASKS)
+    plan = launch.plan(rep, launch.TASKS, "c")
+    full = plan["rows"]
     prev = launch.plan_preview("c")["rows"]
     strip = lambda r: {k: v for k, v in r.items() if k != "realworld_gate_sha256"}  # noqa: E731
-    assert [strip(r) for r in full] == [strip(r) for r in prev]
+    pending = {i.format(t=t) for t in NEW_TASKS for i in SCENE_IDS} if scenes == "pending" else set()
+    assert set(plan["refused"]) == pending
+    assert all("scene parameters not measured" in " ".join(plan["refused"][i]) for i in pending)
+    # the preview is the plan once every gate passed and every scene is measured; pending SNeRL / 3D-MVP rows (and
+    # their FQL datasets / runs) are the only difference
+    unmeasured = lambda r: (r["realworld_target"] in NEW_TASKS and scenes == "pending"  # noqa: E731
+                            and (r.get("baseline") or launch.FQL_ENCODER.get(r.get("fql_condition"))) in ("snerl",
+                                                                                                         "mvp3d"))
+    assert [strip(r) for r in full] == [strip(r) for r in prev if not unmeasured(r)]
+    assert len(prev) == 33 * len(launch.TASKS) and len(full) == len(prev) - (2 * 14 if scenes == "pending" else 0)
     table = launch.plan_table()
-    assert len(table) == 2 * 7
+    assert len(table) == len(launch.TASKS) * 7
     geo = {(t["task"], t["condition"]) for t in table if t["calibration_dependent"]}
     assert geo == {(task, c) for task in launch.TASKS for c in ("snerl", "sincro", "mvp3d_multiview", "mvp3d_single")}
     assert all(t["fql_seeds"] == [0, 1, 2] and t["fql_steps"] == 1_000_000 for t in table)
@@ -482,3 +512,46 @@ def test_every_singleview_fql_condition_ignores_cross_camera_family_but_keeps_ge
     assert not gate.task_passed(rep, "drawer-open", gate.FQL_CONSUMER["mvp3d_single"])
     assert not gate.task_passed(rep, "drawer-open", gate.FQL_CONSUMER["sincro"])
     assert gate.task_passed(rep, "drawer-open", gate.FQL_CONSUMER["reviwo"])
+
+
+@pytest.mark.parametrize("task", NEW_TASKS)
+def test_new_tasks_have_an_independent_100_episode_gate(task, tmp_path, monkeypatch):
+    from s4d.rwlearn.tasks import TARGETS
+
+    m = {"schema": gate.SCHEMA, "schema_version": gate.SCHEMA_VERSION,
+         "counts": {task: {"complete": True, "target": 100}},
+         "episodes": {f"{task}/episode_{i * 2:06d}.h5": entry(task, i * 2, validated=True) for i in range(100)}}
+    path = tmp_path / "manifest.json"
+    path.write_text(json.dumps(m))
+    default = gate.evaluate_file(path)  # the default enumerates every registered target, each gated on its own
+    assert tuple(default["tasks"]) == TARGETS and not default["passed"]
+    assert default["tasks"][task]["passed"] and default["calibration_hold"][task]["passed"]
+    assert all(not default["tasks"][t]["passed"] for t in TARGETS if t != task)
+    plan = launch.plan(default, [task], "new-pin")  # scene geometry still unmeasured: SNeRL / 3D-MVP refused
+    assert {r["realworld_target"] for r in plan["rows"]} == {task} and len(plan["rows"]) == 33 - 14
+    assert set(plan["refused"]) == {i.format(t=task) for i in SCENE_IDS}
+    assert {r.get("baseline") for r in plan["rows"] if r["role"] == "realworld_pretrain"} == {"sincro", "reviwo",
+                                                                                            "dynamo"}
+    measured_scenes(monkeypatch)
+    plan = launch.plan(default, [task], "new-pin")
+    assert len(plan["rows"]) == 33 and not plan["refused"]
+    m["episodes"].pop(next(iter(m["episodes"])))
+    rep = gate.evaluate(m, [task])
+    assert not rep["tasks"][task]["passed"] and not launch.plan(rep, [task], "new-pin")["rows"]
+
+
+def test_documented_training_plan_is_the_preview():
+    """docs/realworld_training_plan.yaml is the plan preview of every target. Only the FQL rows' stale consumer labels
+    (written before the FQL-specific QA family aliases) may differ; the frozen non-geometric registrar
+    (runs/setup/tools/register_realworld_nongeometric_20261106.py) compares the two the same way."""
+    import yaml
+
+    doc = yaml.safe_load((Path(__file__).resolve().parents[1] / "docs/realworld_training_plan.yaml").read_text())
+    rows = copy.deepcopy(doc["rows"])
+    for row in rows:
+        cond = row.get("fql_condition")
+        if cond is not None:
+            assert row["realworld_consumer"] in {launch.FQL_CONSUMER[cond], launch.FQL_ENCODER[cond] or cond}
+            row["realworld_consumer"] = launch.FQL_CONSUMER[cond]
+    assert rows == launch.plan_preview()["rows"]
+    assert doc["table"] == launch.plan_table()

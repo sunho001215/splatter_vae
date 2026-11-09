@@ -38,6 +38,14 @@ camera's frame times (frame indices of the evidence).
   within ``REVISIT_M`` of the release position after leaving it (a possible knock-off), cannot be decided from robot
   data: ``needs_image_review``. A later closure without object contact and the usual return toward the start pose are
   information.
+* covering / pick-and-place (2026-11-09, ``_check_transport_release``): the FIRST hold (``_holds``) and its release are
+  the task event (towel laid over the can / object placed on the plate); a later grasp never redefines it. Flagged
+  ``reversal_suspected``: ending commanded closed or still holding, or a later grasp within ``regrasp_m`` of the
+  release (the towel pulled off / the object taken back). ``needs_image_review``: no hold, a short horizontal transport,
+  a release across a recording pause or without a confirmed physical opening, several holds elsewhere, a closure after
+  the release, a return to the release position, an unclear final opening. Robot data cannot show coverage or which
+  plate was used. covering thresholds come from its recordings; pick-and-place thresholds are PROVISIONAL (one test
+  recording only) until its dataset episodes arrive (``PICK_AND_PLACE_THRESHOLDS``).
 
 ``decision`` per episode: ``no_reversal`` (robot data decide), ``reversal_suspected`` or ``needs_image_review``. Image
 evidence is used only for the latter (``review_sheet``: first / task-event / final colour frames of every camera, read
@@ -51,6 +59,8 @@ import json
 from pathlib import Path
 
 import numpy as np
+
+from s4d.rwlearn.tasks import TARGETS
 
 OUTCOME_SCHEMA, OUTCOME_VERSION = "rw-outcomes", 1
 REPORT_SCHEMA, REPORT_VERSION = "rw-ending-flags", 1
@@ -388,7 +398,107 @@ def check_mug(sig: dict) -> dict:
     return {"phases": phases, "return": info, "flags": flags}
 
 
-CHECKS = {"drawer-open": check_drawer, "mug-hanging": check_mug}
+# ----------------------------------------------------------------------------------------------- covering / place
+# Measured 2026-11-09 22:27 KST (read-only raw scan, docs/realworld_newtasks_evidence.json): covering episodes 0-7,
+# 9-36 each have one towel hold, horizontal grasp->release travel 0.161-0.222 m, final command 0-0.0111, register 3-5,
+# gOBJ 3. RGB first/release/final frames: the towel covers the can and the open gripper retreats. The thresholds
+# detect reversal signatures, not visual success or object pose; labels never change and no episode is dropped.
+COVERING_THRESHOLDS = {"min_transport_m": 0.10, "open_command_max": 0.10, "open_register_max": 25,
+                       "regrasp_m": 0.05, "revisit_leave_m": 0.05, "revisit_m": 0.03}
+# PROVISIONAL: only test/pick_and_place.h5 (recorder episode 2), not a dataset episode. One banana hold 4.06-11.50 s,
+# 0.223 m horizontal transport onto the pink plate, final command 0/register 3/gOBJ 3. RGB confirms open retreat.
+# Broad 5 cm transport floor avoids assuming a destination, axis or object size from one example. Revalidate these
+# PROVISIONAL thresholds against incoming episodes, including reset endings; distances are review heuristics.
+PICK_AND_PLACE_THRESHOLDS = {**COVERING_THRESHOLDS, "min_transport_m": 0.05}
+
+
+def _check_transport_release(sig: dict, task: str, thresholds: dict, *, provisional: bool) -> dict:
+    """A cloth cover / object placement ends released. Later grasps or contact near that release need review.
+
+    Use measured poses, the sent command, physical finger opening, gOBJ and recording segments. A pause during a
+    hold is allowed; a release occurring across a pause is ambiguous. Robot signals cannot prove cloth coverage or
+    which plate contains the object. Re-grasps are suspected reversals; other ambiguous contact is flagged for RGB.
+    """
+    t, p, c = sig["robot/t"], sig["robot/flange_pose"][:, :3], sig["action/gripper"]
+    gt, gobj, pos = sig["gripper/t"], sig["gripper/object"], sig["gripper/position"]
+    gs = sig.get("gripper/segment", np.zeros(len(gt), int))
+    row = lambda tt: int(np.clip(np.searchsorted(t, tt), 0, len(t) - 1))  # noqa: E731  (first robot row at/after)
+    hg = _holds(sig)
+    holds = [(row(gt[a]), row(gt[min(b + 1, len(gt) - 1)])) for a, b in hg]
+    flags = []
+    phases = {"holding_rows": holds, "gobj_runs": len(_intervals(gobj == GOBJ_HELD)),
+              "final_command": round(float(c[-1]), 4), "final_gobj": int(gobj[-1]),
+              "final_register": round(float(pos[-1]), 1),
+              "recording_segments": np.unique(sig["action/segment"]).astype(int).tolist()}
+    if c[-1] > 0.5:
+        flags.append(_flag("ends_closed", "suspect", f"{task} ends commanded closed instead of released", sig,
+                           [len(t) - 1], final_command=float(c[-1])))
+    elif c[-1] > thresholds["open_command_max"]:
+        flags.append(_flag("end_command_not_open", "review", "final command is not clearly open", sig, [len(t) - 1]))
+    if gobj[-1] == GOBJ_HELD:
+        flags.append(_flag("holding_at_end", "suspect", f"{task} ends still holding an object", sig, [len(t) - 1]))
+    elif gobj[-1] != 3 or pos[-1] > thresholds["open_register_max"]:
+        flags.append(_flag("end_fingers_not_open", "review", "final measured fingers are not confirmed open", sig,
+                           [len(t) - 1], final_register=float(pos[-1]), final_gobj=int(gobj[-1])))
+    if not holds:
+        flags.append(_flag("no_grasp", "review", f"no gOBJ 2 hold establishes the {task} event", sig, [0, len(t) - 1]))
+        return {"phases": phases, "return": _return_info(sig, 0, len(t) - 1, 0), "flags": flags,
+                "thresholds": dict(thresholds), "thresholds_provisional": provisional}
+
+    # FIRST release anchors the completed task: a later grasp/reset must never redefine it.
+    grasp, release = holds[0]
+    transport = float(np.linalg.norm(p[release, :2] - p[grasp, :2]))
+    phases.update(grasp_row=grasp, release_row=release, transport_xy_m=round(transport, 4),
+                  release_frames=_frames(sig, t[release]))
+    if transport < thresholds["min_transport_m"]:
+        flags.append(_flag("short_transport", "review", "hold/release has too little horizontal transport to identify "
+                           f"the {task} event", sig, [grasp, release], transport_m=transport))
+    for _a, b in hg:
+        if b + 1 < len(gt) and gs[b] != gs[b + 1]:
+            flags.append(_flag("release_across_pause", "review", "hold ends across a recording segment boundary; "
+                               "the release itself was not observed", sig, [row(gt[b]), row(gt[b + 1])]))
+        stop = next((aa for aa, _ in hg if aa > b), len(gt))
+        if b + 1 < stop and not np.any(pos[b + 1:stop] <= thresholds["open_register_max"]):
+            flags.append(_flag("release_not_confirmed_open", "review", "gOBJ hold ended without a confirmed physical "
+                               "opening before the next hold/end", sig, [row(gt[b]), row(gt[stop - 1])]))
+    for (_, prev_release), (next_grasp, _) in zip(holds, holds[1:]):
+        distance = float(np.linalg.norm(p[next_grasp] - p[prev_release]))
+        near = distance <= thresholds["regrasp_m"]
+        flags.append(_flag("regrasp_at_release_location" if near else "multiple_grasps", "suspect" if near else "review",
+                           "later grasp may uncover the can / remove the placed object" if near else
+                           "multiple holds: robot signals cannot identify a correction versus reset", sig,
+                           [prev_release, next_grasp], distance_m=distance))
+    for a, b in _intervals(c > 0.5):
+        if a > release:
+            flags.append(_flag("post_release_closure", "review", "closure after the first release may contact the "
+                               "cloth/object even without gOBJ 2", sig, [a, b]))
+    d = np.linalg.norm(p[release:] - p[release], axis=1)
+    left = np.flatnonzero(d > thresholds["revisit_leave_m"])
+    if len(left):
+        back = np.flatnonzero(d[left[0]:] < thresholds["revisit_m"])
+        if len(back):
+            flags.append(_flag("revisit_release_location", "review", "arm revisits the released cloth/object; "
+                               "review for displacement/reset", sig, [release, release + int(left[0] + back[0])]))
+    info = _return_info(sig, 0, release, transport)
+    info["final_to_release_m"] = round(float(d[-1]), 4)
+    if info["final_to_start_m"] < 0.5 * info["event_to_start_m"]:
+        flags.append(_flag("return_toward_start", "info", "arm retreats toward its start after release", sig,
+                           [release, len(t) - 1]))
+    return {"phases": phases, "return": info, "flags": flags,
+            "thresholds": dict(thresholds), "thresholds_provisional": provisional}
+
+
+def check_covering(sig: dict) -> dict:
+    return _check_transport_release(sig, "covering", COVERING_THRESHOLDS, provisional=False)
+
+
+def check_pick_and_place(sig: dict) -> dict:
+    """PROVISIONAL until incoming dataset episodes provide evidence beyond the single test recording."""
+    return _check_transport_release(sig, "pick-and-place", PICK_AND_PLACE_THRESHOLDS, provisional=True)
+
+
+CHECKS = {"drawer-open": check_drawer, "mug-hanging": check_mug,
+          "covering": check_covering, "pick-and-place": check_pick_and_place}
 
 
 def check_episode(path, task: str) -> dict:
@@ -403,7 +513,7 @@ def check_episode(path, task: str) -> dict:
             "final_frames": {s: len(ct) - 1 for s, ct in sorted(sig["cameras"].items())}, **res}
 
 
-def scan(raw_root, tasks=("drawer-open", "mug-hanging"), episodes=None) -> dict:
+def scan(raw_root, tasks=TARGETS, episodes=None) -> dict:
     """Ending check of every ``episode_*.h5`` under ``<raw_root>/<task>/`` (read-only)."""
     raw_root = Path(raw_root)
     out = {"schema": REPORT_SCHEMA, "schema_version": REPORT_VERSION, "decision": DECISION,
@@ -437,7 +547,9 @@ def summary(report: dict) -> dict:
     """Compact per-episode view of an ending report (decision, flag codes, the deciding robot-data margins)."""
     keep = {"drawer-open": ("pull_m", "contact_height_z_m", "back_at_handle_m", "back_in_corridor_away_from_front_m",
                             "lift_when_back_5cm_m", "backward_contact_fraction", "axis_angle_from_base_y_deg"),
-            "mug-hanging": ("final_command", "final_gobj", "gobj_runs")}
+            "mug-hanging": ("final_command", "final_gobj", "gobj_runs"),
+            "covering": ("final_command", "final_gobj", "final_register", "transport_xy_m"),
+            "pick-and-place": ("final_command", "final_gobj", "final_register", "transport_xy_m")}
     out = {k: report[k] for k in ("schema", "schema_version", "decision", "success_state", "thresholds", "counts")}
     out["episodes"] = {}
     for ep, r in sorted(report["episodes"].items()):
@@ -447,6 +559,10 @@ def summary(report: dict) -> dict:
         if task == "mug-hanging":
             rec["holding_intervals"] = len(r["phases"].get("holding_rows", []))
             rec["final_to_release_m"] = r["return"].get("final_to_release_m")
+        if task in ("covering", "pick-and-place"):
+            rec["holding_intervals"] = len(r["phases"].get("holding_rows", []))
+            rec["thresholds"] = r["thresholds"]
+            rec["thresholds_provisional"] = r["thresholds_provisional"]
         out["episodes"][ep] = rec
     return out
 

@@ -2,10 +2,10 @@
 
 Branches `realworld-fql-20261106` (agent FQL) and `rwfql-decisions-20261106` (agent FQL2, user decisions of
 2026-11-06 ~11:20). Scope: SNeRL, 3D-MVP (one encoder; RL conditions A and B), SinCro, ReViWo and DynaMo pretrained on
-the real-world drawer-open and mug-hanging episodes, PER TASK only (task-specific encoders; the joint-task configs and
-rows are removed). Our own method's real-world pretraining is deferred (user directive 2026-11-06, item 5). Nothing
-here has been trained; no GPU was used. Offline FQL on top of these encoders, and the end-to-end CNN + FQL baseline:
-`docs/realworld_fql.md`.
+the real-world drawer-open, mug-hanging, covering and pick-and-place episodes, PER TASK only (task-specific encoders;
+the joint-task configs and rows are removed; covering / pick-and-place: last section). Our own method's real-world
+pretraining is deferred (user directive 2026-11-06, item 5). Nothing here has been trained; no GPU was used. Offline
+FQL on top of these encoders, and the end-to-end CNN + FQL baseline: `docs/realworld_fql.md`.
 
 ## Principle
 
@@ -166,3 +166,46 @@ Trainer edits are limited to a `data_interface.source == "realworld"` branch in 
 dynamo,mvp3d}.py` and a behaviour-preserving `SNeRLScenes.camera()` accessor. Meta-World runs never import
 `s4d.rwlearn`. The existing trainer entry-point tests need a GPU and were not run on this CPU-only branch: 15
 GPU-only failures, all `CUDA unavailable` or the GPU guard. They must pass in the release suite.
+
+## Covering and pick-and-place (2026-11-09 directive)
+
+`s4d/rwlearn/tasks.py` is the one registry of learning targets (drawer-open, mug-hanging, covering, pick-and-place);
+`configs`, the planner (`ops/jobs/realworld_plan.py` = `launch`), the gate and outcome defaults, `baseline_data`'s
+target check and `ops.jobs.host_roles.REALWORLD_TASKS` all read it. Every target keeps its own encoder, seeded split and
+100-episode gate; `scripts/realworld_learning.py gate|plan|outcomes` default to all four (`--tasks covering` etc. for
+one), so the default `gate` exit code is 0 only once every target passed. These are real-world tasks; nothing here
+touches the cancelled Meta-World expansion. The generator `python -I scripts/realworld_learning.py configs` writes the
+five baseline configs per new task; FQL keeps its shared config. Unchanged for drawer-open / mug-hanging (checked
+against HEAD e52bfca): every generated config byte, gate result, plan row, the 200 ending-check results, and the
+replayed plans of the two existing registrars; `docs/realworld_training_plan.yaml` gained the new tasks' preview rows
+after its unchanged two-task rows.
+
+**Scene geometry: pending, not inferred.** SNeRL's `lookat` / `pose_scale` and 3D-MVP's `bounds` were measured on
+drawer-open / mug-hanging processed episodes. `configs.SCENE_PARAMETERS` maps those two tasks to exactly those values
+and the new tasks to `None` (generated YAMLs hold `null`, with a TODO reason). Raw evidence
+(`realworld_newtasks_evidence.json`, read-only): the same three camera serials; base-frame flange ranges
+
+| Task (raw recordings) | x m | y m | z m | flange rows in MVP3D_BOUNDS |
+|---|---|---|---|---|
+| covering (36) | 0.294-0.664 | -0.357 - -0.004 | 0.464-0.645 | 100 % |
+| pick-and-place (`test/pick_and_place.h5` only) | 0.368-0.568 | -0.047-0.100 | 0.470-0.583 | 100 % |
+| drawer-open / mug-hanging (100 each, reference) | 0.307-0.628 | -0.208-0.248 | 0.487-0.766 | 100 % |
+
+Covering reaches 15 cm further to the robot's right than the measured tasks. Flange containment says nothing about the
+towel / can / plate extent or depth coverage, and the raw files carry no camera calibration (per-task rig calibration
+is a separate check), so the old numbers are not copied. `configs.pending_scene_parameters(baseline, task)` is the
+hook: while it is non-empty the planner refuses that baseline and its FQL conditions (SNeRL; 3D-MVP multiview and
+single) with the reason "scene parameters not measured"; ReViWo, DynaMo, SinCro and e2e_cnn plan normally. SinCro reads
+no scene constant, but its metric near/far (0.1 / 2.5 m) should be confirmed on the same statistics. The trainers are
+unchanged (a null value fails at start-up).
+
+Measurement recipe, per new task, on its calibration-validated processed store (all cameras, the whole task):
+
+```bash
+python -I scripts/realworld_learning.py scene-stats --store <task store.yaml>  # scene_statistics, MVP3D_BOUNDS
+```
+
+Take the optical-axis least-squares `lookat`, `pose_scale = 4 / median camera distance`, check SNeRL's 2/6-unit depth
+window and >= 99 % robot / object / fixture containment per class for the bounds (foreground apart from room
+background), then set the task's `SCENE_PARAMETERS` entry, regenerate the configs (the equality test pins them) and
+release. Keep the old numbers only if the statistics support them.

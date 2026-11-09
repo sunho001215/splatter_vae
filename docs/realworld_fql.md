@@ -333,9 +333,11 @@ Host: remote 192.168.10.22 (`host: remote`, roles `realworld_pretrain` / `realwo
 coordinator at registration (`plan --commit <release>`). Order: pretraining rows priority 1, FQL rows priority 2;
 every frozen-encoder FQL dataset row depends on its encoder's pretraining row; the `e2e_cnn` dataset row depends on
 the task's DynaMo and ReViWo pretraining rows (baselines first, without waiting on calibration-held rows). Our own
-real-world pretraining stays deferred until the architecture is final. 66 rows: 10 pretraining + 14 dataset builds +
-42 FQL runs. Under the calibration hold the plan emits only the image-level rows (4 pretraining + 6 dataset builds +
-18 FQL runs) and lists the rest as refused with the gate's reasons.
+real-world pretraining stays deferred until the architecture is final. 33 rows per task (66 for drawer-open +
+mug-hanging; the preview lists all four targets, 132): 5 pretraining + 7 dataset builds + 21 FQL runs. Under the
+calibration hold the plan emits only the image-level rows (per task 2 pretraining + 3 dataset builds + 9 FQL runs) and
+lists the rest as refused with the gate's reasons; SNeRL / 3D-MVP are also refused while a task's scene geometry is
+unmeasured (covering, pick-and-place; below).
 
 | Task | FQL condition | Encoder pretraining (task-specific, documented protocol, 1 run) | Observation (extra vs single view) | FQL seeds x budget | GPU / RAM GB | Calibration-dependent |
 |---|---|---|---|---|---|---|
@@ -347,8 +349,9 @@ real-world pretraining stays deferred until the architecture is final. 66 rows: 
 | each | `mvp3d_single` | same encoder as above | +depth, +K / extrinsics | same | 6 / 12 | yes |
 | each | `e2e_cnn` | none: IMPALA-small random init, trained jointly with FQL | 1 RGB view (none) | same | 12 / 24 | no |
 
-Each task is drawer-open and mug-hanging (gated separately). Frozen-condition dataset builds: 8 GB GPU / 16 GB RAM;
-the e2e build is CPU work (1 / 8). Pretraining resources are the campaign's Meta-World rows of the same trainers.
+Each task is drawer-open, mug-hanging, covering or pick-and-place (gated separately; new tasks: last section).
+Frozen-condition dataset builds: 8 GB GPU / 16 GB RAM; the e2e build is CPU work (1 / 8). Pretraining resources are
+the campaign's Meta-World rows of the same trainers.
 
 ## Readiness checklist
 
@@ -508,3 +511,61 @@ regression. Findings and how each was resolved:
   - data caps are checked only for full runs and only when they truncate.
 - **SNeRL inputs (decided 2026-11-06):** 3 of 3 input cameras; input-view and leave-one-camera-out novel-view
   reconstruction reported separately on the validation episodes (`docs/realworld_baselines.md`).
+
+## New real-world tasks: covering and pick-and-place (2026-11-09)
+
+The four targets in `s4d/rwlearn/tasks.py` share one learning contract, unchanged: task-specific encoders; the
+100-episode gate per task; FQL alpha 10; continuous gripper; action = sent-command base-frame flange delta pose
+(rotation vector) + gripper; single view = a random camera per sample, fixed through the history and the paired next
+observation; SNeRL with three input cameras; one end-to-end CNN + FQL condition; FQL seeds 0/1/2; the seeded 90/10
+episode split and the offline validation of the existing tasks. Reward `success(s') - 1` with success at the final
+frame; every uploaded demo stays labelled successful, flagged or not. FQL needs no per-task config
+(`configs/realworld/fql/base.yaml`). The test recordings are evidence, never gate or training episodes:
+`test/covering.h5` is byte-identical to covering episode 0; `test/pick_and_place.h5` (recorder episode index 2) is
+not a dataset episode.
+
+**Ending check** (`outcomes.check_covering`, `check_pick_and_place`; robot data first, read-only). The FIRST hold
+(gOBJ 2 runs, merged across flickers as for mug-hanging) and its release are the task event; a later grasp never
+redefines it. Completed covering: the towel is grasped at a corner, laid over the can, released, and the open gripper
+retreats. Completed pick-and-place: the object (banana) is grasped, put on the plate, released, open retreat.
+`reversal_suspected`: ending commanded closed (> 0.5) or still holding, or a later grasp within 5 cm of the release
+(towel pulled off the can / object taken back). `needs_image_review`: no hold, horizontal grasp-to-release transport
+below the floor, a release across a recording pause or without a confirmed physical opening (register <= 25), several
+holds elsewhere, a closure after the release, a return within 3 cm of the release after leaving it by 5 cm, an unclear
+final opening (command <= 0.1, register <= 25, gOBJ 3). Events in the recordings are teleop enable / pause /
+lead-limit messages, not task labels; robot data cannot show coverage or which plate was used. covering transport
+floor 10 cm (observed 16.1-22.2 cm). **pick-and-place thresholds are PROVISIONAL** (`thresholds_provisional: true` in
+every result): the only evidence is `test/pick_and_place.h5` (one hold 4.06-11.50 s, 22.3 cm transport, final command
+0 / register 3 / gOBJ 3; frames: banana from the table onto the pink plate, a blue plate also present, open retreat).
+Its 5 cm transport floor and the inherited 5 / 3 cm revisit distances must be re-validated on the arriving episodes
+(including any real reset ending) before they are trusted; no destination, axis or object size is assumed.
+
+Per covering episode, read-only snapshot 2026-11-09 22:27 KST (36 arrivals, numbering gap at 8;
+`docs/realworld_newtasks_evidence.json`): every episode has exactly one hold, ends open (command 0-0.0111, register
+3-5, gOBJ 3) and carries the informational `return_toward_start`; all stay in the dataset with outcome `success`.
+
+| covering episodes | ending check |
+|---|---|
+| 000000-000007, 000009-000021, 000023-000036 (35) | `no_reversal` |
+| 000022 | `needs_image_review`: `revisit_release_location` (robot rows 727-861, 7.27-8.61 s, frames 109-129 of every camera); the final frames show the towel still over the can, the flag is kept for the coordinator |
+
+Frames inspected: final frames of 0-7 and 9-22 (Codex n01) and first / release / final of 23, 25, 27, 29, 31 (Claude):
+the towel conceals the can, fingers open. The two test recordings: `no_reversal`. No `reversal_suspected` so far.
+
+**Plan and registration.** The planner refuses SNeRL / 3D-MVP and their FQL conditions for a task whose scene
+geometry is unmeasured (`docs/realworld_baselines.md`), so before that measurement a gate-passed new task plans 19
+rows (ReViWo, DynaMo, SinCro; their datasets / FQL runs and e2e_cnn), after it the full 33, exactly the rows each
+existing task got:
+
+| Family | Pretraining | Dataset builds | FQL runs (seeds 0/1/2) | Rows |
+|---|---|---|---|---|
+| image (100-episode gate) | ReViWo, DynaMo | ReViWo, DynaMo, e2e_cnn | 9 | 14 |
+| geometry (+ calibration hold) | SNeRL, 3D-MVP, SinCro | SinCro, SNeRL, 3D-MVP multiview + single | 12 | 19 |
+
+Registration (proposal, not installed: `/home/ws/ws/refactor-20261109/codex/n01_out/register_realworld_newtasks_20261110.py`
++ its pure test; proposed home `runs/setup/tools/` after the release gate): one task per run, `--family image` and
+`--family geometry` independently but never a partial family, ids `rwnt-20261110-<plan id without rw->`, the plan's
+priorities / GPU / RAM / restarts / role, release pinned from `runs/setup/role-release.json` as read at registration,
+learning inputs (`scripts/realworld_learning.py inputs --task T --ending-report R`: store.yaml, gate_report.json,
+split_seed0.json, outcomes.json) staged remotely and verified against the live gate as the two existing registrars do.
+Dry run by default; `--publish` / `--recover` follow the existing locked, journalled queue append.

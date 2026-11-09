@@ -352,3 +352,29 @@ def test_committed_configs_are_the_derived_ones_and_change_only_the_documented_k
             assert diff <= changed, (b, target, diff - changed)
             assert fc["data_interface.source"] == "realworld" and target in fc["dataset.hdf5_path"]
     assert C.SNERL_LOOKAT == [0.334, -0.031, 0.353] and C.SNERL_POSE_SCALE == 3.79
+
+
+def test_new_task_registry_and_scene_measurement_hooks():
+    from ops.jobs.host_roles import REALWORLD_TASKS
+    from s4d.rwlearn import launch
+    from s4d.rwlearn.tasks import TARGET_TASKS, TARGETS
+
+    assert TARGETS == ("drawer-open", "mug-hanging", "covering", "pick-and-place")
+    assert C.TARGETS is launch.TASKS is TARGETS  # one registry, imported everywhere
+    assert C.TARGET_TASKS is launch.TARGET_TASKS is TARGET_TASKS and REALWORLD_TASKS == frozenset(TARGETS)
+    assert TARGET_TASKS == {t: (t,) for t in TARGETS}  # task-specific encoders only
+    for task in ("drawer-open", "mug-hanging"):  # exactly the measured values of the existing tasks
+        assert C.SCENE_PARAMETERS[task] == {"lookat": C.SNERL_LOOKAT, "pose_scale": C.SNERL_POSE_SCALE,
+                                           "bounds": C.MVP3D_BOUNDS}
+        assert all(not C.pending_scene_parameters(b, task) for b in C.BASELINES)
+    for task in ("covering", "pick-and-place"):  # not measured yet: null in the configs, never a guessed number
+        assert C.pending_scene_parameters("snerl", task) == ["lookat", "pose_scale"]
+        assert C.pending_scene_parameters("mvp3d", task) == ["bounds"]
+        assert all(not C.pending_scene_parameters(b, task) for b in ("sincro", "reviwo", "dynamo"))
+        snerl, mvp = C.derive("snerl", task)[0], C.derive("mvp3d", task)[0]
+        assert snerl["data_interface"]["lookat"] is None and snerl["data_interface"]["pose_scale"] is None
+        assert mvp["render"]["bounds"] is None
+        assert [why for k, v, why in C.overrides("snerl", task) if v is None] == [C.PENDING_SCENE] * 2
+        for b in ("sincro", "reviwo", "dynamo"):  # scene-independent configs equal the existing tasks' up to the target
+            assert C.render(b, task) == C.render(b, "drawer-open").replace("drawer-open.yaml", "@").replace(
+                "drawer-open", task).replace("@", "drawer-open.yaml")
