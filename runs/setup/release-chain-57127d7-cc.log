@@ -1,0 +1,26 @@
+=== 2026-11-09 15:56:13 release chain for refactor4 integration 57127d7 (S2M2 + PPO/Dreamer/FlashSAC retirement, real-world layout, single-branch tooling)
+15:56:14 /home/ws/ws/splatter4d/.worktrees/refactor4/s4d/remote_access.py sync-code 57127d7b7afb4f51a0fa854763afcc8c923e74d9 -> 1  Local Git provenance check failed:
+=== 2026-11-09 15:57:05 rerun: --sync-repo r4base (a14bcfe sync-code -> legacy splatter4d proof, accepted by the main checkout's launcher; new tooling accepts legacy proofs after adoption)
+15:57:44 /home/ws/ws/splatter4d/.worktrees/r4base/s4d/remote_access.py sync-code 57127d7b7afb4f51a0fa854763afcc8c923e74d9 -> 0 /home/compu/kaist/sunho/releases/57127d7b7afb4f51a0fa854763afcc8c923e74d9/code 
+15:57:44 /home/compu/kaist/sunho/releases/57127d7b7afb4f51a0fa854763afcc8c923e74d9/code
+15:57:51 sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a --tag cc -> 0 /home/ws/ws/splatter4d/runs/remote/verification/native-57127d7-cc-queue.yaml 
+16:01:39 launched verify-native-57127d7-cc on remote/GPU-ca65e1b7-c0ac-6757-7d3f-816c3119a4c1 (s4d-verify-native-57127d7-cc-a1, attempt 1)
+16:01:40 wait {'verify-native-57127d7-cc': 'running'}
+16:15:38 rwcal-20261109-fql-mvp3d_multiview-drawer-open-s1: local backup checksum verified; done
+16:15:38 rwcal-20261109-fql-mvp3d_single-drawer-open-s2: local backup checksum verified; done
+16:15:38 verify-native-57127d7-cc: live result sync unavailable; job remains running
+16:15:38 wait {'verify-native-57127d7-cc': 'running'}
+16:20:05 verify-native-57127d7-cc: live result sync unavailable; job remains running
+16:20:06 wait {'verify-native-57127d7-cc': 'running'}
+16:21:45 done {'verify-native-57127d7-cc': 'done'}
+16:21:45 {"exit_code": 0, "counts": {"passed": 2326, "error": 0, "failed": 0, "skipped": 0}, "full_suite_passed": true}
+16:21:52 sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a --tag cc -> 0 /home/ws/ws/splatter4d/runs/remote/verification/isolation-57127d7-cc-queue.yaml 
+16:24:32 launched verify-isolation-0-57127d7-cc on remote/GPU-4391fcee-537f-d408-d138-10d8a3866eea (s4d-verify-isolation-0-57127d7-cc-a1, attempt 1)
+16:24:32 launched verify-isolation-1-57127d7-cc on remote/GPU-6122c7a9-eaa6-b539-6005-f20e339da4ea (s4d-verify-isolation-1-57127d7-cc-a1, attempt 1)
+16:24:32 launched verify-isolation-2-57127d7-cc on remote/GPU-9e9f1e97-b2ca-04e0-eb2a-8035398daa79 (s4d-verify-isolation-2-57127d7-cc-a1, attempt 1)
+16:24:32 launched verify-isolation-3-57127d7-cc on remote/GPU-ca65e1b7-c0ac-6757-7d3f-816c3119a4c1 (s4d-verify-isolation-3-57127d7-cc-a1, attempt 1)
+16:24:32 wait {'verify-isolation-0-57127d7-cc': 'running', 'verify-isolation-1-57127d7-cc': 'running', 'verify-isolation-2-57127d7-cc': 'running', 'verify-isolation-3-57127d7-cc': 'running'}
+16:25:50 verify-isolation-3-57127d7-cc exited with 0 on remote; results checksum verified
+16:25:51 done {'verify-isolation-0-57127d7-cc': 'done', 'verify-isolation-1-57127d7-cc': 'done', 'verify-isolation-2-57127d7-cc': 'done', 'verify-isolation-3-57127d7-cc': 'done'}
+16:25:52 sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a --tag cc -> 0 ACCEPTED /home/ws/ws/splatter4d/runs/remote/acceptance/57127d7-cc/manifest.json 8103afdebefc807d5fa064e91dcc5ca74d33a9083dcfa2acf610bf0048110faf 56bd8ce9c59e 
+16:25:52 ACCEPTED /home/ws/ws/splatter4d/runs/remote/acceptance/57127d7-cc/manifest.json 8103afdebefc807d5fa064e91dcc5ca74d33a9083dcfa2acf610bf0048110faf 56bd8ce9c59e
