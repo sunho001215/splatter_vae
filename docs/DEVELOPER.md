@@ -95,8 +95,7 @@ The separate standalone SAC campaign pause remains in force; keeping SAC softwar
   `command_support` lazily imports `WorkerSpec`. `run_episode` imports the real-world CLI partly eagerly and IO/adapters
   lazily; `contract_checks` lazily imports actions/transitions, data contracts and real-world dataset/pipeline/depth/store/
   windows. The deferred worker runtime has not moved.
-- Outside compatibility aliases, direct research imports of `ops` are limited to `s4d.rwlearn.configs`' eager deployment
-  path facade and two lazy GPU-guard exceptions: output-path authorization in `s4d/data/__init__.py` and the W&B host
+- Outside compatibility aliases, direct research imports of `ops` are limited to two lazy GPU-guard exceptions: output-path authorization in `s4d/data/__init__.py` and the W&B host
   tag in `s4d/diag/wandb_log.py`. `tests/test_ops_layout.py` enforces that exact direct-import set. Scientific baseline
   loaders and `realworld/train_store.py` retain `s4d.third_party`, which resolves to the ops service. `baseline_data`
   imports `TARGET_TASKS` lazily from scientific configs, with no planner dependency. `scripts/_bootstrap.py` imports
@@ -108,9 +107,9 @@ The separate standalone SAC campaign pause remains in force; keeping SAC softwar
   do not eagerly import implementations.
 - The explicit-import graph has no eager import cycles. Including lazy imports, existing cycles remain in scheduler/
   host roles/backend/containers, training loop/per-frame, robot model/visual, pipeline/calibration/storage and adapter
-  registration. The planner's eager science-config import returns only to the independent ops path leaf; it does not
-  create an eager module cycle. At the package boundary there is now an `ops` -> `s4d` -> `ops` path through that
-  facade, as well as the existing indirect/lazy exceptions above; this is not a claim of an acyclic package graph.
+  registration. The planner's eager science-config import (`ops.jobs.realworld_plan` -> `s4d.rwlearn.configs`) is a
+  one-way ops -> science edge; science reaches ops only through the aliases and the two lazy exceptions above,
+  so there is no eager package-level cycle (the lazy cycles listed here are not a claim of an acyclic graph).
   `ops.resources.gpu_guard` imports neither `s4d` nor other ops modules.
 - The ML-specific CUDA kernels and device code stay in `s4d/model` and `s4d/train`.
 - `ops/remote/artifact_check.py` and `ops/jobs/replay_host.py` must stay standard-library only, because they are executed on the remote host outside the containers.

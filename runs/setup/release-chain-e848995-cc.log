@@ -1,0 +1,35 @@
+=== 2026-11-09 19:12:22 release chain for e8489954386d0e124b54cb9b89b3433129fc3c9a (review fixes 72cce44 + infra consolidation e848995), new tooling, sync-repo .worktrees/mainfix
+19:12:48 /home/ws/ws/splatter4d/.worktrees/mainfix/s4d/remote_access.py sync-code e8489954386d0e124b54cb9b89b3433129fc3c9a -> 0 /home/compu/kaist/sunho/releases/e8489954386d0e124b54cb9b89b3433129fc3c9a/code 
+19:12:48 /home/compu/kaist/sunho/releases/e8489954386d0e124b54cb9b89b3433129fc3c9a/code
+19:12:54 sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a --tag cc -> 0 /home/ws/ws/splatter4d/runs/remote/verification/native-e848995-cc-queue.yaml 
+19:15:32 launched verify-native-e848995-cc on remote/GPU-ca65e1b7-c0ac-6757-7d3f-816c3119a4c1 (s4d-verify-native-e848995-cc-a1, attempt 1)
+19:15:33 wait {'verify-native-e848995-cc': 'running'}
+19:17:43 verify-native-e848995-cc: live result sync unavailable; job remains running
+19:17:44 wait {'verify-native-e848995-cc': 'running'}
+19:19:05 wait {'verify-native-e848995-cc': 'running'}
+19:20:35 verify-native-e848995-cc: live result sync unavailable; job remains running
+19:20:35 wait {'verify-native-e848995-cc': 'running'}
+19:21:51 verify-native-e848995-cc: live result sync unavailable; job remains running
+19:21:52 wait {'verify-native-e848995-cc': 'running'}
+19:23:21 wait {'verify-native-e848995-cc': 'running'}
+19:24:38 wait {'verify-native-e848995-cc': 'running'}
+19:26:06 wait {'verify-native-e848995-cc': 'running'}
+19:27:24 verify-native-e848995-cc: live result sync unavailable; job remains running
+19:27:25 wait {'verify-native-e848995-cc': 'running'}
+19:28:59 verify-native-e848995-cc: live result sync unavailable; job remains running
+19:29:00 wait {'verify-native-e848995-cc': 'running'}
+19:30:17 wait {'verify-native-e848995-cc': 'running'}
+19:31:51 wait {'verify-native-e848995-cc': 'running'}
+19:33:07 wait {'verify-native-e848995-cc': 'running'}
+19:37:43 done {'verify-native-e848995-cc': 'done'}
+19:37:43 {"exit_code": 0, "counts": {"passed": 2385, "error": 0, "failed": 0, "skipped": 0}, "full_suite_passed": true}
+19:37:50 sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a --tag cc -> 0 /home/ws/ws/splatter4d/runs/remote/verification/isolation-e848995-cc-queue.yaml 
+19:40:27 launched verify-isolation-0-e848995-cc on remote/GPU-4391fcee-537f-d408-d138-10d8a3866eea (s4d-verify-isolation-0-e848995-cc-a1, attempt 1)
+19:40:27 launched verify-isolation-1-e848995-cc on remote/GPU-6122c7a9-eaa6-b539-6005-f20e339da4ea (s4d-verify-isolation-1-e848995-cc-a1, attempt 1)
+19:40:27 launched verify-isolation-2-e848995-cc on remote/GPU-9e9f1e97-b2ca-04e0-eb2a-8035398daa79 (s4d-verify-isolation-2-e848995-cc-a1, attempt 1)
+19:40:27 launched verify-isolation-3-e848995-cc on remote/GPU-ca65e1b7-c0ac-6757-7d3f-816c3119a4c1 (s4d-verify-isolation-3-e848995-cc-a1, attempt 1)
+19:40:28 wait {'verify-isolation-0-e848995-cc': 'running', 'verify-isolation-1-e848995-cc': 'running', 'verify-isolation-2-e848995-cc': 'running', 'verify-isolation-3-e848995-cc': 'running'}
+19:41:47 verify-isolation-3-e848995-cc exited with 0 on remote; results checksum verified
+19:41:47 done {'verify-isolation-0-e848995-cc': 'done', 'verify-isolation-1-e848995-cc': 'done', 'verify-isolation-2-e848995-cc': 'done', 'verify-isolation-3-e848995-cc': 'done'}
+19:41:48 sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a --tag cc -> 0 ACCEPTED /home/ws/ws/splatter4d/runs/remote/acceptance/e848995-cc/manifest.json b506a755db1f5b52d623e16afe0423f02101b5e6ccae98b095bd805cebd9667d 56bd8ce9c59e 
+19:41:48 ACCEPTED /home/ws/ws/splatter4d/runs/remote/acceptance/e848995-cc/manifest.json b506a755db1f5b52d623e16afe0423f02101b5e6ccae98b095bd805cebd9667d 56bd8ce9c59e
