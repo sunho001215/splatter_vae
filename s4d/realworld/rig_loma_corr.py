@@ -9,7 +9,7 @@
   distance / SAM-static MAGSAC fields; otherwise the ``rig_dw_matches`` rules (cycle, overlap, depth-end validity,
   stratified subsampling);
 * depth by stage NAME: ``foundation_stereo_depth`` / ``sensor_depth`` use the columns stored in the match files;
-  any other stage (e.g. S2M2) reads ``<depth-samples>/<episode>.npz`` written by ``rig_loma_depth`` (same per-match
+  any other stage reads ``<depth-samples>/<episode>.npz`` written by ``rig_loma_depth`` (same per-match
   layout: d_a, d_b, range_a, range_b for ext-ext; d, range for the robot correspondences)."""
 
 from __future__ import annotations

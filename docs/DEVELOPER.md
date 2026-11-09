@@ -119,6 +119,25 @@ CUDA_VISIBLE_DEVICES="$GPU4" .venv/bin/python -I scripts/run_tests.py
 .venv/bin/ruff check s4d ops scripts tests
 ```
 
+## Working with Codex (user policy 2026-11-09, in force until the user changes it)
+
+- Use the shared account first, through plain `codex` (`CODEX_HOME=/root/.codex-public`, provider `cliproxyapi`; the
+  credential is sourced from `~/.config/cliproxy/claude.env` inside the same shell call and never printed).
+- Pin the model per invocation with `-m gpt-6.1-sol`. Never use Astra and never substitute another model silently.
+  Use `xhigh` reasoning for difficult implementation and review work, and low or medium for trivial checks.
+- Fall back to the user's personal account, `codex -c 'model_provider="openai"'`, only when the shared account has
+  genuinely run out of allowance (`usage_limit_reached`, `model_cooldown`, HTTP 429). Check the effective provider and
+  model in the Codex header.
+- Never change global credentials, log out, or overwrite account configuration to switch providers. Respect each
+  account's permissions and usage controls.
+- Delegate bounded implementation, dependency audits, test analysis and independent review to Codex. Claude coordinates,
+  judges the findings and integrates the work. Give each run only the relevant context. Avoid unnecessary agents,
+  repeated full-repository reviews and redundant review cycles, and reuse earlier findings.
+- Wrapper: `/home/ws/ws/validation-20261031/codex/run_codex.sh <workdir> <read-only|workspace-write> <prompt> <log>
+  [effort=xhigh] [auto|shared|personal]`. `auto` tries the shared account and falls back on exhaustion. The wrapper
+  prints the account, provider and model, fails unless the model is `gpt-6.1-sol`, and writes the final answer to
+  `<log>.last.md`.
+
 ## Deliberately not moved
 
 - `scripts/run_tests.py` and `scripts/check_gpu_isolation.py` are typed verification job scripts. They run by path inside the containers, and the scheduler requires a literal guard call in the script file (`GUARD_CALL`), which a wrapper would not contain.

@@ -1,3 +1,7 @@
+> **Standing policies (2026-11-09):** Codex use follows `docs/DEVELOPER.md` "Working with Codex" (shared `codex` first,
+> personal `codex -c 'model_provider="openai"'` only when the shared allowance is exhausted, always `-m gpt-6.1-sol`).
+> Current refactor/retirement handoff: `/home/ws/ws/refactor-20261109/HANDOFF.md`.
+
 # splatter4d campaign handoff — planned local hardware shutdown
 
 **Phase3 permitted controllers stopped by 2026-10-16 08:26:16 KST; final local verification08:28:31. All-local shutdown remains BLOCKED by the denied scheduler-daemon stop. All times are KST.**

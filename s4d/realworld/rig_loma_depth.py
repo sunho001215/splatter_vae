@@ -1,8 +1,8 @@
 """Depth by stage NAME for ``rig_loma``: samples a depth stage at the static RoMa match ends and at the robot 2D-3D
-correspondence pixels, so that every depth source (FoundationStereo, native sensor, S2M2, ...) can drive the same
-solver independently. A stage file is an HDF5 with datasets ``depth`` (n_frames, H, W) metres and ``valid`` (bool;
-optional, depth > 0 otherwise), on the RGB grid of the camera (the layout of the processed depth stages and of the
-S2M2 stream's ``s2m2_depth``), located by ``--template`` (fields: root, ep, stage, key).
+correspondence pixels, so that every depth source (FoundationStereo, native sensor or a published depth stage) can
+drive the same solver independently. A stage file is an HDF5 with datasets ``depth`` (n_frames, H, W) metres and
+``valid`` (bool; optional, depth > 0 otherwise), on the RGB grid of the camera (the layout of the processed depth
+stages), located by ``--template`` (fields: root, ep, stage, key).
 
 Per match end / correspondence: nearest-pixel depth (the convention of ``romav2_match_worker.sample_at``), validity
 and the local 5x5 depth range (``local_range``) -> ``<out>/<episode>.npz`` with d_a, d_b, valid_a, valid_b, range_a,
@@ -38,7 +38,7 @@ class StageReader:
     def __init__(self, template: str, root: str, ep: str, stage: str):
         self.template, self.root, self.ep, self.stage = template, root, ep, stage
         self.cache = {}
-        self.missing = 0  # frames not computed by the stage (subset stages, e.g. s2m2_depth)
+        self.missing = 0  # frames not computed by the stage (subset stages)
 
     def frame(self, cam: str, idx: int):
         import h5py

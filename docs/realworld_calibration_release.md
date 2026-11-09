@@ -212,3 +212,36 @@ existing release root; everything below writes NEW roots / records.
   record's robot model, i.e. the visual meshes: their containers need the asset copy with the visual meshes (added on
   the remote; the local copy has them) and fail closed otherwise.
 * Not covered by the uncertainty spreads: common base-frame yaw / robot-scale confound, LoMa-G template bias.
+
+## 10. Historical S2M2 inference identity (retired 2026-11-09)
+
+The 2026-11-08 study did not adopt S2M2; FoundationStereo was kept. The inference worker, stage wrapper,
+executable CLI registration and active pin were removed on 2026-11-09. Study evidence remains in
+`realworld-ops/calib-loma/s2m2/REPORT.md`; the former pin block is preserved verbatim below for reproduction
+with the frozen study source. It is historical, not an available inference backend. The isolated study
+environment was outside the rwprep image (`calib-loma/s2m2/env/s2m2` on the remote host).
+
+Published `s2m2_depth` scale entries remain part of the complete calibration documents and accepted records.
+Their validation, existing-stage status recognition and generic depth-stage readers remain supported.
+
+```yaml
+s2m2:   # CANDIDATE own-rig depth (study 2026-11-08, realworld-ops/calib-loma/s2m2); not in the standard stage graph
+  repo: https://github.com/junhong-3dv/s2m2
+  commit: cbb5d169981e3086be1f959db5a8a0f139adcb17   # 2026-10-16 (default-branch HEAD on 2026-11-08)
+  license: "CC BY-NC 4.0 (LICENSE; README: non-commercial research and education only)"
+  environment: >-
+    isolated s2m2 venv (uv 0.9.7, CPython 3.11.14 of the rwprep image; torch 2.10.0+cu129, torchvision 0.25.0+cu129,
+    numpy 2.4.6, opencv-python-headless 5.0.0.93); upstream imported from <repo>/src (no pip install)
+  checkpoint_source: https://huggingface.co/minimok/s2m2 (revision 880bc49f2a7cf54a42570f8550c46cb57454bac9, cc-by-nc-4.0)
+  checkpoints:   # sha256 of the files = the Hugging Face LFS sha256
+    CH128NTR1.pth: 93f7177d8159d6666506df3abb0cdd75473614fab0e39f25e397acade0f9e241   # S
+    CH192NTR2.pth: 6e767e0977dd0a81a51021429f82b1c8451fd2534862170cb18a0019a33ae8ad   # M
+    CH256NTR3.pth: 770e822272585f843288507a2274349f032f2ef8106d1370bdefa8849b37cf87   # L
+    CH384NTR3.pth: 78dee08652ac6b6d42ff60d2ccd8184021b1e7beb93b091f379f82ba9f0b3032   # XL
+  entrypoint_reference: >-
+    src/s2m2/core/utils/model_utils.py load_model + run_stereo_matching (image_pad(32), autocast fp16, image_crop);
+    model inputs float 0..255 3-channel; outputs disparity (left reference), occlusion (0 = occluded), confidence
+  notes: >-
+    worker s4d/realworld/workers/s2m2_worker.py loads the checkpoint strictly (upstream my_load_state_dict skips
+    mismatched keys silently); grayscale IR replicated to 3 channels as model input only; right reference by flip-and-swap
+```

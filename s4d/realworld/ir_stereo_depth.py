@@ -25,12 +25,6 @@ goes through ``depth_stages.load_view_depth``: depth, valid, attrs). ``STAGE_VER
 the fingerprint key: depth and valid are computed exactly as before, so completed layout-1 outputs stay valid inputs
 (downstream stages fingerprint the build id only) and are compacted in place by the operational repack, which records
 ``output_layout`` "2" and its provenance in the completion record.
-
-Stage ``s2m2_depth`` (candidate, study 2026-11-08, ``s2m2_ir_depth``): S2M2 (worker ``s2m2_worker.py``, same task and
-outputs as the FoundationStereo worker) on the same IR pairs with exactly the same conversion, validity rules,
-registration and persisted layout, so calibration, TrackEverything, lifting and the training store switch by stage
-name (their ``depth_stage`` option). Optional ``frames`` subset (e.g. calibration pool frames): full-length datasets,
-uncomputed frames invalid, plus a ``computed`` flag per frame. Not part of the standard stage graph.
 """
 
 from __future__ import annotations
@@ -44,7 +38,6 @@ import numpy as np
 from s4d.realworld import io as rio
 
 STAGE_VERSION = "2"  # computation version (fingerprint key); unchanged by the layout change
-S2M2_STAGE_VERSION = "1"  # computation version of the S2M2 candidate stage ``s2m2_depth``
 OUTPUT_LAYOUT = "2"  # persisted datasets: depth, valid (layout "1" also stored the per-pixel diagnostics)
 PERSISTED = ("depth", "valid")
 
@@ -68,38 +61,6 @@ def ir_stereo_depth(root: Path, episode_id: str, spec, runner, *, chunk: int = 8
                           chunk_prefix="fs", source="FoundationStereo on the device IR pair (left reference), "
                                                     "z = fx*B/d, registered by z-buffer forward warp exactly as the "
                                                     "native depth", force=force)
-
-
-def s2m2_ir_depth(root: Path, episode_id: str, spec, runner, *, chunk: int = 8, model_type: str = "XL",
-                  num_refine: int = 3, precision: str = "fp16", allow_negative: bool = False,
-                  min_disparity: float = 0.5, min_depth_m: float = 0.1, max_depth_m: float = 6.0, splat: int = 2,
-                  frames: dict | None = None, output_stage: str = "s2m2_depth", force: bool = False) -> dict:
-    """Candidate parallel to B1 (study 2026-11-08): S2M2 (worker ``s2m2``, task ``ir_pair_disparity``, the same
-    inputs and outputs as the FoundationStereo worker) on every device IR pair, then EXACTLY the B1 conversion
-    (``ir_disparity_to_color``: z = fx*B/d, the same validity rules, the same z-buffer registration) and the same
-    persisted layout (``depth``/``valid`` per colour stream, same attrs), so consumers switch by stage name.
-
-    ``frames`` (optional) {colour stream id: [frame indices]} computes only those frames (e.g. the calibration pool
-    frames of a rig document); the datasets keep the full episode length, uncomputed frames are depth 0 / invalid and
-    a ``computed`` (N,) bool dataset names the computed frames. ``frames=None`` computes every frame."""
-    from s4d.realworld.baseline_stages import worker_identity
-
-    if model_type not in ("S", "M", "L", "XL") or precision not in ("fp16", "fp32"):
-        raise ValueError(f"S2M2 model_type {model_type!r} / precision {precision!r}")
-    config = {"chunk": chunk, "model_type": model_type, "num_refine": num_refine, "precision": precision,
-              "allow_negative": bool(allow_negative), "min_disparity": min_disparity, "min_depth_m": min_depth_m,
-              "max_depth_m": max_depth_m, "splat": splat, "worker_identity": worker_identity(spec),
-              "kernel": "ir_disparity_to_color"}
-    if frames is not None:
-        frames = {str(k): sorted({int(i) for i in v}) for k, v in frames.items()}
-        config["frames"] = frames
-    return _ir_pair_stage(root, episode_id, spec, runner, config=config, version=S2M2_STAGE_VERSION,
-                          worker_params={"model_type": model_type, "num_refine": num_refine, "precision": precision,
-                                         "allow_negative": bool(allow_negative)},
-                          output_stage=output_stage, chunk_prefix="s2m2", frames=frames,
-                          source=f"S2M2-{model_type} (num_refine {num_refine}, {precision}) on the device IR pair "
-                                 "(left reference), z = fx*B/d, registered by z-buffer forward warp exactly as the "
-                                 "native depth", force=force)
 
 
 def _ir_pair_stage(root: Path, episode_id: str, spec, runner, *, config: dict, version: str, worker_params: dict,

@@ -179,13 +179,6 @@ colour grid of each rig. Depth, tracks, masks and the export all live on that gr
   computation version (fingerprint) is unchanged, so layout-1 outputs remain valid and are compacted in place by the
   operational repack (`output_layout` and the repack provenance in the completion record).
   The IR contract requires `T_right_left[0,3] < 0` for the positive left-minus-right disparity convention.
-- **`s2m2_depth`** (CANDIDATE, study 2026-11-08, not in the standard graph; `ir_stereo_depth.s2m2_ir_depth`, worker
-  `s2m2_worker.py` task `ir_pair_disparity`): S2M2 (pinned `junhong-3dv/s2m2`, default XL, num_refine 3, fp16 as
-  upstream) on the same device IR pairs, then exactly the B1 conversion, validity rules, registration and persisted
-  layout (`depth`/`valid`, same attrs except `source`), so `calibrate.depth_stage`, `track_everything.depth_stage`,
-  `train_data.depth_stage` and the rig `depth_scale` keys switch by stage name. Optional `frames` subset
-  ({colour stream: [indices]}, e.g. calibration pool frames): full-length datasets, uncomputed frames invalid, plus a
-  `computed` (N,) flag. Study, evidence and the adoption decision: `realworld-ops/calib-loma/s2m2/REPORT.md`.
 
 All depth stages use `<stage>/<safe stream>.h5`: `depth` (N,H,W) float32 camera-z metres, `valid` bool, and attrs
 `K`, `stream_id`, `rig_id`, `grid`. `default_depth_stage(meta, "calibrate")` is `sensor_depth` and
@@ -515,7 +508,6 @@ outside that scope. SAM 3 also supplies the robot masks of the RGB-D calibration
 | Worker | Environment (`ops/inference_server/setup_envs.sh`) |
 |---|---|
 | `foundation_stereo_worker.py` | Own-rig depth (B1). Env `foundation_stereo` (Python 3.11, `locks/foundation_stereo.txt`), pinned `NVlabs/FoundationStereo` checkout imported from `repo_dir`; ViT-L checkpoint `23-51-11/model_best_bp2.pth` (sha256 `60e79bde...`) + its `cfg.yaml`, loaded strictly. Task `ir_pair_disparity` only. The EdgeNeXt stem is constructed without its ImageNet download (every weight is overwritten by the strict load); upstream's visualisation-only `open3d` import is replaced by an empty placeholder module. |
-| `s2m2_worker.py` | CANDIDATE own-rig depth (study 2026-11-08). Isolated venv (uv, CPython 3.11, torch 2.10.0+cu129, opencv-python-headless; not in the rwprep image: `calib-loma/s2m2/env/s2m2` on the remote host), pinned `junhong-3dv/s2m2` checkout imported from `<repo>/src`; checkpoints `CH{128,192,256,384}NTR{1,2,3,3}.pth` (HF `minimok/s2m2` rev 880bc49, CC BY-NC 4.0, sha256 in the pins). Every model tensor loaded strictly (the checkpoints' 14 unused extra tensors are listed in the response meta). Task `ir_pair_disparity` (+ occlusion/confidence outputs). |
 | `trackeverything_worker.py` | Own-rig tracker. Env `trackeverything` (Python 3.10, torch 2.8.0+cu129, `torch_scatter` 2.1.2 pt28cu129; `locks/trackeverything.txt`), pinned checkout as package `trackeverything`; `model.pth` (sha256 `4553975d...`, CC BY-NC 4.0). Single-view only. |
 | `sam3_worker.py` | Python ≥3.12, torch 2.10 (cu128), `pip install -e .` at the pinned commit. Gated checkpoint `facebook/sam3`. Calibration robot masks + SNeRL semantics. |
 | `dino_snerl_worker.py` | This repository's environment (the consumer's), with `third_party/dino` at 7c446df. SNeRL baseline only. |
@@ -531,7 +523,6 @@ outside that scope. SAM 3 also supplies the robot masks of the RGB-D calibration
 | SAM 3 | `f1647e8d0c1d280991f4d1b7d974c2704537fe66` |
 | DINO | `7c446df5b9f45747937fb0d72314eb9f7b66930a` |
 | DepthWorld (reference only) | `6823c13ddcd96484de04604da7d52c9e12f5c86c` |
-| S2M2 (candidate, `s2m2_depth`) | `cbb5d169981e3086be1f959db5a8a0f139adcb17` |
 
 ## 7. Run commands
 
@@ -638,3 +629,14 @@ ran on large-scale DROID). Historical outputs, reports and raw recordings are ke
 | Mock worker task `infer_views` (MapAnything/SAD oracle) | - |
 | `dino_snerl` cache stage (`baseline_stages.dino_snerl`, `stages.dino_snerl`), the window `export` in the default stage graph (2026-11-06) | SNeRL DINO targets online from the stored RGB (`train_store.verify_snerl_teacher`); `train_data` (section 4.6); `export` still runs when configured |
 | Defaults naming retired stages: `depth_stages.load_view_depth(stage="mapanything_depth")` (stage now required), `RGBD_LIFT_DEPTH = "mapanything_depth"` | `foundation_stereo_depth` |
+
+### Retired 2026-11-09: S2M2 inference
+
+The 2026-11-08 study did not adopt S2M2; FoundationStereo was kept. Removed the `s2m2_worker.py` inference
+worker, `s2m2_ir_depth` wrapper and `S2M2_STAGE_VERSION`, executable `s2m2_depth` CLI registration/dispatch,
+active upstream pin and inference tests. The FoundationStereo regression was relocated unchanged to
+`tests/test_realworld_fs_stage.py`. The former upstream pin (repo, commit, license, environment, HF revision
+and checkpoint SHA256s) is preserved in [the historical calibration release record](realworld_calibration_release.md#10-historical-s2m2-inference-identity-retired-2026-11-09).
+
+Published calibration documents retain their complete `s2m2_depth` scale maps. Existing stage status records
+and generic depth-stage readers remain supported; DROID-3D calibration consumption is unchanged.

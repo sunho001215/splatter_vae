@@ -115,7 +115,7 @@ def test_local_run_validates_before_writing_the_root_config(tmp_path):
     cfg = {**_standard(), "output_root": str(tmp_path / "out")}
     path = tmp_path / "pipeline.yaml"
     path.write_text(yaml.safe_dump(cfg))
-    for stages in ("unknown", "dino_snerl,mapanything_depth"):
+    for stages in ("unknown", "dino_snerl,mapanything_depth", "s2m2_depth"):
         with pytest.raises(SystemExit) as exc:
             cli.main(["run", "--config", str(path), "--episode", "mug-hanging-test-000001", "--stages", stages])
         assert exc.value.code == 2
@@ -126,9 +126,20 @@ def test_local_run_validates_before_writing_the_root_config(tmp_path):
     assert not (tmp_path / "out").exists()
 
 
-def test_remote_rejects_unknown_stages_before_reading_server_config():
+@pytest.mark.parametrize("stage", ["unknown", "s2m2_depth"])
+def test_remote_rejects_unknown_stages_before_reading_server_config(stage):
     from ops.inference_server.run_episode import main
 
     with pytest.raises(SystemExit) as exc:
-        main(["--pipeline", "/unread/pipeline", "--server", "/unread/server", "--episode", "ep", "--stages", "unknown"])
+        main(["--pipeline", "/unread/pipeline", "--server", "/unread/server", "--episode", "ep", "--stages", stage])
     assert exc.value.code == 2
+
+
+def test_status_recognizes_retired_depth_stage_records(tmp_path, capsys):
+    from s4d.realworld import io as rio
+
+    rec = rio.run_stage(rio.stage_dir(tmp_path, "ep", "s2m2_depth"), stage="s2m2_depth", version="1",
+                        config={}, inputs={}, build=lambda _: {})
+    assert cli.main(["status", "--root", str(tmp_path), "--episode", "ep"]) == 0
+    line = next(line for line in capsys.readouterr().out.splitlines() if line.startswith("s2m2_depth"))
+    assert line == f"{'s2m2_depth':13s} complete {rec['fingerprint'][:12]}"

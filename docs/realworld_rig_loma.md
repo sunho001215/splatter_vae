@@ -40,7 +40,7 @@ correspondence filtering and solution selection (validation only).
    (`workers/static_flags_worker.py`: temporal change of grey value / sensor depth against the episode median,
    MAGSAC++ F on those static matches) + per-camera log depth scale alpha + time offset tau. Optional secondary
    match-depth term `(log z_c(X) - log d(u) - alpha_c) / 1 %` (off by default: validation). Stages as rig_dw.
-8. **Depth source by name** (`--depth-stage`): FS / sensor columns of the match files, any other stage (S2M2) through
+8. **Depth source by name** (`--depth-stage`): FS / sensor columns of the match files, any other published stage through
    `rig_loma_depth` sample files (template `{root}/{ep}/episodes/{ep}/derived/{stage}/{key}.h5`).
 9. **Gripper-mount correction**: Fisher information of a 6-DoF mount twist (panda_link7 frame) given the rig
    (`mount_information`) and a diagnostic alternating estimate (`--variant mount`); not part of the default solve.
@@ -54,7 +54,8 @@ correspondence filtering and solution selection (validation only).
   tight arm crop, render pixel -> FK surface point). Lighting parameters are ours (paper gives none).
 * One fixed rig per task (no per-episode extrinsic corrections), joint-encoder offsets not estimated (joint 1 offset ==
   common rig yaw with the base hidden), featuremetric term omitted (as in DepthWorld's deployed configuration).
-* FoundationStereo depth by default (DepthWorld: S2M2); S2M2 selectable by name from the S2M2 stream.
+* FoundationStereo depth by default (DepthWorld: S2M2); existing published depth stages remain selectable by name.
+  S2M2 inference was retired 2026-11-09; its [historical identity](realworld_calibration_release.md#10-historical-s2m2-inference-identity-retired-2026-11-09) is kept for reproduction.
 * Iterative re-rendering (DepthWorld renders once with Stage-1 extrinsics).
 
 ## Robot model / conventions (loma/notes/robot_model_check.md)
