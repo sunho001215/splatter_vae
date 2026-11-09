@@ -36,7 +36,7 @@ Read in this order to follow one pretraining step: data contract -> dataset -> m
 | Model | `s4d/model/{encoder,decoder,gaussians,render}.py` | ViT state encoder with masking, grouped Gaussian decoder, the Gaussian set container, gsplat rendering (FP32). |
 | Losses | `s4d/losses/` | `rgb.py`, `depth.py`, `chamfer.py`, `motion.py`, `motion3d.py`, `invariance.py`, `occlusion.py`, `regularizers.py`. |
 | Training | `s4d/train/` | `loop.py` (model bundle, `forward_losses`, the training loop), `augment.py` (camera jitter, synthetic and self-render views), `perframe.py` + `perframe_eval.py` (per-frame pilots; they reuse `loop.py`'s helpers), `evaluate.py`, `checkpoint.py`, `ddp.py`, `workers.py`. |
-| Downstream RL | `s4d/rl/` | `protocol.py` (run configuration), `env.py` + `vecenv.py` (Meta-World environments), `encoders.py` (frozen/CNN policy encoders), the algorithms (`agent.py` DrM, `snerl_sac.py`, `sb3_ppo.py`, `dreamer_v1.py`, `flashsac.py`; `algorithms.py` maps a run's `algorithm` to its evaluation policy), `replay.py`, `evaluate.py`, `camera_suites.py` + `visibility.py` (evaluation camera suites), `run_io.py` (checkpoint/metrics files of the trainers). |
+| Downstream RL | `s4d/rl/` | `protocol.py` (run configuration), `env.py` + `vecenv.py` (Meta-World environments), `encoders.py` (frozen/CNN policy encoders), `agent.py` (DrM), `snerl_sac.py` (standalone SAC), `algorithms.py` (SAC evaluation dispatch), `replay.py`, `evaluate.py`, `camera_suites.py` + `visibility.py` (evaluation camera suites), `run_io.py` (checkpoint/metrics files of the trainers). |
 | Baselines | `s4d/baselines/{sincro,reviwo,snerl,dynamo,mvp3d}/`, `data.py`, `representation.py` | Ports or adapters around the pinned upstream code (`s4d/third_party.py`); see docs/BASELINES.md. |
 | Diagnostics | `s4d/diag/` | W&B and local logging, panels, probes, point clouds, tracks, held-out diagnostics. |
 | Shared | `s4d/config.py`, `s4d/geometry.py` | Layered YAML configuration; torch pinhole geometry. |
@@ -48,7 +48,7 @@ The file names are fixed: queue rows, registrations and docs name them by path.
 | Purpose | Scripts |
 | --- | --- |
 | Pretraining | `train.py` (ours: Meta-World, DROID cache, DROID large-scale), `train_sincro.py`, `train_reviwo.py`, `train_snerl.py`, `train_dynamo.py`, `train_mvp3d.py` |
-| Downstream RL | `train_rl.py` (DrM), `train_sac.py`, `train_ppo.py`, `train_dreamer.py`, `train_flashsac.py`; `eval_rl.py` (companion evaluator) |
+| Downstream RL | `train_rl.py` (DrM), `train_sac.py` (standalone SAC); `eval_rl.py` (companion evaluator) |
 | Evaluation and export | `evaluate.py`, `export_encoder.py`, `summarize_run.py`, `eval_baseline_representation.py` |
 | Meta-World data | `collect_metaworld.py`, `split_metaworld.py`, `check_metaworld.py`, `verify_metaworld_tasks.py`, `screen_tasks.py`, `render_heldout_sets.py`, `compute_workspace_stats.py`, `bench_loader.py`, `check_metaworld_equivalence.py`, `camera_visibility.py`, `selfrender_domain.py` |
 | DROID sample (first real data) | `download_droid_sample.py`, `convert_droid_sample.py`, `inspect_droid_sample.py`, `validate_droid_loader.py`, `droid_validate_alignment.py`, `droid_track_smoke.py`, `droid_compare_step0.py` |
@@ -60,6 +60,16 @@ The file names are fixed: queue rows, registrations and docs name them by path.
 | Compatibility aliases of `ops` | `jobs.py`, `_nvidia_query.py`, `heartbeat.py`, `watch_events.py`, `sync_media.py`, `cleanup_replay.py` |
 
 Each scheduled GPU entry point keeps its own preamble (`sys.path` insert of `scripts/`, `from _bootstrap import ...`, an unindented `guard_gpus()` or `enforce_allowed_gpus()` call before torch is imported): the scheduler checks for that call in the script file (`GUARD_CALL` in `ops/jobs/scheduler.py`). Exception: `scripts/run_tests.py` (not a scheduled job) calls `guard_gpus()` inside `main`.
+
+**Retired 2026-11-09: PPO, Dreamer, FlashSAC.** Their exclusive policy implementations/adapters, trainer scripts,
+algorithm YAML files, dedicated tests and upstream submodules were removed. DrM, standalone SAC and shared encoders,
+replay, environments and evaluation used by real-world FQL and supported workflows remain. Historical results, logs,
+experiment records and trainer/provenance metadata are retained; new evaluation of retired checkpoints is unsupported.
+`ops/jobs/retired.py` is the permanent refusal policy: scripts, historical run prefixes and evaluator references
+(`--train-job`, `--run-dir`, dependencies and `reevaluates`). Scheduler eligibility applies it to default and scoped
+queues, including crash retries and reset rows; host-role refusal precedes retry/drain exceptions; container
+`validate_spec` also refuses retired launches. Drivers use these gates and filter retired mixed-registration rows.
+The separate standalone SAC campaign pause remains in force; keeping SAC software does not resume that campaign.
 
 ## Dependency boundaries
 
@@ -112,7 +122,7 @@ Every GPU command needs exactly one allowed UUID (`source scripts/gpu_env.sh`). 
 # Train (pretraining) and evaluate
 CUDA_VISIBLE_DEVICES="$GPU4" .venv/bin/python -I scripts/train.py --config configs/metaworld/base.yaml configs/metaworld/tasks/hammer.yaml --name <run>
 CUDA_VISIBLE_DEVICES="$GPU4" .venv/bin/python -I scripts/evaluate.py --run outputs/<run>
-# RL: scripts/train_rl.py, train_sac.py, train_ppo.py, train_dreamer.py, train_flashsac.py; evaluation: scripts/eval_rl.py
+# RL: scripts/train_rl.py, train_sac.py; evaluation: scripts/eval_rl.py
 
 # Schedule: edit experiments/queue.yaml, then
 .venv/bin/python -I scripts/jobs.py status | tick | daemon | reset <id>
@@ -202,7 +212,7 @@ duplicated helpers inside the research code and its entry points:
 
 | Before | After |
 | --- | --- |
-| `scripts/train_{rl,sac,ppo,dreamer,flashsac}.py`: five copies of `rss_gb`, `atomic_save`, `append_jsonl` | `s4d/rl/run_io.py` (new), imported by the five trainers |
+| `scripts/train_{rl,sac,ppo,dreamer,flashsac}.py`: five copies of `rss_gb`, `atomic_save`, `append_jsonl` | `s4d/rl/run_io.py` (new), then imported by the five trainers; after the 2026-11-09 retirement only DrM/SAC remain |
 | `s4d/train/perframe.py`: copies of `MOVING_SCORE`, `STATIC_SCORE`, `ACTIVE_OPACITY`, `_rows`, `_per_t`, `_nanmean`, `temporal_ramp` (as `_ramp`), `_float_set` | imported from `s4d/train/loop.py`, whose inline float32 cast of the decoded set is now the same `_float_set` |
 | `s4d/data/droid/largescale/calibration.py`: hand-written `+0.5` integer-to-continuous pixel centres | `geometry.to_continuous_centres(K, integer_centres=True)` |
 | `s4d/realworld/contract.py`: unused private `_array` | removed |

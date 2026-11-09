@@ -45,6 +45,45 @@ def job_spec():
     }
 
 
+@pytest.mark.parametrize("script", ["train_ppo.py", "train_dreamer.py", "train_flashsac.py"])
+def test_retired_trainer_specs_are_refused_even_with_renamed_ids(script):
+    spec = job_spec()
+    spec.update(script="scripts/" + script, args=["--run-dir", "runs/" + spec["id"]])
+    with pytest.raises(ValueError, match="Launch refused: .*retired on 2026-11-09"):
+        validate_spec(spec)
+
+
+@pytest.mark.parametrize("prefix", ["ds-ppo-", "ds-dreamer-", "ds-flashsac-"])
+@pytest.mark.parametrize("target", ["train-job", "run-dir", "absolute-run-dir", "deps"])
+def test_retired_evaluator_specs_are_refused(prefix, target):
+    spec = job_spec()
+    run_id = prefix + "cnn-hammer-s2000"
+    spec.update(script="scripts/eval_rl.py", args=["--output-dir", "runs/" + spec["id"]])
+    if target == "train-job":
+        spec["args"] += ["--train-job=" + run_id]
+    elif target == "run-dir":
+        spec["args"] += ["--run-dir", "runs/" + run_id]
+    elif target == "absolute-run-dir":
+        spec["args"] += ["--run-dir=/workspace/splatter4d/runs/" + run_id]
+    else:
+        spec["deps"] = [run_id]
+    with pytest.raises(ValueError, match="Launch refused: .*retired on 2026-11-09"):
+        validate_spec(spec)
+
+
+@pytest.mark.parametrize("script", ["scripts/train_rl.py", "scripts/train_sac.py", "scripts/eval_rl.py"])
+def test_supported_rl_specs_keep_their_validation(script):
+    spec = job_spec()
+    spec.update(script=script, args=["--output-dir" if script == "scripts/eval_rl.py" else "--run-dir",
+                                   "runs/" + spec["id"]])
+    if script == "scripts/eval_rl.py":
+        spec["args"] += ["--run-dir=runs/ds-sac-cnn-hammer-s2000", "--train-job", "ds-sac-cnn-hammer-s2000"]
+    assert validate_spec(spec)["script"] == script
+    spec["args"][1] = "runs/other"
+    with pytest.raises(ValueError, match="under runs/<job_id>"):
+        validate_spec(spec)
+
+
 def make_evidence(directory: Path):
     directory.mkdir()
     fingerprints = {"s4d/example.py": "f" * 64}

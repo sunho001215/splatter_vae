@@ -3,6 +3,11 @@
 Every RL run in this campaign uses **DrM** (Xu et al., *DrM: Mastering Visual Reinforcement Learning through
 Dormant Ratio Minimization*, ICLR 2024, arXiv:2310.19668). Algorithms are never mixed. DrQ-v2 is no longer used.
 
+PPO, Dreamer and FlashSAC were retired on 2026-11-09: implementations, entry points, algorithm configs and exclusive
+upstreams were removed, and scheduler/container admission permanently refuses their trainers and evaluators.
+Historical results and experiment records remain. Standalone SAC (`snerl_sac`, `scripts/train_sac.py`) stays supported;
+its existing campaign pause is separate from retirement. See `docs/DEVELOPER.md` for the refusal policy.
+
 - **Algorithm source:** official code, github.com/XuGW-Kevin/DrM, pinned commit
   `989732d68d3eed986ddfc9809909a3c3171ca049`: `agents/drm_mw.py`, `utils.py`, `train_mw.py`, `replay_buffer.py`,
   `cfgs/config.yaml`, `cfgs/task/metaworld.yaml`, `cfgs/agent/drm_mw.yaml`. MIT license.

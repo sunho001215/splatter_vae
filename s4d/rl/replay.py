@@ -55,13 +55,8 @@ class Replay:
         nstep: int,
         mode: str = "w+",
         snapshot_dir: Path | None = None,
-        end_windows: bool = False,
     ):
         self.directory = None if directory is None else Path(directory)
-        # end_windows (FlashSAC, 2026-10-29): n-step windows may also start within n-1 transitions of a finished
-        # episode's end and stop there (upstream FlashSAC's n-step buffer); False keeps the DrM reference rule
-        # (a window always spans n transitions of one episode).
-        self.end_windows = bool(end_windows)
         self.snapshot_dir = None if snapshot_dir is None else Path(snapshot_dir)
         self.atom_shape, self.atom_dtype = tuple(atom_shape), np.dtype(atom_dtype)
         self.proprio_dim, self.action_dim = int(proprio_dim), int(action_dim)
@@ -217,61 +212,10 @@ class Replay:
             discount *= self.discount[slots] * gamma
         return sid, reward[:, None], discount[:, None]
 
-    def _window_lengths(self, sid: np.ndarray, next_state_id: int) -> np.ndarray:
-        """Per start state id: the number of transitions of its window (``end_windows``), 0 if invalid. A window
-        spans n transitions of one episode, or stops early at the final state of a finished episode (never at the
-        newest state of the episode in progress)."""
-        c = self.capacity
-        slot0 = sid % c
-        episode = self.episode_id[slot0]
-        finished = episode < int(self.meta[NEXT_EPISODE_ID])  # the in-progress episode has id NEXT_EPISODE_ID
-        valid = (self.state_id[slot0] == sid) & (self.transition_id[slot0] == sid)
-        extending = valid.copy()
-        length = np.zeros(len(sid), dtype=np.int64)
-        for offset in range(1, self.nstep + 1):
-            s = sid + offset
-            slots = s % c
-            live = (s < next_state_id) & (self.state_id[slots] == s) & (self.episode_id[slots] == episode)
-            valid &= ~extending | live
-            extending &= valid
-            if offset == self.nstep:
-                length = np.where(extending, offset, length)
-                break
-            ends = extending & (self.transition_id[slots] != s)  # no transition from this state
-            length = np.where(ends & finished, offset, length)
-            valid &= ~(ends & ~finished)
-            extending &= ~ends
-        return np.where(valid, length, 0)
-
     def sample_windows(self, batch_size: int, rng: np.random.Generator, gamma: float):
-        """(start ids, n-step rewards, discounts, bootstrap state ids). Without ``end_windows`` exactly
-        ``sample_indices`` with bootstrap ids start + n."""
-        if not self.end_windows:
-            sid, reward, discount = self.sample_indices(batch_size, rng, gamma)
-            return sid, reward, discount, sid + self.nstep
-        next_state_id = int(self.meta[NEXT_STATE_ID])
-        low = max(0, next_state_id - self.max_size)
-        high = next_state_id - 1
-        if high <= low:
-            raise NotEnoughData("not enough transitions to sample")
-        chosen, lengths = np.empty(0, dtype=np.int64), np.empty(0, dtype=np.int64)
-        for _ in range(1000):
-            candidates = rng.integers(low, high, size=2 * batch_size)
-            k = self._window_lengths(candidates, next_state_id)
-            chosen, lengths = np.concatenate([chosen, candidates[k > 0]]), np.concatenate([lengths, k[k > 0]])
-            if len(chosen) >= batch_size:
-                break
-        else:
-            raise NotEnoughData("could not find valid replay samples")
-        sid, length = chosen[:batch_size], lengths[:batch_size]
-        reward = np.zeros(batch_size, dtype=np.float32)
-        discount = np.ones(batch_size, dtype=np.float32)
-        for offset in range(self.nstep):
-            inside = offset < length
-            slots = (sid + offset) % self.capacity
-            reward = np.where(inside, reward + discount * self.reward[slots], reward).astype(np.float32)
-            discount = np.where(inside, discount * self.discount[slots] * gamma, discount).astype(np.float32)
-        return sid, reward[:, None], discount[:, None], sid + length
+        """(start ids, n-step rewards, discounts, bootstrap state ids), with bootstrap ids start + n."""
+        sid, reward, discount = self.sample_indices(batch_size, rng, gamma)
+        return sid, reward, discount, sid + self.nstep
 
     def sample(self, batch_size: int, rng: np.random.Generator, gamma: float):
         sid, reward, discount, nid = self.sample_windows(batch_size, rng, gamma)

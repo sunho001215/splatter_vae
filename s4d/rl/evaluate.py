@@ -116,21 +116,8 @@ def v2_episode_seeds(run_seed: int, eval_index: int, count: int) -> list[int]:
 
 
 def _rollout(pool, agent, step: int, groups: dict, names: list[str], seeds: list[int]) -> tuple[list, list]:
-    if getattr(agent, "recurrent", False):  # Dreamer (2026-10-28): per-episode recurrent state kept by the agent
-        class act:  # noqa: N801  (a callable with EnvPool's recurrent hooks)
-            active: list[int] = []
-
-            @staticmethod
-            def begin_wave(count: int) -> None:
-                agent.begin_episodes(count)
-
-            def __call__(self, obs, proprio):
-                return agent.act(policy_inputs(agent, obs), proprio, step=step, eval_mode=True, index=self.active)
-
-        act = act()
-    else:
-        def act(obs, proprio):
-            return agent.act(policy_inputs(agent, obs), proprio, step=step, eval_mode=True)
+    def act(obs, proprio):
+        return agent.act(policy_inputs(agent, obs), proprio, step=step, eval_mode=True)
 
     return pool.run(act, [(groups[name][0], seed) for name, seed in zip(names, seeds)])
 

@@ -187,10 +187,10 @@ def kind(job_id):
     return None
 
 
-# Measured GPU cost (2026-10-28/29): the pixel downstream trainers (upstream SNeRL/CURL SAC at 128 px, PPO's end-to-end
-# CNN, every Dreamer arm with its 64-px decoder, FlashSAC's CNN) saturate a GPU like a pretraining run; at 0.5 units
+# Measured GPU cost (2026-10-28/29): the pixel downstream trainers (upstream SNeRL/CURL SAC at 128 px)
+# saturate a GPU like a pretraining run; at 0.5 units
 # 7 of them per GPU ran at 4-5 agent steps/s each. Charge them a full unit (user 2026-10-29: do not oversubscribe).
-GPU_HEAVY = ('ds-sac-cnn-', 'ds-sac-snerl-', 'ds-ppo-cnn-', 'ds-dreamer-', 'ds-flashsac-cnn-', 'ds-pre-')  # ds-pre-: baseline pretraining
+GPU_HEAVY = ('ds-sac-cnn-', 'ds-sac-snerl-', 'ds-pre-')  # ds-pre-: baseline pretraining
 
 
 def load(job):

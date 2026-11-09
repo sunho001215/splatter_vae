@@ -18,6 +18,7 @@ import yaml
 ROOT = Path('/home/ws/ws/splatter4d')
 sys.path.insert(0, str(ROOT))
 from ops.jobs import scheduler as jobs  # noqa: E402
+from ops.jobs.retired import retired_reason  # noqa: E402
 
 sys.path.insert(0, str(ROOT / 'runs/setup/tools'))
 from ops.resources import memory_budget as mb  # noqa: E402
@@ -72,22 +73,17 @@ REGISTRATIONS = ['baselines-sanity-registration-20261016.json', 'baselines-eight
                  # SNeRL-code SAC comparison groups (user directive 2026-10-28): priority 2, ds- rows (local pool rows of the
                  # frozen-encoder families; the CNN and SNeRL rows are remote)
                  'downstream-sac-registration-s2000-20261028.json',
-                 # PPO pilot (user authorisation 2026-10-28; Dreamer pilot rows are remote)
-                 'downstream-ppo-registration-s2000-hammer-bin-picking-door-open-20261028.json',
                  # camera suite v2 re-evaluation of completed DrM policies (user directive 2026-10-29): rows on the
                  # host holding the final snapshot; csw4 and CNN first (priority 1)
                  'cameras-v2-reeval-registration-drm-20261029.json',
-                 # FlashSAC (no image augmentation) comparison groups (user directive 2026-10-29): frozen-encoder
-                 # families local pool rows, the CNN remote
-                 'flashsac-registration-20261029.json',
                  # self-render pilot pretrainings and exports (user 2026-10-30: raise the pilot's priority, next suitable
                  # capacity on either host): pool rows, admitted here only while placed local
                  'selfrender-registration-20261029.json',
                  # self-render v4 = v2 + +-5 % radial camera jitter + 5 %-relaxed viewpoint domain (user 2026-10-31;
                  # replaces the stopped v2 pilot): pretrainings, exports (pool rows, admitted here only while placed
-                 # local) and their FlashSAC trainers/evaluators
+                 # local); retired trainer/evaluator rows are filtered below
                  'selfrender-v4-registration-20261031.json',
-                 # SNeRL drawer-open rerun on release dd86d78 (user 2026-10-31): its FlashSAC trainers/evaluators
+                 # SNeRL drawer-open rerun on release dd86d78 (user 2026-10-31); filter retired rows
                  'snerl-drawer-open-r2-registration-20261031.json',
                  # 75 % hybrid masking on chlrm, eight tasks (user directive 2026-11-03, HIGH priority: pretraining,
                  # DrM trainers and evaluators 1, exports 0; non-preemptive)
@@ -130,7 +126,8 @@ for name in REGISTRATIONS:
             overlay = {**overlay, **json.loads(POOL.read_text())['effective_jobs']}
         record_jobs = [overlay.get(j['id'], j) for j in record['jobs']]
         assert [by_queue[j['id']] for j in record_jobs] == record_jobs, f'{name}: jobs changed in the queue'
-        registered += [j for j in record_jobs if (name not in ONLY or j['id'] in ONLY[name])
+        registered += [j for j in record_jobs if retired_reason(j, by_queue) is None
+                       and (name not in ONLY or j['id'] in ONLY[name])
                        and not (j.get('host', 'local') == 'local' and j.get('pin_host') == 'remote')]  # waits for its move
 by_id = {j['id']: j for j in registered}
 if not registered:
@@ -148,8 +145,8 @@ def status(job_id):
 
 
 def task_files(job):
-    if job['script'] in ('scripts/train_rl.py', 'scripts/eval_rl.py', 'scripts/train_sac.py', 'scripts/train_flashsac.py'):
-        return []  # DrM / SAC / FlashSAC simulate Meta-World live; they read no dataset file
+    if job['script'] in ('scripts/train_rl.py', 'scripts/eval_rl.py', 'scripts/train_sac.py'):
+        return []  # DrM / SAC simulate Meta-World live; they read no dataset file
     trainer = by_id.get(job['id'].removesuffix('-eval'), job)
     args = trainer['args']
     task_cfg = [a for a in args if a.startswith('configs/metaworld/tasks/')]  # our pretraining (scripts/train.py)

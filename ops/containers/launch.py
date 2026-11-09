@@ -12,6 +12,7 @@ from pathlib import Path, PurePosixPath
 from ops.resources.gpu_guard import APPROVED_HOST_GPUS, LOCAL_MIG_PARENTS
 from ops.remote.access import REMOTE_ROOT, RemoteClient, RemoteCommandError, RemoteUnreachable, sha256
 from ops.jobs.host_roles import job_class
+from ops.jobs.retired import retired_reason
 from ops.jobs.remote_backend import (COTENANT_GPU_MARGIN_GB, COTENANT_LABELS, COTENANT_ROLES, OWNERSHIP_LABELS,
                                      commit_source_sha256)
 from ops.containers.verification import validate_verification, verification_artifacts, verification_output
@@ -115,6 +116,9 @@ def validate_spec(spec: dict) -> dict:
         raise ValueError("Job arguments must be a list")
     for argument in arguments:
         _text(argument, "job argument")
+    reason = retired_reason(spec)
+    if reason is not None:
+        raise ValueError(f"Launch refused: {reason}")
     classification = job_class(spec)
     if classification.cls in ("invalid", "ambiguous"):
         raise ValueError(f"Invalid or ambiguous remote job role: {classification.evidence}")

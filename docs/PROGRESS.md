@@ -27,6 +27,10 @@ diff inline.
 | codex review 2026-10-19 (GPU allowlist) | review of the local GPU allowlist change (GPU 6 revoked) and the queue admission edit, plus the `gpu_parent` launch field (inline diff) | `.worktrees/gpu-allowlist` | allowlist: no code findings (one note on prompt-abbreviated UUIDs); provenance field: no findings; merged a1815c4 |
 
 ## Current phase
+- **Retired 2026-11-09: PPO, Dreamer, FlashSAC.** Exclusive implementations, adapters, trainers, algorithm configs,
+  tests and upstream submodules removed. Permanent scheduler, host-role and container launch refusals cover trainers,
+  evaluators, automatic retries and reset rows. Historical results/logs/experiment records are kept. Standalone SAC
+  software remains supported (`snerl_sac`, `scripts/train_sac.py`); its existing campaign pause is unchanged.
 - **Scope (user 2026-11-05/06):** DrM is the sole downstream RL algorithm (FlashSAC, PPO, Dreamer, standalone SAC
   stopped: admission pause `non-drm-rl-stopped-20261105`; one FlashSAC trainer checkpoint-paused at 800k). The
   additional Meta-World environment expansion (drawer-open, window-open, soccer, sweep-into) is stopped (admission pause

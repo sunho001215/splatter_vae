@@ -34,6 +34,7 @@ from ops.jobs.remote_backend import (  # noqa: E402
 )
 from ops.containers.verification import validate_report, validate_verification, verification_resources  # noqa: E402
 from ops.jobs import host_roles  # noqa: E402
+from ops.jobs.retired import retired_reason  # noqa: E402
 from s4d.third_party import working_tree_identity as third_party_identity  # noqa: E402
 from ops.resources.nvidia_query import mig_query  # noqa: E402
 
@@ -302,7 +303,10 @@ def dependency_ready(job: dict, dep: dict) -> bool:
 
 def eligible(jobs: list[dict], state: dict[str, dict]) -> list[dict]:
     ready = []
+    by_id = {job["id"]: job for job in jobs}
     for order, job in enumerate(jobs):
+        if retired_reason(job, by_id) is not None:
+            continue
         if state.get(job["id"], {}).get("status", PENDING) != PENDING:
             continue
         if all(dependency_ready(job, state.get(dep, {})) for dep in job.get("deps", [])):

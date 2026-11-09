@@ -47,6 +47,8 @@ REPO = Path(__file__).resolve().parents[2]
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
+from ops.jobs.retired import retired_reason  # noqa: E402
+
 ROLES_PATH = REPO / "configs/hosts/roles.yaml"
 OWNERSHIP_DIR = REPO / "runs/setup/ownership"
 POOL_MANIFEST = REPO / "runs/setup/pool-placement.json"
@@ -378,6 +380,9 @@ def refusal(job: dict, host: str, roles: dict, ownership: dict | None = None, by
     """None if ``host`` may admit ``job`` under the roles, the ownership records, the explicit role exceptions
     (``current``: the job's registry state) and the drain exception (``trainer``: the registry state of the trainer an
     evaluator companion belongs to; pass it for admission only, never for a placement), else the reason."""
+    reason = retired_reason(job, by_id)
+    if reason is not None:
+        return reason
     spec = roles["hosts"].get(host)
     if spec is None or spec.get("scheduler") is not True:
         return f"{host} is not a scheduler host (configs/hosts/roles.yaml)"

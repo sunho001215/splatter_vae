@@ -1,5 +1,5 @@
-"""Run-directory helpers shared by the RL trainers (scripts/train_rl.py, train_sac.py, train_ppo.py, train_dreamer.py,
-train_flashsac.py): atomic checkpoint writes, the append-only metrics log and the process's resident memory."""
+"""Run-directory helpers shared by the RL trainers (scripts/train_rl.py, train_sac.py): atomic checkpoint writes,
+the append-only metrics log and the process's resident memory."""
 
 from __future__ import annotations
 
