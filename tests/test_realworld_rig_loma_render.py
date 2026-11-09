@@ -4,7 +4,7 @@
 import numpy as np
 import pytest
 
-from s4d.realworld import rig_loma_render as rr
+from s4d.realworld.calib.loma import render as rr
 
 K = np.array([[600.0, 0, 320.0], [0, 600.0, 240.0], [0, 0, 1]])
 
@@ -115,7 +115,7 @@ def test_collada_colours_and_units(tmp_path):
     p = tmp_path / "t.dae"
     p.write_text(COLLADA)
     tri, col = rr.load_collada_colored(p)
-    from s4d.realworld.robot_visual import load_collada
+    from s4d.realworld.robotics.visual import load_collada
 
     assert np.allclose(tri, load_collada(p))
     assert np.allclose(tri[0], [[0, 0, 0.005], [0.01, 0, 0.005], [0, 0.01, 0.005]])

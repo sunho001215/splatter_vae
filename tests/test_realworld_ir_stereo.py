@@ -130,8 +130,10 @@ def test_stereo_stage_persists_depth_and_valid_only(tmp_path, monkeypatch):
 
     import h5py
 
-    from s4d.realworld import depth_stages, ir_stereo_depth, pipeline
     from s4d.realworld import io as rio
+    from s4d.realworld import pipeline
+    from s4d.realworld.stages import depth as depth_stages
+    from s4d.realworld.stages import ir_depth as ir_stereo_depth
     from s4d.realworld.workers import WorkerSpec
 
     cam = "color"
@@ -179,9 +181,11 @@ def test_stereo_stage_resumes_a_layout1_chunk_store_without_new_inference(tmp_pa
 
     import h5py
 
-    from s4d.realworld import depth_stages, ir_stereo_depth, pipeline
     from s4d.realworld import io as rio
-    from s4d.realworld.baseline_stages import worker_identity
+    from s4d.realworld import pipeline
+    from s4d.realworld.stages import depth as depth_stages
+    from s4d.realworld.stages import ir_depth as ir_stereo_depth
+    from s4d.realworld.stages.semantics import worker_identity
     from s4d.realworld.workers import WorkerSpec
 
     cam = "color"

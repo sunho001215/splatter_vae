@@ -148,8 +148,8 @@ def main(argv=None) -> int:
     from s4d.data.contract import collate
     from s4d.realworld import io as rio
     from s4d.realworld.dataset import RealworldCacheDataset
-    from s4d.realworld.depth_stages import configured_sets_policy, episode_frame_sets
     from s4d.realworld.pipeline import accepted_calibration, camera_views, load_meta, read_frames
+    from s4d.realworld.stages.depth import configured_sets_policy, episode_frame_sets
     from s4d.realworld.train_store import FILE as STORE_FILE
     from s4d.realworld.train_store import MAX_SET_MOTION_M, CompactStore, sync_counts
     from s4d.realworld.train_windows import RealworldWindowDataset

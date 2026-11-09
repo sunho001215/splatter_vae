@@ -151,9 +151,9 @@ def test_mutual_sync_handles_offsets_drops_and_refuses_ambiguous_tolerance():
 # ------------------------------------------------------------------------------------------------ synthetic store
 @pytest.fixture(scope="module")
 def built(tmp_path_factory):
-    from s4d.realworld.baseline_stages import sam3_masks
     from s4d.realworld.export import export
-    from s4d.realworld.track_motion import MotionFilterConfig, track_motion
+    from s4d.realworld.stages.motion import MotionFilterConfig, track_motion
+    from s4d.realworld.stages.semantics import sam3_masks
     from s4d.realworld.workers import WorkerSpec
     from tests.test_realworld_pipeline import synthetic_rgbd_episode
 
@@ -416,8 +416,8 @@ def test_unaccepted_calibration_keeps_every_rgb_robot_timeline(built, tmp_path, 
 
 
 def test_frames_depth_semantics_and_calibration_match_the_preprocessing_outputs(built):
-    from s4d.realworld.depth_stages import load_view_depth
     from s4d.realworld.pipeline import accepted_calibration, load_meta, read_frames
+    from s4d.realworld.stages.depth import load_view_depth
 
     root, ep = built["root"], built["ep"]
     meta = load_meta(root, ep)
@@ -446,9 +446,9 @@ def test_frames_depth_semantics_and_calibration_match_the_preprocessing_outputs(
 
 
 def test_tracks_robot_state_and_sync_are_aligned_with_their_sources(built):
-    from s4d.realworld.depth_stages import frame_sets
     from s4d.realworld.pipeline import load_meta, robot_state_at
-    from s4d.realworld.track_motion import MOVING, load_motion
+    from s4d.realworld.stages.depth import frame_sets
+    from s4d.realworld.stages.motion import MOVING, load_motion
     from s4d.realworld.tracking import VALID
 
     root, ep = built["root"], built["ep"]
@@ -709,7 +709,7 @@ def test_our_model_forward_and_losses_on_cpu(built, monkeypatch):
 
 
 def test_visualization_geometry_store_is_compact_native_depth(built):
-    from s4d.realworld.depth_stages import load_view_depth
+    from s4d.realworld.stages.depth import load_view_depth
     from s4d.realworld.vis_store import FILE, native_depth, write_native_geometry
 
     root, ep = built["root"], built["ep"]

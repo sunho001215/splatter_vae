@@ -10,8 +10,10 @@ K = np.array([[20.0, 0, 8.0], [0, 20.0, 6.0], [0, 0, 1]])
 
 
 def _episode(tmp_path, monkeypatch, n=N):
-    from s4d.realworld import depth_stages, ir_stereo_depth, pipeline
     from s4d.realworld import io as rio
+    from s4d.realworld import pipeline
+    from s4d.realworld.stages import depth as depth_stages
+    from s4d.realworld.stages import ir_depth as ir_stereo_depth
 
     cam = "cam/color"
     g = SimpleNamespace(rig_id="cam", left_stream="cam/ir_left", right_stream="cam/ir_right", baseline_m=0.05,
@@ -66,8 +68,8 @@ class _Runner:
 
 def test_fs_stage_config_worker_params_and_chunk_ids_are_unchanged(tmp_path, monkeypatch):
     from s4d.realworld import io as rio
-    from s4d.realworld.baseline_stages import worker_identity
-    from s4d.realworld.ir_stereo_depth import STAGE_VERSION, ir_stereo_depth
+    from s4d.realworld.stages.ir_depth import STAGE_VERSION, ir_stereo_depth
+    from s4d.realworld.stages.semantics import worker_identity
     from s4d.realworld.workers import WorkerSpec
 
     cam, _ = _episode(tmp_path, monkeypatch, n=10)

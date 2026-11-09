@@ -89,7 +89,7 @@ def ir_disparity_to_color(params: dict, arrays: dict) -> tuple[dict, dict]:
 @kernel("calibrate_camera")
 def calibrate_camera_kernel(params: dict, arrays: dict) -> tuple[dict, dict]:
     """``calibration.calibrate_camera`` on stacked frames; overlays for the requested frames."""
-    from s4d.realworld.calibration import CalibrationConfig, CalibrationFrame, calibrate_camera, overlay_image
+    from s4d.realworld.calib.core import CalibrationConfig, CalibrationFrame, calibrate_camera, overlay_image
 
     cfg = CalibrationConfig(**{**params["cfg"], "image_hw": tuple(params["cfg"]["image_hw"])})
     n = len(arrays["t_index"])

@@ -6,16 +6,16 @@ from types import SimpleNamespace
 import pytest
 import yaml
 
-from s4d.realworld import baseline_stages as B
 from s4d.realworld import cli
-from s4d.realworld import depth_stages as D
 from s4d.realworld import export as E
-from s4d.realworld import ir_stereo_depth as IR
 from s4d.realworld import pipeline as P
-from s4d.realworld import track_motion as TM
-from s4d.realworld import trackeverything_stage as TE
 from s4d.realworld import train_store as TS
 from s4d.realworld.runners import LocalRunner
+from s4d.realworld.stages import depth as D
+from s4d.realworld.stages import ir_depth as IR
+from s4d.realworld.stages import motion as TM
+from s4d.realworld.stages import semantics as B
+from s4d.realworld.stages import trackeverything as TE
 
 REPO = Path(__file__).resolve().parents[1]
 

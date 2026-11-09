@@ -1,5 +1,7 @@
 # Real-world preprocessing (Franka Panda + Robotiq + three RealSense rigs)
 
+Calibration implementations live in `s4d.realworld.calib`, stage implementations in `s4d.realworld.stages`, and robot geometry in `s4d.realworld.robotics`. The 31 former flat module paths remain module-object aliases, including their existing CLI commands; see [Compatibility aliases](DEVELOPER.md#compatibility-aliases). Worker scripts stay at their original paths.
+
 **Standard pipeline (consolidated 2026-11-05/06).** Robot: Franka **Panda** (not FR3) with the DROID-style Robotiq
 2F-85 installation and no wrist camera; three RealSense D435I RGB-D rigs recording colour, native depth and the
 device's infrared pair. Configuration: `configs/realworld/mug_hanging.yaml` (the standard own-rig config; other tasks
@@ -157,7 +159,7 @@ coefficients mean no distortion, whatever the model name.
 - Checks every frame's shape, dtype and timestamp against the metadata.
 - The record carries the validation warnings and the adapter assumptions.
 
-### 4.2 Depth (`depth_stages.py`, `ir_stereo_depth.py`, `geometry.py`)
+### 4.2 Depth (`stages/depth.py`, `stages/ir_depth.py`, `geometry.py`)
 
 Every stage works on the camera views of the RGB-D rigs (`pipeline.camera_views`): the recorded, zero-distortion
 colour grid of each rig. Depth, tracks, masks and the export all live on that grid.
@@ -165,7 +167,7 @@ colour grid of each rig. Depth, tracks, masks and the export all live on that gr
 - **`sensor_depth`**: metric device depth is filtered by configured range and z-buffer registered to the colour grid
   with recorded intrinsics and `T_color_depth`. Zeroes and disocclusions stay invalid. The calibration's depth
   evidence (`stages.calibrate.depth_stage: sensor_depth`); never used for lifting or export by the standard config.
-- **`foundation_stereo_depth`** (B1; RGB-D rigs with a recorded IR pair; `ir_stereo_depth.py`, worker
+- **`foundation_stereo_depth`** (B1; RGB-D rigs with a recorded IR pair; `stages/ir_depth.py`, worker
   `foundation_stereo_worker.py` task `ir_pair_disparity`): FoundationStereo (pinned commit and ViT-L checkpoint
   `23-51-11`) on the device-rectified IR pair at native 640x480 (InputPadder 32, unpadded), grayscale replicated to 3
   channels as model input only. Left-referenced disparity `d = x_left - x_right`, right-referenced disparity by
@@ -185,7 +187,7 @@ All depth stages use `<stage>/<safe stream>.h5`: `depth` (N,H,W) float32 camera-
 `default_depth_stage(meta, "lift")` is `foundation_stereo_depth`; the standard config also names both explicitly
 (`calibrate.depth_stage`, `track_everything.depth_stage`, `export.depth_stage`).
 
-Multi-view frame sets of the viewer and the contract checks (`depth_stages.episode_frame_sets`) are the training
+Multi-view frame sets of the viewer and the contract checks (`stages.depth.episode_frame_sets`) are the training
 store's M5 sets whenever the root has a store (`store_sets`: mutual nearest frames of every camera, no time cap,
 accepted iff the robot surface moved <= `train_store.MAX_SET_MOTION_M`, default 5 mm; one source of truth with
 the loaders). `stages.train_data.max_sync_ns` is only the robot <-> camera tolerance, never a cross-camera cap. Roots
@@ -195,7 +197,7 @@ Image resize/crop uses explicit continuous-coordinate pixel affines; depth uses 
 Server worker settings explicitly override interpreter, repo and checkpoint paths for remote runs; adapter and output
 paths remain on the host.
 
-### 4.3 `calibrate`: per-episode, robot-grounded extrinsics (stage `calibration_stage.py`, solver `calibration.py`)
+### 4.3 `calibrate`: per-episode, robot-grounded extrinsics (stage `stages/calibrate.py`, solver `calib/core.py`)
 
 The method is adapted from DepthWorld ([paper](https://arxiv.org/abs/2610.08780),
 [code](https://github.com/Jai2500/depthworld), [project page](https://jaibardhan.com/depthworld/)). Each camera
@@ -252,7 +254,7 @@ NATIVE depth of `init_frames` frames (global search over orientations x rolls wi
 trimmed-mean score, then trimmed ICP; `init_t_indices` records those frames). The refinement is the same depth term.
 Gates: robot-depth median on fit and held-out frames, held-out explained fraction (moving measured depth within
 `explained_tol_m` of the posed robot), covariance and conditioning. Frames used by the initialisation are NOT
-independent: `calibration.evidence_frames` returns fit + initialisation frames, and independent-frame checks use only
+independent: `calib.core.evidence_frames` returns fit + initialisation frames, and independent-frame checks use only
 the remaining held-out frames. The calibration depends on the native depth (it is the evidence); the 2026-11-05 depth
 comparison reused ONE frozen calibration (section 9).
 
@@ -274,7 +276,7 @@ optimisation.
 | Residuals: EE reprojection, wrist-ext 2D/3D, URDF-landmark reprojection (LoMa-G render matches) and featuremetric (dropped in deployment). Cauchy with c3d = 10 mm, c_l = 50 px, c_ee = 5 px. | URDF-landmark reprojection plus a robot-surface depth term. The depth term is PointWorld-style; DepthWorld uses robot depth and mask IoU only for evaluation. Cauchy 5 px / 10 mm. |
 | Mask IoU and robot-depth error as evaluation metrics. | Robot-depth residuals on held-out frames; mask hit-rate if a mask is given. |
 
-### 4.4 `track_everything`: tracks and 3D tracks (`trackeverything_stage.py`, worker `trackeverything_worker.py`)
+### 4.4 `track_everything`: tracks and 3D tracks (`stages/trackeverything.py`, worker `trackeverything_worker.py`)
 
 TrackEverything (pinned `ayushjain1144/trackeverything` dfb29b5, official checkpoint `katefgroup/TrackEverything`
 `model.pth`, CC BY-NC 4.0) runs SINGLE-VIEW per colour camera, never its multiview path. Our metric depth
@@ -296,7 +298,7 @@ explicit status: `valid`, `occluded` (visibility < 0.5), `out_of_image` (also be
 and the query window (`global_id` = `camera/q<frame>/<id>`); **no identity is assumed across cameras.** Cameras without
 an accepted calibration or with unverified rig geometry are skipped and the record states why.
 
-### 4.5b `track_motion`: noise-aware dynamic-track filter (`track_motion.py`, intentional change 2026-11-05)
+### 4.5b `track_motion`: noise-aware dynamic-track filter (`stages/motion.py`, intentional change 2026-11-05)
 
 Before this stage nothing filtered tracks by motion: every valid grid track (mostly static background) reached the
 export. `track_motion` classifies every lifted track of one camera and one query window as `invalid`, `static`,
@@ -426,7 +428,7 @@ synchronized sets; unmatched frame indices are
 reported by `viewer_data.describe()`. Point clouds come from a named depth source (`--source NAME=ROOT:STAGE:LABEL`,
 e.g. `foundation_stereo_depth`); trails show `track_motion`-moving tracks only.
 
-### 4.7 Optional, baseline-only stages (`baseline_stages.py`)
+### 4.7 Optional, baseline-only stages (`stages/semantics.py`)
 **Scope (2026-11-05): only our method is pretrained on DROID** (from PointWorld's released data, never through this
 package, never with SAM 3/DINO). For real-world episodes `required_baseline_stages(cfg)` derives exactly the auxiliary
 stages the configured `baselines` need (a config without baselines runs none), and the CLI refuses an explicit stage
@@ -463,7 +465,7 @@ outside that scope. SAM 3 also supplies the robot masks of the RGB-D calibration
 `RobotGeometry` refuses to run without these:
 1. **Panda URDF.** The robot is a Franka **Panda** (`panda_link0..8`, `panda_joint1..7`; the earlier provisional FR3
    description is replaced). From `frankarobotics/franka_description` (pinned in `configs/realworld/upstream_pins.yaml`),
-   xacro-expanded. Joint origins are checked against Franka's modified-DH parameters (`robot.panda_dh_fk`, with
+   xacro-expanded. Joint origins are checked against Franka's modified-DH parameters (`robotics.model.panda_dh_fk`, with
    joint8/flange at +0.107 m), and a test compares FK against them. The installation is the DROID-style Robotiq
    2F-85 on the ISO-50 coupling WITHOUT the wrist camera or its bracket; the coupling stays in the model
    (`MountConfig.coupling_geometry`: PickNik `ur_to_robotiq_adapter` mesh, NOMINAL geometry, not measured).
@@ -487,13 +489,13 @@ outside that scope. SAM 3 also supplies the robot masks of the RGB-D calibration
    - Robotiq's drawings give a provisional 11.0 mm from the flange face to the 2F-85 base frame
      (`robotiq_85_base_link`): a 16.9 mm coupling, minus its 3 mm robot-side recess, minus a 2.9 mm gripper-side
      recess taken from the blank coupling.
-   - Mount configurations live in `s4d/realworld/mounts.py`, with a status (measured / provisional / assumption)
+   - Mount configurations live in `s4d/realworld/robotics/mounts.py`, with a status (measured / provisional / assumption)
      and the missing measurement. Compose with
      `scripts/realworld_compose_robot_urdf.py --mount-config NAME` (or with explicit `--mount-xyz/--mount-rpy/
      --mount-source`). The manifest records the stack and its sources.
    - The coupling offset on our own rig must still be measured; the drawings are not a measurement.
-   - Combine the two URDFs with `robot.compose_urdf`.
-4. **The gripper-state mapping.** `robot.gripper_joint_value` assumes a linear map to `finger_joint`
+   - Combine the two URDFs with `robotics.model.compose_urdf`.
+4. **The gripper-state mapping.** `robotics.model.gripper_joint_value` assumes a linear map to `finger_joint`
    (2F-85: 0..0.8 rad, 2F-140: 0..0.7 rad). **Verify it on the real gripper.**
 
 ## 6. Isolated workers and environments

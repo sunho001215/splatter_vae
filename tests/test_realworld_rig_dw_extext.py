@@ -10,7 +10,7 @@ import pytest
 from scipy.linalg import expm
 from scipy.spatial.transform import Rotation
 
-from s4d.realworld.rig_dw_extext import (
+from s4d.realworld.calib.dw.extext import (
     MatchSet,
     ParamIndex,
     _linearize,
@@ -22,7 +22,7 @@ from s4d.realworld.rig_dw_extext import (
     refine_points,
     solve_step,
 )
-from s4d.realworld.rig_dw_geom import (
+from s4d.realworld.calib.dw.geom import (
     camera_centre,
     pose_distance,
     project,
@@ -371,7 +371,7 @@ def test_integer_and_object_camera_arrays(dtype):
 
 def test_focal_column_finite_difference():
     """The optional log focal multiplier column of the ext-ext factor (image rows: d u / d eps = u - c)."""
-    from s4d.realworld.rig_dw_extext import ParamIndex, _linearize, init_points
+    from s4d.realworld.calib.dw.extext import ParamIndex, _linearize, init_points
 
     T, alpha, K, M, _, _ = _scene(outliers=0.0)
     cams = sorted(T)

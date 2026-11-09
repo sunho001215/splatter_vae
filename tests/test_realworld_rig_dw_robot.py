@@ -4,8 +4,8 @@ rig recovery from silhouettes + depth of a known articulated-like object seen by
 import numpy as np
 import pytest
 
-from s4d.realworld import rig_dw_robot as rr
-from s4d.realworld.rig_dw_geom import pose_distance, se3_exp
+from s4d.realworld.calib.dw import robot as rr
+from s4d.realworld.calib.dw.geom import pose_distance, se3_exp
 
 
 def look_at(C, target, up=(0, 0, 1)):
@@ -134,8 +134,8 @@ def test_three_camera_recovery_from_robot_factors():
     ~2 mm comes from the sampled (not rasterised) model contour: the extreme sample of a boundary pixel lies on
     average a fraction of the sample spacing inside the true outline (documented; probed on real data by the
     spacing variant)."""
-    from s4d.realworld.rig_dw_frames import robot_normal_equations
-    from s4d.realworld.rig_dw_extext import solve_step
+    from s4d.realworld.calib.dw.extext import solve_step
+    from s4d.realworld.calib.dw.frames import robot_normal_equations
 
     P0, N0 = scene()
     F0, _ = scene(spacing=0.0003)
@@ -174,7 +174,7 @@ def test_three_camera_recovery_from_robot_factors():
 
 
 def test_collada_loader_units_and_node_transform(tmp_path):
-    from s4d.realworld.robot_visual import load_collada
+    from s4d.realworld.robotics.visual import load_collada
 
     dae = """<?xml version="1.0"?>
 <COLLADA xmlns="http://www.collada.org/2005/11/COLLADASchema" version="1.4.1">

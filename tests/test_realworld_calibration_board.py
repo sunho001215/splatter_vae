@@ -8,14 +8,8 @@ import pytest
 from scipy.spatial.transform import Rotation
 from test_realworld_calibration import HW, K, make_episode
 
-from s4d.realworld.calibration import CalibrationConfig
-from s4d.realworld.calibration_board import (
-    BoardRigConfig,
-    BoardSpec,
-    build_board_rig,
-    planar_pnp,
-    solve_board,
-)
+from s4d.realworld.calib.board import BoardRigConfig, BoardSpec, build_board_rig, planar_pnp, solve_board
+from s4d.realworld.calib.core import CalibrationConfig
 from s4d.realworld.geometry import invert_T, project, rotation_angle_deg, transform_points
 from s4d.realworld.synthetic import look_at_T_cam_base
 

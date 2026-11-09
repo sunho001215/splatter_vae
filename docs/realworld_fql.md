@@ -399,7 +399,7 @@ drawer-open 11, 0 (`tests/test_realworld_sync_m5.py`, local raw data only).
 `report["singleview"]` (per camera: frames, `robot/ok` fraction, `rwlearn.transitions.timelines(multiview=False)`
 transitions under the action contract; CPU, no cross-camera set) and `report["multiview"]`
 (`RealworldWindowDataset` with the default M5 threshold, `validate_batch`, forward check, SNeRL scenes from the
-store's M5 sets via `depth_stages.episode_frame_sets`). An empty multi-view split fails only the multi-view family; the
+store's M5 sets via `stages.depth.episode_frame_sets`). An empty multi-view split fails only the multi-view family; the
 process exits 0 once both families are recorded. The viewer uses the same M5 sets; `configured_sets_policy` never uses
 `train_data.max_sync_ns` as a cross-camera cap. The QA (`rwprep_local.py qa --families`, schema rwprep-qa/3) turns
 the gates into three families - `singleview` (recording, store frames, single-view contract family: every consumer),
@@ -464,7 +464,7 @@ could yield a 0 mm set (now `inf`, rejected); `surface_disp_m` stored as float32
 the threshold (now float64, one comparison everywhere); a diagonal lift could still advance the pull end (progress
 now counts only within 3 cm of the pull height; contact height = the lower of pull-end and pull heights); a motion
 lowered beyond the open front counted as push-back (now only travel behind the front counts). Not fixed here (other
-owners at that review): `depth_stages.configured_sets_policy` passed `train_data.max_sync_ns` to `frame_sets` as a
+owners at that review): `stages.depth.configured_sets_policy` passed `train_data.max_sync_ns` to `frame_sets` as a
 cross-camera cap for the SNeRL contract check and the viewer; the consumer-family change above now uses the store's
 M5 sets. Real data after all fixes:
 200 / 200 no_reversal; M5 counts unchanged.

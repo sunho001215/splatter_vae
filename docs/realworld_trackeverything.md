@@ -1,6 +1,6 @@
 # TrackEverything single-view stage
 
-`s4d.realworld.trackeverything_stage.track_everything` is the own-rig tracker of the standard pipeline
+`s4d.realworld.stages.trackeverything.track_everything` is the own-rig tracker of the standard pipeline
 (`stages.track_everything` in `configs/realworld/mug_hanging.yaml`, depth `foundation_stereo_depth`). It writes the
 `track2d` and `lift3d` records (the stage names, per-camera filenames, keys, point IDs, query frames and original
 colour-grid pixel coordinates of the track chunk contract in `tracking.py`). `track_motion`, `export` (either track
@@ -15,7 +15,7 @@ Example wiring (the CLI and `ops/inference_server/run_episode.py` do this from t
 
 ```python
 from s4d.realworld.runners import LocalRunner
-from s4d.realworld.trackeverything_stage import track_everything
+from s4d.realworld.stages.trackeverything import track_everything
 from s4d.realworld.workers import WorkerSpec
 
 spec = WorkerSpec(
@@ -46,12 +46,12 @@ Conventions, verified against TrackEverything commit
 | --- | --- | --- |
 | Mandatory metric camera-z depth, continuous K, OpenCV world-to-camera pose; geometry estimation bypassed | `workers/trackeverything_worker.py:handle` | `demo_hf.py:752-800` |
 | Select `geometry_backend="pi3"` for cam0/scale preprocessing; estimator stays lazy | `workers/trackeverything_worker.py:_model` | `demo_hf.py:488-508`, `626-641` |
-| RGB Lanczos and depth exact nearest; 480x640 to 384x512 scales both first K rows by 0.8 | `trackeverything_stage.py:resize_inputs` | `utils/common_utils.py:214-231` uses arange+0.5; `demo_hf.py:583-585` is the scaling we bypass |
-| Original query-grid centres `(col+.5,row+.5)` use the same continuous resize affine, without snapping | `trackeverything_stage.py:track_everything` | `demo_hf.py:820-840` preserves supplied query coordinates with input resolution enabled |
+| RGB Lanczos and depth exact nearest; 480x640 to 384x512 scales both first K rows by 0.8 | `stages/trackeverything.py:resize_inputs` | `utils/common_utils.py:214-231` uses arange+0.5; `demo_hf.py:583-585` is the scaling we bypass |
+| Original query-grid centres `(col+.5,row+.5)` use the same continuous resize affine, without snapping | `stages/trackeverything.py:track_everything` | `demo_hf.py:820-840` preserves supplied query coordinates with input resolution enabled |
 | Query depth uses `depth[t, floor(y), floor(x)]`, preserving the continuous ray; missing depth is never invented | `workers/trackeverything_worker.py:continuous_query_unprojection` | Replaces `demo_hf.py:196-246`; upstream rounds at :223-226 and fills missing depth at :228-232 |
 | Undo scale first, then pose: `X_base = inv(E0) [norm_factor * X_pred; 1]`, with original metric E0 | `workers/trackeverything_worker.py:predictions_to_base` | `demo_hf.py:190-192`, `626-641` |
 | Mask frames before the exact query birth, including earlier frames in its birth window | `workers/trackeverything_worker.py:predictions_to_base` | `models/track_everything.py:526-532`, `1385-1401` |
-| Visibility is sigmoid(logit), confidence is 1; OUT precedes OCCLUDED; 3D positions are NaN unless VALID | `trackeverything_stage.py:query_chunks` | `models/track_everything.py:477-479`, `1390-1401`; repository `tracking.STATUS` |
+| Visibility is sigmoid(logit), confidence is 1; OUT precedes OCCLUDED; 3D positions are NaN unless VALID | `stages/trackeverything.py:query_chunks` | `models/track_everything.py:477-479`, `1390-1401`; repository `tracking.STATUS` |
 | Temporary forward hook obtains dynamic logits without upstream edits, then removes itself even on failure | `workers/trackeverything_worker.py:infer_queries` | `training/datatypes.py:320`, `models/track_everything.py:1403-1413`, `1578-1618`; `demo_hf.py:896-900` omits them |
 
 Queries use exactly `pipeline.chunk_queries(n, window, step)` on each camera's

@@ -11,16 +11,16 @@ import pytest
 
 from s4d.data.contract import validate_batch
 from s4d.realworld import io as rio
-from s4d.realworld.calibration import CalibrationConfig
+from s4d.realworld.calib.core import CalibrationConfig
 from s4d.realworld.contract import EpisodeContractError, validate_episode
 from s4d.realworld.dataset import RealworldCacheDataset
-from s4d.realworld.depth_stages import load_view_depth, sensor_depth
 from s4d.realworld.export import export
 from s4d.realworld.geometry import project, transform_points
 from s4d.realworld.pipeline import RobotGeometry, calibrate, camera_views, ingest, load_meta, robot_state_at
-from s4d.realworld.robot import URDFModel, landmarks
+from s4d.realworld.robotics.model import URDFModel, landmarks
 from s4d.realworld.runners import LocalRunner
-from s4d.realworld.trackeverything_stage import track_everything
+from s4d.realworld.stages.depth import load_view_depth, sensor_depth
+from s4d.realworld.stages.trackeverything import track_everything
 from s4d.realworld.tracking import OCCLUDED, VALID
 from tests.test_realworld_trackeverything import MOCK_SPEC, ColourEpisode, SyntheticRunner
 
@@ -83,9 +83,9 @@ def test_stereo_camera_views_are_refused(tmp_path):
     import sys
 
     from s4d.realworld.adapters import get_adapter
-    from s4d.realworld.baseline_stages import sam3_masks
-    from s4d.realworld.depth_stages import view_K
     from s4d.realworld.pipeline import default_depth_stage
+    from s4d.realworld.stages.depth import view_K
+    from s4d.realworld.stages.semantics import sam3_masks
     from s4d.realworld.workers import WorkerSpec
 
     adapter = get_adapter("synthetic", {"asset_dir": str(tmp_path / "assets"), "frames": 4})

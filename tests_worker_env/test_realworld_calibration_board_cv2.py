@@ -7,7 +7,7 @@ Every test hard-requires cv2.aruco: nothing is skipped."""
 import numpy as np
 import pytest
 
-from s4d.realworld.calibration_board import BoardSpec
+from s4d.realworld.calib.board import BoardSpec
 
 SPEC = BoardSpec(squares_x=8, squares_y=6, square_m=0.05, marker_m=0.037)
 
@@ -15,7 +15,7 @@ SPEC = BoardSpec(squares_x=8, squares_y=6, square_m=0.05, marker_m=0.037)
 def test_detect_charuco_on_a_rendered_board():
     import cv2
 
-    from s4d.realworld.calibration_board import detect_charuco
+    from s4d.realworld.calib.board import detect_charuco
 
     aruco = cv2.aruco
     board = aruco.CharucoBoard((SPEC.squares_x, SPEC.squares_y), SPEC.square_m, SPEC.marker_m,
@@ -62,7 +62,7 @@ def _render_zivid(*, rotation=0, marker_id=1, marker=True):
 
 @pytest.mark.parametrize("rotation", [0, 2])
 def test_detect_zivid_rendered_both_orientations(rotation):
-    from s4d.realworld.calibration_board import detect_board
+    from s4d.realworld.calib.board import detect_board
 
     image, truth = _render_zivid(rotation=rotation)
     ids, uv = detect_board(image, BoardSpec.zivid_cb01())
@@ -75,7 +75,7 @@ def test_detect_zivid_rendered_both_orientations(rotation):
 
 @pytest.mark.parametrize("marker,marker_id", [(False, 1), (True, 2)])
 def test_zivid_missing_or_wrong_marker_does_not_assign_corner_ids(marker, marker_id):
-    from s4d.realworld.calibration_board import detect_board
+    from s4d.realworld.calib.board import detect_board
 
     image, _ = _render_zivid(marker=marker, marker_id=marker_id)
     ids, uv = detect_board(image, BoardSpec.zivid_cb01())
@@ -83,7 +83,7 @@ def test_zivid_missing_or_wrong_marker_does_not_assign_corner_ids(marker, marker
 
 
 def test_zivid_orders_all_checker_row_column_directions_and_rejects_misplaced_marker():
-    from s4d.realworld.calibration_board import _zivid_corner_order
+    from s4d.realworld.calib.board import _zivid_corner_order
 
     grid = np.stack(np.meshgrid(np.arange(6), np.arange(7)), -1).astype(float)
     for candidate in (grid, grid[::-1], grid[:, ::-1], grid[::-1, ::-1]):

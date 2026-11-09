@@ -20,7 +20,7 @@ import numpy as np
 
 from s4d.realworld import io as rio
 from s4d.realworld.contract import CameraView, EpisodeMeta, meta_from_json, meta_to_json, validate_episode
-from s4d.realworld.robot import (
+from s4d.realworld.robotics.model import (
     GRIPPER_MAP_LEGACY,
     GRIPPER_MAPS,
     ROBOTIQ_FINGER_JOINT_MAX,
@@ -154,7 +154,7 @@ def default_depth_stage(meta: EpisodeMeta, purpose: str) -> str:
 
 def view_depth(root, episode_id, meta: EpisodeMeta, stream_id: str, indices, stage: str):
     """(depth (n,H,W), K continuous) of a view from ``stage`` on that view's grid."""
-    from s4d.realworld.depth_stages import load_view_depth
+    from s4d.realworld.stages.depth import load_view_depth
 
     depth, valid, K = load_view_depth(root, episode_id, stream_id, indices, stage)
     return np.where(valid, depth, 0.0).astype(np.float32), K
@@ -363,4 +363,4 @@ def camera_poses(root, episode_id, meta) -> dict:
 
 
 # the calibrate stage lives in calibration_stage (imported last: it reads this module's helpers at call time)
-from s4d.realworld.calibration_stage import calibrate, fk_vs_recorded_ee  # noqa: E402,F401
+from s4d.realworld.stages.calibrate import calibrate, fk_vs_recorded_ee  # noqa: E402,F401

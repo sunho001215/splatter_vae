@@ -41,7 +41,6 @@ def quantize_depth(depth_m: np.ndarray) -> np.ndarray:
 
 def write_native_geometry(root: Path, episode_id: str, out_dir: Path, *, depth_stage: str | None = None,
                           chunk: int = 16, force: bool = False) -> dict:
-    from s4d.realworld.depth_stages import load_view_depth
     from s4d.realworld.pipeline import (
         accepted_calibration,
         calibrated_geometry_config,
@@ -51,6 +50,7 @@ def write_native_geometry(root: Path, episode_id: str, out_dir: Path, *, depth_s
         default_depth_stage,
         load_meta,
     )
+    from s4d.realworld.stages.depth import load_view_depth
 
     root = Path(root)
     meta = load_meta(root, episode_id)

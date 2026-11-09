@@ -3,11 +3,17 @@ and recovery of a perturbed 3-camera rig from synthetic robot 2D-3D corresponden
 
 import numpy as np
 
-from s4d.realworld import rig_dw_extext as ee
-from s4d.realworld.rig_dw_geom import pose_distance, project, se3_exp
-from s4d.realworld.rig_dw_solve import NPC, SolveConfig, State
-from s4d.realworld.rig_loma_solve import (CorrSet, LomaConfig, LomaProblem, corr_depth_residuals, corr_residuals,
-                                          mount_information)
+from s4d.realworld.calib.dw import extext as ee
+from s4d.realworld.calib.dw.geom import pose_distance, project, se3_exp
+from s4d.realworld.calib.dw.solve import NPC, SolveConfig, State
+from s4d.realworld.calib.loma.solve import (
+    CorrSet,
+    LomaConfig,
+    LomaProblem,
+    corr_depth_residuals,
+    corr_residuals,
+    mount_information,
+)
 
 K = np.array([[600.0, 0, 320.0], [0, 600.0, 240.0], [0, 0, 1]])
 
@@ -106,7 +112,7 @@ def test_rig_recovered_from_corr_and_static_matches():
 
 
 def test_mount_estimate_recovers_known_offset():
-    from s4d.realworld.rig_loma_solve import apply_mount, estimate_mount
+    from s4d.realworld.calib.loma.solve import apply_mount, estimate_mount
 
     rng = np.random.default_rng(3)
     Tt = rig()
@@ -137,7 +143,7 @@ def test_mount_estimate_recovers_known_offset():
 
 
 def test_disparity_offset_fit_recovers_beta():
-    from s4d.realworld.rig_loma_run import fit_disparity_offset, offset_matches
+    from s4d.realworld.calib.loma.run import fit_disparity_offset, offset_matches
 
     rng = np.random.default_rng(5)
     Tt = rig()

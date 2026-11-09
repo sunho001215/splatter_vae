@@ -48,7 +48,7 @@ from s4d.realworld.pipeline import (
     robot_state_at,
     view_frames,
 )
-from s4d.realworld.track_motion import MOVING, load_motion
+from s4d.realworld.stages.motion import MOVING, load_motion
 from s4d.realworld.tracking import VALID
 
 FORMAT = "splatter4d_realworld_v1_tracks"

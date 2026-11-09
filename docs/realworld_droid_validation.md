@@ -191,7 +191,7 @@ frames, and the score is the fraction landing on SAM 3's robot mask (`item5/moun
   read at the time as a coupling of about 1.5 cm that the assumed xyz = 0 omits. It is superseded by the analysis
   below.
 
-**Provisional mount (2026-11-02, `s4d/realworld/mounts.py` `droid_robotiq_2f85_iso50_coupling`).**
+**Provisional mount (2026-11-02, `s4d/realworld/robotics/mounts.py` `droid_robotiq_2f85_iso50_coupling`).**
 
 `T_fr3_link8→robotiq_85_base_link` = xyz (0, 0, **0.011** m), rpy (0, 0, +π/2).
 
@@ -279,7 +279,7 @@ FK(q + dq) joints in exactly one case: the episode is calibrated with its own DR
 | Calibration from provided poses (DROID-3D) | VERIFIED-REAL | positions within ~2 cm of DROID's own; cross-rig depth |
 | Robot-grounded calibration (landmarks) | NOT-RUN on real data | no landmark annotations or detector for DROID |
 | Export + batch contract | VERIFIED-REAL | 148/148 windows through validate_batch |
-| DROID gripper mount | PROVISIONAL (not measured) | 11.0 mm Robotiq ISO-50 stack + yaw +90° from drawings, coupling identity inferred from guide photos (`mounts.py`); single-episode image optima disagree (mask 11 mm, depth 17 mm, with an unexplained 1.2 cm lateral preference) |
+| DROID gripper mount | PROVISIONAL (not measured) | 11.0 mm Robotiq ISO-50 stack + yaw +90° from drawings, coupling identity inferred from guide photos (`robotics/mounts.py`); single-episode image optima disagree (mask 11 mm, depth 17 mm, with an unexplained 1.2 cm lateral preference) |
 | DINO (SNeRL contract) worker + `dino_snerl` stage | VERIFIED-REAL | consumer equality, 148 windows |
 | SAM 3 text-prompted temporal masks + `sam3_masks` stage | VERIFIED-REAL (with model misses recorded) | sam3.json |
 | Wrist ZED Mini in the fixed-rig pipeline | NOT SUPPORTED / not run | KB4 model: unexplained 2.2–2.9 px offset; item 8 handles the moving wrist |

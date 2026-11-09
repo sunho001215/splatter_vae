@@ -79,7 +79,7 @@ stages:
   # its intrinsics and the accepted pose; same query windows/grid as the former track2d (window 16, step 8, stride 16)
   track_everything: {depth_stage: foundation_stereo_depth, window: 16, step: 8, grid_stride: 16, model_hw: [384, 512],
                      num_iters: 3}
-  # dynamic-track filter (s4d/realworld/track_motion.py; intentional preprocessing change 2026-11-05): thresholds are
+  # dynamic-track filter (s4d/realworld/stages/motion.py; intentional preprocessing change 2026-11-05): thresholds are
   # quantiles of the observed statistics of tracks >= 15 cm from the calibrated robot (image motion px; depth extent per
   # depth bin), with metric floors and temporal support; the training store keeps moving tracks only
   track_motion: {min_segment_samples: 5, max_depth_hole_frames: 2, max_gap_factor: 1.5, max_speed_m_s: 1.5,

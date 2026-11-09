@@ -14,7 +14,7 @@ from scipy.spatial.transform import Rotation
 from s4d.realworld import io as rio
 from s4d.realworld import pipeline
 from s4d.realworld.adapters.panda_teleop import PandaTeleopH5Adapter
-from s4d.realworld.calibration import CalibrationConfig, calibrate_camera, explained_fraction, moving_masks
+from s4d.realworld.calib.core import CalibrationConfig, calibrate_camera, explained_fraction, moving_masks
 from s4d.realworld.contract import (
     CameraStream,
     CameraView,
@@ -31,7 +31,6 @@ from s4d.realworld.contract import (
     meta_to_json,
     validate_episode,
 )
-from s4d.realworld.depth_stages import frame_sets, load_view_depth, sensor_depth
 from s4d.realworld.export import export
 from s4d.realworld.geometry import (
     invert_T,
@@ -42,6 +41,7 @@ from s4d.realworld.geometry import (
 )
 from s4d.realworld.kernels import register_depth
 from s4d.realworld.runners import LocalRunner
+from s4d.realworld.stages.depth import frame_sets, load_view_depth, sensor_depth
 from s4d.realworld.synthetic import synthetic_robot_urdf
 
 

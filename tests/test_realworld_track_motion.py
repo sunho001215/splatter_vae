@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 import yaml
 
-from s4d.realworld.track_motion import (
+from s4d.realworld.stages.motion import (
     INVALID,
     MOVING,
     STATIC,
@@ -125,7 +125,7 @@ def test_reference_thresholds_follow_the_observed_quantiles_and_refuse_thin_refe
 @pytest.fixture(scope="module")
 def filtered(tmp_path_factory):
     from s4d.realworld.export import export
-    from s4d.realworld.track_motion import track_motion
+    from s4d.realworld.stages.motion import track_motion
     from tests.test_realworld_pipeline import synthetic_rgbd_episode
 
     tmp = tmp_path_factory.mktemp("tm")
@@ -140,7 +140,7 @@ def filtered(tmp_path_factory):
 
 
 def test_track_motion_stage_records_counts_thresholds_and_is_idempotent(filtered):
-    from s4d.realworld.track_motion import track_motion
+    from s4d.realworld.stages.motion import track_motion
 
     s = filtered["rec"]["summary"]
     c = s["counts"]
@@ -160,7 +160,7 @@ def test_moving_only_export_keeps_the_contract_and_never_pairs_across_segments(f
     from s4d.data.droid.pointworld import PAIR_TIMES
     from s4d.realworld import io as rio
     from s4d.realworld.dataset import RealworldCacheDataset
-    from s4d.realworld.track_motion import load_motion
+    from s4d.realworld.stages.motion import load_motion
 
     root, ep, tmp = filtered["root"], filtered["ep"], filtered["tmp"]
     m_all = json.loads((tmp / "all" / "manifest.json").read_text())
@@ -202,8 +202,8 @@ def _cfg(name):
 
 
 def test_config_without_baselines_runs_no_baseline_stages_and_refuses_them():
-    from s4d.realworld.baseline_stages import required_baseline_stages
     from s4d.realworld.cli import check_stage_scope, default_stages
+    from s4d.realworld.stages.semantics import required_baseline_stages
 
     cfg = _cfg("mug_hanging")
     cfg = {**cfg, "baselines": [], "stages": {k: v for k, v in cfg["stages"].items() if k != "sam3_masks"}}
@@ -217,8 +217,8 @@ def test_config_without_baselines_runs_no_baseline_stages_and_refuses_them():
 
 
 def test_realworld_config_generates_exactly_the_declared_baselines_inputs():
-    from s4d.realworld.baseline_stages import BASELINE_AUX_STAGES, required_baseline_stages
     from s4d.realworld.cli import check_stage_scope, default_stages
+    from s4d.realworld.stages.semantics import BASELINE_AUX_STAGES, required_baseline_stages
 
     cfg = _cfg("mug_hanging")
     assert set(cfg["baselines"]) <= set(BASELINE_AUX_STAGES)
@@ -289,7 +289,7 @@ def test_display_cloud_stride_must_nest():
 def test_shipped_configs_construct_the_filter_config():
     import dataclasses
 
-    from s4d.realworld.track_motion import MotionFilterConfig
+    from s4d.realworld.stages.motion import MotionFilterConfig
 
     for name in ("mug_hanging",):
         mc = dict(_cfg(name)["stages"]["track_motion"])
@@ -344,7 +344,7 @@ def test_motion_score_ignores_displacement_across_segment_breaks():
 
 
 def test_calibration_evidence_frames_include_initialisation_frames():
-    from s4d.realworld.calibration import evidence_frames
+    from s4d.realworld.calib.core import evidence_frames
 
     fit = [{"t_index": i} for i in range(0, 40, 2) if i % 10 != 8]
     held = [{"t_index": i} for i in range(8, 40, 10)]

@@ -209,7 +209,7 @@ Source: `droid-dataset/droid` @ `33ae6a6`.
 
 Three gripper-related transforms that must not be mixed:
 1. **Physical mount** `T_flange_gripper`.
-   - Value: `s4d/realworld/mounts.py` `droid_robotiq_2f85_iso50_coupling`, xyz (0, 0, 0.011), rpy (0, 0, π/2), to
+   - Value: `s4d/realworld/robotics/mounts.py` `droid_robotiq_2f85_iso50_coupling`, xyz (0, 0, 0.011), rpy (0, 0, π/2), to
      `robotiq_85_base_link`. It is **PROVISIONAL**: Robotiq drawing stack 16.9 − 3.0 − 2.9 mm, with the coupling
      identity inferred from the guide photos. It is not measured.
    - Used only when composing the URDF for the real-world pipeline (`scripts/realworld_compose_robot_urdf.py

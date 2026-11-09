@@ -1,5 +1,7 @@
 # Render-to-image robot 2D-3D rig calibration (`rig_loma`)
 
+Current modules live in `s4d.realworld.calib.loma`; for example, run `python -m s4d.realworld.calib.loma.run --help`. The former `s4d.realworld.rig_loma_*` module paths remain aliases with the original CLI usage. Shared DW helpers come from `calib/dw/common.py`; the matcher worker stays at its original path.
+
 Status: development study (branch `rw-calib-loma-20261108`, LOMA stream of the 2026-11-08 calibration directive);
 frozen a935aef, held-out batch done; release path (gate change, rig documents, records, depth scale, gripper map,
 visual meshes): [realworld_calibration_release.md](realworld_calibration_release.md).
@@ -14,13 +16,13 @@ Its pose stayed tied to SAM boundary bias (mask +-2 px = a 1.4-2 % common scale 
 correspondence filtering and solution selection (validation only).
 
 ## Method (per task, one fixed 3-camera rig, strictly per task)
-1. **SAM-free frames** (`rig_loma_data.extract_episode`): per camera 16 frames per episode, robot state at the camera
+1. **SAM-free frames** (`calib.loma.data.extract_episode`): per camera 16 frames per episode, robot state at the camera
    timestamp (<= 20 ms), flange speed <= 0.10 m/s, FK of every link at t and t +- 10 ms. Robot visibility is decided
    by rendering (>= 3000 rendered pixels), never by masks.
-2. **SAM-free coarse initialisation** (`rig_loma_data.mask_free_init`): the existing RGB-D robot registration
-   (`calibration.calibrate_camera`, evidence `rgbd`) without robot masks (moving-depth evidence), median over 8 fit
+2. **SAM-free coarse initialisation** (`calib.loma.data.mask_free_init`): the existing RGB-D robot registration
+   (`calib.core.calibrate_camera`, evidence `rgbd`) without robot masks (moving-depth evidence), median over 8 fit
    episodes. Only a starting point.
-3. **Renderer** (`rig_loma_render`): Franka/Robotiq VISUAL meshes (COLLADA, material colours, 175,604 triangles),
+3. **Renderer** (`s4d.realworld.calib.loma.render`): Franka/Robotiq VISUAL meshes (COLLADA, material colours, 175,604 triangles),
    exact torch triangle rasterizer (2x supersampling), non-PBR Lambert shading (camera key light + fill + ambient),
    tight crop = rendered-arm bounding box + 16 px. Render pixel -> exact surface point (ray / triangle-plane
    intersection) in its link frame -> base frame by FK at the camera timestamp, + FK surface velocity (time offset).
@@ -34,14 +36,14 @@ correspondence filtering and solution selection (validation only).
 6. **Iterated render-and-match**: correspondences are re-extracted at the updated pose (round r0 at the SAM-free init
    on 20 fit episodes -> solve -> round r2 on all episodes at that state), removing the template-attraction bias
    (synthetic: -0.07..-0.14 px at 1-8 deg render-pose error, ~0 at 0).
-7. **Joint solve** (`rig_loma_solve.LomaProblem`, subclass of `rig_dw_solve.RigProblem`): robot 2D-3D reprojection
+7. **Joint solve** (`calib.loma.solve.LomaProblem`, subclass of `calib.dw.solve.RigProblem`): robot 2D-3D reprojection
    term `(pi(K_c, T_c (X + tau_c V)) - u) / 1 px` (Cauchy c = 3 on the whitened norm) as the primary absolute-pose
    source + the unchanged rig_dw static two-view RGB-D factors (RoMa v2) with SAM-free static flags
    (`workers/static_flags_worker.py`: temporal change of grey value / sensor depth against the episode median,
    MAGSAC++ F on those static matches) + per-camera log depth scale alpha + time offset tau. Optional secondary
    match-depth term `(log z_c(X) - log d(u) - alpha_c) / 1 %` (off by default: validation). Stages as rig_dw.
 8. **Depth source by name** (`--depth-stage`): FS / sensor columns of the match files, any other published stage through
-   `rig_loma_depth` sample files (template `{root}/{ep}/episodes/{ep}/derived/{stage}/{key}.h5`).
+   `s4d.realworld.calib.loma.depth` sample files (template `{root}/{ep}/episodes/{ep}/derived/{stage}/{key}.h5`).
 9. **Gripper-mount correction**: Fisher information of a 6-DoF mount twist (panda_link7 frame) given the rig
    (`mount_information`) and a diagnostic alternating estimate (`--variant mount`); not part of the default solve.
 

@@ -61,7 +61,7 @@ def save_root_config(cfg: dict, source: str) -> Path:
 def default_stages(cfg: dict) -> list[str]:
     """Stages a config runs by default: every pipeline stage (optional ones only when configured) plus exactly the
     baseline stages its declared baselines / calibration need (``required_baseline_stages``)."""
-    from s4d.realworld.baseline_stages import required_baseline_stages
+    from s4d.realworld.stages.semantics import required_baseline_stages
 
     st = cfg.get("stages") or {}
     return [s for s in STAGES if s not in OPTIONAL_STAGES or s in st] + list(required_baseline_stages(cfg))
@@ -70,7 +70,7 @@ def default_stages(cfg: dict) -> list[str]:
 def check_stage_scope(cfg: dict, wanted) -> None:
     """Refuse configured stages this pipeline does not have, baseline stages the config does not need and optional
     stages without a configuration."""
-    from s4d.realworld.baseline_stages import required_baseline_stages
+    from s4d.realworld.stages.semantics import required_baseline_stages
 
     unknown = sorted(set(cfg.get("stages") or {}) - set(STAGES + BASELINE_STAGES))
     if unknown:
@@ -181,17 +181,17 @@ def main(argv=None) -> int:
 def run_stages(cfg, adapter, ep, runner, run, wanted, spec_factory=None):
     """Identical local/remote stage dispatch. ``run`` persists the caller's stage report and applies force policy."""
     from s4d.realworld import pipeline as P
-    from s4d.realworld.baseline_stages import sam3_masks
-    from s4d.realworld.calibration import CalibrationConfig
-    from s4d.realworld.depth_stages import sensor_depth
+    from s4d.realworld.calib.core import CalibrationConfig
     from s4d.realworld.export import export
+    from s4d.realworld.stages.depth import sensor_depth
+    from s4d.realworld.stages.semantics import sam3_masks
 
     root, st = Path(cfg["output_root"]), cfg.get("stages", {})
     spec_factory = spec_factory or (lambda name: _spec(cfg, name))
     run("ingest", lambda f: P.ingest(adapter, ep, root, force=f))
     run("sensor_depth", lambda f: sensor_depth(root, ep, runner, force=f, **st.get("sensor_depth", {})))
     if "foundation_stereo_depth" in wanted:  # device-IR stereo depth (B1): the own-rig lifting/export depth
-        from s4d.realworld.ir_stereo_depth import ir_stereo_depth
+        from s4d.realworld.stages.ir_depth import ir_stereo_depth
 
         run("foundation_stereo_depth", lambda f: ir_stereo_depth(root, ep, spec_factory("foundation_stereo"), runner,
                                                                  force=f, **st.get("foundation_stereo_depth", {})))
@@ -220,7 +220,7 @@ def run_stages(cfg, adapter, ep, runner, run, wanted, spec_factory=None):
         segment()
     run("calibrate", calibration)
     if "track_everything" in wanted:  # single-view TrackEverything per camera writes the track2d + lift3d records
-        from s4d.realworld.trackeverything_stage import track_everything
+        from s4d.realworld.stages.trackeverything import track_everything
 
         tc = dict(st.get("track_everything") or {})
         if "model_hw" in tc:
@@ -233,7 +233,7 @@ def run_stages(cfg, adapter, ep, runner, run, wanted, spec_factory=None):
 
         run("track_everything", te)
     if "track_motion" in wanted:
-        from s4d.realworld.track_motion import MotionFilterConfig, track_motion
+        from s4d.realworld.stages.motion import MotionFilterConfig, track_motion
 
         mc = dict(st.get("track_motion") or {})
         if "depth_bins_m" in mc:

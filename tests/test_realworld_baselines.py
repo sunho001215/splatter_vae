@@ -9,7 +9,7 @@ import h5py
 import numpy as np
 import pytest
 
-from s4d.realworld.baseline_stages import SNERL_CLASSES, SNERL_DINO, instances_to_semantic, sam3_masks
+from s4d.realworld.stages.semantics import SNERL_CLASSES, SNERL_DINO, instances_to_semantic, sam3_masks
 from s4d.realworld.workers import WorkerSpec
 
 

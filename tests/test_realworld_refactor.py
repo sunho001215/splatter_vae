@@ -68,7 +68,7 @@ def test_local_head_keeps_command_globals(tmp_path, monkeypatch):
 
 @pytest.mark.parametrize('mask_state', ['none', 'all', 'partial'])
 def test_shared_depth_evidence_preserves_partial_mask_fallback(mask_state):
-    from s4d.realworld import calibration as cal
+    from s4d.realworld.calib import core as cal
 
     frames = [SimpleNamespace(depth=np.full((3, 4), float(i + 1)), robot_mask=None) for i in range(3)]
     for i, frame in enumerate(frames):

@@ -221,7 +221,7 @@ def _chunk_names(root, episode_id, cam) -> list[str]:
 
 def _camera_tracks(root, episode_id, cam, stamps) -> dict:
     """Moving tracks of every lift3d chunk of ``cam`` (``track_motion`` class MOVING), padded to the longest chunk."""
-    from s4d.realworld.track_motion import MOVING, load_motion
+    from s4d.realworld.stages.motion import MOVING, load_motion
 
     names = _chunk_names(root, episode_id, cam)
     rows = []
@@ -283,7 +283,6 @@ def write_episode(root: Path, episode_id: str, out_dir: Path, *, task: str | Non
     those cameras; multi-view and geometric consumers must refuse them. Fully accepted episodes keep the existing
     layout and fingerprint (including the existing metric-depth/track eligibility rules)."""
     from s4d.data.droid.pointworld import depth_test
-    from s4d.realworld.depth_stages import load_view_depth
     from s4d.realworld.export import motion_target_source
     from s4d.realworld.pipeline import (
         RobotGeometry,
@@ -299,6 +298,7 @@ def write_episode(root: Path, episode_id: str, out_dir: Path, *, task: str | Non
         robot_state_at,
         to_model_rgb,
     )
+    from s4d.realworld.stages.depth import load_view_depth
 
     root, out_dir = Path(root), Path(out_dir)
     meta = load_meta(root, episode_id)

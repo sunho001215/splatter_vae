@@ -11,8 +11,8 @@ from scipy.spatial.transform import Rotation
 from test_realworld_calibration import HW, T_TRUE, K, make_episode
 
 from s4d.realworld import io as rio
-from s4d.realworld.calibration import CalibrationConfig, calibrate_camera, near_best_spread, pose_distance
-from s4d.realworld.calibration_rig import (
+from s4d.realworld.calib.core import CalibrationConfig, calibrate_camera, near_best_spread, pose_distance
+from s4d.realworld.calib.rig import (
     FORMAT,
     FixednessConfig,
     build_rig_calibration,
@@ -48,7 +48,7 @@ def test_pose_distance_and_near_best_spread():
 
 
 def test_multistart_reports_empirical_spread_and_gates_on_it():
-    from s4d.realworld import calibration as cal
+    from s4d.realworld.calib import core as cal
 
     frames = make_episode(T_TRUE, outlier_rate=0.0)
     prior = rotated(T_TRUE, 1.5, axis=(1, 0, 0), trans=(0.02, -0.01, 0.02))
@@ -184,7 +184,7 @@ def test_rig_publication_is_coherent_and_builder_refuses_unvalidatable_inputs(tm
     with pytest.raises(ValueError, match="unique"):
         build_rig_calibration([(tmp_path, "a"), (tmp_path / "b", "a")], tmp_path / "r.json", name="r",
                               cfg=CalibrationConfig())
-    from s4d.realworld.calibration_rig import RigConfig
+    from s4d.realworld.calib.rig import RigConfig
 
     with pytest.raises(ValueError, match="held-out"):
         build_rig_calibration([(tmp_path, "a"), (tmp_path, "b")], tmp_path / "r.json", name="r",

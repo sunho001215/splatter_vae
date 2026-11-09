@@ -49,8 +49,8 @@ class ViewerEpisode:
 
 
 def load_episode(root: Path, episode_id: str, *, gap_factor: float = 1.5) -> ViewerEpisode:
-    from s4d.realworld.depth_stages import configured_sets_policy, episode_frame_sets
     from s4d.realworld.pipeline import accepted_calibration, camera_views, load_meta
+    from s4d.realworld.stages.depth import configured_sets_policy, episode_frame_sets
 
     root = Path(root)
     meta = load_meta(root, episode_id)
@@ -82,8 +82,8 @@ def segment_of_set(ve: ViewerEpisode) -> np.ndarray:
 def view_rgbd(ve: ViewerEpisode, v: int, frame_index: int, source: str, root: Path | None = None):
     """RGB of the view and the depth of stage ``source`` read from ``root`` (default: the episode root; a depth variant
     root links the same normalized frames)."""
-    from s4d.realworld.depth_stages import load_view_depth
     from s4d.realworld.pipeline import calibration_depth_scale, read_frames
+    from s4d.realworld.stages.depth import load_view_depth
 
     stream = ve.streams[v]
     rgb = read_frames(ve.root, ve.episode_id, stream, [frame_index])[0]
@@ -147,7 +147,7 @@ def link_poses(geom, q7, grip) -> dict:
 
 def urdf_visuals(urdf_path: Path, packages: dict) -> dict:
     """{link: [(mesh_path, T_link_mesh (4,4), scale (3,))]} of a description URDF's VISUAL meshes (package:// resolved)."""
-    from s4d.realworld.robot import origin_T
+    from s4d.realworld.robotics.model import origin_T
 
     out = {}
     root = ET.fromstring(Path(urdf_path).read_text())
@@ -182,7 +182,7 @@ class CameraTracks:
 
 def load_camera_tracks(root: Path, episode_id: str, stream: str) -> CameraTracks:
     """Moving tracks (``track_motion`` class 2) of every query window of one camera, from lift3d positions."""
-    from s4d.realworld.track_motion import MOVING
+    from s4d.realworld.stages.motion import MOVING
 
     lift = rio.read_record(rio.stage_dir(root, episode_id, "lift3d"))
     chunks = []

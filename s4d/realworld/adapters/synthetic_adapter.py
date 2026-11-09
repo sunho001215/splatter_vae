@@ -94,7 +94,7 @@ class SyntheticAdapter(EpisodeAdapter):
         tt = ts / 1e9 / 0.0666 * 0.5
         q0 = np.array([0.0, -0.3, 0.0, -2.2, 0.0, 2.0, 0.8])
         q = q0 + 0.4 * np.sin(tt[:, None] * 0.6 + np.arange(7))
-        from s4d.realworld.robot import URDFModel, joint_dict
+        from s4d.realworld.robotics.model import URDFModel, joint_dict
 
         model = URDFModel.from_file(urdf)
         ee = np.stack([model.fk(joint_dict(robot.joint_names, qi))["panda_link8"] for qi in q])

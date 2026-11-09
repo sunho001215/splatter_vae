@@ -1,11 +1,13 @@
 # Board-free per-task rig calibration (`rig_dw`)
 
+Current modules live in `s4d.realworld.calib.dw`; for example, run `python -m s4d.realworld.calib.dw.run --help`. The former `s4d.realworld.rig_dw_*` module paths remain aliases with the original CLI usage. Camera constants, splits and shared validation helpers live in `calib/dw/common.py`.
+
 Status: study + implementation (branch `rw-calib-dw-20261107`). Results, verdicts and the board cross-validation are
 in `/home/ws/ws/realworld-ops/calib-dw/REPORT.md`. Directive: user 2026-11-07 (board-free, DepthWorld-style, per task
 independent, calibration.h5 only for a final post-freeze cross-validation).
 
 ## Why
-The per-episode robot-grounded solve (`calibration.calibrate_camera`, calibrate@1) is ambiguous: each camera sees the
+The per-episode robot-grounded solve (`calib.core.calibrate_camera`, calibrate@1) is ambiguous: each camera sees the
 arm only through along-ray depth residuals, near-best solutions differ by 0.5-2 deg / up to 24 mm and frame subsets by
 up to 3.4 deg / 37 mm (study CAL, `realworld-ops/calib/README.md`). Root causes found here:
 1. **No cross-camera constraint**: each camera was solved alone; its weak direction (an orbit about the arm) is
@@ -23,28 +25,28 @@ up to 3.4 deg / 37 mm (study CAL, `realworld-ops/calib/README.md`). Root causes 
   points per episode x 3 camera pairs, nearest-time frames (|dt| <= 20 ms), 5000 balanced samples per pair; per match:
   cycle error, SAM 3 class/distance to robot+object pixels at both ends, FS and sensor depth, 5x5 FS depth range,
   MAGSAC++ fundamental inlier (static matches only).
-* **Two-view RGB-D factor** (`rig_dw_extext.py`): latent base-frame point per match, residual
+* **Two-view RGB-D factor** (`calib/dw/extext.py`): latent base-frame point per match, residual
   `[pi_a - u_a, pi_b - u_b, log z_a - log d_a - alpha_a, log z_b - log d_b - alpha_b]` (whitened 0.5 px / 1 %), point
   eliminated by a per-match Schur complement; Cauchy on the factor. Filters and stratified subsampling in
-  `rig_dw_matches.py`.
-* **Robot factors** (`rig_dw_robot.py`, `rig_dw_frames.py`): URDF FK at the camera timestamp (+ effective time offset
-  tau_c, surface velocity from FK at t +- 10 ms), VISUAL meshes (`robot_visual.py`, COLLADA reader, 1.5 mm samples),
+  `calib/dw/matches.py`.
+* **Robot factors** (`calib/dw/robot.py`, `calib/dw/frames.py`): URDF FK at the camera timestamp (+ effective time offset
+  tau_c, surface velocity from FK at t +- 10 ms), VISUAL meshes (`robotics/visual.py`, COLLADA reader, 1.5 mm samples),
   point z-buffer render on the robot crop; (i) model->observed silhouette: extreme sample of each rendered boundary
   pixel -> SAM signed distance (zero level at pixel edges); (ii) observed->model: SAM boundary point on that zero level
   -> point-to-line distance to the nearest model contour sample; (iii) point-to-plane depth with projective
   association. Exclusions independent of the fit where possible (image/crop border, SAM object/fixture adjacency,
   occluding edges from observed depth). Visible-surface speed gate 0.10 m/s.
-* **Joint solve** (`rig_dw_solve.py`): per camera pose (left twist), alpha (log depth scale), tau; stages: rig shape
+* **Joint solve** (`calib/dw/solve.py`): per camera pose (left twist), alpha (log depth scale), tau; stages: rig shape
   from ext-ext (gauge camera 0) -> common Sim(3) of the rig (+ tau) from the robot -> everything; support re-selected
   per outer iteration, LM at fixed support; data-only information in tolerance units (0.35 deg, 8 mm, 1 %, 10 ms) with
   unidentified directions reported as unbounded.
-* **Validation** (`rig_dw_run.py`): 80 fit / 20 held-out episodes (every 5th); held-out static correspondences
+* **Validation** (`calib/dw/run.py`): 80 fit / 20 held-out episodes (every 5th); held-out static correspondences
   (symmetric epipolar line distance, depth-lifted transfer both ways, 3D consistency), held-out robot evidence
   (along-ray depth, explained fraction, fixed-denominator contour distance, IoU), common-transform challenge, the
-  current calibration on the same evidence; variants for stability and sensitivity; fixedness (`rig_dw_fixedness.py`).
-* **Publication** (`rig_dw_publish.py`): a `calibration_rig` document (format s4d.realworld.rig_calibration/1) with
+  current calibration on the same evidence; variants for stability and sensitivity; fixedness (`calib/dw/fixedness.py`).
+* **Publication** (`calib/dw/publish.py`): a `calibration_rig` document (format s4d.realworld.rig_calibration/1) with
   per-camera status, T_cam_base, depth_scale (per depth stage), tau, empirical spread, held-out validation and the
-  reference arrays for the fixedness test; `calibration_stage` rig mode (calibrate@2) consumes it and multiplies the
+  reference arrays for the fixedness test; `stages.calibrate` rig mode (calibrate@2) consumes it and multiplies the
   episode's depth by the camera's `depth_scale` before its per-episode robot-depth checks.
 
 ## Not reproduced from DepthWorld
@@ -109,7 +111,7 @@ too high). Absolute base-frame pose and tau are not testable with an unattached 
 fixed vs the mug-hanging reference; vs the drawer-open reference camera 076054 shows 0.54 px / 0.07 deg (13/40
 consistent patches).
 
-## Verdict (pre-registered gates, DESIGN v1.1; `rig_dw_publish.verdict`)
+## Verdict (pre-registered gates, DESIGN v1.1; `calib.dw.publish.verdict`)
 
 **drawer-open: HELD** (all three cameras). 070988, 073201: G1 leave-one-camera-out 0.63 / 0.70 deg, 11.5 / 13.0 mm
 (max pairwise; vs full 0.55 / 0.58 deg, 10.1 / 10.4 mm). 076054: G1 0.367 deg max pairwise (0.23 deg vs full) and G3

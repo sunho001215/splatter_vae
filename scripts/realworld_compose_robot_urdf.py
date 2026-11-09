@@ -34,8 +34,8 @@ import numpy as np  # noqa: E402
 from scipy.spatial.transform import Rotation  # noqa: E402
 
 from s4d.realworld.geometry import make_T  # noqa: E402
-from s4d.realworld.mounts import MOUNTS, T_parent_gripper_root, get_mount  # noqa: E402
-from s4d.realworld.robot import RobotSurface, URDFModel, compose_urdf  # noqa: E402
+from s4d.realworld.robotics.model import RobotSurface, URDFModel, compose_urdf  # noqa: E402
+from s4d.realworld.robotics.mounts import MOUNTS, T_parent_gripper_root, get_mount  # noqa: E402
 
 
 def sha256(path: Path) -> str:

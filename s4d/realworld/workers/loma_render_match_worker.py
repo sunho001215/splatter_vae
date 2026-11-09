@@ -102,8 +102,8 @@ class Matcher:
         """LoMa matches between two uint8 RGB arrays through the official path preprocessing. Returns (uv_a, uv_b,
         score, n_kp_a, n_kp_b), coordinates continuous in each crop (pixel centres at +.5)."""
         import torch
-        from PIL import Image
         from loma.loma import filter_matches, to_pixel_coords
+        from PIL import Image
 
         pa, pb = self.tmp / "a.png", self.tmp / "b.png"
         Image.fromarray(img_a).save(pa)
@@ -125,7 +125,7 @@ def pseudo_real(rgb_real, raster, Vc, Nc, mesh, cfg_alt, rng):
     """Robot rendered with an alternative appearance composited over the real frame (synthetic test)."""
     from scipy import ndimage
 
-    from s4d.realworld.rig_loma_render import shade
+    from s4d.realworld.calib.loma.render import shade
 
     col = np.clip(mesh.color.astype(np.float64) * rng.uniform(0.85, 1.1, 3)[None], 0, 1)
     rgb, _ = shade(Vc, Nc, col, raster.fid, raster.bary, raster.ss, cfg_alt)
@@ -166,7 +166,7 @@ def main(argv=None):
     import h5py
     import torch
 
-    from s4d.realworld.rig_loma_render import RenderConfig, RobotMesh, render_view, surface_points
+    from s4d.realworld.calib.loma.render import RenderConfig, RobotMesh, render_view, surface_points
 
     torch.set_float32_matmul_precision("highest")
     mesh = RobotMesh.load(a.mesh)

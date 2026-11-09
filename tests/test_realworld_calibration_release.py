@@ -18,7 +18,7 @@ import numpy as np
 import pytest
 
 from s4d.realworld import io as rio
-from s4d.realworld.robot import GRIPPER_MAP_2F85, GRIPPER_MAP_LEGACY, gripper_joint_value
+from s4d.realworld.robotics.model import GRIPPER_MAP_2F85, GRIPPER_MAP_LEGACY, gripper_joint_value
 
 REPO = Path(__file__).resolve().parents[1]
 CAMS = ("135122070988/color", "135122073201/color", "135122076054/color")
@@ -90,7 +90,7 @@ DAE = """<?xml version="1.0"?>
 def _mesh_urdf(tmp_path, with_visual: bool):
     import struct
 
-    from s4d.realworld.robot import URDFModel
+    from s4d.realworld.robotics.model import URDFModel
 
     col = tmp_path / "pkg" / "meshes" / "collision"
     col.mkdir(parents=True)
@@ -106,9 +106,9 @@ def _mesh_urdf(tmp_path, with_visual: bool):
 
 
 def test_visual_surfaces_fail_closed_without_visual_meshes(tmp_path):
-    from s4d.realworld.rig_loma_render import build_robot_mesh
-    from s4d.realworld.robot import RobotSurface
-    from s4d.realworld.robot_visual import MissingVisualMeshError, VisualSurface
+    from s4d.realworld.calib.loma.render import build_robot_mesh
+    from s4d.realworld.robotics.model import RobotSurface
+    from s4d.realworld.robotics.visual import MissingVisualMeshError, VisualSurface
 
     model = _mesh_urdf(tmp_path / "a", with_visual=False)
     with pytest.raises(MissingVisualMeshError, match="no collision fallback"):
@@ -219,7 +219,7 @@ def test_depth_scale_comes_only_from_the_accepted_calibration_record(tmp_path):
 
 
 def test_trackeverything_receives_scaled_depth_and_records_the_scale(tmp_path):
-    from s4d.realworld.trackeverything_stage import VERSION, track_everything
+    from s4d.realworld.stages.trackeverything import VERSION, track_everything
     from tests.test_realworld_trackeverything import SyntheticRunner, episode
 
     a, root, ep = episode(tmp_path, frames=8)
@@ -253,7 +253,7 @@ def test_train_store_scales_geometry_depth_only_and_keeps_proprioception_and_set
     pytest.importorskip("torch")
     from s4d.realworld import train_store as TS
     from s4d.realworld.pipeline import calibrated_view_depth, load_meta, view_depth
-    from s4d.realworld.track_motion import MotionFilterConfig, track_motion
+    from s4d.realworld.stages.motion import MotionFilterConfig, track_motion
     from tests.test_realworld_pipeline import synthetic_rgbd_episode
 
     run = synthetic_rgbd_episode(tmp_path / "rw")
@@ -292,7 +292,7 @@ def test_train_store_scales_geometry_depth_only_and_keeps_proprioception_and_set
 
 # ------------------------------------------------------------------------------------------------ release rule
 def _release_doc(cams, ep, **over):
-    from s4d.realworld.calibration_rig import FIXEDNESS_RULE_G5AB, FORMAT
+    from s4d.realworld.calib.rig import FIXEDNESS_RULE_G5AB, FORMAT
 
     doc = {"format": FORMAT, "name": "rel-test", "task": "synthetic", "gate_version": "test-gate/1",
            "fixedness_rule": FIXEDNESS_RULE_G5AB,
@@ -312,13 +312,8 @@ def _release_doc(cams, ep, **over):
 
 
 def test_release_fixedness_rule_and_exception_validity():
-    from s4d.realworld.calibration_rig import (
-        FixednessConfig,
-        fixedness_exception_problem,
-        release_fixedness,
-        rig_camera_status,
-    )
-    from s4d.realworld.rig_loma_publish import fill_exception
+    from s4d.realworld.calib.loma.publish import fill_exception
+    from s4d.realworld.calib.rig import FixednessConfig, fixedness_exception_problem, release_fixedness, rig_camera_status
 
     cfg = FixednessConfig(segments=1)
     doc = _release_doc(["c0", "c1"], "ep")
@@ -371,7 +366,7 @@ def test_release_fixedness_rule_and_exception_validity():
 
 @pytest.fixture(scope="module")
 def rig_episode(tmp_path_factory):
-    from s4d.realworld.calibration_rig import FixednessConfig, static_image
+    from s4d.realworld.calib.rig import FixednessConfig, static_image
     from s4d.realworld.pipeline import camera_views, load_meta, read_frames
     from tests.test_realworld_pipeline import synthetic_rgbd_episode
 
@@ -412,8 +407,8 @@ def rig_episode(tmp_path_factory):
 
 
 def _calibrate_with(rig_episode, doc, ref, name):
-    from s4d.realworld.calibration import CalibrationConfig
-    from s4d.realworld.calibration_rig import publish_rig
+    from s4d.realworld.calib.core import CalibrationConfig
+    from s4d.realworld.calib.rig import publish_rig
     from s4d.realworld.pipeline import calibrate
     from tests.test_realworld_pipeline import CALIBRATION
 
@@ -432,9 +427,9 @@ def _calibrate_with(rig_episode, doc, ref, name):
 
 
 def test_rig_mode_release_document_fail_closed_exception_and_record_fields(rig_episode):
-    from s4d.realworld.calibration_rig import load_rig, publish_rig
+    from s4d.realworld.calib.loma.publish import fill_exception
+    from s4d.realworld.calib.rig import load_rig, publish_rig
     from s4d.realworld.pipeline import accepted_calibration_doc, calibration_depth_scale
-    from s4d.realworld.rig_loma_publish import fill_exception
 
     root, ep, cams = rig_episode["root"], rig_episode["ep"], rig_episode["cams"]
     ref = rig_episode["reference"]()
@@ -492,7 +487,7 @@ def test_rig_mode_release_document_fail_closed_exception_and_record_fields(rig_e
     # visual meshes requested by the document but absent from the (synthetic, primitive) robot: fail closed
     visual = json.loads(json.dumps(doc))
     visual["robot_model"] = {"gripper_map": GRIPPER_MAP_LEGACY, "surface": "visual"}
-    from s4d.realworld.robot_visual import MissingVisualMeshError
+    from s4d.realworld.robotics.visual import MissingVisualMeshError
 
     with pytest.raises(MissingVisualMeshError):
         _calibrate_with(rig_episode, visual, ref, "visual")
@@ -502,7 +497,7 @@ def test_rig_mode_release_document_fail_closed_exception_and_record_fields(rig_e
 # ------------------------------------------------------------------------------------------------ publisher
 def _fake_results(tmp, *, sam_fail=("roty+",), samfree_fail=(), moved=None, n_ep=10):
     """rig_loma result files of one task with the fields the release verdict reads."""
-    from s4d.realworld.rig_loma_publish import CHALLENGE
+    from s4d.realworld.calib.loma.publish import CHALLENGE
 
     rng = np.random.default_rng(0)
     eps = [f"t-{k:06d}" for k in range(n_ep)]
@@ -555,8 +550,8 @@ def _fake_results(tmp, *, sam_fail=("roty+",), samfree_fail=(), moved=None, n_ep
 
 
 def _frozen(results_dir, fixed):
-    from s4d.realworld.rig_dw_publish import verdict
-    from s4d.realworld.rig_loma_publish import load_results
+    from s4d.realworld.calib.dw.publish import verdict
+    from s4d.realworld.calib.loma.publish import load_results
 
     R = load_results(results_dir)
     cc = R["full"]["heldout"]["corr_challenge"]
@@ -580,8 +575,8 @@ def _publish_args(tmp, rdir, fixed, frozen, out, eligible=()):
 
 
 def test_publisher_applies_the_release_gate_and_documents_it(tmp_path):
-    from s4d.realworld.calibration_rig import load_rig, rig_camera_status
-    from s4d.realworld.rig_loma_publish import GATE_VERSION, publish
+    from s4d.realworld.calib.loma.publish import GATE_VERSION, publish
+    from s4d.realworld.calib.rig import load_rig, rig_camera_status
 
     # drawer-like: SAM G6 fails roty+, SAM-free challenge rejects all 12 -> validated, SAM G6 kept as diagnostic
     rdir = tmp_path / "a" / "res"
@@ -653,8 +648,8 @@ def _fake_calibrate_outputs(root, ep, doc, rig_sha, *, status="accepted", build_
 
 
 def test_calibration_validated_records_satisfy_the_gate_and_refuse_failures(tmp_path):
-    from s4d.realworld.calibration_release import OUTPUT_FORMAT, apply, plan
-    from s4d.realworld.calibration_rig import load_rig, publish_rig
+    from s4d.realworld.calib.release import OUTPUT_FORMAT, apply, plan
+    from s4d.realworld.calib.rig import load_rig, publish_rig
     from s4d.rwlearn.gate import calibration_record_problem
 
     cams = list(CAMS)
@@ -702,7 +697,7 @@ def test_calibration_validated_records_satisfy_the_gate_and_refuse_failures(tmp_
     # the real ingest-worker writer accepts the records (field whitelist, sha256 check) and the gate releases them;
     # inside the release containers the runs/ bind mount hides the tracked worker (as tests/test_ops_layout.py
     # tool_path): that part runs on every host checkout, and its absence is only accepted inside a container
-    from s4d.realworld.calibration_release import INGEST_WORKER
+    from s4d.realworld.calib.release import INGEST_WORKER
 
     if not INGEST_WORKER.is_file():
         assert Path("/.dockerenv").exists(), f"{INGEST_WORKER} is missing"
@@ -749,8 +744,8 @@ def test_calibration_validated_records_satisfy_the_gate_and_refuse_failures(tmp_
 def test_check_episode_reads_the_completion_record_written_by_run_stage(tmp_path):
     """Regression (OPS 2026-11-09): the builder must read the calibrate stage's completion record under the name the
     stage writer uses (``rio.RECORD``, written by ``rio.run_stage``), not a fixture-only ``record.json``."""
-    from s4d.realworld.calibration_release import check_episode
-    from s4d.realworld.calibration_rig import load_rig, publish_rig
+    from s4d.realworld.calib.release import check_episode
+    from s4d.realworld.calib.rig import load_rig, publish_rig
 
     cams = list(CAMS)
     doc = _release_doc(cams, "t-000000", task="drawer-open")

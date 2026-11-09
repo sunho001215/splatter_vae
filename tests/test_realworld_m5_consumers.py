@@ -12,7 +12,7 @@ import pytest
 import yaml
 
 from s4d.realworld import pipeline
-from s4d.realworld.depth_stages import configured_sets_policy, episode_frame_sets, store_sets
+from s4d.realworld.stages.depth import configured_sets_policy, episode_frame_sets, store_sets
 from s4d.realworld.train_store import FILE, FORMAT, MAX_SET_MOTION_M, SCHEMA_VERSION
 from s4d.realworld.viewer_data import describe, load_episode
 
@@ -251,8 +251,10 @@ def test_rejected_calibration_is_a_family_failure_without_a_server(contract_epis
 @pytest.mark.parametrize("total,loss,passed", [(1.0, 1.0, True), ("nan", 1.0, False), (1.0, "nan", False)])
 def test_contract_snerl_uses_m5_and_checks_losses(contract_episode, monkeypatch, total, loss, passed):
     import torch
+
     from s4d.data import contract
-    from s4d.realworld import io as rio, train_windows
+    from s4d.realworld import io as rio
+    from s4d.realworld import train_windows
 
     case = contract_episode
     with h5py.File(case.path, "r+") as f:

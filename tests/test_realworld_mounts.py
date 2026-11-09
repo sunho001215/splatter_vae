@@ -5,8 +5,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from s4d.realworld.mounts import MOUNTS, T_parent_gripper_root, get_mount
-from s4d.realworld.robot import URDFModel
+from s4d.realworld.robotics.model import URDFModel
+from s4d.realworld.robotics.mounts import MOUNTS, T_parent_gripper_root, get_mount
 from s4d.realworld.synthetic import synthetic_panda_urdf
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -172,7 +172,7 @@ def test_mug_hanging_config_is_the_panda_with_the_droid_mount():
     # runs (ingest records the asset hashes), not here, so the suite has no host-dependent skip
     assert robot["gripper_model"] == "robotiq_2f_85"
     # the mount the URDF was composed with is a defined, nominal (not measured) configuration with coupling geometry
-    from s4d.realworld.mounts import MOUNTS
+    from s4d.realworld.robotics.mounts import MOUNTS
 
     mount = MOUNTS["droid_robotiq_2f85_iso50_coupling"]
     assert mount.coupling_geometry is not None and mount.coupling_geometry.status == "nominal"

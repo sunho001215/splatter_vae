@@ -7,16 +7,9 @@ import numpy as np
 import pytest
 from scipy.spatial.transform import Rotation
 
-from s4d.realworld.calibration import CalibrationConfig, CalibrationFrame, calibrate_camera, overlay_image
+from s4d.realworld.calib.core import CalibrationConfig, CalibrationFrame, calibrate_camera, overlay_image
 from s4d.realworld.geometry import invert_T, project, rotation_angle_deg, transform_points
-from s4d.realworld.robot import (
-    RobotSurface,
-    URDFModel,
-    gripper_joint_value,
-    joint_dict,
-    landmarks,
-    panda_dh_fk,
-)
+from s4d.realworld.robotics.model import RobotSurface, URDFModel, gripper_joint_value, joint_dict, landmarks, panda_dh_fk
 from s4d.realworld.synthetic import look_at_T_cam_base, splat_depth, synthetic_panda_urdf, synthetic_robot_urdf
 
 JOINTS = [f"panda_joint{i}" for i in range(1, 8)]
@@ -107,7 +100,7 @@ def test_calibration_recovers_known_extrinsic_with_noise_and_outliers():
 def test_refinement_improves_a_perturbed_prior_without_landmark_ransac():
     """Depth + reprojection refinement pulls a 2 deg / 3 cm-off prior back (init from the prior only)."""
     frames = make_episode(T_TRUE, outlier_rate=0.0)
-    from s4d.realworld import calibration as cal
+    from s4d.realworld.calib import core as cal
 
     prior = T_TRUE.copy()
     prior[:3, :3] = Rotation.from_euler("xyz", [0.02, -0.02, 0.01]).as_matrix() @ prior[:3, :3]
@@ -158,7 +151,7 @@ def test_robot_mask_from_calibration_respects_occlusion():
 def test_rejects_failed_optimisation():
     """A prior 5 deg / 8 cm off and an optimiser budget of 2 evaluations: the solver stops early and the result is
     rejected (never silently accepted)."""
-    from s4d.realworld import calibration as cal
+    from s4d.realworld.calib import core as cal
 
     frames = make_episode(T_TRUE, n=10, outlier_rate=0.0)
     prior = T_TRUE.copy()
@@ -188,7 +181,7 @@ def test_non_finite_residuals_never_pass_the_gates():
 
 
 def test_refinement_starts_are_deterministic_camera_frame_perturbations():
-    from s4d.realworld.calibration import refinement_starts
+    from s4d.realworld.calib.core import refinement_starts
 
     cfg = CalibrationConfig(image_hw=HW, refine_starts=13, refine_start_rot_deg=3.0, refine_start_trans_m=0.03)
     starts = refinement_starts(T_TRUE, cfg)
@@ -207,7 +200,7 @@ def test_refinement_starts_are_deterministic_camera_frame_perturbations():
 def test_multistart_keeps_the_best_fit_frame_solution_and_the_init_start_is_the_single_refinement():
     """A prior far enough off for one refinement to stall; the multi-start choice uses fit frames only and its
     'init' start reproduces the single refinement exactly."""
-    from s4d.realworld import calibration as cal
+    from s4d.realworld.calib import core as cal
 
     frames = make_episode(T_TRUE, outlier_rate=0.0)
     prior = T_TRUE.copy()
@@ -238,7 +231,7 @@ def test_gripper_links_follow_gripper_subtree_for_non_panda_arm_names(tmp_path):
     """FR3-style arm link names must not be classified as gripper links (real-asset integration finding)."""
     from s4d.realworld.contract import RobotDescription
     from s4d.realworld.pipeline import RobotGeometry
-    from s4d.realworld.robot import RobotSurface, URDFModel
+    from s4d.realworld.robotics.model import RobotSurface, URDFModel
 
     box = '<visual><geometry><box size="0.02 0.02 0.02"/></geometry></visual>'
     links = ["base", "fr3_link0", "fr3_link8", "world", "grip_base", "finger"]

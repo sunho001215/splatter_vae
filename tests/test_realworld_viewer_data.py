@@ -7,7 +7,7 @@ import pytest
 import yaml
 
 from s4d.realworld import pipeline
-from s4d.realworld.depth_stages import configured_sets_policy
+from s4d.realworld.stages.depth import configured_sets_policy
 from s4d.realworld.viewer_data import describe, load_episode
 
 
