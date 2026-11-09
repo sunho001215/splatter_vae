@@ -11,11 +11,16 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
+import os as os
 import shutil
 import sys
 import time
 from pathlib import Path
+
+if __name__ == "__main__" and not __package__:  # retain isolated script execution
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from ops.resources.processes import pid_alive as alive  # noqa: E402
 
 REPO = Path(__file__).resolve().parents[2]
 ACTIVITY = ("console.log", "metrics.jsonl", "train.jsonl", "eval.jsonl", "log.txt", "checkpoints/latest.pt")
@@ -39,19 +44,6 @@ def running_jobs() -> dict[str, dict]:
         elif kind in ("exited", "failed"):
             state.pop(event["id"], None)
     return state
-
-
-def alive(pid: int) -> bool:
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    try:  # the process may exit between the signal check and this read
-        return Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()[0] != "Z"
-    except (FileNotFoundError, ProcessLookupError):  # reading /proc of an exiting process can fail with ESRCH
-        return False
 
 
 def newest_activity(job_id: str) -> float:

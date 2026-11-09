@@ -17,6 +17,7 @@ REPO = Path(__file__).resolve().parents[2]
 BASELINES = ("snerl", "mvp3d", "sincro", "reviwo", "dynamo")
 # task-specific encoders only (user decision 2026-11-06 ~11:20: no joint-task pretraining by default)
 TARGETS = ("drawer-open", "mug-hanging")
+TARGET_TASKS = {t: (t,) for t in TARGETS}  # task-specific targets only
 REMOTE_REALWORLD_ROOT = "/home/compu/kaist/sunho/realworld"  # remote campaign root of the real-world data (role host)
 NUM_CAMERAS = 3
 

@@ -85,7 +85,7 @@ def check_gate(store: FrameStore, gate_report: str | Path | dict | None, *, step
     if G.consumer_info(consumer).geometry:
         G.check_store_calibration(report, by_task, getattr(store, "upstream", None), store.cameras)
     if target is not None:
-        from s4d.rwlearn.launch import TARGET_TASKS
+        from s4d.rwlearn.configs import TARGET_TASKS
 
         if target not in TARGET_TASKS:
             raise RuntimeError(f"unknown target {target!r} (task-specific targets only: {sorted(TARGET_TASKS)})")

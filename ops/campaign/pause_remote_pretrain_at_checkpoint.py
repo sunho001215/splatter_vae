@@ -14,19 +14,20 @@ pause target (the run would simply complete). Never removes containers or files.
 
     python -I pause_remote_pretrain_at_checkpoint.py --reason <reason> <job id> [...]
 """
-import fcntl
+import fcntl as fcntl
 import json
-import os
+import os as os
 import shlex
 import sys
 import threading
-import time
+import time as time
 from pathlib import Path
 
 ROOT = Path('/home/ws/ws/splatter4d')
 sys.path.insert(0, str(ROOT))
 from ops.remote.access import RemoteClient  # noqa: E402
 from ops.jobs import scheduler as jobs  # noqa: E402
+from ops.jobs import checkpoint_pause as _checkpoint_pause  # noqa: E402
 import yaml  # noqa: E402
 
 REGISTRY = ROOT / 'experiments/registry.jsonl'
@@ -73,12 +74,7 @@ done
 
 
 def record(event):
-    with REGISTRY.with_suffix('.lock').open('a') as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
-        with REGISTRY.open('a') as stream:
-            stream.write(json.dumps({**event, 'time': time.time()}) + '\n')
-            stream.flush()
-            os.fsync(stream.fileno())
+    return _checkpoint_pause.record(event, REGISTRY)
 
 
 def pause(job_id, reason, out):

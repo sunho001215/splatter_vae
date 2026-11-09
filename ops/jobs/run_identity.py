@@ -8,9 +8,16 @@ import json
 import os
 import re
 import subprocess
+import sys
 from collections.abc import Mapping
 from datetime import datetime, timezone
 from pathlib import Path
+
+if __name__ == "__main__" and not __package__:  # retain isolated script execution
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from ops.provenance.hashing import json_bytes  # noqa: E402
+from ops.provenance.hashing import sha256_file as _sha256_file  # noqa: E402
 
 COMMIT_RE = re.compile(r"[0-9a-f]{40}")
 SHA256_RE = re.compile(r"[0-9a-f]{64}")
@@ -43,15 +50,7 @@ def _required(env: Mapping[str, str], key: str, pattern: re.Pattern | None = Non
 
 
 def _json_bytes(payload: dict | int) -> bytes:
-    return json.dumps(payload, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
-
-
-def _sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        for block in iter(lambda: stream.read(8 * 1024 * 1024), b""):
-            digest.update(block)
-    return digest.hexdigest()
+    return json_bytes(payload)
 
 
 def _atomic_json(path: Path, payload: dict | int) -> None:

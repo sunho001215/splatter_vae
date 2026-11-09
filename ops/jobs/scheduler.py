@@ -34,9 +34,11 @@ from ops.jobs.remote_backend import (  # noqa: E402
 )
 from ops.containers.verification import validate_report, validate_verification, verification_resources  # noqa: E402
 from ops.jobs import host_roles  # noqa: E402
+from ops.jobs.arguments import option as _option  # noqa: E402
 from ops.jobs.retired import retired_reason  # noqa: E402
-from s4d.third_party import working_tree_identity as third_party_identity  # noqa: E402
+from ops.provenance.upstreams import working_tree_identity as third_party_identity  # noqa: E402
 from ops.resources.nvidia_query import mig_query  # noqa: E402
+from ops.resources.processes import pid_alive as pid_alive  # noqa: E402
 
 QUEUE = REPO / "experiments/queue.yaml"
 REGISTRY = REPO / "experiments/registry.jsonl"
@@ -252,19 +254,6 @@ def record(event: dict, path: Path = REGISTRY) -> None:
         stream.write(json.dumps({**event, "time": time.time()}) + "\n")
         stream.flush()
         os.fsync(stream.fileno())
-
-
-def pid_alive(pid: int) -> bool:
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    try:
-        return Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()[0] != "Z"
-    except (FileNotFoundError, ProcessLookupError):
-        return False
 
 
 def session_id(pid: int) -> int | None:
@@ -511,11 +500,6 @@ def remote_check_names(state: dict) -> list[str]:
 def _override(args: list, prefix: str) -> str | None:
     values = [str(value).split("=", 1)[1] for value in args if str(value).startswith(prefix)]
     return values[-1] if values else None
-
-
-def _option(args: list, flag: str) -> str | None:
-    args = list(map(str, args))
-    return args[args.index(flag) + 1] if flag in args and args.index(flag) + 1 < len(args) else None
 
 
 def encoder_signature(encoder_config: dict) -> dict[str, list]:

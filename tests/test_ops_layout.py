@@ -16,6 +16,8 @@ from ops.resources.gpu_guard import HOST_NAME
 
 REPO = Path(__file__).resolve().parents[1]
 ALIASES = {
+    "s4d.rwlearn.launch": "ops.jobs.realworld_plan",
+    "s4d.third_party": "ops.provenance.upstreams",
     "s4d.remote_access": "ops.remote.access",
     "s4d.remote_artifact_check": "ops.remote.artifact_check",
     "s4d.remote_jobs": "ops.jobs.remote_backend",
@@ -38,6 +40,70 @@ S4D_IMPORTS_OF_OPS = {
     ("s4d/data/__init__.py", "ops.resources.gpu_guard"),
     ("s4d/diag/wandb_log.py", "ops.resources.gpu_guard"),
 }
+
+
+IMPORT_SAFE_SUPPORT = (
+    "ops.resources.processes", "ops.jobs.arguments", "ops.provenance.hashing", "ops.resources.reservations",
+    "ops.jobs.checkpoint_pause",
+)
+
+
+@pytest.mark.parametrize("name", IMPORT_SAFE_SUPPORT)
+def test_shared_support_modules_have_no_module_level_calls(name):
+    module = importlib.import_module(name)
+    tree = ast.parse(Path(module.__file__).read_text())
+    # I/O stays in function bodies; module-level statements only import, define functions and bind literals.
+    assert all(isinstance(n, (ast.Import, ast.ImportFrom, ast.FunctionDef))
+               or isinstance(n, ast.Expr) and isinstance(n.value, ast.Constant)
+               or isinstance(n, ast.Assign) and isinstance(n.value, ast.Constant) for n in tree.body)
+
+
+def test_provenance_package_initializer_is_only_a_docstring():
+    tree = ast.parse((REPO / "ops/provenance/__init__.py").read_text())
+    assert len(tree.body) == 1 and isinstance(tree.body[0], ast.Expr)
+    assert isinstance(tree.body[0].value, ast.Constant) and isinstance(tree.body[0].value.value, str)
+
+
+def test_shared_helpers_are_reexported_and_science_paths_keep_local_overrides(monkeypatch):
+    monkeypatch.syspath_prepend(str(REPO))  # restore the fixed-root tool's sys.path insert after this test
+    from ops.jobs import arguments, host_roles, lifecycle, pool_placement, run_identity, scheduler
+    from ops.provenance import hashing
+    from ops.resources import heartbeat, host_equivalence, processes
+    from s4d.rwlearn import configs, launch
+
+    assert scheduler.pid_alive is heartbeat.alive is processes.pid_alive
+    assert scheduler._option is lifecycle.option is arguments.option
+    assert pool_placement.partner is host_roles._partner
+    assert run_identity._sha256_file is host_equivalence.sha256_file is hashing.sha256_file
+    assert host_equivalence.json_bytes is hashing.json_bytes
+    assert launch.TARGET_TASKS is configs.TARGET_TASKS
+    monkeypatch.setattr(configs, "REMOTE_REALWORLD_ROOT", "/science-override")
+    assert configs.run_inputs_dir("drawer-open") == "/science-override/learning_inputs/drawer-open"
+    assert launch.run_inputs_dir("drawer-open") == "/science-override/learning_inputs/drawer-open"
+
+
+@pytest.mark.parametrize("command", ["pause_rl_at_checkpoint", "pause_pretrain_at_checkpoint",
+                                     "pause_remote_pretrain_at_checkpoint"])
+def test_pause_command_forwarders_keep_registry_and_identity_bindings_without_importing(command):
+    tree = ast.parse((REPO / "ops/campaign" / f"{command}.py").read_text())
+    functions = {n.name: n for n in tree.body if isinstance(n, ast.FunctionDef)}
+    expected = {"record": "return _checkpoint_pause.record(event, REGISTRY)"}
+    if command != "pause_remote_pretrain_at_checkpoint":
+        expected.update(identity="return _checkpoint_pause.identity(pid)",
+                        checkpoint_step="return _checkpoint_pause.checkpoint_step(path)",
+                        session_alive="return _checkpoint_pause.session_alive(pid, identity)")
+    for name, body in expected.items():
+        assert len(functions[name].body) == 1
+        assert ast.dump(functions[name].body[0]) == ast.dump(ast.parse(body).body[0])
+
+
+def test_upstream_alias_preserves_private_git_monkeypatching(monkeypatch):
+    from ops.provenance import upstreams
+    from s4d import third_party
+
+    calls = []
+    monkeypatch.setattr(third_party, "_git", lambda *args: calls.append(args) or b"")
+    assert upstreams.pinned_submodules(REPO) == {} and calls == [(REPO, "ls-files", "-s", "-z", "--", "third_party")]
 
 
 @pytest.mark.parametrize("old,new", sorted(ALIASES.items()))

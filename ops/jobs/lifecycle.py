@@ -40,6 +40,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ops.jobs import replay_host as host_check
+from ops.jobs.arguments import option as option
 
 REMOTE_ROOT = "/home/compu/kaist/sunho"
 DONE = "done"
@@ -80,11 +81,6 @@ class Decision:
     spec: dict | None = None  # host-side request (ops.jobs.replay_host.validate_spec)
     evidence: dict = field(default_factory=dict)
     session: int | None = None  # local: the recorded process-session leader of the job
-
-
-def option(args: list, flag: str) -> str | None:
-    args = list(map(str, args))
-    return args[args.index(flag) + 1] if flag in args and args.index(flag) + 1 < len(args) else None
 
 
 def override(args: list, key: str) -> str | None:

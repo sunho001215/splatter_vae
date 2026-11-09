@@ -31,6 +31,7 @@ import yaml
 ROOT = Path('/home/ws/ws/splatter4d')
 sys.path.insert(0, str(ROOT))
 from ops.jobs import scheduler as jobs  # noqa: E402
+from ops.jobs.host_roles import _partner as partner  # noqa: E402
 
 SETUP = ROOT / 'runs/setup'
 MANIFEST = SETUP / 'pool-placement.json'
@@ -41,10 +42,6 @@ SCRIPTS = ('scripts/train.py', 'scripts/train_rl.py', 'scripts/eval_rl.py', 'scr
 
 def effective_rows() -> dict:
     return json.loads(MANIFEST.read_text())['effective_jobs'] if MANIFEST.is_file() else {}
-
-
-def partner(job_id: str) -> str:
-    return job_id.removesuffix('-eval') if job_id.endswith('-eval') else job_id + '-eval'
 
 
 def output_dirs(job: dict) -> list[Path]:

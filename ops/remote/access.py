@@ -18,6 +18,11 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 
+if __name__ == "__main__" and not __package__:  # retain isolated script execution
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from ops.provenance.hashing import sha256_file as sha256  # noqa: E402
+
 REMOTE_HOST = "192.168.10.22"
 REMOTE_USER = "compu"
 REMOTE_ROOT = "/home/compu/kaist/sunho"
@@ -93,14 +98,6 @@ def read_credentials(path: Path) -> Credentials:
     if root not in (REMOTE_ROOT, "~/kaist/sunho"):
         raise ValueError("Remote root is not authorized")
     return Credentials(values["SSH_HOST"], values["SSH_USER"], values["SSH_PASSWORD"])
-
-
-def sha256(path: Path) -> str:
-    h = hashlib.sha256()
-    with path.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(8 * 1024 * 1024), b""):
-            h.update(chunk)
-    return h.hexdigest()
 
 
 def main_repository(repo: Path) -> Path:

@@ -265,7 +265,7 @@ def _write_json(path: Path, payload: dict) -> None:
 
 def run_verification(repository: Path, spec: dict, run_child) -> int:
     # Keep bootstrap independent of campaign identity/acceptance helpers.
-    from s4d import third_party
+    from ops.provenance import upstreams as third_party
     from ops.resources.gpu_guard import enforce_allowed_gpus
     from ops.jobs.remote_backend import commit_source_sha256
     from ops.containers.launch import validate_release_proof

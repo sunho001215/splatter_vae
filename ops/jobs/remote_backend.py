@@ -13,7 +13,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from s4d import third_party
+from ops.provenance import upstreams as third_party
 from ops.jobs.host_roles import DOMAIN, job_class
 from ops.resources.gpu_guard import APPROVED_HOST_GPUS, LOCAL_MIG_PARENTS
 from ops.remote.access import ORIGIN_BRANCH, RemoteClient, RemoteUnreachable

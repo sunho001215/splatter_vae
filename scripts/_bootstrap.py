@@ -15,8 +15,8 @@ if str(REPO) not in sys.path:
 sys.dont_write_bytecode = True
 os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
 
+from ops.provenance.upstreams import working_tree_identity as third_party_identity  # noqa: E402
 from ops.resources.gpu_guard import enforce_allowed_gpus, enforce_mujoco_egl_device, validate_runtime_path  # noqa: E402
-from s4d.third_party import working_tree_identity as third_party_identity  # noqa: E402
 
 CACHE_ROOT = validate_runtime_path(Path(os.environ.get("S4D_CACHE_ROOT", str(REPO / ".cache"))), cache=True)
 for variable, suffix in (

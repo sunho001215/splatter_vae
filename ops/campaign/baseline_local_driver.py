@@ -22,6 +22,7 @@ from ops.jobs.retired import retired_reason  # noqa: E402
 
 sys.path.insert(0, str(ROOT / 'runs/setup/tools'))
 from ops.resources import memory_budget as mb  # noqa: E402
+from ops.resources.reservations import validation_reservation as _validation_reservation  # noqa: E402
 
 # Local budget (user instruction 2026-10-21): the cgroup working set max(0, memory.current - inactive_file) against the
 # 150 GB ceiling, minus a transient-overhead margin; see runs/setup/tools/memory_budget.py.
@@ -29,14 +30,6 @@ from ops.resources import memory_budget as mb  # noqa: E402
 # validation and the integration suite (scripts/run_tests.py, +40 GB). runs/setup/local-validation-reservation.json
 # {"ram_bytes": N, "expires_unix": T, "reason": ...}; absent or expired = 0. GPUs are reserved by leaving them out of
 # experiments/queue.yaml limits.
-def _validation_reservation():
-    import json as _json
-    import time as _time
-    try:
-        doc = _json.loads((Path('/home/ws/ws/splatter4d/runs/setup/local-validation-reservation.json')).read_text())
-    except FileNotFoundError:
-        return 0
-    return int(doc['ram_bytes']) if _time.time() < float(doc['expires_unix']) else 0
 
 
 VALIDATION_RESERVATION = _validation_reservation()

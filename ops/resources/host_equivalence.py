@@ -6,7 +6,14 @@ import hashlib
 import json
 import math
 import re
+import sys
 from pathlib import Path, PurePosixPath
+
+if __name__ == "__main__" and not __package__:  # retain isolated script execution
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from ops.provenance.hashing import json_bytes as json_bytes  # noqa: E402
+from ops.provenance.hashing import sha256_file as sha256_file  # noqa: E402
 
 PROTOCOL = "meta-world-cross-host-v2"
 FRESH_STEPS = 200
@@ -23,18 +30,6 @@ SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 COMMIT = re.compile(r"[0-9a-f]{40}\Z")
 STATE_HASHES = ("model_sha256", "optimizer_sha256", "scheduler_sha256", "rng_sha256")
 CRITERION = "unsmoothed-total-loss-rmse<=remote-same-host-repeat-rmse"
-
-
-def json_bytes(value) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
-
-
-def sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        for block in iter(lambda: stream.read(8 * 1024 * 1024), b""):
-            digest.update(block)
-    return digest.hexdigest()
 
 
 def case_overrides(task: str, variant: str, seed: int, mode: str) -> list[str]:

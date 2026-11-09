@@ -8,12 +8,12 @@ scripts/jobs.py (--resume auto) restores step N exactly; nothing logged is lost 
 `--reason` (default local_campaign_150GB_ceiling) is recorded in the pause events, which also carry
 intentional_stop: true, so the following non-zero exit is identifiable as an intentional stop, not a crash.
 """
-import fcntl
+import fcntl as fcntl
 import hashlib
-import itertools
+import itertools as itertools
 import json
 import os
-import pickletools
+import pickletools as pickletools
 import re
 import signal
 import sys
@@ -23,33 +23,26 @@ from pathlib import Path
 
 import yaml
 
+if __name__ == "__main__" and not __package__:  # retain isolated script execution
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from ops.jobs import checkpoint_pause as _checkpoint_pause  # noqa: E402
+
 ROOT = Path('/home/ws/ws/splatter4d')
 REGISTRY = ROOT / 'experiments/registry.jsonl'
 BOOT = Path('/proc/sys/kernel/random/boot_id').read_text().strip()
 
 
 def identity(pid):
-    fields = Path(f'/proc/{pid}/stat').read_text().rsplit(')', 1)[1].split()
-    return {'pid': pid, 'group': int(fields[2]), 'session': int(fields[3]), 'start_ticks': int(fields[19]),
-            'state': fields[0]}
+    return _checkpoint_pause.identity(pid)
 
 
 def record(event):
-    with REGISTRY.with_suffix('.lock').open('a') as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
-        with REGISTRY.open('a') as stream:
-            stream.write(json.dumps({**event, 'time': time.time()}) + '\n')
-            stream.flush()
-            os.fsync(stream.fileno())
+    return _checkpoint_pause.record(event, REGISTRY)
 
 
 def checkpoint_step(path):
-    with zipfile.ZipFile(path) as archive:
-        name = next(n for n in archive.namelist() if n.endswith('/data.pkl'))
-        ops = list(itertools.islice(pickletools.genops(archive.read(name)), 7))
-    if ops[-3][1] != 'step' or ops[-1][0].name not in {'BININT', 'BININT1', 'BININT2'}:
-        raise RuntimeError('unexpected checkpoint step metadata')
-    return ops[-1][1]
+    return _checkpoint_pause.checkpoint_step(path)
 
 
 def logged_step(run):
@@ -77,15 +70,7 @@ def validated(run, step):
 
 
 def session_alive(pid):
-    for entry in Path('/proc').iterdir():
-        if entry.name.isdigit():
-            try:
-                status = identity(int(entry.name))
-            except (FileNotFoundError, ProcessLookupError, IndexError):
-                continue
-            if status['session'] == pid and status['state'] not in {'Z', 'X'}:
-                return True
-    return False
+    return _checkpoint_pause.session_alive(pid, identity)
 
 
 ARGS = sys.argv[1:]

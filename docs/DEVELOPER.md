@@ -4,15 +4,17 @@
 
 | Path | Contents |
 | --- | --- |
-| `s4d/` | Research code: `data/` (DROID, Meta-World, held-out sets), `realworld/` (real-robot preprocessing), `model/` (encoder, decoder, Gaussians, CUDA rendering), `losses/`, `train/` (loop, DDP, checkpoints, augmentation), `rl/` (agents, environments, evaluation), `baselines/`, `diag/` (W&B logging, diagnostics), `config.py`, `geometry.py`, `third_party.py` (pinned upstream source trees for the baselines). Module map below. |
+| `s4d/` | Research code: `data/` (DROID, Meta-World, held-out sets), `realworld/` (real-robot preprocessing), `model/` (encoder, decoder, Gaussians, CUDA rendering), `losses/`, `train/` (loop, DDP, checkpoints, augmentation), `rl/` (agents, environments, evaluation), `baselines/`, `diag/` (W&B logging, diagnostics), `config.py`, `geometry.py`, `rwlearn/` (real-world learning); `third_party.py` and `rwlearn/launch.py` are ops compatibility aliases. Module map below. |
 | `s4d/realworld/calib/` | `core.py` (per-camera calibration), `rig.py` (fixed rigs), `board.py` (board geometry and solve), `release.py` (release checks and application); `dw/` and `loma/` hold the rig studies and shared machinery. |
 | `s4d/realworld/stages/` | `calibrate.py`, `depth.py`, `ir_depth.py`, `semantics.py`, `trackeverything.py`, `motion.py`: the existing preprocessing stages and versions. |
 | `s4d/realworld/robotics/` | `model.py` (URDF kinematics), `visual.py` (visual surfaces), `mounts.py`; `collada.py` shares only position-source parsing and fan triangulation. |
-| `ops/` | Operational tooling. It is not imported by the research code except at the two points listed below. |
+| `ops/` | Operational tooling; the research facades and explicit boundary exceptions are listed below. |
 | `ops/remote/` | `access.py`: SSH/rsync transport, tunnel check, download budget. `artifact_check.py`: read-only on-host inspection (standard library only; its source is sent over SSH and executed by the remote host's python3). `sync_media.py`: local backup of remote runs. `ledger.py`: local ledger of the remote jobs (checkpoints, containers, host health). `outage_guard.py`: the 5-minute outage guard (admission hold, recovery check). `sync_wandb.py`: pull and upload of offline remote W&B runs. |
-| `ops/jobs/` | `scheduler.py`: file-based scheduler (queue, registry, admission, launches). `remote_backend.py`: the scheduler's remote-host backend (containers over SSH, in-place verification, acceptance evidence). `run_identity.py`: run provenance and clean-release enforcement. `lifecycle.py`, `replay_host.py`, `cleanup_replay.py`: replay cleanup of completed RL runs (`replay_host.py` is also sent to the remote host). `admission_pause.py`: intentional admission pauses (`runs/setup/admission-pauses.json`) honoured by the drivers. `pool_placement.py`: host-neutral placement of never-launched rows. |
-| `ops/resources/` | `gpu_guard.py`: fail-closed GPU UUID allowlist, runtime-path and EGL checks. `nvidia_query.py`: bounded `nvidia-smi` queries. `heartbeat.py`, `watch_events.py`: stall and event monitoring. `host_equivalence.py`: validation of the cross-host Meta-World diagnostic. `memory_budget.py`: the local 150 GB budget accounting. `memory_watch.py`: memory watchdog (`line`, `fits BYTES`, `alert`). |
+| `ops/jobs/` | `scheduler.py`: file-based scheduler (queue, registry, admission, launches). `remote_backend.py`: the scheduler's remote-host backend (containers over SSH, in-place verification, acceptance evidence). `run_identity.py`: run provenance and clean-release enforcement. `lifecycle.py`, `replay_host.py`, `cleanup_replay.py`: replay cleanup of completed RL runs (`replay_host.py` is also sent to the remote host). `admission_pause.py`: intentional admission pauses (`runs/setup/admission-pauses.json`) honoured by the drivers. `pool_placement.py`: host-neutral placement of never-launched rows. `arguments.py`: shared option inspection. `checkpoint_pause.py`: import-safe process identity, checkpoint metadata, session scan and registry writer. `realworld_plan.py`: queue plans for baseline pretraining and FQL (it reads the deployment root and input directories from `s4d.rwlearn.configs`). |
+| `ops/resources/` | `gpu_guard.py`: fail-closed GPU UUID allowlist, runtime-path and EGL checks. `nvidia_query.py`: bounded `nvidia-smi` queries. `heartbeat.py`, `watch_events.py`: stall and event monitoring. `host_equivalence.py`: validation of the cross-host Meta-World diagnostic. `memory_budget.py`: the local 150 GB budget accounting. `memory_watch.py`: memory watchdog (`line`, `fits BYTES`, `alert`). `processes.py`: liveness (including zombie rejection). `reservations.py`: transient validation RAM reservation reader. |
+| `ops/provenance/` | `hashing.py`: canonical JSON and 8-MiB streaming SHA-256. `upstreams.py`: pinned upstream identity, source caches and patch application (standard library only). |
 | `ops/containers/` | `launch.py`: the remote `docker run` launcher (run by `scripts/remote/docker_run.sh`). `verification.py`: typed release-verification jobs (native suite, GPU isolation). |
+| `ops/inference_server/` | Remote preprocessing commands, persistent stream client/session and contract checks. Worker executables and file/stream protocol implementations remain in `s4d/realworld/workers/`. |
 | `ops/campaign/` | Campaign command modules, run through `runs/setup/tools/<same name>.py`: the admission drivers `stage2_local_driver.py`, `baseline_local_driver.py`, `remote_campaign_driver.py` (one flocked pass each); the lossless checkpoint pauses `pause_pretrain_at_checkpoint.py`, `pause_rl_at_checkpoint.py`, `pause_remote_pretrain_at_checkpoint.py`; `reconcile_unlaunched_remote.py` (refused remote launches); the release verification chain `release_chain.py`, `prepare_remote_verification.py`, `assemble_remote_acceptance.py`, `adopt_remote_suite_evidence.py`. Most of these are scripts whose module-level code is the command: importing one runs it. |
 | `scripts/` | Command-line entry points (training, evaluation, data, figures) and `_bootstrap.py` (entry-point preamble: repo on `sys.path`, GPU guard, caches, test-evidence gate). |
 | `scripts/remote/` | Image and container plumbing that is used at fixed paths: `Dockerfile`, `package_runtime.py` (both copied into the image bundle), `entry.py` (the in-container entry), and shell helpers. |
@@ -37,9 +39,21 @@ Read in this order to follow one pretraining step: data contract -> dataset -> m
 | Losses | `s4d/losses/` | `rgb.py`, `depth.py`, `chamfer.py`, `motion.py`, `motion3d.py`, `invariance.py`, `occlusion.py`, `regularizers.py`. |
 | Training | `s4d/train/` | `loop.py` (model bundle, `forward_losses`, the training loop), `augment.py` (camera jitter, synthetic and self-render views), `perframe.py` + `perframe_eval.py` (per-frame pilots; they reuse `loop.py`'s helpers), `evaluate.py`, `checkpoint.py`, `ddp.py`, `workers.py`. |
 | Downstream RL | `s4d/rl/` | `protocol.py` (run configuration), `env.py` + `vecenv.py` (Meta-World environments), `encoders.py` (frozen/CNN policy encoders), `agent.py` (DrM), `snerl_sac.py` (standalone SAC), `algorithms.py` (SAC evaluation dispatch), `replay.py`, `evaluate.py`, `camera_suites.py` + `visibility.py` (evaluation camera suites), `run_io.py` (checkpoint/metrics files of the trainers). |
-| Baselines | `s4d/baselines/{sincro,reviwo,snerl,dynamo,mvp3d}/`, `data.py`, `representation.py` | Ports or adapters around the pinned upstream code (`s4d/third_party.py`); see docs/BASELINES.md. |
+| Baselines | `s4d/baselines/{sincro,reviwo,snerl,dynamo,mvp3d}/`, `data.py`, `representation.py` | Ports or adapters around pinned upstream code (`s4d/third_party.py` aliases `ops/provenance/upstreams.py`); see docs/BASELINES.md. |
 | Diagnostics | `s4d/diag/` | W&B and local logging, panels, probes, point clouds, tracks, held-out diagnostics. |
+| Real-world learning | `s4d/rwlearn/` | Stores, actions, transitions, gates, baseline configs and FQL. `configs.py` owns `TARGET_TASKS`, the remote deployment root and `run_inputs_dir` (read by `ops.jobs.realworld_plan` and `ops.containers.mounts`; science never imports ops for them). The old `launch.py` aliases `ops.jobs.realworld_plan`. |
 | Shared | `s4d/config.py`, `s4d/geometry.py` | Layered YAML configuration; torch pinhole geometry. |
+
+## Operational code map (`ops/`)
+
+| Responsibility | Authoritative implementation | Consumers and retained APIs |
+| --- | --- | --- |
+| Queue control and placement | `jobs/scheduler.py`, `host_roles.py`, `pool_placement.py`, `remote_backend.py` | Scheduler/driver entry points; evaluator partners use `host_roles._partner`. |
+| Shared process and resource checks | `resources/processes.py`, `reservations.py` | `scheduler.pid_alive`, `heartbeat.alive` and both local drivers' `_validation_reservation` remain exported; reservation calls stay in the drivers. |
+| Argument inspection and pause primitives | `jobs/arguments.py`, `checkpoint_pause.py` | `scheduler._option`, `lifecycle.option` re-export the parser. Pause commands forward identity/checkpoint reads, inject session identity and bind their registry paths. |
+| Artifact and source provenance | `provenance/hashing.py`, `upstreams.py` | Run identity, host equivalence and remote access share canonical JSON/8-MiB hashing. Ops/bootstrap use upstreams directly; science source loaders retain the module-object alias. |
+| Real-world plans | `jobs/realworld_plan.py` | Planner alias for scripts/registrars; deployment paths stay in `s4d.rwlearn.configs` (ops -> science edge only). |
+| Transport and isolated execution | `remote/`, `containers/`, `inference_server/` | SSH/rsync, launch/verification and inference coordination. `remote/artifact_check.py` and `jobs/replay_host.py` remain standalone. |
 
 ## Command-line entry points (`scripts/`) by purpose
 
@@ -73,10 +87,31 @@ The separate standalone SAC campaign pause remains in force; keeping SAC softwar
 
 ## Dependency boundaries
 
-- `ops` may import `s4d`. It currently imports `s4d.third_party` (source identity) and, lazily, `s4d.model.encoder` (encoder export).
-- `s4d` does not import `ops`, with two documented exceptions. Both are lazy imports of `ops.resources.gpu_guard` inside functions: `s4d/data/__init__.py` uses `validate_runtime_path` to authorize output paths, and `s4d/diag/wandb_log.py` uses `HOST_NAME` for the W&B host tag. `tests/test_ops_layout.py` enforces this.
-- Real-world stage and calibration code imports the implementation packages directly. `calib.loma.run` shares constants/helpers through `calib.dw.common`, while COLLADA parsing is private to `robotics.collada`; neither helper imports a CLI. The package initializers do not eagerly import implementations.
-- There are no import cycles. `ops.resources.gpu_guard` imports neither `s4d` nor any other `ops` module.
+- `ops` may import science implementations. `ops.jobs.realworld_plan` eagerly imports `s4d.rwlearn.configs` and
+  `s4d.rwlearn.gate`; it keeps the configs path facade so science-side root overrides remain visible. Scheduler encoder
+  export lazily imports `s4d.model.encoder`. Upstream identity imports now stay inside `ops.provenance`; container mounts read the real-world deployment root
+  from `s4d.rwlearn.configs` (an ops -> science edge).
+- Inference still crosses the boundary: `stream_client` eagerly imports `s4d.realworld.workers` and its framing/protocol;
+  `command_support` lazily imports `WorkerSpec`. `run_episode` imports the real-world CLI partly eagerly and IO/adapters
+  lazily; `contract_checks` lazily imports actions/transitions, data contracts and real-world dataset/pipeline/depth/store/
+  windows. The deferred worker runtime has not moved.
+- Outside compatibility aliases, direct research imports of `ops` are limited to `s4d.rwlearn.configs`' eager deployment
+  path facade and two lazy GPU-guard exceptions: output-path authorization in `s4d/data/__init__.py` and the W&B host
+  tag in `s4d/diag/wandb_log.py`. `tests/test_ops_layout.py` enforces that exact direct-import set. Scientific baseline
+  loaders and `realworld/train_store.py` retain `s4d.third_party`, which resolves to the ops service. `baseline_data`
+  imports `TARGET_TASKS` lazily from scientific configs, with no planner dependency. `scripts/_bootstrap.py` imports
+  upstream identity directly from ops; its EGL bootstrap remains in place. `scripts/realworld_learning.py` and frozen
+  registrars retain the planner alias. The indirect `s4d.rl.vecenv` -> `_bootstrap` -> GPU guard edge is outside the
+  direct-import boundary test.
+- Real-world stage and calibration code imports the implementation packages directly. `calib.loma.run` shares
+  constants/helpers through `calib.dw.common`; COLLADA parsing is private to `robotics.collada`. Package initializers
+  do not eagerly import implementations.
+- The explicit-import graph has no eager import cycles. Including lazy imports, existing cycles remain in scheduler/
+  host roles/backend/containers, training loop/per-frame, robot model/visual, pipeline/calibration/storage and adapter
+  registration. The planner's eager science-config import returns only to the independent ops path leaf; it does not
+  create an eager module cycle. At the package boundary there is now an `ops` -> `s4d` -> `ops` path through that
+  facade, as well as the existing indirect/lazy exceptions above; this is not a claim of an acyclic package graph.
+  `ops.resources.gpu_guard` imports neither `s4d` nor other ops modules.
 - The ML-specific CUDA kernels and device code stay in `s4d/model` and `s4d/train`.
 - `ops/remote/artifact_check.py` and `ops/jobs/replay_host.py` must stay standard-library only, because they are executed on the remote host outside the containers.
 - `ops` never imports `runs/setup/tools`; the moved implementations import each other through their `ops` paths. Nothing in `s4d`, `ops`, `scripts` or `tests` imports an `ops.campaign` module, because importing one runs its command (`tests/test_ops_layout.py`).
@@ -94,6 +129,8 @@ The old module paths remain importable. Each one is a short shim that replaces i
 | `s4d.realworld.calibration_stage`, `depth_stages`, `ir_stereo_depth` | `s4d.realworld.stages.calibrate`, `depth`, `ir_depth` |
 | `s4d.realworld.baseline_stages`, `trackeverything_stage`, `track_motion` | `s4d.realworld.stages.semantics`, `trackeverything`, `motion` |
 | `s4d.realworld.robot`, `robot_visual`, `mounts` | `s4d.realworld.robotics.model`, `visual`, `mounts` |
+| `s4d.rwlearn.launch` | `ops.jobs.realworld_plan` |
+| `s4d.third_party` | `ops.provenance.upstreams` |
 | `s4d.remote_access`, `s4d.remote_artifact_check` | `ops.remote.access`, `ops.remote.artifact_check` |
 | `s4d.remote_jobs`, `s4d.lifecycle_cleanup`, `s4d.replay_cleanup_host`, `s4d.run_identity` | `ops.jobs.remote_backend`, `ops.jobs.lifecycle`, `ops.jobs.replay_host`, `ops.jobs.run_identity` |
 | `s4d.gpu_guard`, `s4d.cross_host_equivalence` | `ops.resources.gpu_guard`, `ops.resources.host_equivalence` |
@@ -201,7 +238,6 @@ branch. Existing releases stay launchable, and re-syncing re-proves each in the 
 
 - `scripts/run_tests.py` and `scripts/check_gpu_isolation.py` are typed verification job scripts. They run by path inside the containers, and the scheduler requires a literal guard call in the script file (`GUARD_CALL`), which a wrapper would not contain.
 - `scripts/remote/entry.py`, `package_runtime.py`, `Dockerfile` and the shell helpers stay at fixed in-container and image-bundle paths. Moving them would change the image bundle.
-- `s4d/third_party.py` serves the research baselines (`source_tree`). `ops` only reads its identity helper.
 - `analysis/eval_config.py` prepares scientific evaluation configs and is run by the Stage 2 driver at that path.
 - In `runs/setup/tools`, refactor pass 2 moved only the reusable operational drivers and libraries (alias table). Everything else stays byte-identical:
   - dated one-off tools (`*_YYYYMMDD.py`) and `.before-*` backups: campaign records that the logs cite by path;
@@ -209,6 +245,42 @@ branch. Existing releases stay launchable, and re-syncing re-proves each in the 
   - stage-specific registrations (`register_*.py`) and reports (`rl_reporting.py`, `stage2_report.py`, `followup_report.py`, `followup_tables.py`, `baselines_eight_task_report.py`, `final_comparison.py`, `crop_reeval_report.py` and their `report_figures.py`): analysis records tied to fixed registrations, cited by docs, not operations;
   - research diagnostics (`actfut_*`, `afk2_*`, `chamfer_*`, `enc_*`, `encp_*`, `grad_conflict_diag.py`, `variant_repr_probes.py`, `paper_ablation_smoke_local.py`, `selfrender_*`);
   - retired or one-time operational tools: `evict_partial_cache.py` (retired 2026-10-21), `enc_gate.py` (retired 2026-10-25), `remote_container_cleanup.py` (the 2026-10-21 cleanup; the scheduler removes containers since), `queue_mig_limits.py`, `apply_stage2_placement.py`, `record_cuda_init_outage.py`, the provenance snapshots `job_provenance.py` and `local_device_provenance.py`, and `check_final_stage3_dispatch.py` (a Stage 3 fixture check that parses the remote driver's source at its old path; it already failed before the move, because the driver functions it executes need globals its namespace lacks).
+
+## Deferred infrastructure moves (2026-11-09)
+
+- `s4d/realworld/workers/{__init__,_framing,_protocol,run_many}.py`: defer as one controlled runtime release;
+  package/submodule identity, sibling imports, spawn/pickle lookup and external worker paths need joint validation.
+  Executable worker files and `WORKER_DIR` remain unchanged.
+- `s4d/realworld/runners.py` `LocalRunner`: defer with worker transport; keep lazy kernel dispatch and ACK semantics.
+- `s4d/realworld/calib/release.py` application/CLI: defer because external release tools substitute the source file
+  into pinned releases; injected writers/planners must remain compatible before introducing dependencies.
+- `s4d/realworld/calib/core.py` `usable_cpus`: defer until calibration release validation; sizing runs at import time
+  and feeds solver process pools.
+- `scripts/_bootstrap.py` EGL bootstrap: defer while evaluator parents can spawn children; UUID checks, MuJoCo setup
+  and EGL verification must retain their order. Only its upstream-service import changes in this consolidation.
+- TrackEverything runtime telemetry: defer with the pinned worker release; preserve cache ownership, torch injection,
+  hashes and flags, and the executable worker path.
+
+The remote checkpoint watcher's embedded reader also stays byte-identical: it checks the ZIP archive and asserts a
+step key, unlike the local helper's integer-opcode check and RuntimeError. Whole-file and 1-MiB hash variants, atomic
+writers and source-fingerprint policies have different contracts and remain separate. `replay_host.py` and
+`artifact_check.py` remain standalone, standard-library-only files with no imports of the shared helpers.
+
+## Operational consolidation (2026-11-09)
+
+Shared helpers now have one import-safe implementation. Liveness and option parsing re-export the same objects;
+`pool_placement.partner` re-exports `host_roles._partner`. SHA-256 retains 8-MiB reads. Canonical JSON keeps the
+`run_identity._json_bytes(payload: dict | int)` signature through a forwarder to `hashing.json_bytes(value)`.
+RAM reservation calls remain at their original driver initialization points. Pause commands keep their function
+names and signatures: registry writes pass each command's current `REGISTRY`, and session scans pass its current
+`identity` callback. Script-only root bootstraps preserve isolated execution after introducing shared imports; the
+normal import path stays inert in the new support modules. Boot-id reads, command timing, guard literals,
+fingerprint scopes and fixed paths stay in place.
+The whole upstream service moves together, preserving `_git` monkeypatching through module identity; only the
+`__file__` parent depth changes to resolve the same repository. Existing test behavior assertions are unchanged;
+`tests/test_ops_layout.py` extends alias/location and boundary expectations, and `tests/test_ops_helpers.py` covers
+the extracted primitives without importing campaign commands. Source bytes/locations change and require fresh
+coordinator test evidence and the normal release gate.
 
 ## Code structure before and after refactor pass 2
 

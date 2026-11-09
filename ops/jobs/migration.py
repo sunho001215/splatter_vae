@@ -448,7 +448,7 @@ def tree_reader(root: Path) -> tuple[Callable[[str], bytes | None], list[str]]:
 def execution_scope(scripts: list[str], source_commit: str, root: Path = REPO) -> dict:
     """Compare the execution scope of ``scripts`` between the source release commit and the destination working
     tree: {"identical", "files": {path: sha256}, "third_party": {...}, "differences": [...]}."""
-    from s4d.third_party import commit_identity, working_tree_identity
+    from ops.provenance.upstreams import commit_identity, working_tree_identity
 
     source_read, source_listed = commit_reader(root, source_commit)
     target_read, target_listed = tree_reader(root)
