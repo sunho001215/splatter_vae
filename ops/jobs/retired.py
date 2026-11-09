@@ -22,11 +22,12 @@ def retired_reason(job: dict, by_id: dict[str, dict] | None = None) -> str | Non
 
 
 def _reason(job: dict, by_id: dict[str, dict], seen: set[str]) -> str | None:
-    script, job_id = str(PurePosixPath(job.get("script", ""))), job.get("id", "")
+    # File names, not repository-relative paths: the local scheduler also runs guarded copies (e.g. .worktrees/*/scripts).
+    name, job_id = PurePosixPath(str(job.get("script", ""))).name, job.get("id", "")
     for algorithm, (trainer, prefix) in RETIRED_ALGORITHMS.items():
-        if script == trainer or job_id.startswith(prefix):
+        if name == PurePosixPath(trainer).name or job_id.startswith(prefix):
             return f"{algorithm} retired on 2026-11-09 ({trainer}; {prefix}*)"
-    if script != "scripts/eval_rl.py" or job_id in seen:
+    if name != "eval_rl.py" or job_id in seen:
         return None
     seen.add(job_id)
     targets = list(job.get("deps", []))

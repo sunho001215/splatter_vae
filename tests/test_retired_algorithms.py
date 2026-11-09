@@ -165,3 +165,16 @@ def test_default_replay_windows_preserve_returns_rng_and_bootstrap_ids(tmp_path,
     batch = replay.sample(64, np.random.default_rng(17), 0.97)
     assert np.array_equal(batch[5], replay._stack(actual[3]))
     assert np.array_equal(batch[6], replay.proprio[ends])
+
+
+@pytest.mark.parametrize("script", [".worktrees/arm4/scripts/train_flashsac.py", "/abs/clone/scripts/train_ppo.py",
+                                    ".worktrees/x/scripts/train_dreamer.py"])
+def test_retired_trainer_copies_outside_scripts_are_refused(script):
+    assert retired_reason({"id": "renamed", "script": script}) is not None
+
+
+def test_evaluator_copies_outside_scripts_check_their_targets():
+    job = {"id": "renamed-eval", "script": ".worktrees/review/scripts/eval_rl.py", "args": ["--train-job", "ds-flashsac-x"]}
+    assert retired_reason(job) is not None
+    assert retired_reason({**job, "args": ["--train-job", "ds-drm-x"]}) is None
+    assert retired_reason({"id": "drm", "script": ".worktrees/review/scripts/train_rl.py"}) is None

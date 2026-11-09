@@ -15,7 +15,7 @@ def write_episode(root: Path, episode_id: str, out_dir: Path, *, task: str | Non
     ``task`` defaults to the dataset folder of the recording (the adapter's task identity). Cameras without an accepted
     calibration, metric depth or lifted tracks are excluded and listed."""
     from s4d.data.droid.pointworld import depth_test
-    from s4d.realworld.stages.depth import load_view_depth
+    from s4d.realworld.depth_stages import load_view_depth
     from s4d.realworld.export import motion_target_source
     from s4d.realworld.pipeline import (
         RobotGeometry,

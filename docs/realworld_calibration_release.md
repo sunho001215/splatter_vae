@@ -1,6 +1,6 @@
 # Real-world calibration release (`rig_loma`, 2026-11-08)
 
-The current release command is `python -m s4d.realworld.calib.release`; `s4d.realworld.calibration_release` remains a module-object alias with the original arguments and usage. Rig documents are handled by `s4d.realworld.calib.rig`, stages by `s4d.realworld.stages`, and robot geometry by `s4d.realworld.robotics`.
+Release command: `python -m s4d.realworld.calibration_release` (the accepted release 6c3b9ec has only this path; in later code it is a module-object alias of `s4d.realworld.calib.release` with the original arguments and usage). Rig documents are handled by `s4d.realworld.calib.rig`, stages by `s4d.realworld.stages`, and robot geometry by `s4d.realworld.robotics`.
 
 Status: release CODE (branch `rw-calib-rel-20261108`); no `calibration_validated` record has been written, no dataset
 regenerated and no job registered - the coordinator runs the runbook below. Working notes and evidence:
