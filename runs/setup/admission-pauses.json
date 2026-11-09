@@ -174,6 +174,17 @@
    "since": "2026-11-07T07:10:30+09:00",
    "by": "coordinator",
    "reason": "fqldata builds exit 1 on attempt 1 (diagnosing); pause datasets + FQL runs to keep retries UPDATE 07:53: SUPERSEDED (permanent) by rwng-20261107b-* dataset/FQL rows pinned to ee07b2e (FQL store->raw frame mapping); retries would keep commit 782f140."
+  },
+  {
+   "name": "rwcal-fql-feature-check-20261109",
+   "active": true,
+   "prefixes": [
+    "rwcal-20261109-fql-sincro-",
+    "rwcal-20261109-fql-snerl-"
+   ],
+   "since": "2026-11-09T23:17:07+0900",
+   "by": "coordinator",
+   "reason": "protective pre-launch check (2026-11-09 23:25): all 12 rwcal 3D-MVP FQL policies are vision-blind (frozen features ~99 % constant offset -> LayerNorm head collapse; 8/12 critics diverged; realworld-ops/serving/MVP3D-FQL-DIAG.md). SinCro/SNeRL FQL use the same ObsEncoder/head path. Their fqldata rows still run; lift as soon as the built dataset's feature offset/signal ratio is comparable to ReViWo/DynaMo (no checkpoint, run, or dataset is touched)."
   }
  ]
 }
