@@ -305,8 +305,13 @@ def main() -> int:
         if len(commit) != 40 or any(char not in "0123456789abcdef" for char in commit):
             raise ValueError("S4D_EXPECTED_COMMIT must identify the clean pushed source")
         verify_clean_release(REPO, commit)
+        # The single branch is main since 2026-11-09; a release checkout synced before then carries only the legacy ref.
+        origin = "origin/main"
+        if subprocess.run(["git", "-C", str(REPO), "rev-parse", "--verify", "--quiet", origin],
+                          capture_output=True, timeout=30).returncode:
+            origin = "origin/splatter4d"
         subprocess.run(
-            ["git", "-C", str(REPO), "merge-base", "--is-ancestor", commit, "origin/splatter4d"],
+            ["git", "-C", str(REPO), "merge-base", "--is-ancestor", commit, origin],
             check=True,
             capture_output=True,
             timeout=30,

@@ -5,7 +5,7 @@
 # splatter4d campaign handoff — planned local hardware shutdown
 
 **Phase3 permitted controllers stopped by 2026-10-16 08:26:16 KST; final local verification08:28:31. All-local shutdown remains BLOCKED by the denied scheduler-daemon stop. All times are KST.**
-Repository `/home/ws/ws/splatter4d`, branch `splatter4d`, origin
+Repository `/home/ws/ws/splatter4d`, branch `main` (formerly `splatter4d`, renamed 2026-11-09), origin
 `https://github.com/sunho001215/splatter_vae.git`. Start with this document, `PROGRESS.md`, then the append-only
 `experiments/registry.jsonl`. Do not infer an all-local shutdown: PID2819571 and its transport activity remain; remote containers were not stopped.
 

@@ -16,7 +16,7 @@ from pathlib import Path
 from s4d import third_party
 from ops.jobs.host_roles import DOMAIN, job_class
 from ops.resources.gpu_guard import APPROVED_HOST_GPUS, LOCAL_MIG_PARENTS
-from ops.remote.access import RemoteClient, RemoteUnreachable
+from ops.remote.access import ORIGIN_BRANCH, RemoteClient, RemoteUnreachable
 from ops.containers.mounts import realworld_mounts
 from ops.containers.verification import (
     POLICIES,
@@ -678,12 +678,12 @@ class RemoteBackend:
         evidence = acceptance_manifest(host, self.repo)
         result = subprocess.run(
             ["git", "-C", str(self.repo), "-c", "credential.helper=", "-c",
-             "credential.helper=!gh auth git-credential", "ls-remote", "origin", "refs/heads/splatter4d"],
+             "credential.helper=!gh auth git-credential", "ls-remote", "origin", "refs/heads/" + ORIGIN_BRANCH],
             capture_output=True, text=True, timeout=60, check=True,
         )
         advertised = result.stdout.split()
         if len(advertised) != 2 or not COMMIT.fullmatch(advertised[0]):
-            raise RemoteJobError("Cannot verify origin/splatter4d")
+            raise RemoteJobError(f"Cannot verify origin/{ORIGIN_BRANCH}")
         subprocess.run(["git", "-C", str(self.repo), "merge-base", "--is-ancestor", host["commit"], advertised[0]],
                        capture_output=True, text=True, check=True, timeout=60)
         return evidence
@@ -712,7 +712,7 @@ class RemoteBackend:
         _, identity, _ = verification_artifacts(manifest, purpose, self.repo, commit_source_sha256(self.repo, commit))
         result = subprocess.run(
             ["git", "-C", str(self.repo), "-c", "credential.helper=", "-c",
-             "credential.helper=!gh auth git-credential", "ls-remote", "origin", "refs/heads/splatter4d"],
+             "credential.helper=!gh auth git-credential", "ls-remote", "origin", "refs/heads/" + ORIGIN_BRANCH],
             capture_output=True, text=True, timeout=60, check=True,
         )
         advertised = result.stdout.split()

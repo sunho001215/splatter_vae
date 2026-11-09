@@ -38,6 +38,14 @@ RESULT_SCOPES = ("all", "essential", "media", "checkpoints")
 DOWNLOAD_BUDGET_KIB = 600
 BULK_CHUNK_FILES = 48
 LEGACY_WAIT_SECONDS = 900.0
+# Single long-lived branch: `main` since 2026-11-09, formerly `splatter4d`. origin/main contains the whole splatter4d
+# history, so every commit ever released is its ancestor. New releases are proven against origin/main; a release proven
+# earlier keeps its proof, which records the legacy branch, and launch/identity checks accept either recorded form.
+ORIGIN_BRANCH = "main"
+ORIGIN_REF = "refs/remotes/origin/" + ORIGIN_BRANCH
+LEGACY_ORIGIN_BRANCH = "splatter4d"
+LEGACY_ORIGIN_REF = "refs/remotes/origin/" + LEGACY_ORIGIN_BRANCH
+RELEASE_ORIGIN_REFS = {ORIGIN_BRANCH: ORIGIN_REF, LEGACY_ORIGIN_BRANCH: LEGACY_ORIGIN_REF}
 
 
 class RemoteUnreachable(RuntimeError):
@@ -496,19 +504,23 @@ class RemoteClient:
         if origin not in ("https://github.com/sunho001215/splatter_vae.git", "git@github.com:sunho001215/splatter_vae.git"):
             raise RemoteCommandError("Repository origin is not the authorized campaign repository")
         advertised = self._git("-c", "credential.helper=", "-c", "credential.helper=!gh auth git-credential",
-                               "ls-remote", "origin", "refs/heads/splatter4d").split()
+                               "ls-remote", "origin", "refs/heads/" + ORIGIN_BRANCH).split()
         if len(advertised) != 2 or not re.fullmatch(r"[0-9a-f]{40}", advertised[0]):
-            raise RemoteCommandError("Cannot verify the pushed splatter4d branch")
+            raise RemoteCommandError(f"Cannot verify the pushed {ORIGIN_BRANCH} branch")
         tip = advertised[0]
         self._git("merge-base", "--is-ancestor", sha, tip)
-        if self._git("rev-parse", "refs/remotes/origin/splatter4d") != tip:
-            raise RemoteCommandError("Local origin/splatter4d is stale; refresh it before release")
+        if self._git("rev-parse", ORIGIN_REF) != tip:
+            raise RemoteCommandError(f"Local origin/{ORIGIN_BRANCH} is stale; refresh it before release")
+        if self._legacy_release(sha):
+            # Proven under the legacy branch name: pending/retried jobs pinned to it validate that exact proof (and
+            # the legacy origin ref of its checkout), so the release is kept as it is, never re-proven against main.
+            return self.remote_path(f"releases/{sha}/code")
         bundle_dir = self.network_dir / "bundles"
         bundle_dir.mkdir(parents=True, exist_ok=True)
         bundle = bundle_dir / f"{tip}.bundle"
         if not bundle.exists():
             temp = bundle.with_suffix(".bundle.partial")
-            self._git("bundle", "create", str(temp), "refs/remotes/origin/splatter4d", timeout=300)
+            self._git("bundle", "create", str(temp), ORIGIN_REF, timeout=300)
             os.replace(temp, bundle)
         self._git("bundle", "verify", str(bundle))
         remote_bundle = f"bundles/{tip}.bundle"
@@ -527,10 +539,10 @@ class RemoteClient:
             + "test -z \"$(" + git + " status --porcelain)\"; "
             + "else git -c init.templateDir= init --quiet -- " + shlex.quote(code) + "; fi; "
             + git + " fetch --quiet -- " + shlex.quote(bpath)
-            + " refs/remotes/origin/splatter4d:refs/remotes/origin/splatter4d; "
+            + " " + ORIGIN_REF + ":" + ORIGIN_REF + "; "
             + git + " remote remove origin 2>/dev/null || :; "
             + git + " remote add origin " + shlex.quote(origin) + "; "
-            + git + " update-ref refs/remotes/origin/splatter4d " + shlex.quote(tip) + "; "
+            + git + " update-ref " + ORIGIN_REF + " " + shlex.quote(tip) + "; "
             + git + " checkout --quiet --detach " + shlex.quote(sha) + "; "
             + "test \"$(" + git + " rev-parse HEAD)\" = " + shlex.quote(sha) + "; "
             + "test -z \"$(" + git + " status --porcelain)\"; "
@@ -541,7 +553,7 @@ class RemoteClient:
             self.ensure_remote_path(code + "/" + mountpoint, create_parent=True, directory=True)
         self.checked_ssh("test -z \"$(" + git + " status --porcelain)\"", idempotent=True)
         proof = {"commit": sha, "verified_origin_commit": tip, "origin_commit": tip,
-                 "origin_branch": "splatter4d", "origin_ref": "refs/remotes/origin/splatter4d",
+                 "origin_branch": ORIGIN_BRANCH, "origin_ref": ORIGIN_REF,
                  "origin_url": origin, "bundle_sha256": expected, "verified_ancestor": True,
                  "verified_at": datetime.now(timezone.utc).isoformat()}
         if submodules:
@@ -551,6 +563,19 @@ class RemoteClient:
         local_proof.write_text(json.dumps(proof, indent=2, sort_keys=True))
         self.rsync_upload(local_proof, f"releases/{sha}/provenance.json")
         return code
+
+    def _legacy_release(self, sha: str) -> bool:
+        """Whether ``releases/<sha>`` already carries a proof recorded under the legacy branch name (pre 2026-11-09)."""
+        proof = shlex.quote(self.remote_path(f"releases/{sha}/provenance.json"))
+        text = self.checked_ssh("if [ -f " + proof + " ] && [ ! -L " + proof + " ]; then cat -- " + proof + "; fi",
+                                idempotent=True).stdout
+        try:
+            recorded = json.loads(text) if text.strip() else None
+        except ValueError:
+            return False
+        return (isinstance(recorded, dict) and recorded.get("commit") == sha
+                and recorded.get("origin_branch") == LEGACY_ORIGIN_BRANCH
+                and recorded.get("origin_ref") == LEGACY_ORIGIN_REF)
 
     def _sync_submodules(self, sha: str, code: str, git: str) -> dict:
         """Release the pinned third-party submodules: ``git bundle`` does not carry them.

@@ -321,7 +321,7 @@ class RemoteAccessTests(unittest.TestCase):
                 if args[0] == "remote":
                     return "https://github.com/sunho001215/splatter_vae.git"
                 if args[0] == "-c":
-                    return tip + "\trefs/heads/splatter4d"
+                    return tip + "\trefs/heads/main"
                 if args[0] == "merge-base":
                     if mode == "unpushed":
                         raise access.RemoteCommandError("Not an ancestor")
@@ -386,21 +386,25 @@ class RemoteAccessTests(unittest.TestCase):
             with self.assertRaisesRegex(access.RemoteCommandError, "not checked out"):
                 self.client._sync_submodules(sha, code, "git -C " + code)
 
-    def test_code_release_accepts_ancestor_and_records_external_proof(self):
-        sha, tip = "a" * 40, "b" * 40
-
+    @staticmethod
+    def released_git(sha, tip):
         def git(*args, **kwargs):
             if args[0] == "status":
                 return ""
             if args[0] == "remote":
                 return "https://github.com/sunho001215/splatter_vae.git"
             if args[0] == "-c":
-                return tip + "\trefs/heads/splatter4d"
+                return tip + "\trefs/heads/main" if args[-1] == "refs/heads/main" else ""
             if args[0] == "rev-parse":
-                return tip if args[-1] == "refs/remotes/origin/splatter4d" else sha
+                return tip if args[-1] == "refs/remotes/origin/main" else sha
             if args[:2] == ("bundle", "create"):
                 Path(args[2]).write_bytes(b"boundary-only-bundle")
             return ""
+        return git
+
+    def test_code_release_accepts_ancestor_and_records_external_proof(self):
+        sha, tip = "a" * 40, "b" * 40
+        git = self.released_git(sha, tip)
 
         with (
             patch.object(self.client, "_git", side_effect=git) as provenance,
@@ -412,19 +416,66 @@ class RemoteAccessTests(unittest.TestCase):
         ):
             code = self.client.sync_code(sha)
         self.assertEqual(code, access.REMOTE_ROOT + "/releases/" + sha + "/code")
-        self.assertIn("fetch --quiet", checkout.call_args_list[0].args[0])
+        self.assertIn("/releases/" + sha + "/provenance.json", checkout.call_args_list[0].args[0])
+        self.assertIn("fetch --quiet", checkout.call_args_list[1].args[0])
+        self.assertIn(" refs/remotes/origin/main:refs/remotes/origin/main; ", checkout.call_args_list[1].args[0])
+        self.assertIn(" update-ref refs/remotes/origin/main " + tip + "; ", checkout.call_args_list[1].args[0])
+        self.assertNotIn("splatter4d", checkout.call_args_list[1].args[0].replace("/workspace/splatter4d", ""))
         self.assertIn("status --porcelain", checkout.call_args.args[0])
         for mountpoint in ("runs", "outputs", ".cache"):
             self.assertTrue(any(call.args == (code + "/" + mountpoint,) and
                                 call.kwargs == {"create_parent": True, "directory": True}
                                 for call in paths.call_args_list))
         self.assertTrue(any(call.args == ("merge-base", "--is-ancestor", sha, tip) for call in provenance.call_args_list))
+        self.assertTrue(any(call.args[-3:] == ("ls-remote", "origin", "refs/heads/main")
+                            for call in provenance.call_args_list))
+        self.assertTrue(any(call.args[:2] == ("bundle", "create") and call.args[3] == "refs/remotes/origin/main"
+                            for call in provenance.call_args_list))
         proof = json.loads(upload.call_args_list[-1].args[0].read_text())
         self.assertEqual(proof["commit"], sha)
         self.assertEqual(proof["origin_commit"], tip)
         self.assertEqual(proof["verified_origin_commit"], tip)
+        self.assertEqual((proof["origin_branch"], proof["origin_ref"]), ("main", "refs/remotes/origin/main"))
         self.assertTrue(proof["verified_ancestor"])
         self.assertTrue(upload.call_args_list[-1].args[1].endswith("/provenance.json"))
+
+    def test_code_release_keeps_a_release_proven_under_the_legacy_branch(self):
+        sha, tip = "a" * 40, "b" * 40
+        legacy = {"commit": sha, "origin_commit": "c" * 40, "verified_origin_commit": "c" * 40,
+                  "origin_branch": "splatter4d", "origin_ref": "refs/remotes/origin/splatter4d",
+                  "origin_url": "https://github.com/sunho001215/splatter_vae.git", "verified_ancestor": True,
+                  "bundle_sha256": "d" * 64, "verified_at": "2026-11-01T00:00:00+00:00"}
+        with (
+            patch.object(self.client, "_git", side_effect=self.released_git(sha, tip)) as provenance,
+            patch.object(self.client, "ensure_remote_path") as paths,
+            patch.object(self.client, "rsync_upload") as upload,
+            patch.object(self.client, "checked_ssh",
+                         return_value=self.result(stdout=json.dumps(legacy, indent=2, sort_keys=True))) as ssh,
+        ):
+            code = self.client.sync_code(sha)
+        self.assertEqual(code, access.REMOTE_ROOT + "/releases/" + sha + "/code")
+        self.assertEqual(ssh.call_count, 1)  # only the read of the existing proof
+        self.assertIn("cat -- " + access.REMOTE_ROOT + "/releases/" + sha + "/provenance.json",
+                      ssh.call_args.args[0])
+        upload.assert_not_called()
+        paths.assert_not_called()
+        self.assertFalse(any(call.args[:1] == ("bundle",) for call in provenance.call_args_list))
+        self.assertFalse((self.client.network_dir / "releases" / sha / "provenance.json").exists())
+        # Any other existing proof (main, unreadable, another commit's) is re-proven against main as before.
+        for existing in ({**legacy, "origin_branch": "main", "origin_ref": "refs/remotes/origin/main"}, "not json",
+                         {**legacy, "commit": "e" * 40}):
+            text = existing if isinstance(existing, str) else json.dumps(existing)
+            with (
+                patch.object(self.client, "_git", side_effect=self.released_git(sha, tip)),
+                patch.object(self.client, "ensure_remote_path",
+                             side_effect=lambda p, **kw: self.client.remote_path(p)),
+                patch.object(self.client, "rsync_upload") as upload,
+                patch.object(self.client, "checked_ssh", side_effect=[self.result(stdout=text)]
+                             + [self.result()] * 8),
+            ):
+                self.client.sync_code(sha)
+            proof = json.loads(upload.call_args_list[-1].args[0].read_text())
+            self.assertEqual((proof["origin_branch"], proof["origin_ref"]), ("main", "refs/remotes/origin/main"))
 
     def test_result_manifest_refuses_replay_traversal_and_duplicates(self):
         digest = "a" * 64

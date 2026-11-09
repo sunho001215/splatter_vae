@@ -47,7 +47,7 @@ def git(repo, *args):
 def release(tmp_path):
     repo = tmp_path / "release"
     repo.mkdir()
-    git(repo, "init", "--initial-branch=splatter4d")
+    git(repo, "init", "--initial-branch=main")
     (repo / "scripts").mkdir()
     (repo / "scripts" / "train.py").write_text("from _bootstrap import guard_gpus\nguard_gpus()\n")
     (repo / ".gitignore").write_text(".cache/\n.venv/\noutputs/\n")
@@ -55,13 +55,13 @@ def release(tmp_path):
     git(repo, "commit", "-m", "Release fixture")
     commit = git(repo, "rev-parse", "HEAD")
     git(repo, "remote", "add", "origin", "https://github.com/sunho001215/splatter_vae.git")
-    git(repo, "update-ref", "refs/remotes/origin/splatter4d", commit)
+    git(repo, "update-ref", "refs/remotes/origin/main", commit)
     proof = {
         "commit": commit,
         "verified_origin_commit": commit,
         "origin_commit": commit,
-        "origin_branch": "splatter4d",
-        "origin_ref": "refs/remotes/origin/splatter4d",
+        "origin_branch": "main",
+        "origin_ref": "refs/remotes/origin/main",
         "origin_url": git(repo, "remote", "get-url", "origin"),
         "verified_ancestor": True,
         "verified_at": "2026-10-10T09:30:00+00:00",
@@ -171,8 +171,11 @@ def test_remote_release_allows_only_generated_runtime_roots(release):
     [
         ("commit", "d" * 40),
         ("verified_origin_commit", "e" * 40),
-        ("origin_branch", "main"),
-        ("origin_ref", "refs/heads/splatter4d"),
+        ("origin_branch", "feature-x"),
+        ("origin_branch", "splatter4d"),  # the legacy branch name with the main ref is inconsistent
+        ("origin_ref", "refs/heads/main"),
+        ("origin_ref", "refs/remotes/origin/splatter4d"),
+        ("origin_ref", "refs/remotes/origin/feature-x"),
         ("origin_url", "different-origin"),
         ("verified_ancestor", False),
         ("bundle_sha256", "unverified"),
@@ -201,10 +204,41 @@ def test_remote_release_accepts_pushed_ancestor_of_tip(release):
     repo, env, proof, proof_path = release
     git(repo, "commit", "--allow-empty", "-m", "Later pushed tip")
     tip = git(repo, "rev-parse", "HEAD")
-    git(repo, "update-ref", "refs/remotes/origin/splatter4d", tip)
+    git(repo, "update-ref", "refs/remotes/origin/main", tip)
     git(repo, "switch", "--detach", env["S4D_EXPECTED_COMMIT"])
     proof_path.write_text(json.dumps({**proof, "verified_origin_commit": tip, "origin_commit": tip}))
     assert verify_remote_identity(repo, env)["verified_origin_commit"] == tip
+
+
+LEGACY = {"origin_branch": "splatter4d", "origin_ref": "refs/remotes/origin/splatter4d"}
+
+
+def test_legacy_branch_release_proof_remains_valid(release):
+    """A release synced before the 2026-11-09 rename: its proof and checkout name only origin/splatter4d."""
+    repo, env, proof, proof_path = release
+    git(repo, "update-ref", "-d", "refs/remotes/origin/main")
+    git(repo, "update-ref", "refs/remotes/origin/splatter4d", env["S4D_EXPECTED_COMMIT"])
+    proof_path.write_text(json.dumps({**proof, **LEGACY}))
+    assert verify_remote_identity(repo, env)["verified_origin_commit"] == env["S4D_EXPECTED_COMMIT"]
+
+
+def test_release_proof_ref_evidence_must_be_the_recorded_ref(release):
+    repo, env, proof, proof_path = release
+    git(repo, "commit", "--allow-empty", "-m", "Later tip")
+    git(repo, "switch", "--detach", env["S4D_EXPECTED_COMMIT"])
+    # A legacy proof is checked against the checkout's legacy ref, never against origin/main ...
+    proof_path.write_text(json.dumps({**proof, **LEGACY}))
+    with pytest.raises(RunIdentityError, match="rev-parse"):
+        verify_remote_identity(repo, env)
+    git(repo, "update-ref", "refs/remotes/origin/splatter4d", git(repo, "rev-parse", "refs/heads/main"))
+    with pytest.raises(RunIdentityError, match="checkout origin ref"):
+        verify_remote_identity(repo, env)
+    # ... and a main proof against origin/main, never against the legacy ref.
+    git(repo, "update-ref", "refs/remotes/origin/splatter4d", env["S4D_EXPECTED_COMMIT"])
+    git(repo, "update-ref", "refs/remotes/origin/main", git(repo, "rev-parse", "refs/heads/main"))
+    proof_path.write_text(json.dumps(proof))
+    with pytest.raises(RunIdentityError, match="checkout origin ref"):
+        verify_remote_identity(repo, env)
 
 
 def test_release_proof_must_remain_outside_checkout(release):

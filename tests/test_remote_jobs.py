@@ -1186,15 +1186,35 @@ def test_verification_ready_without_campaign_acceptance(tmp_path, monkeypatch):
     calls = []
     def pushed(command, **kwargs):
         calls.append(command)
-        return subprocess.CompletedProcess(command, 0, host["commit"] + "\trefs/heads/splatter4d\n", "")
+        return subprocess.CompletedProcess(command, 0, host["commit"] + "\trefs/heads/main\n", "")
     monkeypatch.setattr(remote_jobs.subprocess, "run", pushed)
     assert backend.ready_verification(host, job) == evidence
     assert len(calls) == 2 and "ls-remote" in calls[0] and "merge-base" in calls[1]
+    assert calls[0][-3:] == ["ls-remote", "origin", "refs/heads/main"]
     with pytest.raises(remote_jobs.RemoteJobError, match="acceptance manifest"):
         backend.ready(host)
     host["evidence_manifest"] = "verification.json"
     with pytest.raises(remote_jobs.RemoteJobError, match="bootstrap"):
         backend.ready(host)
+
+
+def test_campaign_ready_checks_the_pinned_commit_against_origin_main(tmp_path, monkeypatch):
+    # origin/main contains the whole legacy splatter4d history, so old and new pinned commits are checked against it.
+    backend = remote.RemoteBackend(REPO, tmp_path / "runs", FakeClient())
+    monkeypatch.setattr(remote, "acceptance_manifest", lambda host, repo: {"accepted": True})
+    calls = []
+
+    def pushed(command, **kwargs):
+        calls.append(command)
+        return subprocess.CompletedProcess(command, 0, "f" * 40 + "\trefs/heads/main\n", "")
+
+    monkeypatch.setattr(remote.subprocess, "run", pushed)
+    assert backend.ready({"commit": COMMIT}) == {"accepted": True}
+    assert calls[0][-3:] == ["ls-remote", "origin", "refs/heads/main"]
+    assert calls[1][-4:] == ["merge-base", "--is-ancestor", COMMIT, "f" * 40]
+    monkeypatch.setattr(remote.subprocess, "run", lambda command, **kwargs: subprocess.CompletedProcess(command, 0, ""))
+    with pytest.raises(remote.RemoteJobError, match="origin/main"):
+        backend.ready({"commit": COMMIT})
 
 
 def test_scheduler_bootstrap_does_not_share_campaign_readiness(tmp_path, monkeypatch):
@@ -1210,7 +1230,7 @@ def test_scheduler_bootstrap_does_not_share_campaign_readiness(tmp_path, monkeyp
     backend, host, job, evidence = _rv_setup(tmp_path, monkeypatch)
     monkeypatch.setattr(scheduler, "REPO", tmp_path)
     monkeypatch.setattr(remote_jobs.subprocess, "run", lambda command, **kwargs:
-                        subprocess.CompletedProcess(command, 0, host["commit"] + "\trefs/heads/splatter4d\n", ""))
+                        subprocess.CompletedProcess(command, 0, host["commit"] + "\trefs/heads/main\n", ""))
     launches = []
     monkeypatch.setattr(backend, "snapshot", lambda: remote_jobs.RemoteSnapshot(
         {gpu: [] for gpu in APPROVED_HOST_GPUS["remote"]}, 200, 1000 * 2**30, 800 * 2**30, {}))

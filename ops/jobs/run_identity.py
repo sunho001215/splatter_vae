@@ -17,6 +17,9 @@ SHA256_RE = re.compile(r"[0-9a-f]{64}")
 IMAGE_RE = re.compile(r"sha256:[0-9a-f]{64}")
 JOB_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}")
 GENERATED_ROOTS = frozenset({"runs", "outputs", ".cache", ".pytest_tmp", ".pytest_cache", ".ruff_cache"})
+# Accepted (origin_branch -> origin_ref) of a release proof (as ops/remote/access.py RELEASE_ORIGIN_REFS): the single
+# branch `main` (since 2026-11-09) and the legacy `splatter4d` name earlier releases were proven under.
+RELEASE_ORIGIN_REFS = {"main": "refs/remotes/origin/main", "splatter4d": "refs/remotes/origin/splatter4d"}
 
 
 class RunIdentityError(RuntimeError):
@@ -123,22 +126,24 @@ def verify_remote_identity(repo: Path, env: Mapping[str, str] | None = None) -> 
     if not isinstance(proof, dict):
         raise RunIdentityError("Release proof must be a mapping")
     origin_commit = proof.get("verified_origin_commit")
+    origin_branch = proof.get("origin_branch")
+    origin_ref = RELEASE_ORIGIN_REFS.get(origin_branch) if isinstance(origin_branch, str) else None
     if (
         proof.get("commit") != commit
         or not isinstance(origin_commit, str)
         or COMMIT_RE.fullmatch(origin_commit) is None
         or proof.get("origin_commit", origin_commit) != origin_commit
-        or proof.get("origin_branch") != "splatter4d"
-        or proof.get("origin_ref") != "refs/remotes/origin/splatter4d"
+        or origin_ref is None
+        or proof.get("origin_ref") != origin_ref
         or proof.get("verified_ancestor") is not True
         or not isinstance(proof.get("bundle_sha256"), str)
         or SHA256_RE.fullmatch(proof["bundle_sha256"]) is None
         or not isinstance(proof.get("verified_at"), str)
         or not proof["verified_at"]
     ):
-        raise RunIdentityError("Release proof does not establish a pushed splatter4d commit")
+        raise RunIdentityError("Release proof does not establish a pushed main commit")
     verify_clean_release(repo, commit)
-    if _git(repo, "rev-parse", "refs/remotes/origin/splatter4d") != origin_commit:
+    if _git(repo, "rev-parse", origin_ref) != origin_commit:
         raise RunIdentityError("Verified origin commit differs from the checkout origin ref")
     if _git(repo, "remote", "get-url", "origin") != proof.get("origin_url"):
         raise RunIdentityError("Release proof origin URL differs from the checkout")

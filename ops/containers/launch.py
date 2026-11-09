@@ -10,7 +10,8 @@ import sys
 from pathlib import Path, PurePosixPath
 
 from ops.resources.gpu_guard import APPROVED_HOST_GPUS, LOCAL_MIG_PARENTS
-from ops.remote.access import REMOTE_ROOT, RemoteClient, RemoteCommandError, RemoteUnreachable, sha256
+from ops.remote.access import (ORIGIN_REF, RELEASE_ORIGIN_REFS, REMOTE_ROOT, RemoteClient, RemoteCommandError,
+                               RemoteUnreachable, sha256)
 from ops.jobs.host_roles import job_class
 from ops.jobs.retired import retired_reason
 from ops.jobs.remote_backend import (COTENANT_GPU_MARGIN_GB, COTENANT_LABELS, COTENANT_ROLES, OWNERSHIP_LABELS,
@@ -256,7 +257,10 @@ def validate_release_proof(proof: dict, commit: str) -> str:
     tip = proof.get("origin_commit")
     if not isinstance(tip, str) or not HEX40.fullmatch(tip):
         raise ValueError("Release origin commit is invalid")
-    if proof.get("origin_branch") != "splatter4d" or proof.get("origin_url") != ORIGIN_URL:
+    # Either the single branch (main) or the legacy name a release was proven under; its recorded ref must match it.
+    branch = proof.get("origin_branch")
+    ref = RELEASE_ORIGIN_REFS.get(branch) if isinstance(branch, str) else None
+    if ref is None or proof.get("origin_ref") != ref or proof.get("origin_url") != ORIGIN_URL:
         raise ValueError("Release origin is not the authorized branch")
     if "verified_origin_commit" in proof and proof["verified_origin_commit"] != tip:
         raise ValueError("Release origin proof is inconsistent")
@@ -275,9 +279,11 @@ def _bound_path(path: str) -> str:
 
 
 def build_remote_command(spec: dict, data_identity: str, origin_commit: str, proof_sha256: str,
-                         acceptance_sha256: dict[str, str], data_files: list[tuple[str, str]]) -> str:
+                         acceptance_sha256: dict[str, str], data_files: list[tuple[str, str]], *,
+                         origin_ref: str = ORIGIN_REF) -> str:
     spec = validate_spec(spec)
-    if not HEX64.fullmatch(data_identity) or not HEX40.fullmatch(origin_commit) or not HEX64.fullmatch(proof_sha256):
+    if (not HEX64.fullmatch(data_identity) or not HEX40.fullmatch(origin_commit) or not HEX64.fullmatch(proof_sha256)
+            or origin_ref not in RELEASE_ORIGIN_REFS.values()):
         raise ValueError("Invalid launch provenance")
     root, name, commit, image = REMOTE_ROOT, spec["container"], spec["commit"], spec["image_digest"]
     code = f"{root}/releases/{commit}/code"
@@ -413,7 +419,7 @@ def build_remote_command(spec: dict, data_identity: str, origin_commit: str, pro
         lines.append("bounded " + q(path))
     lines += ['test -d "$code/.git"; test -d ' + q(data), 'test "$(git -C "$code" rev-parse HEAD)" = "$commit"',
               'test -z "$(git -C "$code" status --porcelain --untracked-files=all)"',
-              'test "$(git -C "$code" rev-parse refs/remotes/origin/splatter4d)" = ' + q(origin_commit),
+              'test "$(git -C "$code" rev-parse ' + q(origin_ref) + ')" = ' + q(origin_commit),
               'git -C "$code" merge-base --is-ancestor "$commit" ' + q(origin_commit),
               'test "$(sha256sum -- "$proof" | cut -d\' \' -f1)" = ' + q(proof_sha256),
               "bounded " + q(f"{code}/{spec['script']}"), "test -f " + q(f"{code}/{spec['script']}"),
@@ -574,7 +580,8 @@ def launch(spec_path: Path, client: RemoteClient | None = None, *, wait: bool | 
     proof_path = f"{REMOTE_ROOT}/releases/{spec['commit']}/provenance.json"
     local_proof = client.state_dir / "proofs" / (spec["commit"] + ".json")
     client.rsync_download(proof_path, local_proof, wait=wait)
-    origin_commit = validate_release_proof(json.loads(local_proof.read_text()), spec["commit"])
+    proof = json.loads(local_proof.read_text())
+    origin_commit = validate_release_proof(proof, spec["commit"])
     acceptance = f"{REMOTE_ROOT}/runtime/acceptance/{spec['commit']}-{spec['image_digest'][7:]}"
     checksums = {}
     for path, name, digest in artifacts:
@@ -586,7 +593,8 @@ def launch(spec_path: Path, client: RemoteClient | None = None, *, wait: bool | 
         client.rsync_upload(extracted, f"{acceptance}/{name}", wait=wait)
         checksums[name] = sha256(extracted)
     data_files = [(item["target"], item["sha256"]) for item in payloads["data.json"]["files"]]
-    command = build_remote_command(spec, data_identity, origin_commit, sha256(local_proof), checksums, data_files)
+    command = build_remote_command(spec, data_identity, origin_commit, sha256(local_proof), checksums, data_files,
+                                   origin_ref=proof["origin_ref"])
     result = client.checked_ssh(command, wait=wait, idempotent=False, timeout=900)
     try:
         launched = json.loads(result.stdout)

@@ -116,8 +116,13 @@ def make_evidence(directory: Path):
 
 def release_proof():
     return {"commit": COMMIT, "origin_commit": "e" * 40, "verified_origin_commit": "e" * 40,
-            "origin_branch": "splatter4d", "origin_url": "https://github.com/sunho001215/splatter_vae.git",
+            "origin_branch": "main", "origin_ref": "refs/remotes/origin/main",
+            "origin_url": "https://github.com/sunho001215/splatter_vae.git",
             "verified_ancestor": True, "bundle_sha256": "f" * 64, "verified_at": "2026-10-10"}
+
+
+# A release synced before the 2026-11-09 branch rename records the legacy branch and ref.
+LEGACY = {"origin_branch": "splatter4d", "origin_ref": "refs/remotes/origin/splatter4d"}
 
 
 @pytest.mark.parametrize("key,value", [
@@ -236,13 +241,34 @@ def test_native_isolation_cannot_be_an_operator_only_assertion(tmp_path):
 
 
 @pytest.mark.parametrize("mutation", [
-    {"verified_ancestor": False}, {"origin_branch": "main"}, {"origin_url": "https://example.invalid/repo"},
+    {"verified_ancestor": False}, {"origin_branch": "feature-x"}, {"origin_url": "https://example.invalid/repo"},
     {"commit": "0" * 40}, {"verified_origin_commit": "0" * 40}, {"bundle_sha256": ""},
+    {"origin_branch": "feature-x", "origin_ref": "refs/remotes/origin/feature-x"}, {"origin_ref": None},
+    {"origin_branch": "splatter4d"}, {"origin_ref": "refs/remotes/origin/splatter4d"}, {"origin_ref": "refs/heads/main"},
+    {**LEGACY, "verified_origin_commit": "0" * 40},
 ])
 def test_release_proof_rejects_unpushed_or_other_code(mutation):
     proof = {**release_proof(), **mutation}
     with pytest.raises(ValueError):
         validate_release_proof(proof, COMMIT)
+
+
+@pytest.mark.parametrize("recorded", [{}, LEGACY])
+def test_release_proof_accepts_main_and_legacy_branch_releases(recorded):
+    assert validate_release_proof({**release_proof(), **recorded}, COMMIT) == "e" * 40
+
+
+def test_main_release_command_differs_from_legacy_only_in_the_origin_ref():
+    def command(**kwargs):
+        return build_remote_command(job_spec(), DATA_ID, "e" * 40, "f" * 64, {"tests.json": "1" * 64},
+                                    [(REMOTE_ROOT + "/data/hammer.hdf5", "d" * 64)], **kwargs)
+
+    current, legacy = command(), command(origin_ref=LEGACY["origin_ref"])
+    assert 'test "$(git -C "$code" rev-parse refs/remotes/origin/main)" = ' + "e" * 40 in current.splitlines()
+    assert current == legacy.replace("rev-parse refs/remotes/origin/splatter4d)", "rev-parse refs/remotes/origin/main)")
+    for ref in ("refs/remotes/origin/feature-x", "refs/heads/main", "origin/main", "refs/remotes/origin/main; id"):
+        with pytest.raises(ValueError, match="launch provenance"):
+            command(origin_ref=ref)
 
 
 @pytest.mark.parametrize("gpu_backend", ["cdi", "legacy"])
@@ -297,7 +323,8 @@ def test_metaworld_command_is_byte_identical_to_before_realworld_mounts(gpu_back
     spec.update(role="metaworld", gpu_backend=gpu_backend, script="scripts/" + script)
     spec["args"] += ["--config", "configs/metaworld/tasks/hammer.yaml"]
     command = build_remote_command(spec, DATA_ID, "e" * 40, "f" * 64, {"tests.json": "1" * 64},
-                                   [(REMOTE_ROOT + "/data/metaworld/splatter4d_v1/hammer.hdf5", "d" * 64)])
+                                   [(REMOTE_ROOT + "/data/metaworld/splatter4d_v1/hammer.hdf5", "d" * 64)],
+                                   origin_ref=LEGACY["origin_ref"])  # a legacy-branch release: byte-identical
     assert hashlib.sha256(command.encode()).hexdigest() == original_sha256
 
 
@@ -321,7 +348,8 @@ def test_realworld_command_is_byte_identical_before_mount_refactor(gpu_backend, 
     spec.update(gpu_backend=gpu_backend, script="scripts/" + script)
     spec["args"] += ["--config", "configs/realworld/baselines/reviwo/drawer-open.yaml"]
     command = build_remote_command(spec, DATA_ID, "e" * 40, "f" * 64, {"tests.json": "1" * 64},
-                                   [(REMOTE_ROOT + "/data/hammer.hdf5", "d" * 64)])
+                                   [(REMOTE_ROOT + "/data/hammer.hdf5", "d" * 64)],
+                                   origin_ref=LEGACY["origin_ref"])  # a legacy-branch release: byte-identical
     assert hashlib.sha256(command.encode()).hexdigest() == original_sha256
 
 
@@ -540,10 +568,11 @@ def test_existing_attempt_is_returned_without_second_launch_or_foreign_changes(
 
 
 class FakeClient:
-    def __init__(self, root: Path, response):
+    def __init__(self, root: Path, response, proof: dict | None = None):
         self.main_repo = root
         self.state_dir = root / "access"
         self.response = response
+        self.proof = release_proof() if proof is None else proof
         self.calls = []
 
     def check_tunnel(self, wait):
@@ -551,7 +580,7 @@ class FakeClient:
 
     def rsync_download(self, remote, local, wait):
         local.parent.mkdir(parents=True, exist_ok=True)
-        local.write_text(json.dumps(release_proof()))
+        local.write_text(json.dumps(self.proof))
         self.calls.append(("download", remote, wait))
 
     def rsync_upload(self, local, remote, wait):
@@ -580,6 +609,34 @@ def test_launcher_mirrors_native_report_separately_from_provenance_binding(tmp_p
     assert json.loads(Path(binding[1]).read_text())["report"]["full_suite_passed"] is True
     ssh = [call for call in client.calls if call[0] == "ssh"][0]
     assert ssh[2]["idempotent"] is False and ssh[2]["wait"] is False
+
+
+@pytest.mark.parametrize("recorded", [{}, LEGACY])
+def test_launch_checks_the_origin_ref_its_release_proof_records(tmp_path, recorded):
+    """New releases are proven against origin/main; one proven under the legacy branch name stays launchable."""
+    spec = job_spec()
+    spec["evidence"] = make_evidence(tmp_path / "acceptance")
+    path = tmp_path / "job.json"
+    path.write_text(json.dumps(spec))
+    proof = {**release_proof(), **recorded}
+    expected = {"container_id": "7" * 64, "container": spec["container"]}
+    client = FakeClient(tmp_path, json.dumps(expected), proof)
+    assert launch(path, client, wait=False) == expected
+    command = [call[1] for call in client.calls if call[0] == "ssh"][0].splitlines()
+    checks = [line for line in command if "rev-parse refs/remotes/origin/" in line]
+    assert checks == ['test "$(git -C "$code" rev-parse ' + proof["origin_ref"] + ')" = ' + "e" * 40]
+
+
+def test_launch_refuses_a_release_proven_on_another_branch(tmp_path):
+    spec = job_spec()
+    spec["evidence"] = make_evidence(tmp_path / "acceptance")
+    path = tmp_path / "job.json"
+    path.write_text(json.dumps(spec))
+    proof = {**release_proof(), "origin_branch": "feature-x", "origin_ref": "refs/remotes/origin/feature-x"}
+    client = FakeClient(tmp_path, json.dumps({"container_id": "7" * 64, "container": spec["container"]}), proof)
+    with pytest.raises(ValueError, match="authorized branch"):
+        launch(path, client, wait=False)
+    assert not any(call[0] in ("ssh", "upload") for call in client.calls)
 
 
 def test_unsupported_cdi_fails_closed_without_legacy_retry(tmp_path):

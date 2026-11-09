@@ -143,6 +143,12 @@ CUDA_VISIBLE_DEVICES="$GPU4" .venv/bin/python -I scripts/run_tests.py
 .venv/bin/ruff check s4d ops scripts tests
 ```
 
+**Single branch: `main` (since 2026-11-09; formerly `splatter4d`).** Integrate tested work into `main` and publish it
+with `git push origin main`; there is no other long-lived branch. `sync_code.sh` releases only commits that are
+ancestors of `origin/main` and records `origin_branch: main` / `origin_ref: refs/remotes/origin/main` in the release
+proof. Releases proven under `origin/splatter4d` before the rename keep their proofs unchanged and stay launchable (the
+launcher and the in-container identity check accept either recorded form); nothing requires `origin/splatter4d` to exist.
+
 ## Working with Codex (user policy 2026-11-09, in force until the user changes it)
 
 - Use the shared account first, through plain `codex` (`CODEX_HOME=/root/.codex-public`, provider `cliproxyapi`; the
