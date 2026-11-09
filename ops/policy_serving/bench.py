@@ -9,7 +9,9 @@ FQL / total, end-to-end = start of the step's first preprocessing -> decoded act
 (history fill) and of steady-state steps (only new frames). Inputs are SYNTHETIC native frames (random RGB, random
 metric depth with holes), a synthetic regular 15 Hz capture clock and, where the condition needs them, a synthetic
 calibration / identity native depth correction / zero M5 motion: they exercise the exact transport and compute path,
-never a learned behaviour. numpy + stdlib (+ the torch-free deploy preprocessing); never talks to a robot.
+never a learned behaviour. End-to-end here EXCLUDES camera capture/transfer, rs.align and the colour-z conversion (the
+synthetic depth is already on the colour grid), so live 3D-MVP end-to-end is larger by those stages. numpy + stdlib
+(+ the torch-free deploy preprocessing); never talks to a robot.
 """
 
 from __future__ import annotations
@@ -84,6 +86,7 @@ def run(client: PolicyClient, *, mode: str = "paced", steps: int = 300, warmup: 
                 d[rng.random((h, w)) < 0.05] = 0
             frames[c].append((rgb, d, None if d is None else d > 0))
     corr = (client.choices.get("native_depth_correction") or {}) if depth else {}
+    Ks = {c: v["K_native"] for c, v in (client.choices.get("calibration") or {}).items()}
     base = time.monotonic_ns()
     next_id = dict.fromkeys(cams, 0)
     rows, t_starts = [], []
@@ -103,7 +106,7 @@ def run(client: PolicyClient, *, mode: str = "paced", steps: int = 300, warmup: 
                 rgb, d, valid = frames[c][k % pool]
                 client.add_frame_native(c, k, base + int(round(k * period_s * 1e9)) + v * 1_000_000, rgb,
                                         pose7=[0.4, 0.0, 0.3, 0.0, 0.0, 0.0, 1.0], gripper_register=3.0, depth=d,
-                                        valid=valid, native_correction=corr.get(c))
+                                        valid=valid, native_correction=corr.get(c), K_native=Ks.get(c))
                 next_id[c] = k + 1
             if spec["views"] > 1:
                 client.add_sync_set({c: next_id[c] - 1 for c in cams}, 0.0)
@@ -131,7 +134,8 @@ def run(client: PolicyClient, *, mode: str = "paced", steps: int = 300, warmup: 
                           "steady_request_median": float(np.median(steady)) if steady else None,
                           "steady_frames": rows[1]["frames_sent"] if len(rows) > 1 else None,
                           "response_median": float(np.median([r["response_bytes"] for r in ok])) if ok else None},
-        "inputs": "SYNTHETIC native frames / capture clock / calibration (bench only)",
+        "inputs": "SYNTHETIC native frames / capture clock / calibration (bench only); e2e excludes capture, rs.align "
+                  "and colour-z conversion",
         "rows": rows,
     }
 

@@ -27,6 +27,8 @@ SERVER_DEFAULTS = {
     "max_frames_per_step": 64,
     "history_capacity": None,
     "max_sessions_per_policy": 1,
+    "max_connections": 16,
+    "gpu_uuid": None,
     "warmup_iterations": 3,
     "warmup_native_hw": [480, 640],
     "default_policies": [],

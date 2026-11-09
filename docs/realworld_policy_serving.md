@@ -26,25 +26,29 @@ header: {"type", "v": 1, ...fields..., "arrays": [{"name", "dtype", "shape", "of
 
 Wire dtypes: `|u1 |b1 <u2 <i4 <i8 <f4 <f8` (uint8 RGB, bool validity, float32 metres / normalized actions / noise,
 float64 poses, int64 timestamps). Arrays travel at their exact dtype; no compression (128 px frames: 49 KB RGB,
-+64 KB depth + 16 KB validity per RGB-D frame). Malformed tables, header > `max_header_bytes` or payload >
-`max_payload_bytes` are fatal (`bad_request`, connection closed: the stream cannot be re-synchronised).
++64 KB depth + 16 KB validity per RGB-D frame). Malformed tables, NaN / Infinity in the JSON, header >
+`max_header_bytes` or payload > `max_payload_bytes` (64 KiB each until a HELLO bound a session) are fatal (`bad_request`,
+connection closed: the stream cannot be re-synchronised). A message cut by the reader's deadline (the client's step
+deadline, at most `io_timeout_s`) also makes the connection unusable: it is dropped and the client resumes.
 
 | message | direction | fields |
 |---|---|---|
 | WELCOME | s -> c (on connect) | `server`, `nonce`, `auth_required`, `policies: {id: {input_spec (unbound), info}}` |
 | HELLO | c -> s | `policy_id`, `choices` {`camera_id` (single view), `native_hw` {cam: [H, W]}, `calibration` {cam: {K_native, c2w}}, `native_depth_correction` {cam: ...}}, `resume` {session_id, last_ack} or null, `auth` (HMAC), `takeover` |
 | SPEC | s -> c | `session_id`, `resumed`, `input_spec` (bound `InputSpec.to_json()`), `limits`, `last_seq_received`, `redeliver` [seq] |
-| STEP | c -> s | `session_id`, `seq`, `frames` [NEW frames only: `camera_id`, `frame_id` (camera acquisition counter), `capture_ns` (client monotonic), `pose7`, `gripper_register` (measured at that frame), `metadata` (depth: `depth_source`, `native_correction`), `arrays` {rgb, depth, valid}], `sets` [multi-view: `frame_ids` {cam: id}, `surface_disp_m` (M5; null = no valid robot state)], `request` {`end_ids` {cam: id}, `reference_id`, `pose7` + `pose_time_ns`, `gripper_register` + `gripper_time_ns` (the measured samples bound to the observation, client monotonic), `ttl_ms`, `pad_run_start`, validation `noise` (array, float32 (1, 7)) or `noise_seed`} |
+| STEP | c -> s | `session_id`, `seq`, `frames` [NEW frames only: `camera_id`, `frame_id` (camera acquisition counter), `capture_ns` (client monotonic), `pose7`, `gripper_register` (measured at that frame), `metadata` (`native_hw` [H, W] of the native colour frame, `K` at the training grid for calibrated conditions; depth: `depth_source`, `native_correction`), `arrays` {rgb, depth, valid}], `sets` [multi-view: `frame_ids` {cam: id}, `surface_disp_m` (M5; null = no valid robot state)], `request` {`end_ids` {cam: id}, `reference_id`, `pose7` + `pose_time_ns`, `gripper_register` + `gripper_time_ns` (the measured samples bound to the observation, client monotonic), `ttl_ms`, `pad_run_start`, validation `noise` (array, float32 (1, 7)) or `noise_seed`} |
 | ACTION | s -> c | `seq`, `ack`, `status: ok`, `reference_id`, `outputs` + `output_arrays` (`DeployPolicy.infer` verbatim: `action_norm`, `delta_phys`, `flange_pose`, `execution_flange_pose`, `gripper_closure`, `gripper_register`, `measured_pose7`, `obs_ids`, `frame_timestamps_ns`, `metadata`, `timings`), `server_ms` {prep, queue, validation, encoder, fql, policy, infer, total} |
 | ERROR | s -> c | `code`, `detail`, `seq`/`ack`, `history_reset`, `fatal` |
 | RESET / RESET_OK | c -> s / s -> c | `seq` (same sequence space as STEP): explicit history reset, the session stays bound |
 | PING / PONG | c -> s / s -> c | `t_client_ns` echoed, `t_server_ns` |
 | BYE | c -> s | ends the session at once |
 
-Error codes: `version`, `auth` (fatal); `bad_request` (malformed, wrong sizes/dtypes, or an input the deploy contract
-refuses); `session_unknown` (expired / ended / evicted / server restarted); `session_busy`; `incomplete_history`;
+Error codes: `version`, `auth` (fatal); `bad_request` (malformed, wrong sizes/dtypes, a frame of another native grid or
+intrinsics than the session's, or an input the deploy contract refuses); `session_unknown` (expired / ended / server
+restarted); `session_busy`; `session_taken_over` (evicted by another client's takeover: stop); `incomplete_history`;
 `irregular_spacing`; `unsynchronized` (mutual-nearest or M5); `binding_refused` (pose / gripper sample not the
-observation's, training ages 15 / 100 ms); `duplicate`; `stale`; `overloaded`; `shutting_down`; `internal`.
+observation's, training ages 15 / 100 ms); `duplicate` (repeated seq whose response was evicted); `stale`;
+`overloaded` (queue full, or the connection cap); `shutting_down`; `internal` (the worker stays alive).
 Deploy refusals map by class (`s4d.rwlearn.deploy.errors`), never by message text.
 
 **Validation mode.** `noise_seed` -> `np.random.default_rng(seed).standard_normal((1, 7), float32)`
@@ -56,14 +60,25 @@ either the server's FQL noise stream is used (production).
 * **Sessions.** HELLO binds the session once (`DeployPolicy.reset_session(concurrent=True)`: cameras, native grids,
   static calibration, native depth correction); sessions share the loaded model, at most `max_sessions_per_policy`
   (default 1 = one controller); another HELLO gets `session_busy` or, with `takeover: true`, evicts the least recently
-  active one. Sessions expire after `session_idle_timeout_s` without traffic (PING counts) or end on BYE
-  (`end_session`: their windows are refused from then on).
+  active one, whose client is told at once (`session_taken_over`). Sessions expire after `session_idle_timeout_s`
+  without traffic (PING counts) or end on BYE / server shutdown (`end_session`: their windows are refused from then on).
+* **Takeover is terminal for the evicted client.** `step()` then returns `StepResult(code="session_taken_over")`
+  (`result.terminal`; `submit()` raises `SessionTakenOver`), also when a disconnected client tries to renew a lost
+  session and finds the policy held by another client. It never re-HELLOs by itself: the robot loop must stop;
+  `connect()` again only deliberately.
+* **Native geometry.** Every frame declares its native colour grid (and, for calibrated conditions, its intrinsics at
+  the training grid); client and server refuse frames that differ from the grid / calibration bound at HELLO (the
+  server crops K from the session's grid, so another stream resolution would otherwise get a wrong K silently).
+  `RealSenseCapture` checks the stream at start and on every frame.
 * **History.** The client sends each frame once; the server assembles the trained history (3 frames at spacing 1,
   multi-view: synchronised steps) ending at `end_ids`. A missing frame (or set) -> `incomplete_history`; frame ids or
   capture times off the trained spacing -> `irregular_spacing`; never re-spaced, padded or substituted.
   `pad_run_start: true` applies the training rule (frame-stack padding at a run start) and nothing else.
   RESET clears the server history; a frame refused by the contract (or a refused message that carried frames)
-  also clears it (`history_reset: true`) and the client re-sends its buffered frames.
+  also clears it (`history_reset: true`) and the client re-sends its buffered frames. Re-sending frames the server
+  holds is idempotent (identical id + capture time: skipped); a re-sent buffer OLDER than frames already held (a
+  pipelined request pushed newer ones after the reset), or a conflicting frame, rebuilds the session history from that
+  message (counted as `history_rebuilds`), so a re-send can never dead-end.
 * **Sequencing.** Per-session `seq` strictly increasing. A repeated seq returns the cached response (no
   re-inference); one still running is answered once when done; an evicted one -> `duplicate`. Responses are cached
   (`response_cache`) before delivery, so a resumed session gets the ones it missed (`last_ack`).
@@ -71,20 +86,35 @@ either the server's FQL noise stream is used (production).
   a newer one supersedes it (`stale`). A request not started within `ttl_ms` of its arrival -> `stale`. Queue full
   -> `overloaded`.
 * **Client.** Reconnect with backoff (`reconnect_backoff_s`), resume (session id + last ack), re-send unacknowledged
-  requests with their original seq; a lost session is renewed and the in-flight steps return `session_unknown`.
-  Responses for requests no longer awaited, from another session, or ACTIONs older than an ACTION already received are
-  dropped. `step()` returns `timeout` after `step_timeout_s`.
+  requests with their original seq; a lost session is renewed ONCE (pipelined `session_unknown` answers do not nest a
+  second HELLO) and the in-flight steps return `session_unknown`. Responses for requests no longer awaited, from
+  another session, or ACTIONs older than an ACTION already received are dropped. `step()` returns `timeout` after
+  `step_timeout_s` and never raises for a lost connection or a takeover. Before sending, the client checks the training
+  binding rule (pose / gripper sample at or before the observation, <= 15 / 100 ms old).
+* **Timings.** `e2e_ms` = first preprocessing of a NEW frame of the step -> decoded action. Frames re-sent after a
+  renewal / history reset are not this step's work: they are reported apart (`resent_frames`, `resent_wait_ms`).
+  `capture_to_action_ms` / `check_action` ages start at the capture time.
 * **Actions are bound.** Every action carries the `reference_id`, frame ids and observation time it was computed
   from, and its goal `flange_pose` is relative to the measured pose of THAT observation. The robot executes the
   absolute goal (through its own safety layer, which stays on the robot PC with the high-rate control) or nothing:
   `client.check_action(result, reference_id=..., now_ns=time.monotonic_ns(), max_age_ms=...)` refuses actions of
   another pose, another session or older than `max_action_age_ms`; never re-apply `delta_phys` to a newer pose.
-* **Clocks.** Every timestamp in a request (frames, pose/gripper sample times) is on the robot PC's monotonic clock;
-  the server compares them only with each other. Live RealSense: `client.DeviceClock` maps device timestamps to the
-  host clock with a frozen offset (regular spacing preserved). Server durations are server-clock differences.
-* **Auth.** Optional shared token: the server reads it from `--token-file` at launch; the client proves it with
-  HMAC-SHA256(token, per-connection nonce). The token is never sent, stored in source/config or logged. Use it whenever
-  the server binds beyond loopback.
+* **Clocks.** Every timestamp in a request (frames, pose/gripper sample times) is on the robot PC's CLOCK_MONOTONIC;
+  the server compares them only with each other. Live RealSense: `client.DeviceClock` reproduces the recorder's
+  training frame times exactly: `t = hw_timestamp_ms / 1e3 - (t_recv_unix - t_recv)`, i.e. the librealsense
+  GLOBAL_TIME stamp minus the realtime-to-monotonic offset sampled at receipt, refreshed every frame, no pipeline
+  latency added (arrival is ~65 ms later); other timestamp domains are refused. The recorder's source is not in this
+  repository: the rule is read from its recordings (holds to <= 0.36 us on 5964 colour + stereo frames of 10 episodes
+  of all 5 task folders; `tests/test_policy_serving.py` pins recorded rows). Server durations are server-clock
+  differences.
+* **Auth and limits.** Shared token: the server reads it from `--token-file` at launch; the client proves it with
+  HMAC-SHA256(token, per-connection nonce). The token is never sent, stored in source/config or logged. It is REQUIRED
+  whenever the server binds beyond loopback (the server refuses to start otherwise). Messages are capped at 64 KiB
+  until a HELLO bound a session; at most `max_connections` connections (more are answered `overloaded` and closed).
+* **GPU.** `--device cuda` serves only on `server.gpu_uuid`, enforced by `ops.resources.gpu_guard` before torch loads
+  (`S4D_HOST_CONFIG` = absolute `configs/hosts/inference.yaml`, `CUDA_VISIBLE_DEVICES` = exactly that UUID, torch's
+  device UUID checked); the server refuses to start otherwise. FIXTURE checkpoints are refused without
+  `--allow-fixture`.
 
 ## Launch
 
@@ -94,7 +124,8 @@ deployment decides code path, checkpoint root and port):
 ```bash
 # irsl host: worktree revision under ~/shkim/src (see realworld-ops/serving/SURVEY.md), checkpoints + deploy-contract
 # sidecars (scripts/check_realworld_deploy.py contracts) copied into the container RAM root, e.g. /ram/serving/checkpoints
-docker exec -d -w /opt/src/splatter4d-serve shkim_rw sh -c 'exec /opt/envs/s4d/bin/python -I -B \
+docker exec -d -w /opt/src/splatter4d-serve -e CUDA_VISIBLE_DEVICES=GPU-9bcf38b6-8240-e910-6548-ca715643dc11 \
+  -e S4D_HOST_CONFIG=/opt/src/splatter4d-serve/configs/hosts/inference.yaml shkim_rw sh -c 'exec /opt/envs/s4d/bin/python -I -B \
   ops/policy_serving/server.py serve --config configs/realworld/policy_serving.yaml \
   --policies dynamo-drawer-open,mvp3d_single-drawer-open --bind 0.0.0.0 --port 47100 \
   --checkpoint-root /ram/serving/checkpoints --token-file /ram/serving/token > /ram/serving/server.log 2>&1'
@@ -160,6 +191,13 @@ cd <worktree> && mkdir -p outputs && source scripts/gpu_env.sh && \
 ## Limits and open items
 
 * `max_sessions_per_policy` (default 1) sessions share one loaded policy; inference is serialised per policy.
+* The deploy history applies the 1 % timing tolerance to every interval of a window; training only splits runs above
+  1.5 periods, so intervals of 1.01-1.5 periods are refused for two steps where training would have used them (safe,
+  stricter than training; science decision, `s4d.rwlearn.deploy`).
+* Bench `e2e_ms` excludes camera capture/transfer, rs.align and the colour-z conversion (its synthetic depth is already
+  on the colour grid): live 3D-MVP end-to-end is larger by those stages.
+* `ttl_ms` is counted from arrival on the server; the authoritative freshness check is `check_action` on the robot.
+* The token authenticates the client but does not encrypt or integrity-protect payloads (the SSH tunnel does).
 * Live multi-view (SNeRL, 3D-MVP multi-view) must NOT run yet: the robot PC would have to compute each synchronised
   set's M5 robot-surface displacement with the training rule (URDF surface FK) and no validated helper exists
   (science API R3). Recorded replay takes it from the training store; single-view conditions need no M5.

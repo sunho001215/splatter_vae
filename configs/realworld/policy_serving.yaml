@@ -8,7 +8,9 @@ protocol_version: 1
 server:
   bind_host: 127.0.0.1          # inside shkim_rw; the client reaches it through an SSH -L tunnel (no published port)
   port: 47100
-  device: cuda                  # the container sees only the designated GPU (cuda:0 inside)
+  device: cuda                  # cuda:0 = gpu_uuid, enforced by ops.resources.gpu_guard (see gpu_uuid)
+  gpu_uuid: GPU-9bcf38b6-8240-e910-6548-ca715643dc11   # the designated RTX 5090; CUDA_VISIBLE_DEVICES must be exactly it
+                                # and S4D_HOST_CONFIG=<abs repo>/configs/hosts/inference.yaml (fail-closed otherwise)
   checkpoint_root: /ram/serving/checkpoints   # relative policy paths below; host copy ~/shkim/serving/checkpoints
   max_queue: 4                  # bounded inference queue (all sessions); a session keeps at most one queued request
   session_idle_timeout_s: 30    # a session without traffic (incl. PING) expires; resume after that -> new session
@@ -19,6 +21,7 @@ server:
   max_frames_per_step: 64
   history_capacity: null        # frames kept per camera (null: deploy default 2 x history span + 2)
   max_sessions_per_policy: 1    # live sessions sharing one loaded policy (1 = one controller; HELLO takeover evicts)
+  max_connections: 16           # open connections (2 threads each); more are answered "overloaded" and closed
   warmup_iterations: 3          # synthetic, labelled warm-up per policy at start (DeployPolicy.warm_up)
   warmup_native_hw: [480, 640]
   default_policies: []          # ids served when --policies is not given

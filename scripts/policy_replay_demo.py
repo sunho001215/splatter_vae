@@ -1,8 +1,10 @@
 """DRY-RUN recorded-episode demo of network policy serving. NEVER sends anything to a robot.
 
 Recorded ``panda_teleop_episode`` H5 (read-only) -> the robot-side client exactly as live (training crop + 128 px
-resize on this CPU; for 3D-MVP the recorded native z16 depth aligned to colour by the ``sensor_depth`` kernel, the rig
-calibration loaded once) -> policy server -> actions JSONL, compared with the recorded commands (``actions.step_table``)
+resize on this CPU; for 3D-MVP the recorded native z16 depth aligned to colour by ``--alignment``: ``rs_align``
+(default, the validated emulation of the live rs.align + colour-z path) or ``sensor_depth`` (the release stage
+kernel), each frame labelled with the alignment actually used; the rig calibration loaded once) -> policy server ->
+actions JSONL, compared with the recorded commands (``actions.step_table``)
 and, with ``--direct-checkpoint``, with ``DeployPolicy.infer`` run here on the identical frames, binding and FQL noise
 (validation mode: ``--noise-seed``; per step seed = base + step).
 
@@ -89,6 +91,18 @@ def recorded_commands(rec, cams: list, steps: list, spec: dict) -> dict:
     return {"ok": tab.transition_ok, "action_phys": tab.action_phys}
 
 
+def depth_metadata(native: dict) -> dict:
+    """Frame provenance of the recorded native depth, labelled from the alignment ``RecordedEpisode.native`` used."""
+    if "depth" not in native:
+        return {}
+    return {"alignment": f"{native['alignment']} (recorded replay)", "depth_timestamp_ns": native["depth_timestamp_ns"]}
+
+
+def first_request(rows: list) -> int | None:
+    """Bytes of the first request actually sent (rows skipped before a request carry none)."""
+    return next((r["request_bytes"] for r in rows if r["status"] != "skipped"), None)
+
+
 def compare_recorded(out: dict, phys: np.ndarray) -> dict:
     from s4d.rwlearn import actions as A
 
@@ -156,6 +170,8 @@ def main(argv=None) -> int:
     ap.add_argument("--token-file", default=None)
     ap.add_argument("--camera", default=None, help="single-view camera serial (default: first trained camera)")
     ap.add_argument("--rig-document", type=Path, default=None)
+    ap.add_argument("--alignment", default="rs_align", choices=("rs_align", "sensor_depth"),
+                    help="recorded native depth -> colour grid: rs_align (live-path emulation) or sensor_depth")
     ap.add_argument("--m5-store", type=Path, default=None)
     ap.add_argument("--start", type=int, default=0)
     ap.add_argument("--steps", type=int, default=60)
@@ -201,10 +217,9 @@ def main(argv=None) -> int:
                 end_ids[c], t_obs = seq, max(t_obs, t)
                 if seq <= added[c]:
                     continue
-                n = rec.native(c, idx, depth=depth)
+                n = rec.native(c, idx, depth=depth, alignment=args.alignment)
                 corr = choices.get("native_depth_correction", {}).get(c)
-                meta = {"alignment": "sensor_depth register_depth (recorded replay)",
-                        "depth_timestamp_ns": n["depth_timestamp_ns"]} if depth else {}
+                meta = depth_metadata(n)
                 try:  # per-frame measured state: informational frame metadata (the request binds its own)
                     state_f = rec.state_at(t)
                 except ValueError:
@@ -213,7 +228,7 @@ def main(argv=None) -> int:
                 pre = client.add_frame_native(c, seq, t, n["rgb"], pose7=state_f["pose7"],
                                               gripper_register=state_f["gripper_register"], depth=n.get("depth"),
                                               valid=n.get("valid"), native_correction=corr if depth else None,
-                                              metadata=meta)
+                                              K_native=rec.K_native(c), metadata=meta)
                 added[c] = seq
                 if direct is not None:
                     fmeta = {"depth_source": "native_realsense", "native_correction": corr, **meta} if depth else {}
@@ -229,8 +244,15 @@ def main(argv=None) -> int:
                              "dry_run": True})
                 continue
             seed = None if args.noise_seed is None else args.noise_seed + args.start + i
-            r = client.step(end_ids, ref, state["pose7"], state["gripper_register"], pose_time_ns=state["pose_time_ns"],
-                            gripper_time_ns=state["gripper_time_ns"], pad_run_start=not args.no_pad, noise_seed=seed)
+            try:
+                r = client.step(end_ids, ref, state["pose7"], state["gripper_register"],
+                                pose_time_ns=state["pose_time_ns"], gripper_time_ns=state["gripper_time_ns"],
+                                pad_run_start=not args.no_pad, noise_seed=seed)
+            except ValueError as exc:  # the recorded state is too old for the training binding rule: no request
+                rows.append({"step": args.start + i, "reference_id": ref, "status": "skipped",
+                             "code": "binding_refused", "detail": str(exc), "client_ms": {}, "server_ms": {},
+                             "request_bytes": 0, "dry_run": True})
+                continue
             row = {"step": args.start + i, "reference_id": ref, "end_ids": end_ids, "observation_time_ns": t_obs,
                    "status": r.status, "code": r.code, "detail": r.detail, "frames_sent": r.frames_sent,
                    "request_bytes": r.request_bytes, "response_bytes": r.response_bytes,
@@ -263,7 +285,7 @@ def main(argv=None) -> int:
         "condition": spec["condition"], "cameras": cams, "steps": len(rows), "ok": len(ok),
         "errors": dict(collections.Counter(r["code"] or r["status"] for r in rows if r["status"] != "ok")),
         "noise": "explicit validation noise (seed base + step)" if args.noise_seed is not None else "server FQL RNG",
-        "direct": None if direct is None else {"compared": len(rows),
+        "direct": None if direct is None else {"compared": sum("direct_equal" in r for r in rows),
                                                "equal": sum(bool(r.get("direct_equal")) for r in rows)},
         "vs_recorded": None if not vs else {k: float(np.median([v[k] for v in vs])) for k in vs[0]},
         "vs_recorded_n": len(vs),
@@ -271,7 +293,7 @@ def main(argv=None) -> int:
                       for k in ("e2e_ms", "preprocess_ms", "serialize_ms", "rtt_ms", "network_ms")},
         "server_ms": {k: _percentiles(r["server_ms"].get(k) for r in ok)
                       for k in ("queue_ms", "encoder_ms", "fql_ms", "total_ms")},
-        "payload_bytes": {"first_request": rows[0]["request_bytes"] if rows else None,
+        "payload_bytes": {"first_request": first_request(rows),
                           "steady_request_median": float(np.median([r["request_bytes"] for r in ok[1:]]))
                           if len(ok) > 1 else None},
         "client_stats": dict(client.stats),

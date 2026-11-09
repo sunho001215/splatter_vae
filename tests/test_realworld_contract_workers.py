@@ -96,9 +96,11 @@ def test_run_stage_is_atomic_and_restartable(tmp_path):
 def test_existing_code_does_not_import_realworld():
     out = subprocess.run(["git", "-C", str(REPO), "grep", "-l", "s4d.realworld", "--", "s4d", "scripts"],
                          capture_output=True, text=True).stdout.split()
-    # the package's own entry points (scripts/realworld_*.py) and the real-world learning package built on its store
-    # (s4d/rwlearn: real-world baselines + offline FQL) may import it; nothing else may
-    assert all(p.startswith(("s4d/realworld/", "s4d/rwlearn/", "scripts/realworld_")) for p in out), out
+    # the package's own entry points (scripts/realworld_*.py), the real-world learning package built on its store
+    # (s4d/rwlearn: real-world baselines + offline FQL) and the read-only deployment audit of that package
+    # (scripts/check_realworld_deploy.py, 2026-11-09) may import it; nothing else may
+    allowed = ("s4d/realworld/", "s4d/rwlearn/", "scripts/realworld_", "scripts/check_realworld_deploy.py")
+    assert all(p.startswith(allowed) for p in out), out
 
 
 def test_upstream_worker_scripts_compile_and_never_import_upstream_at_module_level():
@@ -137,7 +139,7 @@ def test_configs_parse_and_pins_are_full_shas():
         assert len(sha) == 40 and all(c in "0123456789abcdef" for c in sha)
     assert not {"map_anything", "alltracker"} & set(pins)  # retired with the raw-DROID route (2026-11-06)
     configs = sorted(p.stem for p in (REPO / "configs/realworld").glob("*.yaml"))
-    assert configs == ["inference_server", "mug_hanging", "upstream_pins"], configs
+    assert configs == ["inference_server", "mug_hanging", "policy_serving", "upstream_pins"], configs
     for name in configs:
         assert isinstance(yaml.safe_load((REPO / f"configs/realworld/{name}.yaml").read_text()), dict)
     cfg = yaml.safe_load((REPO / "configs/realworld/mug_hanging.yaml").read_text())

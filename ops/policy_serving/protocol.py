@@ -49,6 +49,7 @@ ERROR_CODES = {
     "bad_request": "malformed message, payload sizes, unknown fields or inputs the deploy contract refuses",
     "session_unknown": "no such (live) session: expired, ended, evicted or the server restarted; HELLO again",
     "session_busy": "the policy already serves another live session (HELLO takeover=true evicts it explicitly)",
+    "session_taken_over": "this session was evicted by another client's takeover: the robot loop must stop",
     "incomplete_history": "a frame (or multi-view set) required at the trained history spacing is missing",
     "irregular_spacing": "frame ids or capture times do not follow the trained history spacing",
     "unsynchronized": "multi-view set fails mutual-nearest synchronisation or the training M5 motion bound",
@@ -123,11 +124,20 @@ def encode(header: dict, arrays: dict | None = None) -> bytes:
     return b"".join([PREFIX.pack(len(raw)), raw, *blobs])
 
 
+def _no_constant(name: str):
+    raise ValueError(f"non-finite JSON number {name} refused")
+
+
+def loads_strict(text: str):
+    """JSON without NaN / Infinity (Python's json accepts them by default; the wire never carries them)."""
+    return json.loads(text, parse_constant=_no_constant)
+
+
 def parse_header(raw: bytes | bytearray | memoryview, *, max_payload_bytes: int) -> dict:
     try:
-        header = json.loads(bytes(raw).decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise ProtocolError("bad_request", f"header is not UTF-8 JSON: {exc}", fatal=True) from exc
+        header = loads_strict(bytes(raw).decode("utf-8"))
+    except (UnicodeDecodeError, ValueError) as exc:  # JSONDecodeError is a ValueError
+        raise ProtocolError("bad_request", f"header is not strict UTF-8 JSON: {exc}", fatal=True) from exc
     if not isinstance(header, dict) or header.get("type") not in TYPES:
         raise ProtocolError("bad_request", "header must be an object with a known type", fatal=True)
     if type(header.get("v")) is not int:
@@ -216,12 +226,19 @@ class Wire:
         self.bytes_sent += len(data)
 
     def _read_exact(self, n: int, deadline: float) -> bytearray:
+        """``n`` bytes of a message already started. Not complete by ``deadline`` -> ConnectionError: the stream position
+        is lost, so the connection must be dropped (never a TimeoutError that a caller might retry on this stream)."""
         buf = bytearray(n)
         view, got = memoryview(buf), 0
         while got < n:
-            if time.monotonic() > deadline:
-                raise TimeoutError(f"message incomplete after {self.io_timeout_s} s ({got}/{n} bytes)")
-            k = self.sock.recv_into(view[got:], n - got)
+            left = deadline - time.monotonic()
+            try:
+                ready = select.select([self.sock], [], [], max(0.0, left))[0]  # bytes already here are read
+                k = self.sock.recv_into(view[got:], n - got) if ready else None
+            except (ValueError, OSError) as exc:
+                raise ConnectionError(f"connection failed mid-message ({got}/{n} bytes): {exc}") from exc
+            if k is None:
+                raise ConnectionError(f"message incomplete at the deadline ({got}/{n} bytes); stream position lost")
             if k == 0:
                 raise ConnectionError(f"peer closed mid-message ({got}/{n} bytes)")
             got += k
@@ -246,13 +263,21 @@ class Wire:
                 return True
 
     def recv(self, timeout_s: float | None = None, should_stop=None) -> Message | None:
-        """Next message; None on a clean EOF between messages; TimeoutError when none started within ``timeout_s``."""
+        """Next message; None on a clean EOF between messages; TimeoutError when none STARTED within ``timeout_s``.
+        A started message must complete within ``timeout_s`` (from the call) and ``io_timeout_s``, else
+        ConnectionError (the connection is unusable)."""
+        start = time.monotonic()
         if not self.wait_readable(timeout_s, should_stop):
             raise TimeoutError("no message within the wait time")
-        first = self.sock.recv(PREFIX.size)
+        try:
+            first = self.sock.recv(PREFIX.size)
+        except OSError as exc:
+            raise ConnectionError(f"connection failed: {exc}") from exc
         if not first:
             return None
         deadline = time.monotonic() + self.io_timeout_s
+        if timeout_s is not None:
+            deadline = min(deadline, start + timeout_s)
         prefix = bytes(first) + bytes(self._read_exact(PREFIX.size - len(first), deadline))
         (n,) = PREFIX.unpack(prefix)
         if n == 0 or n > self.max_header_bytes:

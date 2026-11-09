@@ -27,6 +27,7 @@ import argparse
 import collections
 import hashlib
 import hmac
+import ipaddress
 import json
 import logging
 import os
@@ -74,6 +75,15 @@ def classify(exc: Exception) -> str:
         if isinstance(exc, cls):
             return code
     return "bad_request"
+
+
+def is_loopback(host: str) -> bool:
+    if host in ("localhost", "ip6-localhost"):
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
 
 
 def _numbers(values, n: int) -> bool:
@@ -128,7 +138,8 @@ class Session:
     def __init__(self, sid: str, served: ServedPolicy, spec, history, capacity: int):
         self.id, self.served, self.spec, self.history = sid, served, spec, history
         self.capacity = capacity
-        self.ids = {c: collections.deque(maxlen=capacity) for c in spec.camera_ids}  # mirror of the history ids
+        # mirror of the history: camera -> {frame id: capture_ns}, oldest first, same capacity as HistoryWindow
+        self.held = {c: collections.OrderedDict() for c in spec.camera_ids}
         self.sets: collections.OrderedDict = collections.OrderedDict()  # frame-id tuple -> surface_disp_m
         self.last_seq = 0
         self.responses: collections.OrderedDict = collections.OrderedDict()  # seq -> encoded response
@@ -143,8 +154,14 @@ class Session:
     def clear_history(self) -> None:
         self.history.reset()
         self.sets.clear()
-        for d in self.ids.values():
+        for d in self.held.values():
             d.clear()
+
+    def hold(self, cam: str, frame) -> None:
+        held = self.held[cam]
+        held[frame.seq] = frame.timestamp_ns
+        while len(held) > self.capacity:
+            held.popitem(last=False)
 
 
 class Connection:
@@ -153,10 +170,12 @@ class Connection:
     full). All outbound messages of a connection go through the outbox in order."""
 
     OUTBOX = 256
+    PRE_SESSION_BYTES = 64 << 10  # header and payload cap until HELLO bound a session (authenticated if a token is set)
 
     def __init__(self, server: PolicyServer, sock: socket.socket, addr):
         self.server, self.addr = server, addr
-        self.wire = P.Wire(sock, max_header_bytes=server.max_header_bytes, max_payload_bytes=server.max_payload_bytes,
+        self.wire = P.Wire(sock, max_header_bytes=min(self.PRE_SESSION_BYTES, server.max_header_bytes),
+                           max_payload_bytes=min(self.PRE_SESSION_BYTES, server.max_payload_bytes),
                            io_timeout_s=server.io_timeout_s)
         self.session: Session | None = None
         self.nonce = secrets.token_hex(16)
@@ -169,6 +188,11 @@ class Connection:
     def start(self) -> None:
         self.sender.start()
         self.thread.start()
+
+    def bound(self) -> None:
+        """A session is bound on this (authenticated) connection: the configured message limits apply from now on."""
+        self.wire.max_header_bytes = self.server.max_header_bytes
+        self.wire.max_payload_bytes = self.server.max_payload_bytes
 
     def send(self, data: bytes) -> bool:
         if self.closing or self.wire.closed:
@@ -243,12 +267,17 @@ class PolicyServer:
                  max_queue: int = 4, session_idle_timeout_s: float = 30.0, response_cache: int = 32,
                  io_timeout_s: float = 5.0, max_header_bytes: int = 1 << 20, max_payload_bytes: int = 32 << 20,
                  max_frames_per_step: int = 64, history_capacity: int | None = None, warmup_iterations: int = 0,
-                 max_sessions_per_policy: int = 1,
+                 max_sessions_per_policy: int = 1, max_connections: int = 16,
                  warmup_native_hw=(480, 640), info: dict | None = None, name: str = "s4d-policy-server"):
         if not policies:
             raise ValueError("no policies to serve")
         if token is not None and not token:
             raise ValueError("empty shared token")
+        if token is None and not is_loopback(host):
+            raise ValueError(f"binding {host!r} beyond loopback requires the shared token (--token-file)")
+        self.max_connections = int(max_connections)
+        if self.max_connections < 1:
+            raise ValueError("max_connections must be positive")
         self.policies = {pid: ServedPolicy(pid, p, dict((info or {}).get(pid, {}))) for pid, p in policies.items()}
         self.host, self.port, self.token, self.name = host, int(port), token, name
         self.max_queue, self.idle_timeout_s = int(max_queue), float(session_idle_timeout_s)
@@ -317,6 +346,10 @@ class PolicyServer:
                 job.session.pending = None
         for job in drained:
             self._respond(job.session, job.seq, self._error(job.session, job.seq, "shutting_down", "server stopping"))
+        with self.lock:
+            for s in list(self.sessions.values()):  # releases the deploy API's live sessions too
+                if s.running is None:
+                    self._end_session(s, "server shutdown")
         self.stop_event.set()
         with self.cond:
             self._worker_exit = True
@@ -356,10 +389,23 @@ class PolicyServer:
                 if self.stop_event.is_set():
                     return
                 continue
+            with self.lock:
+                full = len(self.connections) >= self.max_connections
+                self.counts["connections_refused" if full else "connections"] += 1
+            if full:  # answered and closed at once: no threads for connections over the cap
+                LOG.warning("connection from %s refused: %d connections open", addr, self.max_connections)
+                try:
+                    sock.settimeout(1.0)
+                    sock.sendall(P.error_message("overloaded", f"{self.max_connections} connections open",
+                                                 fatal=True))
+                    sock.shutdown(socket.SHUT_WR)
+                except OSError:
+                    pass
+                sock.close()
+                continue
             conn = Connection(self, sock, addr)
             with self.lock:
                 self.connections.add(conn)
-                self.counts["connections"] += 1
             conn.start()
 
     def drop_connection(self, conn: Connection) -> None:
@@ -379,8 +425,8 @@ class PolicyServer:
                     if s.pending is None and s.running is None and now - s.last_activity > self.idle_timeout_s:
                         self._end_session(s, f"idle > {self.idle_timeout_s} s")
 
-    def _end_session(self, s: Session, reason: str) -> None:
-        """Caller holds ``self.lock``."""
+    def _end_session(self, s: Session, reason: str, *, taken_over: bool = False) -> None:
+        """Caller holds ``self.lock``. ``taken_over``: tell the evicted client at once (its stop signal)."""
         if s.closed:
             return
         s.closed = True
@@ -395,6 +441,8 @@ class PolicyServer:
             s.pending = None
         if s.conn is not None and s.conn.session is s:
             s.conn.session = None
+            if taken_over:  # queued on its outbox (non-blocking); a disconnected client learns it at renewal
+                s.conn.send(P.error_message("session_taken_over", reason, session_id=s.id))
         s.conn = None
         self.counts["sessions_ended"] += 1
         LOG.info("session %s (%s) ended: %s; counts %s", s.id, s.served.policy_id, reason, dict(s.counts))
@@ -415,6 +463,9 @@ class PolicyServer:
                 s.running = job
             try:
                 data = self._execute(job)
+            except Exception as exc:  # noqa: BLE001 - the only inference thread must survive and answer
+                LOG.exception("request failed (session %s seq %d)", s.id, job.seq)
+                data = self._error(s, job.seq, "internal", f"{type(exc).__name__}: {exc}")
             finally:
                 with self.lock:
                     if s.running is job:
@@ -534,7 +585,7 @@ class PolicyServer:
         except Reject as r:
             self._respond(s, seq, self._error(s, seq, r.code, r.detail, r.history_reset))
             return True
-        self._submit(job)
+        self._submit(job, conn)
         return True
 
     def _hello(self, conn: Connection, msg: P.Message) -> bool:
@@ -577,7 +628,7 @@ class PolicyServer:
                                                    f"idle {idle:.1f} s, expires after {self.idle_timeout_s} s idle); "
                                                    "HELLO takeover=true evicts it")
                     else:
-                        self._end_session(oldest, f"evicted by takeover from {conn.addr}")
+                        self._end_session(oldest, f"evicted by takeover from {conn.addr}", taken_over=True)
             if refusal is None:
                 sid = uuid.uuid4().hex
                 try:
@@ -587,6 +638,12 @@ class PolicyServer:
                     refusal = ("bad_request", f"session choices refused: {exc}")
             if refusal is None:
                 s = Session(sid, sp, spec, history, history.capacity)
+                try:  # the SPEC is built BEFORE the session is registered: a failure leaves nothing live behind
+                    spec_msg = self._spec_message(s, resumed=False, redeliver=[])
+                except (ValueError, TypeError) as exc:
+                    sp.policy.end_session(sid)
+                    refusal = ("bad_request", f"session spec not serialisable: {exc}")
+            if refusal is None:
                 with self.lock:
                     self.sessions[sid] = s
                     sp.sessions[sid] = s
@@ -596,7 +653,8 @@ class PolicyServer:
             conn.send(self._error(None, None, *refusal))
             return True
         LOG.info("session %s opened for %s from %s (cameras %s)", sid, sp.policy_id, conn.addr, spec.camera_ids)
-        conn.send(self._spec_message(s, resumed=False, redeliver=[]))
+        conn.bound()
+        conn.send(spec_msg)
         return True
 
     def _resume(self, conn: Connection, sp: ServedPolicy, resume) -> bool:
@@ -618,6 +676,7 @@ class PolicyServer:
             old.session = None
             old.close()
         LOG.info("session %s resumed from %s (redeliver %s)", s.id, conn.addr, [q for q, _ in redeliver])
+        conn.bound()
         conn.send(spec_msg)
         for _, data in redeliver:
             conn.send(data)
@@ -695,9 +754,26 @@ class PolicyServer:
             if not _numbers(pose, 7) or not _numbers([f["gripper_register"]], 1):
                 raise Reject("bad_request", "frame pose7 (7 numbers) and gripper_register (number) required")
             meta = dict(f.get("metadata") or {})
+            if not isinstance(f.get("metadata", {}), dict):
+                raise Reject("bad_request", "frame metadata must be an object")
+            if meta.get("native_hw") != [int(x) for x in spec.native_hw[cam]]:
+                raise Reject("bad_request", f"{cam}: frame native grid {meta.get('native_hw')} differs from the "
+                                            f"session's {list(spec.native_hw[cam])} (crop and intrinsics would be wrong)")
+            if spec.needs_calibration:
+                K = meta.get("K")
+                want = np.asarray(spec.calibration[cam]["K"], np.float64)
+                if not (isinstance(K, list) and np.shape(K) == (3, 3) and all(_numbers(r, 3) for r in K)
+                        and np.allclose(np.asarray(K, np.float64), want, rtol=0, atol=1e-9)):
+                    raise Reject("bad_request", f"{cam}: frame intrinsics {K} differ from the session calibration "
+                                                f"{want.tolist()} at the training grid")
             meta.update(measured_pose7=pose, gripper_register=f["gripper_register"])
             parsed.append((cam, Frame(fid, t_ns, arrays[names["rgb"]], arrays.get(names.get("depth")),
                                       arrays.get(names.get("valid")), meta)))
+        last = {}
+        for cam, fr in parsed:
+            if fr.seq <= last.get(cam, -1):
+                raise Reject("bad_request", f"{cam}: frame ids must increase within a message")
+            last[cam] = fr.seq
         noise = None
         if "noise" in req and "noise_seed" in req:
             raise Reject("bad_request", "give noise OR noise_seed")
@@ -753,20 +829,24 @@ class PolicyServer:
                   grip, pose_t, grip_t, pad, noise) -> Job:
         spec = s.spec
         with s.hist_lock:
-            by_cam = collections.defaultdict(list)
+            # Frames at or before a camera's history tip: an identical re-send of held frames is skipped (idempotent);
+            # anything else (the client re-sent its buffer after a history reset, a restarted camera counter) rebuilds
+            # the session history from this message - reported as history_rebuilt, never silently merged.
+            rebuild = False
             for cam, fr in parsed:
-                by_cam[cam].append(fr.seq)
-            for cam, ids in by_cam.items():
-                tip = s.ids[cam][-1] if s.ids[cam] else -1
-                if any(b <= a for a, b in zip(ids, ids[1:])) or ids[0] <= tip:
-                    dup = sorted(set(ids) & set(s.ids[cam]))
-                    raise Reject("duplicate" if dup else "bad_request",
-                                 f"{cam}: frames {ids} not strictly after the history tip {tip}"
-                                 + (f" (already held: {dup})" if dup else " (reordered)"))
+                held = s.held[cam]
+                tip = next(reversed(held)) if held else -1
+                if fr.seq <= tip and held.get(fr.seq) != fr.timestamp_ns:
+                    rebuild = True
+            if rebuild:
+                s.clear_history()
+                s.counts["history_rebuilds"] += 1
             try:
                 for cam, fr in parsed:
+                    if fr.seq in s.held[cam]:
+                        continue  # identical re-send of a held frame
                     s.history.push(cam, fr)
-                    s.ids[cam].append(fr.seq)
+                    s.hold(cam, fr)
             except ValueError as exc:
                 s.clear_history()
                 raise Reject("bad_request", f"frame refused by the deploy contract ({exc}); session history reset "
@@ -779,7 +859,7 @@ class PolicyServer:
             L, k, cams = spec.history_length, spec.frame_spacing, spec.camera_ids
             if not pad:  # detailed refusal; with pad_run_start the deploy history decides (padding at a run start only)
                 wanted = {c: [end_ids[c] - j * k for j in range(L - 1, -1, -1)] for c in cams}
-                missing = {c: [i for i in ids if i not in s.ids[c]] for c, ids in wanted.items()}
+                missing = {c: [i for i in ids if i not in s.held[c]] for c, ids in wanted.items()}
                 missing = {c: ids for c, ids in missing.items() if ids}
                 if missing:
                     raise Reject("incomplete_history", f"missing frames {missing} for the trained history "
@@ -804,12 +884,15 @@ class PolicyServer:
         return Job(s, seq, window, np.asarray(pose7, np.float64), float(grip), obs_ids, noise, float(ttl),
                    msg.t_recv_ns + int(ttl * 1e6), msg.t_recv_ns, now, (now - msg.t_recv_ns) / 1e6)
 
-    def _submit(self, job: Job) -> None:
-        s, superseded, refusal = job.session, None, None
+    def _submit(self, job: Job, conn: Connection) -> None:
+        s, superseded, refusal, closed = job.session, None, None, False
         with self.lock:
             if self.stopping:
                 refusal = ("shutting_down", "server stopping")
-            elif not s.closed:
+            elif s.closed:
+                closed = True
+                self.counts["dropped_closed_session"] += 1
+            else:
                 if s.pending is not None:
                     superseded = s.pending
                     self.queue.remove(superseded)
@@ -826,6 +909,10 @@ class PolicyServer:
                                                          f"superseded by seq {job.seq} before execution"))
         if refusal is not None:
             self._respond(s, job.seq, self._error(s, job.seq, *refusal))
+        if closed:  # ended (expiry / eviction / BYE) while the request was prepared: answered on its connection
+            LOG.info("seq %d of session %s dropped: session ended before queuing", job.seq, s.id)
+            conn.send(self._error(None, job.seq, "session_unknown", "session ended before the request was queued",
+                                  session_id=s.id))
 
 
 # ---------------------------------------------------------------------------------------------------- loading
@@ -837,9 +924,28 @@ def sha256_file(path: Path) -> str:
     return h.hexdigest()
 
 
-def load_policy(entry: dict, *, root, device: str):
+def enforce_gpu(device: str, gpu_uuid: str | None):
+    """CUDA serving only on the ONE configured GPU, checked by the repository's GPU guard (``ops.resources.gpu_guard``:
+    host config from ``S4D_HOST_CONFIG``, ``CUDA_VISIBLE_DEVICES`` by UUID, torch's device UUID) instead of trusting the
+    container to expose a single device. Must run before torch is imported. CPU serving: no GPU, nothing to check."""
+    if not str(device).startswith("cuda"):
+        return None
+    if device not in ("cuda", "cuda:0"):
+        raise ValueError(f"device {device!r}: serve on cuda / cuda:0 = the configured GPU (CUDA_VISIBLE_DEVICES)")
+    if not gpu_uuid:
+        raise ValueError("CUDA serving needs server.gpu_uuid (--gpu-uuid): the one GPU this server may use")
+    from ops.resources import gpu_guard
+
+    entries = gpu_guard.visible_device_uuids()  # fails closed: unset / not a UUID / not allowed on this host config
+    if entries != [gpu_uuid]:
+        raise gpu_guard.GPUIsolationError(f"CUDA_VISIBLE_DEVICES={entries} is not exactly the configured {gpu_uuid}")
+    return gpu_guard.enforce_allowed_gpus(verbose=False)  # torch sees exactly that device (UUID checked)
+
+
+def load_policy(entry: dict, *, root, device: str, allow_fixture: bool = False):
     """One configured policy through the public deploy API (sha256 check; the training contract comes from the
-    deploy-contract sidecar JSON or the FQL dataset, both checked against the checkpoint by the deploy API)."""
+    deploy-contract sidecar JSON or the FQL dataset, both checked against the checkpoint by the deploy API). FIXTURE
+    checkpoints (synthetic test weights) are refused unless ``allow_fixture``."""
     from ops.policy_serving.config import resolve
     from s4d.rwlearn.deploy import DeployPolicy
 
@@ -851,6 +957,8 @@ def load_policy(entry: dict, *, root, device: str):
     contract = entry.get("training_contract") or entry.get("dataset")
     policy = DeployPolicy(ckpt, device=device, export_path=export,
                           training=None if contract is None else str(resolve(root, contract)))
+    if policy.input_spec.fixture and not allow_fixture:
+        raise ValueError(f"{ckpt}: a FIXTURE checkpoint (synthetic weights) is never served without --allow-fixture")
     info = {"checkpoint": str(ckpt), "checkpoint_sha256": digest, "condition": policy.input_spec.condition,
             "fixture": policy.input_spec.fixture, "task": entry.get("task"), "device": device}
     return policy, info
@@ -881,6 +989,8 @@ def main(argv=None) -> int:
     s.add_argument("--token-file", default=None, help="shared-token file (never logged)")
     s.add_argument("--warmup-iterations", type=int, default=None)
     s.add_argument("--threads", type=int, default=None, help="CPU threads (OMP/MKL) for CPU inference")
+    s.add_argument("--gpu-uuid", default=None, help="the one GPU (UUID) for --device cuda (default server.gpu_uuid)")
+    s.add_argument("--allow-fixture", action="store_true", help="serve FIXTURE checkpoints (tests only)")
     s.add_argument("--log-level", default="INFO")
     args = ap.parse_args(argv)
     logging.basicConfig(level=getattr(args, "log_level", "INFO"), stream=sys.stderr,
@@ -900,30 +1010,33 @@ def main(argv=None) -> int:
     if unknown:
         raise SystemExit(f"unknown policy ids {unknown}; configured: {sorted(cfg['policies'])}")
     device = args.device or sc["device"]
+    bind = args.bind or sc["bind_host"]
+    if not args.token_file and not is_loopback(bind):  # refused before anything is loaded
+        raise SystemExit(f"binding {bind!r} beyond loopback requires --token-file")
+    gpus = enforce_gpu(device, args.gpu_uuid or sc["gpu_uuid"])  # before any torch import
     root = args.checkpoint_root or sc["checkpoint_root"]
     loaded, info = {}, {}
     for pid in ids:
         t0 = time.monotonic()
-        loaded[pid], info[pid] = load_policy(cfg["policies"][pid], root=root, device=device)
+        loaded[pid], info[pid] = load_policy(cfg["policies"][pid], root=root, device=device,
+                                             allow_fixture=args.allow_fixture)
         info[pid]["load_s"] = round(time.monotonic() - t0, 3)
-    server = PolicyServer(loaded, host=args.bind or sc["bind_host"], port=sc["port"] if args.port is None else args.port,
+    server = PolicyServer(loaded, host=bind, port=sc["port"] if args.port is None else args.port,
                           token=read_token(args.token_file) if args.token_file else None,
                           max_queue=sc["max_queue"], session_idle_timeout_s=sc["session_idle_timeout_s"],
                           response_cache=sc["response_cache"], io_timeout_s=sc["io_timeout_s"],
                           max_header_bytes=sc["max_header_bytes"], max_payload_bytes=sc["max_payload_bytes"],
                           max_frames_per_step=sc["max_frames_per_step"], history_capacity=sc["history_capacity"],
                           max_sessions_per_policy=sc["max_sessions_per_policy"],
+                          max_connections=sc["max_connections"],
                           warmup_iterations=sc["warmup_iterations"] if args.warmup_iterations is None
                           else args.warmup_iterations, warmup_native_hw=sc["warmup_native_hw"], info=info)
-    if server.token is None and server.host not in ("127.0.0.1", "localhost", "::1"):
-        LOG.warning("binding %s without --token-file: any host that reaches this port can use the policies",
-                    server.host)
     stop = threading.Event()
     for sig in (signal.SIGINT, signal.SIGTERM):
         signal.signal(sig, lambda *_: stop.set())
     host, port = server.start()
     print(json.dumps({"event": "ready", "host": host, "port": port, "protocol": P.VERSION, "pid": os.getpid(),
-                      "auth": server.token is not None,
+                      "auth": server.token is not None, "gpus": gpus,
                       "policies": {pid: {**P.jsonable(info[pid]), "warmup_ms": P.jsonable(sp.warmup_ms)}
                                    for pid, sp in server.policies.items()}}), flush=True)
     while not stop.wait(1.0):

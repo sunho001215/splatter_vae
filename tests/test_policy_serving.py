@@ -32,12 +32,13 @@ from ops.policy_serving.client import (
     PolicyClient,
     RealSenseCapture,
     ServingError,
+    SessionTakenOver,
     StepResult,
     bound_command,
     check_action,
 )
 from ops.policy_serving.config import DEFAULT_PATH, load_config
-from ops.policy_serving.server import PolicyServer, classify
+from ops.policy_serving.server import PolicyServer, classify, enforce_gpu, load_policy, main
 from s4d.rwlearn.deploy import Frame, HistoryWindow, preprocess_frame
 from s4d.rwlearn.deploy.fixtures import FIXTURE_CONDITIONS, make_fixture_policy, session_choices
 
@@ -97,12 +98,23 @@ class Feed:
                 d[::5, ::7] = 0
                 valid, corr = d > 0, self.choices["native_depth_correction"][cam]
             out = self.client.add_frame_native(cam, k, self.t(k, v) + jitter_ns, rgb, pose7=POSE, gripper_register=GRIP,
-                                               depth=d, valid=valid, native_correction=corr)
+                                               depth=d, valid=valid, native_correction=corr,
+                                               K_native=self.K_native(cam))
             meta = {"depth_source": "native_realsense", "native_correction": corr} if self.depth else {}
             self.frames[cam].append(Frame(k, self.t(k, v) + jitter_ns, out["rgb"], out.get("depth"), out.get("valid"),
                                           meta))
         if self.spec["views"] > 1:
             self.client.add_sync_set({c: k for c in self.spec["camera_ids"]}, disp)
+
+    def K_native(self, cam):
+        return (self.choices.get("calibration") or {}).get(cam, {}).get("K_native")
+
+    def geometry(self, cam) -> dict:
+        """native_hw (+ the session K at the training grid) for frames added with ``add_frame``."""
+        out = {"native_hw": NATIVE_HW}
+        if self.spec["needs_calibration"]:
+            out["K"] = self.spec["calibration"][cam]["K"]
+        return out
 
     def obs_time(self, k: int) -> int:
         return max(self.t(k, v) for v in range(len(self.spec["camera_ids"])))
@@ -309,7 +321,7 @@ def test_irregular_spacing_and_missing_multiview_evidence(policies):
         for cam in feed.spec["camera_ids"]:
             c.add_frame(cam, 4, feed.t(4, 0), feed.frames[cam][-1].rgb, pose7=POSE, gripper_register=GRIP,
                         depth=feed.frames[cam][-1].depth, valid=feed.frames[cam][-1].valid,
-                        metadata=feed.frames[cam][-1].metadata)
+                        metadata=feed.frames[cam][-1].metadata, **feed.geometry(cam))
         r = feed.step(4)  # frame 4 of every camera without its declared set
         assert r.code in ("incomplete_history", "irregular_spacing")
         c.close()
@@ -334,7 +346,7 @@ def test_explicit_reset_clears_the_history(policies):
 
 
 # ------------------------------------------------------------------------------------------------ sequencing
-def test_duplicate_seq_returns_cached_response_and_duplicate_frames_are_refused(policies):
+def test_duplicate_seq_returns_cached_response_and_frame_resends_are_idempotent(policies):
     with serve({"reviwo": policies["reviwo"]}) as srv:
         c, feed = client_for(srv, "reviwo", policies["reviwo"])
         for k in range(3):
@@ -348,9 +360,11 @@ def test_duplicate_seq_returns_cached_response_and_duplicate_frames_are_refused(
         assert again.type == P.ACTION and again.header["seq"] == seq and again.nbytes == first.response_bytes
         np.testing.assert_array_equal(again.arrays["out.action_norm"], first.outputs["action_norm"])
         assert srv.counts["actions"] == 1  # no re-inference
-        c._tip.clear()  # force the client to re-send frames the server already holds, under a NEW seq
-        r = feed.step(2)
-        assert r.code == "duplicate" and "already held" in r.detail
+        c._tip.clear()  # re-send frames the server already holds, under a NEW seq: identical frames are skipped
+        r = feed.step(2, noise_seed=4)
+        assert r.ok and r.frames_sent == 3 and srv.counts["actions"] == 2
+        np.testing.assert_array_equal(r.outputs["action_norm"], first.outputs["action_norm"])
+        assert not next(iter(srv.sessions.values())).counts["history_rebuilds"]
         c.close()
 
 
@@ -435,11 +449,19 @@ def test_expired_session_is_renewed_and_history_resent(policies):
         deadline = time.monotonic() + 10
         while srv.sessions and time.monotonic() < deadline:
             time.sleep(0.05)
+        idle_start = time.monotonic()
+        while srv.sessions:
+            assert time.monotonic() - idle_start < 10
+            time.sleep(0.05)
         feed.add(3)
         r = feed.step(3)
         assert r.code == "session_unknown" and c.session_id != sid
-        r = feed.step(3)  # the buffered history (frames 1..3) goes to the new session
+        feed.add(4)
+        r = feed.step(4)  # the buffered history (frames 2, 3 re-sent + new 4) goes to the new session
         assert r.ok and r.frames_sent == 3
+        # (C) re-sent frames are not this step's work: e2e starts at the NEW frame, their wait is reported apart
+        assert r.timings_ms["resent_frames"] == 2 and r.timings_ms["resent_wait_ms"] >= 300
+        assert r.timings_ms["e2e_ms"] < r.timings_ms["resent_wait_ms"]
         c.close()
 
 
@@ -477,8 +499,10 @@ def test_session_ownership_takeover_and_bye(policies):
         assert not srv.sessions
         for k in range(3):
             fa.add(k)
-        r = fa.step(2)  # a's session was evicted: renewed on its connection; the step is reported lost
-        assert r.code == "session_unknown"
+        r = fa.step(2)  # a was evicted by b's takeover: a TERMINAL result, never an exception (robot loop stop signal)
+        assert r.code == "session_taken_over" and r.terminal and not r.ok
+        assert fa.step(2).terminal and srv.counts["sessions_opened"] == 2  # nothing sent, no automatic re-HELLO
+        a.connect()  # only a deliberate reconnect opens a new session
         assert fa.step(2).ok
         a.close()
 
@@ -506,7 +530,8 @@ def test_version_auth_and_payload_refusals(policies, caplog):
             feed.add(k)
         assert feed.step(2).ok
         cam = feed.spec["camera_ids"][0]
-        c.add_frame(cam, 3, feed.t(3, 0), np.zeros((16, 16, 3), np.uint8), pose7=POSE, gripper_register=GRIP)
+        c.add_frame(cam, 3, feed.t(3, 0), np.zeros((16, 16, 3), np.uint8), pose7=POSE, gripper_register=GRIP,
+                    **feed.geometry(cam))
         r = feed.step(3)
         assert r.code == "bad_request" and r.history_reset and "deploy contract" in r.detail
         c.close()
@@ -539,7 +564,7 @@ def test_unreferenced_arrays_and_wrong_depth_dtype_are_refused(policies):
         cam = feed.spec["camera_ids"][0]
         f = feed.frames[cam][0]
         c.add_frame(cam, 1, feed.t(1, 0), f.rgb, pose7=POSE, gripper_register=GRIP, depth=f.depth.astype(np.float64),
-                    valid=f.valid, metadata=f.metadata)
+                    valid=f.valid, metadata=f.metadata, **feed.geometry(cam))
         r = feed.step(1, pad_run_start=True)
         assert r.code == "bad_request" and r.history_reset
         seq_data = P.encode({"type": P.STEP, "session_id": c.session_id, "seq": 99, "frames": [], "sets": [],
@@ -598,28 +623,43 @@ def test_action_expiry_and_binding_helpers():
     assert cmd["reference_id"] == "pose-3" and set(cmd) >= {"flange_pose", "measured_pose7"}
 
 
-def test_device_clock_and_realsense_colour_capture_with_fake_sdk():
-    clock = DeviceClock(calibration_frames=3)
-    stamps, ready = [], []
-    for i, jitter in enumerate((5_000_000, 1_000_000, 9_000_000, 30_000_000, 0)):
-        stamps.append(clock.map(100.0 + 66.7 * i, 10_000_000_000 + int(66.7e6 * i) + jitter))
-        ready.append(clock.calibrated)
-    assert ready == [False, False, True, True, True]  # frames before the frozen offset are flagged unusable
-    assert np.allclose(np.diff(stamps[2:]), 66.7e6, atol=1)  # arrival jitter never enters the capture times
-    assert abs(stamps[2] - (10_000_000_000 + int(66.7e6 * 2) + 1_000_000)) <= 1  # minimum-latency offset (1 ms)
+# Recorded (hw_timestamp_ms, t_recv, t_recv_unix, t) of /home/ws/data/real_world/drawer-open/episode_000000.h5,
+# cameras/cam_135122070988 rows 0, 1, 2, 100 (timestamp_domain 2 = global_time): the recorder's own frame times.
+RECORDED_COLOUR_STAMPS = [
+    (1793879729587.492, 187335.617039116, 1793879729.6524234, 187335.55210772334),
+    (1793879729654.2065, 187335.684022002, 1793879729.7194061, 187335.61882238844),
+    (1793879729720.9211, 187335.750481397, 1793879729.7858653, 187335.68553736815),
+    (1793879736258.9705, 187342.288514136, 1793879736.3238978, 187342.22358679643),
+]
 
-    intr = SimpleNamespace(width=160, height=128, fx=100.0, fy=100.0, ppx=79.5, ppy=63.5, coeffs=[0] * 5)
-    profile = SimpleNamespace(get_intrinsics=lambda: intr)
-    profile.as_video_stream_profile = lambda: profile
-    rgb = np.random.default_rng(0).integers(0, 256, (128, 160, 3), dtype=np.uint8)
-    color = SimpleNamespace(profile=profile, get_data=lambda: rgb, get_timestamp=lambda: 1234.5,
-                            get_frame_number=lambda: 77, get_frame_timestamp_domain=lambda: "global_time")
+
+def test_device_clock_is_the_recorders_global_time_mapping():
+    """#2: capture time = global-time stamp - (realtime - monotonic at receipt), refreshed per frame, no latency added."""
+    clock = DeviceClock()
+    for hw_ms, t_recv, t_recv_unix, t in RECORDED_COLOUR_STAMPS:
+        got = clock.map(hw_ms, 2, offset_ns=int(round((t_recv_unix - t_recv) * 1e9)))
+        assert abs(got - t * 1e9) < 1_000  # the training frame time to < 1 us
+        assert t_recv * 1e9 - got > 60e6  # arrival is ~65 ms later and never enters the capture time
+    assert clock.map(1.0, "timestamp_domain.global_time", offset_ns=0) == 1_000_000
+    for domain in (0, 1, "hardware_clock", "timestamp_domain.system_time"):
+        with pytest.raises(ValueError, match="global_time"):
+            clock.map(1.0, domain, offset_ns=0)
+    ticks = iter([100, 102, 200, 204])
+    fake = DeviceClock(realtime_ns=lambda: 5_000_000_000_000, monotonic_ns=lambda: next(ticks))
+    assert (fake.offset_ns(), fake.offset_ns()) == (5_000_000_000_000 - 101, 5_000_000_000_000 - 202)  # refreshed
+
+
+def fake_realsense(rgb, intr, *, domain="timestamp_domain.global_time"):
+    video = SimpleNamespace(get_intrinsics=lambda: intr)
+    video.as_video_stream_profile = lambda: video
+    color = SimpleNamespace(profile=video, get_data=lambda: rgb, get_timestamp=lambda: 1234.5,
+                            get_frame_number=lambda: 77, get_frame_timestamp_domain=lambda: domain)
     calls = []
 
     class Pipe:
         def start(self, cfg):
             calls.append(cfg.streams)
-            return None
+            return SimpleNamespace(get_stream=lambda kind: video)
 
         def wait_for_frames(self, timeout_ms):
             return SimpleNamespace(get_color_frame=lambda: color)
@@ -639,12 +679,36 @@ def test_device_clock_and_realsense_colour_capture_with_fake_sdk():
 
     rs = SimpleNamespace(pipeline=Pipe, config=Config, stream=SimpleNamespace(color="color", depth="depth"),
                          format=SimpleNamespace(rgb8="rgb8", z16="z16"))
-    cap = RealSenseCapture("123", width=160, height=128, fps=15, rs_module=rs, out_size=32)
+    return rs, calls
+
+
+def test_realsense_capture_checks_session_geometry_and_stamps_capture_time():
+    """#2 + #4 with a fake SDK: recorder capture time; the stream must be the session's grid and intrinsics."""
+    from s4d.rwlearn.deploy.realsense import color_intrinsics
+
+    intr = SimpleNamespace(width=160, height=128, fx=100.0, fy=100.0, ppx=79.5, ppy=63.5, coeffs=[0] * 5)
+    rgb = np.random.default_rng(0).integers(0, 256, (128, 160, 3), dtype=np.uint8)
+    K = color_intrinsics(intr)
+    clock = DeviceClock(realtime_ns=lambda: 1_000_000_000_000, monotonic_ns=lambda: 400_000)
+    rs, calls = fake_realsense(rgb, intr)
+    cap = RealSenseCapture("123", native_hw=(128, 160), rs_module=rs, out_size=32, K_native=K, clock=clock)
     out = cap.read()
     cap.stop()
     np.testing.assert_array_equal(out["rgb"], preprocess_frame(rgb, out_size=32)["rgb"])
-    assert out["frame_id"] == 77 and out["capture_ns"] > 0 and calls[-1] == "stop"
+    assert out["frame_id"] == 77 and out["native_hw"] == [128, 160] and calls[-1] == "stop"
+    assert out["capture_ns"] == 1_234_500_000 - (1_000_000_000_000 - 400_000)  # global-time stamp, no latency
     assert calls[0][0] == ("device", "123")
+    for kwargs, match in (({"native_hw": (480, 640)}, "not the session"),
+                          ({"native_hw": (128, 160), "K_native": K + np.diag([0, 0, 0]) + [[0, 0, 28], [0, 0, 0],
+                                                                                          [0, 0, 0]]},
+                           "intrinsics")):
+        rs, calls = fake_realsense(rgb, intr)
+        with pytest.raises(ValueError, match=match):
+            RealSenseCapture("123", rs_module=rs, out_size=32, clock=clock, **kwargs)
+        assert calls[-1] == "stop"
+    rs, _ = fake_realsense(rgb, intr, domain="timestamp_domain.hardware_clock")
+    with pytest.raises(ValueError, match="global_time"):
+        RealSenseCapture("123", native_hw=(128, 160), rs_module=rs, out_size=32, clock=clock).read()
 
 
 def test_bench_reports_payload_and_latency_breakdown(policies):
@@ -664,3 +728,341 @@ def test_bench_reports_payload_and_latency_breakdown(policies):
         assert res["client_ms"][key]["n"] == 4
     assert res["server_ms"]["encoder_ms"]["p50"] > 0 and res["achieved_hz"] > 0
     json.dumps(res, allow_nan=False)
+
+
+# ------------------------------------------------------------------------------------------------ review 7f7c15a
+def test_contract_workers_config_list_includes_policy_serving():
+    """#1: the release suite's config inventory lists configs/realworld/policy_serving.yaml (and it parses)."""
+    import yaml
+
+    from ops.policy_serving.config import REPO
+
+    configs = sorted(p.stem for p in (REPO / "configs/realworld").glob("*.yaml"))
+    assert "policy_serving" in configs
+    assert isinstance(yaml.safe_load((REPO / "configs/realworld/policy_serving.yaml").read_text()), dict)
+    text = (REPO / "tests/test_realworld_contract_workers.py").read_text()
+    assert '"inference_server", "mug_hanging", "policy_serving", "upstream_pins"' in text
+
+
+def test_client_refuses_state_samples_outside_the_training_binding(policies):
+    """#2: pose / gripper must be the samples at or before the observation, <= 15 / 100 ms old (checked before
+    sending); check_action ages the action from the observation's capture time."""
+    with serve({"reviwo": policies["reviwo"]}) as srv:
+        c, feed = client_for(srv, "reviwo", policies["reviwo"])
+        for k in range(3):
+            feed.add(k)
+        t, end = feed.obs_time(2), {cam: 2 for cam in feed.spec["camera_ids"]}
+        for pose_t, grip_t, match in ((t - 60_000_000, t, "pose_time_ns"), (t + 1_000_000, t, "pose_time_ns"),
+                                      (t, t - 150_000_000, "gripper_time_ns")):
+            with pytest.raises(ValueError, match=match):
+                c.submit(end, "x", POSE, GRIP, pose_time_ns=pose_t, gripper_time_ns=grip_t)
+        assert all(s.last_seq == 0 for s in srv.sessions.values())  # nothing was sent
+        r = feed.step(2)
+        assert r.ok
+        assert check_action(r, reference_id="pose-2", now_ns=t + 50_000_000, max_age_ms=60)[0]
+        assert not check_action(r, reference_id="pose-2", now_ns=t + 70_000_000, max_age_ms=60)[0]
+        c.close()
+
+
+def test_wire_mid_message_timeout_is_a_lost_connection_bounded_by_the_deadline():
+    """#3: a message cut mid-way raises ConnectionError at the CALLER's deadline (not TimeoutError after io_timeout)."""
+    listener = socket.create_server(("127.0.0.1", 0))
+    b = socket.create_connection(listener.getsockname()[:2])
+    a, _ = listener.accept()
+    listener.close()
+    w = P.Wire(a, io_timeout_s=5.0)
+    data = P.encode({"type": P.PING}, {"x": np.zeros(1000, np.uint8)})
+    b.sendall(data[:30])
+    t0 = time.monotonic()
+    with pytest.raises(ConnectionError, match="stream position lost"):
+        w.recv(0.3)
+    assert time.monotonic() - t0 < 1.5
+    with pytest.raises(TimeoutError):  # nothing started: a plain timeout, the stream is intact
+        P.Wire(b, io_timeout_s=5.0).recv(0.1)
+    a.close()
+    b.close()
+
+
+def test_client_reconnects_after_a_response_cut_mid_message(policies):
+    """#3 end to end: a stalled half response -> the client drops the connection and resumes; no ServingError."""
+    spec = policies["reviwo"].input_spec.bind(session_id="fake", **choices_of(policies["reviwo"])).to_json()
+    listener = socket.create_server(("127.0.0.1", 0))
+    port, hellos = listener.getsockname()[1], []
+
+    def fake_server():
+        conns = []
+        try:
+            for i in range(2):
+                sock, _ = listener.accept()
+                conns.append(sock)
+                w = P.Wire(sock)
+                w.send(P.encode({"type": P.WELCOME, "nonce": "n", "auth_required": False,
+                                 "policies": {"reviwo": {"input_spec": spec}}}))
+                hello = w.recv(5)
+                hellos.append(hello.header.get("resume"))
+                w.send(P.encode({"type": P.SPEC, "session_id": "s1", "resumed": i == 1, "input_spec": spec,
+                                 "limits": {}, "last_seq_received": i, "redeliver": []}))
+                w.recv(5)  # a STEP (the first, then the second one re-sent after the resume)
+                if i == 0:  # half a response, then silence
+                    w.send(P.encode({"type": P.PING}, {"x": np.zeros(4000, np.uint8)})[:40])
+            time.sleep(3)
+        except OSError:
+            pass
+        for sock in conns:
+            sock.close()
+
+    thread = threading.Thread(target=fake_server, daemon=True)
+    thread.start()
+    c = PolicyClient("127.0.0.1", port, policy_id="reviwo", choices=choices_of(policies["reviwo"]), step_timeout_s=1.0)
+    c.connect()
+    feed = Feed(c, choices_of(policies["reviwo"]))
+    for k in range(3):
+        feed.add(k)
+    t0 = time.monotonic()
+    r = feed.step(2)  # cut at the step deadline: an error result, never ServingError("header length 0")
+    assert r.status == "error" and r.code == "disconnected" and time.monotonic() - t0 < 2.0  # not io_timeout (5 s)
+    assert c.stats["connection_errors"] == 1 and c.wire is None
+    r = feed.step(2)  # the next step reconnects and resumes the same session, re-sending its request
+    assert r.status == "timeout" and c.stats["resumes"] == 1 and hellos[1] == {"session_id": "s1", "last_ack": 0}
+    c.wire.close()
+    listener.close()
+    thread.join(5)
+
+
+def test_frames_of_another_native_geometry_are_refused(policies):
+    """#4: client side (grid, intrinsics) and server side (declared native grid / training-grid K per frame)."""
+    pid = "mvp3d_single"
+    with serve({pid: policies[pid]}) as srv:
+        c, feed = client_for(srv, pid, policies[pid])
+        cam = feed.spec["camera_ids"][0]
+        rgb = np.zeros((*NATIVE_HW, 3), np.uint8)
+        d = np.ones(NATIVE_HW, np.float32)
+        corr = feed.choices["native_depth_correction"][cam]
+        K = np.asarray(feed.K_native(cam), np.float64)
+        with pytest.raises(ValueError, match="native grid"):
+            c.add_frame_native(cam, 0, feed.t(0, 0), np.zeros((120, 160, 3), np.uint8), pose7=POSE,
+                               gripper_register=GRIP, depth=np.ones((120, 160), np.float32),
+                               valid=np.ones((120, 160), bool), native_correction=corr, K_native=K)
+        with pytest.raises(ValueError, match="K_native"):
+            c.add_frame_native(cam, 0, feed.t(0, 0), rgb, pose7=POSE, gripper_register=GRIP, depth=d, valid=d > 0,
+                               native_correction=corr)
+        shifted = K.copy()
+        shifted[0, 2] += 28
+        with pytest.raises(ValueError, match="intrinsics"):
+            c.add_frame_native(cam, 0, feed.t(0, 0), rgb, pose7=POSE, gripper_register=GRIP, depth=d, valid=d > 0,
+                               native_correction=corr, K_native=shifted)
+        for key, value in (("native_hw", [480, 640]), ("K", (np.asarray(feed.spec["calibration"][cam]["K"]) +
+                                                             [[0, 0, 1], [0, 0, 0], [0, 0, 0]]).tolist())):
+            c.reset()
+            feed.add(0)
+            c._buffer[cam][0].metadata[key] = value  # a client that skipped its own check
+            r = feed.step(0, pad_run_start=True)
+            assert r.code == "bad_request" and r.history_reset and ("native grid" in r.detail or
+                                                                    "intrinsics" in r.detail)
+        assert srv.counts["actions"] == 0
+        c.close()
+
+
+def test_worker_survives_a_failure_after_inference(policies, monkeypatch):
+    """#5: an exception after infer() (packing/encoding) answers 'internal'; the worker stays alive."""
+    real, calls = P.pack_outputs, []
+
+    def flaky(outputs, *a, **k):
+        calls.append(1)
+        if len(calls) == 1:
+            raise RuntimeError("injected encoding failure")
+        return real(outputs, *a, **k)
+
+    monkeypatch.setattr(P, "pack_outputs", flaky)
+    with serve({"reviwo": policies["reviwo"]}) as srv:
+        c, feed = client_for(srv, "reviwo", policies["reviwo"])
+        for k in range(3):
+            feed.add(k)
+        r = feed.step(2)
+        assert r.code == "internal" and "injected" in r.detail
+        assert feed.step(2).ok and all(t.is_alive() for t in srv.threads)
+        c.close()
+
+
+def test_non_finite_json_and_unserialisable_spec_leave_no_session(policies, monkeypatch):
+    """#6: NaN / Infinity are refused at parse time; a SPEC that cannot be built leaves no live session behind."""
+    with serve({"reviwo": policies["reviwo"]}) as srv:
+        w = P.Wire(socket.create_connection(("127.0.0.1", srv.port), timeout=5))
+        assert w.recv(5).type == P.WELCOME
+        body = b'{"type": "HELLO", "v": 1, "policy_id": "reviwo", "choices": {"native_hw": {"cam_a": [NaN, 160]}}, ' \
+               b'"arrays": [], "payload_nbytes": 0}'
+        w.send(P.PREFIX.pack(len(body)) + body)
+        err = w.recv(5)
+        assert err.header["code"] == "bad_request" and "non-finite" in err.header["detail"] and err.header["fatal"]
+        w.close()
+        with pytest.raises(ValueError, match="non-finite"):
+            P.loads_strict('{"x": Infinity}')
+        live_before = set(policies["reviwo"].live_sessions)
+        real = PolicyServer._spec_message
+
+        def broken(self, s, **kw):
+            raise ValueError("Out of range float values are not JSON compliant")
+
+        monkeypatch.setattr(PolicyServer, "_spec_message", broken)
+        with pytest.raises(ServingError, match="bad_request"):
+            client_for(srv, "reviwo", policies["reviwo"])
+        assert not srv.sessions and not srv.policies["reviwo"].sessions
+        assert not set(policies["reviwo"].live_sessions) - live_before
+        monkeypatch.setattr(PolicyServer, "_spec_message", real)
+        c, _ = client_for(srv, "reviwo", policies["reviwo"])  # not session_busy: nothing leaked
+        c.close()
+
+
+def test_resent_history_after_a_pipelined_reset_rebuilds_instead_of_refusing(policies):
+    """#7: frames refused before the push are re-sent (history_reset); a re-sent buffer older than frames a pipelined
+    request already pushed rebuilds the history (no 'duplicate' dead end)."""
+    with serve({"reviwo": policies["reviwo"]}) as srv:
+        c, feed = client_for(srv, "reviwo", policies["reviwo"])
+        for k in range(3):
+            feed.add(k)
+        assert feed.step(2).ok
+        feed.add(3)
+        sa = feed.submit(3, ttl_ms=10 ** 6)  # refused before its frame was pushed -> history reset
+        feed.add(4)
+        sb = feed.submit(4)  # pipelined before the client saw the reset: the server holds only frame 4
+        ra, rb = c.wait(sa), c.wait(sb)
+        assert ra.code == "bad_request" and ra.history_reset and rb.code == "incomplete_history"
+        feed.add(5)
+        r = feed.step(5)  # re-sends 3, 4, 5 -> rebuilt
+        assert r.ok and r.outputs["obs_ids"]["frame_ids"][feed.spec["camera_ids"][0]] == [3, 4, 5]
+        assert next(iter(srv.sessions.values())).counts["history_rebuilds"] == 1
+        c.close()
+
+
+def test_request_of_a_session_closed_meanwhile_is_answered(policies, monkeypatch):
+    """#7: _submit for a session ended while its request was prepared answers session_unknown (recorded)."""
+    real = PolicyServer._prepare
+
+    def prepare_then_end(self, s, seq, msg):
+        job = real(self, s, seq, msg)
+        with self.lock:
+            self._end_session(s, "test: ended during preparation")
+        return job
+
+    with serve({"reviwo": policies["reviwo"]}) as srv:
+        c, feed = client_for(srv, "reviwo", policies["reviwo"])
+        for k in range(3):
+            feed.add(k)
+        monkeypatch.setattr(PolicyServer, "_prepare", prepare_then_end)
+        r = feed.step(2)
+        assert r.code == "session_unknown" and srv.counts["dropped_closed_session"] == 1
+        monkeypatch.setattr(PolicyServer, "_prepare", real)
+        assert feed.step(2).ok  # renewed once, buffered history re-sent
+        c.close()
+
+
+def test_pipelined_session_unknown_renews_once_without_nested_hello(policies):
+    """#8: two in-flight requests of an expired session -> exactly one renewal, no ServingError."""
+    with serve({"reviwo": policies["reviwo"]}, session_idle_timeout_s=0.3) as srv:
+        c, feed = client_for(srv, "reviwo", policies["reviwo"])
+        for k in range(3):
+            feed.add(k)
+        assert feed.step(2).ok
+        wait_until(lambda: not srv.sessions)
+        s1, s2 = feed.submit(2, "a"), feed.submit(2, "b")
+        r1, r2 = c.wait(s1), c.wait(s2)
+        assert r1.code == r2.code == "session_unknown"
+        assert srv.counts["sessions_opened"] == 2 and c.stats["renew_nested_ignored"] >= 1
+        assert feed.step(2).ok
+        c.close()
+
+
+def test_auth_required_beyond_loopback_pre_session_cap_and_connection_cap(policies, tmp_path):
+    """#9: no token -> no non-loopback bind (constructor and CLI, before loading); pre-session messages are capped;
+    connections are capped."""
+    with pytest.raises(ValueError, match="token"):
+        PolicyServer({"reviwo": policies["reviwo"]}, host="0.0.0.0")
+    PolicyServer({"reviwo": policies["reviwo"]}, host="0.0.0.0", token=b"t")  # constructed, never started
+    cfg = tmp_path / "cfg.json"
+    cfg.write_text(json.dumps({"policies": {"x": {"checkpoint": "/nonexistent/policy.pt"}}}))
+    with pytest.raises(SystemExit, match="token"):
+        main(["serve", "--config", str(cfg), "--policies", "x", "--bind", "0.0.0.0", "--device", "cpu"])
+    with serve({"reviwo": policies["reviwo"]}, max_connections=2) as srv:
+        w1 = P.Wire(socket.create_connection(("127.0.0.1", srv.port), timeout=5))
+        assert w1.recv(5).type == P.WELCOME
+        n = 100 << 10  # a 100 KiB message before any HELLO: refused from its header (no unread payload)
+        body = json.dumps({"type": P.PING, "v": P.VERSION, "payload_nbytes": n, "arrays": [
+            {"name": "x", "dtype": "|u1", "shape": [n], "offset": 0, "nbytes": n}]}).encode()
+        w1.send(P.PREFIX.pack(len(body)) + body)
+        err = w1.recv(5)
+        assert err.header["code"] == "bad_request" and "payload_nbytes" in err.header["detail"] and err.header["fatal"]
+        w1.close()
+        wait_until(lambda: not srv.connections)
+        keep = [P.Wire(socket.create_connection(("127.0.0.1", srv.port), timeout=5)) for _ in range(2)]
+        assert all(w.recv(5).type == P.WELCOME for w in keep)
+        w3 = P.Wire(socket.create_connection(("127.0.0.1", srv.port), timeout=5))
+        err = w3.recv(5)
+        assert err.header["code"] == "overloaded" and err.header["fatal"] and w3.recv(5) is None
+        assert srv.counts["connections_refused"] == 1
+        for w in (*keep, w3):
+            w.close()
+
+
+def test_replay_demo_labels_and_first_request():
+    """#10 + (D): depth provenance is labelled from the alignment actually used; the first request is the first one
+    sent (rows skipped before a request carry no bytes)."""
+    import importlib.util
+
+    from ops.policy_serving.config import REPO
+
+    spec = importlib.util.spec_from_file_location("policy_replay_demo", REPO / "scripts/policy_replay_demo.py")
+    demo = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(demo)
+    for alignment in ("rs_align", "sensor_depth"):
+        meta = demo.depth_metadata({"depth": 1, "alignment": alignment, "depth_timestamp_ns": 5})
+        assert meta == {"alignment": f"{alignment} (recorded replay)", "depth_timestamp_ns": 5}
+    assert demo.depth_metadata({"rgb": 1}) == {}
+    rows = [{"status": "skipped", "request_bytes": 0}, {"status": "ok", "request_bytes": 50056},
+            {"status": "ok", "request_bytes": 50055}]
+    assert demo.first_request(rows) == 50056 and demo.first_request(rows[:1]) is None
+
+
+def test_fixture_checkpoints_are_not_served_by_default(tmp_path):
+    """#11: the CLI loader refuses FIXTURE weights unless explicitly allowed."""
+    make_fixture_policy(tmp_path / "fx", "reviwo")
+    entry = {"checkpoint": str(tmp_path / "fx/policy.pt"), "export": str(tmp_path / "fx/encoder.pt")}
+    with pytest.raises(ValueError, match="FIXTURE"):
+        load_policy(entry, root=None, device="cpu")
+    policy, info = load_policy(entry, root=None, device="cpu", allow_fixture=True)
+    assert info["fixture"] is True and policy.input_spec.fixture
+
+
+def test_evicted_client_gets_a_terminal_result_never_an_exception(policies):
+    """(A): a client evicted while disconnected renews into a busy policy -> terminal 'session_taken_over'."""
+    with serve({"reviwo": policies["reviwo"]}) as srv:
+        a, fa = client_for(srv, "reviwo", policies["reviwo"], step_timeout_s=10)
+        for k in range(3):
+            fa.add(k)
+        assert fa.step(2).ok
+        a.wire.close()  # a drops off the network; b takes the policy over meanwhile
+        b, _ = client_for(srv, "reviwo", policies["reviwo"], takeover=True)
+        r = fa.step(2)  # reconnect -> resume refused -> renewal finds the policy busy
+        assert r.terminal and r.code == "session_taken_over" and "another client" in r.detail
+        with pytest.raises(SessionTakenOver):
+            fa.submit(2, "again")
+        b.close()
+        a.close()
+
+
+def test_gpu_is_enforced_by_the_guard_not_the_container(monkeypatch):
+    """(B): CUDA serving only on the configured UUID, checked by ops.resources.gpu_guard."""
+    from ops.resources.gpu_guard import GPUIsolationError
+
+    assert enforce_gpu("cpu", None) is None
+    with pytest.raises(ValueError, match="gpu_uuid"):
+        enforce_gpu("cuda", None)
+    with pytest.raises(ValueError, match="cuda:0"):
+        enforce_gpu("cuda:1", "GPU-x")
+    visible = os.environ["CUDA_VISIBLE_DEVICES"]
+    with pytest.raises(GPUIsolationError):
+        enforce_gpu("cuda", "GPU-9bcf38b6-8240-e910-6548-ca715643dc11")  # not this process's device
+    mapping = enforce_gpu("cuda", visible)
+    assert len(mapping) == 1 and mapping[0]["uuid"] == visible
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "0")
+    with pytest.raises(GPUIsolationError):
+        enforce_gpu("cuda", visible)  # bare indices are refused by the guard
