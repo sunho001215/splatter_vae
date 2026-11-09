@@ -1,0 +1,626 @@
+"""Robot-side CPU client of the policy server. numpy + stdlib only: importing this module never imports torch.
+
+    client = PolicyClient(host, port, policy_id="dynamo-drawer-open", choices={...}, token=...)
+    client.connect()                                   # WELCOME -> HELLO -> SPEC (bound InputSpec JSON)
+    client.add_frame_native(cam, frame_id, capture_ns, rgb, pose7=..., gripper_register=...)   # crop/resize on CPU
+    result = client.step({cam: frame_id}, reference_id, pose7, gripper_register)            # ACTION / ERROR
+    ok, why = check_action(result, reference_id=..., now_ns=time.monotonic_ns(), max_age_ms=...)
+
+The client buffers the last frames of each camera and sends only frames the server does not hold yet; the server
+assembles the trained history. Every timing is on THIS host's ``time.monotonic_ns`` clock. Disconnects are retried with
+backoff and the session is resumed (session id + last ack); unacknowledged requests are re-sent with their ORIGINAL seq
+(the server answers a repeated seq from its cache, never re-infers). A lost session (server restart / expiry) opens a
+new one: in-flight requests then return ``session_unknown`` and the buffered frames are re-sent with the next step.
+
+An action is bound to the measured pose of its observation (``reference_id``): execute its absolute ``flange_pose``
+goal (through the robot-side safety layer) or nothing - never re-apply its delta to a newer pose. This module never
+talks to a robot.
+"""
+
+from __future__ import annotations
+
+import collections
+import hashlib
+import hmac
+import socket
+import time
+from dataclasses import dataclass, field
+
+import numpy as np
+
+from ops.policy_serving import protocol as P
+
+
+class ServingError(Exception):
+    def __init__(self, code: str, detail: str):
+        super().__init__(f"{code}: {detail}")
+        self.code, self.detail = code, detail
+
+
+class ConnectionLost(ServingError):
+    pass
+
+
+@dataclass
+class PendingFrame:
+    camera_id: str
+    frame_id: int
+    capture_ns: int
+    rgb: np.ndarray
+    pose7: list
+    gripper_register: float
+    depth: np.ndarray | None = None
+    valid: np.ndarray | None = None
+    metadata: dict = field(default_factory=dict)
+    preprocess_ns: tuple[int, int] | None = None  # (start, end) on the client monotonic clock
+
+
+@dataclass
+class StepResult:
+    status: str  # "ok" | "error" | "timeout"
+    seq: int
+    session_id: str | None = None
+    code: str | None = None
+    detail: str | None = None
+    reference_id: object = None
+    outputs: dict = field(default_factory=dict)
+    server_ms: dict = field(default_factory=dict)
+    timings_ms: dict = field(default_factory=dict)
+    request_bytes: int = 0
+    response_bytes: int = 0
+    frames_sent: int = 0
+    history_reset: bool = False
+
+    @property
+    def ok(self) -> bool:
+        return self.status == "ok"
+
+
+@dataclass
+class _Inflight:
+    seq: int
+    data: bytes
+    reference_id: object
+    end_ids: dict
+    frames_sent: int
+    preprocess_ms: float
+    t_origin_ns: int
+    t_serialize_ns: int
+    t_serialized_ns: int
+    capture_ns: int
+    t_sent_ns: int = 0
+
+
+def check_action(result: StepResult, *, reference_id, now_ns: int, max_age_ms: float,
+                 session_id: str | None = None) -> tuple[bool, str]:
+    """Whether an action may be executed NOW. It is usable only for the measured pose it is bound to (same
+    ``reference_id``; the robot executes its absolute ``flange_pose``, never its delta re-applied to a newer pose) and
+    only while its observation is at most ``max_age_ms`` old on the client clock that stamped the frames."""
+    if not result.ok:
+        return False, f"no action ({result.status}: {result.code} {result.detail})"
+    if result.reference_id != reference_id:
+        return False, f"bound to measured pose {result.reference_id!r}, not {reference_id!r}"
+    if session_id is not None and result.session_id != session_id:
+        return False, "action from another session"
+    age_ms = (int(now_ns) - int(result.outputs["obs_ids"]["observation_time_ns"])) / 1e6
+    if age_ms < 0:
+        return False, f"observation {-age_ms:.1f} ms in the future: frames not stamped on this clock"
+    if age_ms > max_age_ms:
+        return False, f"expired: observation {age_ms:.1f} ms old > {max_age_ms} ms"
+    return True, f"usable: observation {age_ms:.1f} ms old"
+
+
+def bound_command(result: StepResult) -> dict:
+    """The executable part of an action: absolute goal pose + gripper, with the measured pose it was computed from."""
+    o = result.outputs
+    out = {k: o[k] for k in ("flange_pose", "gripper_closure", "gripper_register", "measured_pose7") if k in o}
+    if "execution_flange_pose" in o:
+        out["execution_flange_pose"] = o["execution_flange_pose"]
+    out["reference_id"] = result.reference_id
+    return out
+
+
+class PolicyClient:
+    def __init__(self, host: str, port: int, *, policy_id: str, choices: dict, token: bytes | None = None,
+                 connect_timeout_s: float = 3.0, io_timeout_s: float = 5.0, step_timeout_s: float = 0.5,
+                 reconnect_backoff_s=(0.05, 0.1, 0.25, 0.5, 1.0), ttl_ms: float = 100.0, takeover: bool = False,
+                 frame_buffer: int | None = None, max_inflight: int = 4, max_payload_bytes: int = 32 << 20,
+                 name: str = "policy-client"):
+        self.host, self.port, self.policy_id = host, int(port), policy_id
+        self.choices = choices if callable(choices) else P.jsonable(choices)  # callable(unbound spec) -> dict
+        self.token, self.takeover, self.name = token, bool(takeover), name
+        self.connect_timeout_s, self.io_timeout_s = float(connect_timeout_s), float(io_timeout_s)
+        self.step_timeout_s, self.ttl_ms = float(step_timeout_s), float(ttl_ms)
+        self.backoff = tuple(float(x) for x in reconnect_backoff_s) or (0.1,)
+        self.frame_buffer, self.max_inflight, self.max_payload_bytes = frame_buffer, int(max_inflight), max_payload_bytes
+        self.wire: P.Wire | None = None
+        self.welcome: dict | None = None
+        self.session_id: str | None = None
+        self.spec: dict | None = None
+        self.limits: dict | None = None
+        self.last_ack = 0  # newest seq answered in this session (resume)
+        self.last_action_seq = 0  # newest seq answered with an ACTION: an older ACTION arriving later is refused
+        self._seq = 0
+        self._buffer: dict[str, collections.OrderedDict] = {}
+        self._added: dict[str, int] = {}
+        self._tip: dict[str, int] = {}
+        self._sets: collections.OrderedDict = collections.OrderedDict()  # key -> [surface_disp_m, sent]
+        self._inflight: collections.OrderedDict[int, _Inflight] = collections.OrderedDict()
+        self._results: dict[int, StepResult] = {}
+        self._pongs: collections.deque = collections.deque(maxlen=16)
+        self.stats = collections.Counter()
+
+    # ------------------------------------------------------------------------------------------------ connection
+    @property
+    def cameras(self) -> list:
+        return list(self.spec["camera_ids"])
+
+    def connect(self) -> dict:
+        """Open the connection and a NEW session; returns the bound InputSpec JSON."""
+        self._open()
+        self._hello(None)
+        return self.spec
+
+    def _open(self) -> None:
+        if self.wire is not None:
+            self.wire.close()
+        sock = socket.create_connection((self.host, self.port), timeout=self.connect_timeout_s)
+        self.wire = P.Wire(sock, io_timeout_s=self.io_timeout_s, max_payload_bytes=self.max_payload_bytes)
+        msg = self.wire.recv(self.connect_timeout_s)
+        if msg is None or msg.type != P.WELCOME:
+            raise ServingError("bad_request", f"expected WELCOME, got {None if msg is None else msg.type}")
+        if msg.header["v"] != P.VERSION:
+            raise ServingError("version", f"server protocol {msg.header['v']} != client {P.VERSION}")
+        self.welcome = msg.header
+
+    def _hello(self, resume: dict | None) -> dict:
+        offered = self.welcome.get("policies", {})
+        if self.policy_id not in offered:
+            raise ServingError("bad_request", f"server does not serve {self.policy_id!r}; serves {sorted(offered)}")
+        if callable(self.choices):
+            self.choices = P.jsonable(self.choices(offered[self.policy_id]["input_spec"]))
+        header = {"type": P.HELLO, "policy_id": self.policy_id, "choices": self.choices, "client": self.name,
+                  "takeover": self.takeover, "resume": resume}
+        if self.welcome["auth_required"]:
+            if self.token is None:
+                raise ServingError("auth", "server requires the shared token")
+            header["auth"] = hmac.new(self.token, self.welcome["nonce"].encode(), hashlib.sha256).hexdigest()
+        self.wire.send(P.encode(header))
+        deadline = time.monotonic() + self.connect_timeout_s
+        while True:
+            msg = self.wire.recv(max(0.0, deadline - time.monotonic()))
+            if msg is None:
+                raise ConnectionLost("disconnected", "server closed during HELLO")
+            if msg.type == P.ERROR:
+                raise ServingError(msg.header["code"], msg.header["detail"])
+            if msg.type == P.SPEC:
+                break
+            self._handle(msg)
+        h = msg.header
+        if resume is None or h["session_id"] != self.session_id:
+            self._new_session_state(h["session_id"])
+        self.spec, self.limits = h["input_spec"], h["limits"]
+        span = (self.spec["history_length"] - 1) * self.spec["frame_spacing"] + 1
+        cap = max(span, int(self.frame_buffer or span))
+        for cam in self.spec["camera_ids"]:
+            old = self._buffer.get(cam)
+            self._buffer[cam] = collections.OrderedDict() if old is None else old
+            while len(self._buffer[cam]) > cap:
+                self._buffer[cam].popitem(last=False)
+        self._capacity = cap
+        return h
+
+    def _new_session_state(self, session_id: str) -> None:
+        lost = list(self._inflight)
+        for seq in lost:
+            self._results[seq] = StepResult("error", seq, self.session_id, "session_unknown",
+                                            f"server lost session {self.session_id}; new session {session_id}")
+        self._inflight.clear()
+        self.session_id = session_id
+        self.last_ack = self.last_action_seq = 0
+        self._tip.clear()
+        for v in self._sets.values():
+            v[1] = False
+        if lost:
+            self.stats["sessions_renewed"] += 1
+
+    def _recover(self, deadline: float) -> None:
+        """Reconnect with backoff and resume (or renew) the session; re-send unacknowledged requests."""
+        self.stats["reconnects"] += 1
+        attempt = 0
+        while True:
+            if self.wire is not None:
+                self.wire.close()
+                self.wire = None
+            delay = self.backoff[min(attempt, len(self.backoff) - 1)]
+            attempt += 1
+            if time.monotonic() + delay > deadline:
+                raise ConnectionLost("disconnected", f"could not reconnect to {self.host}:{self.port} in time")
+            time.sleep(delay)
+            try:
+                self._open()
+                try:
+                    h = self._hello({"session_id": self.session_id, "last_ack": self.last_ack})
+                except ServingError as exc:
+                    if exc.code != "session_unknown":
+                        raise
+                    self._hello(None)
+                    return
+                for inf in list(self._inflight.values()):
+                    if inf.seq > h["last_seq_received"]:
+                        self.wire.send(inf.data)
+                        inf.t_sent_ns = time.monotonic_ns()
+                self.stats["resumes"] += 1
+                return
+            except (OSError, TimeoutError, ConnectionError, P.ProtocolError):
+                continue
+
+    def close(self) -> None:
+        if self.wire is not None:
+            try:
+                if self.session_id is not None:
+                    self.wire.send(P.encode({"type": P.BYE, "session_id": self.session_id}))
+            except OSError:
+                pass
+            self.wire.close()
+            self.wire = None
+
+    def __enter__(self):
+        self.connect()
+        return self
+
+    def __exit__(self, *exc):
+        self.close()
+
+    # ------------------------------------------------------------------------------------------------ frames
+    def add_frame(self, camera_id: str, frame_id: int, capture_ns: int, rgb: np.ndarray, *, pose7, gripper_register,
+                  depth: np.ndarray | None = None, valid: np.ndarray | None = None, metadata: dict | None = None,
+                  preprocess_ns: tuple[int, int] | None = None) -> None:
+        """An already preprocessed frame (training grid). ``frame_id`` is the camera's acquisition counter (gaps stay
+        gaps), ``capture_ns`` its capture time on the common client monotonic clock; pose/gripper measured at it."""
+        if camera_id not in self._buffer:
+            raise ValueError(f"camera {camera_id!r} not in this session {self.cameras}")
+        if type(frame_id) is not int or type(capture_ns) is not int:
+            raise ValueError("frame_id and capture_ns must be integers")
+        if frame_id <= self._added.get(camera_id, -1):
+            raise ValueError(f"{camera_id}: frame {frame_id} is not newer than {self._added[camera_id]}")
+        pose = [float(x) for x in np.asarray(pose7, np.float64).reshape(7)]
+        buf = self._buffer[camera_id]
+        buf[frame_id] = PendingFrame(camera_id, frame_id, capture_ns, np.ascontiguousarray(rgb), pose,
+                                     float(gripper_register), None if depth is None else np.ascontiguousarray(depth),
+                                     None if valid is None else np.ascontiguousarray(valid), dict(metadata or {}),
+                                     preprocess_ns)
+        self._added[camera_id] = frame_id
+        while len(buf) > self._capacity:
+            buf.popitem(last=False)
+
+    def add_frame_native(self, camera_id: str, frame_id: int, capture_ns: int, rgb: np.ndarray, *, pose7,
+                         gripper_register, depth: np.ndarray | None = None, valid: np.ndarray | None = None,
+                         K_native: np.ndarray | None = None, native_correction: dict | None = None,
+                         metadata: dict | None = None) -> dict:
+        """Native colour frame (+ native depth ALIGNED to colour, metres, with validity) -> the exact training crop +
+        resize of ``s4d.rwlearn.deploy.preprocess_frame`` on this CPU, timed, then ``add_frame``. Depth is labelled
+        native RealSense with its session native correction (the deploy contract checks both)."""
+        from s4d.rwlearn.deploy import preprocess_frame
+
+        t0 = time.monotonic_ns()
+        out = preprocess_frame(rgb, depth=depth, valid=valid, K_native=K_native,
+                               out_size=int(self.spec["image_hw"][0]), native_correction=native_correction)
+        t1 = time.monotonic_ns()
+        meta = dict(metadata or {})
+        if depth is not None:
+            meta.setdefault("depth_source", "native_realsense")
+            meta.setdefault("native_correction", native_correction)
+        self.add_frame(camera_id, frame_id, capture_ns, out["rgb"], pose7=pose7, gripper_register=gripper_register,
+                       depth=out.get("depth"), valid=out.get("valid"), metadata=meta, preprocess_ns=(t0, t1))
+        return out
+
+    def add_sync_set(self, frame_ids: dict, surface_disp_m: float | None) -> None:
+        """Multi-view set evidence (mutual-nearest frames + robot-surface motion, criterion M5) for one step;
+        ``None`` = no valid robot state (refused by the server, never accepted). Recorded replay takes the value from
+        the training store (``s4d.rwlearn.deploy.replay.m5_from_store``); LIVE multi-view must not run until the
+        science side provides a validated M5 helper (API.md R3)."""
+        key = tuple(int(frame_ids[c]) for c in self.cameras)
+        if set(frame_ids) != set(self.cameras):
+            raise ValueError(f"set must name exactly {self.cameras}")
+        self._sets[key] = [None if surface_disp_m is None else float(surface_disp_m), False]
+        while len(self._sets) > self._capacity:
+            self._sets.popitem(last=False)
+
+    def reset(self, timeout_s: float | None = None) -> None:
+        """Explicit history reset (e.g. a new episode): server history, local frame buffers and in-flight requests."""
+        self._seq += 1
+        seq = self._seq
+        data = P.encode({"type": P.RESET, "session_id": self.session_id, "seq": seq})
+        self._inflight.clear()
+        self._results.clear()
+        self._tip.clear()
+        self._added.clear()
+        self._sets.clear()
+        for buf in self._buffer.values():
+            buf.clear()
+        self._inflight[seq] = _Inflight(seq, data, None, {}, 0, 0.0, 0, 0, 0, 0)
+        self._send(data, time.monotonic() + (timeout_s or self.step_timeout_s))
+        result = self.wait(seq, timeout_s)
+        if result.status != "ok":
+            raise ServingError(result.code or result.status, f"RESET failed: {result.detail}")
+
+    # ------------------------------------------------------------------------------------------------ steps
+    def submit(self, end_ids: dict, reference_id, pose7, gripper_register, *, pose_time_ns: int, gripper_time_ns: int,
+               ttl_ms: float | None = None, pad_run_start: bool = False, noise: np.ndarray | None = None,
+               noise_seed: int | None = None) -> int:
+        """Send one inference request (only frames the server does not hold yet); returns its seq.
+
+        ``pose7`` / ``gripper_register``: the measured robot / gripper samples bound to the observation (training rule:
+        the latest sample at or before the observation time, <= 15 / 100 ms old) and their sample times on the SAME
+        client monotonic clock as the frames. ``pad_run_start``: the training run-start padding (first frames of a
+        run); otherwise an incomplete history is refused."""
+        t_serialize = time.monotonic_ns()
+        if len(self._inflight) >= self.max_inflight:
+            raise ServingError("overloaded", f"{len(self._inflight)} requests already in flight")
+        frames, arrays, origin, pre_ms, sent = [], {}, None, 0.0, {}
+        for cam in self.cameras:
+            for fid, pf in self._buffer[cam].items():
+                if fid <= self._tip.get(cam, -1):
+                    continue
+                i = len(frames)
+                names = {"rgb": f"f{i}.rgb"}
+                arrays[names["rgb"]] = pf.rgb
+                if pf.depth is not None:
+                    names["depth"], names["valid"] = f"f{i}.depth", f"f{i}.valid"
+                    arrays[names["depth"]], arrays[names["valid"]] = pf.depth, pf.valid
+                frames.append({"camera_id": cam, "frame_id": fid, "capture_ns": pf.capture_ns, "pose7": pf.pose7,
+                               "gripper_register": pf.gripper_register, "arrays": names, "metadata": pf.metadata})
+                if pf.preprocess_ns is not None:
+                    pre_ms += (pf.preprocess_ns[1] - pf.preprocess_ns[0]) / 1e6
+                    origin = pf.preprocess_ns[0] if origin is None else min(origin, pf.preprocess_ns[0])
+                sent[cam] = fid
+        sets = [{"frame_ids": dict(zip(self.cameras, key)), "surface_disp_m": v[0]}
+                for key, v in self._sets.items() if not v[1]]
+        request = {"end_ids": {c: int(end_ids[c]) for c in self.cameras}, "reference_id": reference_id,
+                   "pose7": [float(x) for x in np.asarray(pose7, np.float64).reshape(7)],
+                   "pose_time_ns": int(pose_time_ns), "gripper_register": float(gripper_register),
+                   "gripper_time_ns": int(gripper_time_ns), "ttl_ms": float(ttl_ms or self.ttl_ms),
+                   "pad_run_start": bool(pad_run_start)}
+        if noise is not None and noise_seed is not None:
+            raise ValueError("give noise OR noise_seed")
+        if noise is not None:
+            noise = np.asarray(noise)
+            if noise.dtype != np.float32 or noise.shape != (1, P.ACTION_DIM):
+                raise ValueError(f"validation noise must be float32 (1, {P.ACTION_DIM})")
+            arrays["noise"], request["noise"] = noise, "noise"
+        if noise_seed is not None:
+            request["noise_seed"] = int(noise_seed)
+        self._seq += 1
+        seq = self._seq
+        data = P.encode({"type": P.STEP, "session_id": self.session_id, "seq": seq, "frames": frames, "sets": sets,
+                         "request": request, "t_client_ns": t_serialize}, arrays)
+        t_serialized = time.monotonic_ns()
+        capture = max((pf.capture_ns for c in self.cameras for f, pf in self._buffer[c].items()
+                       if f == request["end_ids"][c]), default=0)
+        inf = _Inflight(seq, data, reference_id, request["end_ids"], len(frames), pre_ms,
+                        t_serialize if origin is None else origin, t_serialize, t_serialized, capture)
+        self._inflight[seq] = inf
+        self._tip.update(sent)  # the bytes are kept until acknowledged: a resume re-sends them with this seq
+        for v in self._sets.values():
+            v[1] = True
+        self._send(data, time.monotonic() + self.step_timeout_s)
+        inf.t_sent_ns = time.monotonic_ns()
+        return seq
+
+    def _send(self, data: bytes, deadline: float) -> None:
+        try:
+            if self.wire is None:
+                raise ConnectionError("not connected")
+            self.wire.send(data)
+        except (OSError, ConnectionError):
+            self._recover(deadline)  # re-sends every unacknowledged request, including this one
+
+    def step(self, end_ids: dict, reference_id, pose7, gripper_register, *, pose_time_ns: int, gripper_time_ns: int,
+             ttl_ms: float | None = None, pad_run_start: bool = False, noise: np.ndarray | None = None,
+             noise_seed: int | None = None, timeout_s: float | None = None) -> StepResult:
+        try:
+            seq = self.submit(end_ids, reference_id, pose7, gripper_register, pose_time_ns=pose_time_ns,
+                              gripper_time_ns=gripper_time_ns, ttl_ms=ttl_ms, pad_run_start=pad_run_start,
+                              noise=noise, noise_seed=noise_seed)
+        except ConnectionLost as exc:
+            self._inflight.pop(self._seq, None)  # never re-send a request the caller has given up on
+            self.stats["disconnected"] += 1
+            return StepResult("error", self._seq, self.session_id, exc.code, exc.detail)
+        return self.wait(seq, timeout_s)
+
+    def wait(self, seq: int, timeout_s: float | None = None) -> StepResult:
+        """The response of ``seq``. Older unclaimed results are dropped (superseded); later responses for requests
+        no longer awaited are dropped as stale."""
+        deadline = time.monotonic() + (self.step_timeout_s if timeout_s is None else timeout_s)
+        while seq not in self._results:
+            if seq not in self._inflight:
+                return StepResult("error", seq, self.session_id, "unknown_seq", "not in flight")
+            left = deadline - time.monotonic()
+            if left <= 0:
+                self._inflight.pop(seq, None)
+                self.stats["timeouts"] += 1
+                return StepResult("timeout", seq, self.session_id, None, "no response within the step timeout")
+            try:
+                if self.wire is None:
+                    raise ConnectionError("not connected")
+                msg = self.wire.recv(left)
+            except TimeoutError:
+                continue
+            except P.ProtocolError as exc:
+                if exc.fatal:
+                    raise ServingError(exc.code, exc.detail) from exc
+                continue
+            except (OSError, ConnectionError):
+                msg = None
+            if msg is None:
+                try:
+                    self._recover(deadline)
+                except ConnectionLost as exc:
+                    self._inflight.pop(seq, None)
+                    self.stats["disconnected"] += 1
+                    return StepResult("error", seq, self.session_id, exc.code, exc.detail)
+                continue
+            self._handle(msg)
+        result = self._results.pop(seq)
+        for old in [s for s in self._results if s < seq]:
+            self._results.pop(old)
+            self.stats["superseded_results"] += 1
+        return result
+
+    def ping(self, timeout_s: float = 1.0) -> float:
+        if self.wire is None:
+            raise ConnectionLost("disconnected", "not connected")
+        t0 = time.monotonic_ns()
+        self.wire.send(P.encode({"type": P.PING, "t_client_ns": t0}))
+        deadline = time.monotonic() + timeout_s
+        while True:
+            while self._pongs:
+                pong = self._pongs.popleft()
+                if pong["t_client_ns"] == t0:
+                    return (time.monotonic_ns() - t0) / 1e6
+            msg = self.wire.recv(max(0.0, deadline - time.monotonic()))
+            if msg is None:
+                raise ConnectionLost("disconnected", "server closed")
+            self._handle(msg)
+
+    # ------------------------------------------------------------------------------------------------ responses
+    def _handle(self, msg: P.Message) -> None:
+        h, kind = msg.header, msg.type
+        if kind == P.PONG:
+            self._pongs.append(h)
+            return
+        if kind not in (P.ACTION, P.ERROR, P.RESET_OK):
+            self.stats["unexpected_messages"] += 1
+            return
+        if kind == P.ERROR:
+            if h.get("fatal"):
+                raise ServingError(h["code"], h["detail"])
+            if h["code"] == "session_unknown":  # expired / evicted / server restarted: renew on this connection
+                self.stats["session_unknown"] += 1
+                if h.get("session_id") == self.session_id:  # once per lost session (pipelined requests repeat it)
+                    self._renew()
+                return
+            if h.get("seq") is None:
+                raise ServingError(h["code"], h["detail"])
+        seq = h.get("seq")
+        if h.get("session_id") != self.session_id:
+            self.stats["foreign_responses"] += 1
+            return
+        inf = self._inflight.pop(seq, None)
+        if inf is None:  # duplicate, superseded locally (timeout) or from before a reset
+            self.stats["dropped_responses"] += 1
+            return
+        self.last_ack = max(self.last_ack, seq)
+        if kind == P.ACTION and seq < self.last_action_seq:
+            self._results[seq] = StepResult("error", seq, self.session_id, "stale",
+                                            f"out-of-order action (seq {self.last_action_seq} already acted)")
+            self.stats["out_of_order"] += 1
+            return
+        if kind == P.RESET_OK:
+            self._results[seq] = StepResult("ok", seq, self.session_id)
+            return
+        if kind == P.ERROR:
+            if h.get("history_reset"):
+                self._tip.clear()
+                for v in self._sets.values():
+                    v[1] = False
+            self._results[seq] = StepResult("error", seq, self.session_id, h["code"], h["detail"],
+                                            response_bytes=msg.nbytes, request_bytes=len(inf.data),
+                                            frames_sent=inf.frames_sent, history_reset=bool(h.get("history_reset")))
+            return
+        self.last_action_seq = seq
+        outputs = P.unpack_outputs(h["outputs"], h["output_arrays"], msg.arrays)
+        t_decoded = time.monotonic_ns()
+        ids = outputs["obs_ids"]
+        if h["reference_id"] != inf.reference_id or ids["reference_id"] != inf.reference_id \
+                or any(ids["frame_ids"][c][-1] != inf.end_ids[c] for c in inf.end_ids):
+            raise ServingError("bad_response", f"response seq {seq} is bound to another observation")
+        server_ms = h["server_ms"]
+        rtt = (msg.t_recv_ns - inf.t_serialized_ns) / 1e6
+        timings = {"preprocess_ms": inf.preprocess_ms, "serialize_ms": (inf.t_serialized_ns - inf.t_serialize_ns) / 1e6,
+                   "send_ms": (inf.t_sent_ns - inf.t_serialized_ns) / 1e6, "rtt_ms": rtt,
+                   "network_ms": rtt - server_ms["total_ms"], "decode_ms": (t_decoded - msg.t_recv_ns) / 1e6,
+                   "e2e_ms": (t_decoded - inf.t_origin_ns) / 1e6,
+                   "capture_to_action_ms": (t_decoded - inf.capture_ns) / 1e6}
+        self._results[seq] = StepResult("ok", seq, self.session_id, None, None, inf.reference_id, outputs, server_ms,
+                                        timings, len(inf.data), msg.nbytes, inf.frames_sent)
+
+    def _renew(self) -> None:
+        """The server no longer knows this session (expired/restarted): open a new one on this connection."""
+        self._hello(None)
+
+
+# ---------------------------------------------------------------------------------------------------- RealSense
+class DeviceClock:
+    """One camera's device timestamps (ms, a single clock domain) -> this host's monotonic ns.
+
+    The offset is the minimum (arrival - device time) over the first ``calibration_frames`` frames (the lowest-latency
+    arrival bounds the transport delay) and is then FROZEN, so frame-to-frame steps equal the device steps (the trained
+    spacing check needs regular capture times; arrival jitter must not enter them)."""
+
+    def __init__(self, calibration_frames: int = 30):
+        self.calibration_frames, self.n, self.offset_ns = int(calibration_frames), 0, None
+
+    @property
+    def calibrated(self) -> bool:
+        return self.n >= self.calibration_frames
+
+    def map(self, device_ms: float, arrival_ns: int) -> int:
+        device_ns = int(round(float(device_ms) * 1e6))
+        if not self.calibrated:
+            off = int(arrival_ns) - device_ns
+            self.offset_ns = off if self.offset_ns is None else min(self.offset_ns, off)
+            self.n += 1
+        return device_ns + self.offset_ns
+
+
+class RealSenseCapture:
+    """Optional live capture of ONE camera through ``s4d.rwlearn.deploy.realsense`` (pyrealsense2 imported here only).
+
+    ``depth=True``: colour + native z16 depth, ``rs.align`` to colour and the shared crop/resize (``RealSenseRGBD``);
+    ``depth=False``: colour only + ``preprocess_frame``. Frames carry the colour frame number (acquisition counter) and
+    the capture time on this host's monotonic clock (``DeviceClock``; use the frames only once ``calibrated``)."""
+
+    def __init__(self, serial: str, *, width: int = 640, height: int = 480, fps: int = 15, depth: bool = False,
+                 correction: dict | None = None, out_size: int = 128, rs_module=None, pipeline=None):
+        if rs_module is None:
+            import pyrealsense2 as rs_module
+        from s4d.rwlearn.deploy.realsense import RealSenseRGBD
+
+        self.rs, self.serial, self.depth, self.out_size = rs_module, str(serial), bool(depth), int(out_size)
+        self.pipeline = pipeline or rs_module.pipeline()
+        cfg = rs_module.config()
+        cfg.enable_device(self.serial)
+        cfg.enable_stream(rs_module.stream.color, width, height, rs_module.format.rgb8, fps)
+        if self.depth:
+            cfg.enable_stream(rs_module.stream.depth, width, height, rs_module.format.z16, fps)
+        self.profile = self.pipeline.start(cfg)
+        self.rgbd = RealSenseRGBD(self.profile, correction=correction, out_size=out_size,
+                                  rs_module=rs_module) if self.depth else None
+        self.clock = DeviceClock()
+
+    def read(self, timeout_ms: int = 1000) -> dict:
+        from s4d.rwlearn.deploy import preprocess_frame
+        from s4d.rwlearn.deploy.realsense import color_intrinsics
+
+        frames = self.pipeline.wait_for_frames(timeout_ms)
+        arrival = time.monotonic_ns()
+        t0 = time.monotonic_ns()
+        if self.rgbd is not None:
+            out = self.rgbd.process(frames)
+            color_ms, number = out["metadata"]["color_timestamp_ms"], out["metadata"]["color_frame_number"]
+        else:
+            color = frames.get_color_frame()
+            K = color_intrinsics(color.profile.as_video_stream_profile().get_intrinsics())
+            out = preprocess_frame(np.asanyarray(color.get_data()), K_native=K, out_size=self.out_size)
+            color_ms, number = float(color.get_timestamp()), int(color.get_frame_number())
+            out["metadata"] = {"color_timestamp_ms": color_ms, "color_frame_number": number,
+                               "color_timestamp_domain": str(color.get_frame_timestamp_domain())}
+        t1 = time.monotonic_ns()
+        out.update(frame_id=int(number), capture_ns=self.clock.map(color_ms, arrival), preprocess_ns=(t0, t1),
+                   clock_calibrated=self.clock.calibrated)
+        return out
+
+    def stop(self) -> None:
+        self.pipeline.stop()

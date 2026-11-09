@@ -74,6 +74,7 @@ from s4d.data.droid.largescale import crop as CR
 from s4d.realworld import io as rio
 from s4d.realworld.contract import CONVENTIONS
 from s4d.realworld.contract import SCHEMA_VERSION as EPISODE_SCHEMA
+from s4d.realworld.frame_preprocessing import IMAGE_SIZE, nearest_resample, training_depth
 from s4d.realworld.geometry import PixelAffine
 from s4d.realworld.tracking import NOT_TRACKED, VALID
 
@@ -85,7 +86,6 @@ SYNC_CRITERION = "M5"
 MAX_SET_MOTION_M = 0.005  # M5 default: a set is accepted iff the robot surface moved <= 5 mm across its timestamps
 STAGE = "train_data"
 FILE = "episode.h5"
-IMAGE_SIZE = 128
 SEMANTIC_CLASSES = ("background", "robot", "object", "fixture")
 GZIP = {"compression": "gzip", "compression_opts": 4}
 RGB_RESAMPLE = ("centred square (side min(H,W), integer offsets) resized with PIL BILINEAR (antialiased); "
@@ -106,27 +106,6 @@ def box_affine(box: CR.CropBox, size: int = IMAGE_SIZE) -> PixelAffine:
     """Native continuous pixel coordinates -> stored ones: ``u' = a (u - x0)``, ``v' = a (v - y0)``, ``a = size/side``."""
     a = size / box.side
     return PixelAffine(a, a, -a * box.x0, -a * box.y0)
-
-
-def nearest_resample(array: np.ndarray, box: CR.CropBox, size: int = IMAGE_SIZE) -> np.ndarray:
-    """(H, W) -> (size, size) with the dtype kept: the native pixel containing each output pixel centre (the box must lie
-    inside the image; ``crop_depth`` rule)."""
-    H, W = array.shape[:2]
-    if box.padding(H, W) != (0, 0, 0, 0):
-        raise ValueError("the stored crop never pads")
-    centres = (np.arange(size, dtype=np.float64) + 0.5) * (box.side / size)
-    rows = np.floor(box.y0 + centres).astype(np.int64)
-    cols = np.floor(box.x0 + centres).astype(np.int64)
-    return np.ascontiguousarray(array[np.ix_(rows, cols)])
-
-
-def training_depth(depth_m: np.ndarray, valid: np.ndarray) -> np.ndarray:
-    """Depth-stage output -> the stored float32 metres: invalid pixels 0, values bitwise; refuses non-finite or negative
-    values where valid."""
-    d = np.where(valid, np.asarray(depth_m, np.float32), np.float32(0))
-    if not np.isfinite(d).all() or (d < 0).any():
-        raise ValueError("depth must be finite and >= 0 where valid (0 = invalid)")
-    return d.astype(np.float32)
 
 
 def recording_segments(meta, stamps_ns: np.ndarray) -> np.ndarray:

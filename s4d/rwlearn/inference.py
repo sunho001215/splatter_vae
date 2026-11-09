@@ -102,8 +102,7 @@ class OfflinePolicy:
         return out
 
     def act(self, obs: dict, measured_pose7: np.ndarray, gripper_register: float, **kw) -> dict:
-        T = A.pose7_to_matrix(np.asarray(measured_pose7, np.float64))
-        proprio = np.concatenate([T[:3, 3], A.rotation_6d(T[:3, :3]), [A.closure_from_register(gripper_register)]])
+        proprio = A.measured_proprio(measured_pose7, gripper_register)
         if self.condition == "e2e_cnn":
             return self.act_from_pixels(obs["rgb"], proprio, measured_pose7, **kw)
         return self.act_from_features(self.features(obs), proprio, measured_pose7, **kw)

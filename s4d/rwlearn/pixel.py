@@ -43,8 +43,8 @@ import torch.nn.functional as F
 
 from s4d.rwlearn import actions as A
 from s4d.rwlearn.fql import MLP
+from s4d.rwlearn.observation import FRAME_STACK
 
-FRAME_STACK = 3
 P_AUG, AUG_PADDING = 0.5, 3
 ACTION_CLIP_EPS = 1e-5  # envs/env_utils.py :138-146 (make_env_and_datasets(action_clip_eps=1e-5))
 IMPALA_SMALL = {"stack_sizes": (16, 32, 32), "num_blocks": 1, "mlp_hidden_dims": (512,)}

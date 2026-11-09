@@ -169,6 +169,12 @@ def register_from_closure(c) -> np.ndarray:
     return np.rint(GRIPPER_OPEN_REGISTER + GRIPPER_SPAN * np.clip(np.asarray(c, np.float64), 0.0, 1.0)).astype(int)
 
 
+def measured_proprio(measured_pose7: np.ndarray, gripper_register: float) -> np.ndarray:
+    """The shared 10-D inference input, in the same order as ``step_table``."""
+    T = pose7_to_matrix(np.asarray(measured_pose7, np.float64))
+    return np.concatenate([T[:3, 3], rotation_6d(T[:3, :3]), [closure_from_register(gripper_register)]])
+
+
 # ----------------------------------------------------------------------------------------------- raw recording
 @dataclass
 class RawEpisode:

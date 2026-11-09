@@ -1,0 +1,87 @@
+# Real-world policy serving (network inference, 2026-11-09 directive): robot-side CPU client -> ONE persistent server
+# process on the inference host (RTX 5090, ssh alias irsl, container shkim_rw, GPU-9bcf38b6-8240-e910-6548-ca715643dc11;
+# conventions of configs/realworld/inference_server.yaml). Read by ops/policy_serving (server, client CLI, bench) and
+# scripts/policy_replay_demo.py; every value can be overridden on their command lines. docs/realworld_policy_serving.md.
+# Deployment specifics (checkpoint location inside the container, port, SSH tunnel) belong to the deployment; nothing
+# here is a credential (the optional shared token is a FILE PATH given at launch, never stored here).
+protocol_version: 1
+server:
+  bind_host: 127.0.0.1          # inside shkim_rw; the client reaches it through an SSH -L tunnel (no published port)
+  port: 47100
+  device: cuda                  # the container sees only the designated GPU (cuda:0 inside)
+  checkpoint_root: /ram/serving/checkpoints   # relative policy paths below; host copy ~/shkim/serving/checkpoints
+  max_queue: 4                  # bounded inference queue (all sessions); a session keeps at most one queued request
+  session_idle_timeout_s: 30    # a session without traffic (incl. PING) expires; resume after that -> new session
+  response_cache: 32            # responses kept per session for repeated seqs and resume re-delivery
+  io_timeout_s: 5.0             # a started message must complete within this (per message, both directions)
+  max_header_bytes: 1048576
+  max_payload_bytes: 33554432   # 3 RGB-D views x 3 frames at 128 px is ~1.2 MB; native-resolution frames are refused
+  max_frames_per_step: 64
+  history_capacity: null        # frames kept per camera (null: deploy default 2 x history span + 2)
+  max_sessions_per_policy: 1    # live sessions sharing one loaded policy (1 = one controller; HELLO takeover evicts)
+  warmup_iterations: 3          # synthetic, labelled warm-up per policy at start (DeployPolicy.warm_up)
+  warmup_native_hw: [480, 640]
+  default_policies: []          # ids served when --policies is not given
+  torch_threads: null           # CPU inference only (OMP/MKL threads)
+client:
+  host: 127.0.0.1               # robot PC: the local end of the tunnel (or the server address on a direct route)
+  port: 47100
+  connect_timeout_s: 3.0
+  io_timeout_s: 5.0
+  step_timeout_s: 0.5           # wait for one action (incl. reconnect + resume); then the step returns "timeout"
+  reconnect_backoff_s: [0.05, 0.1, 0.25, 0.5, 1.0]
+  ttl_ms: 100.0                 # a request not started on the GPU within ttl (from its arrival) is answered "stale"
+  max_action_age_ms: 200.0      # check_action: observation age bound for executing an action (robot-side decision)
+# One seed (s0) per staged condition/task (realworld-ops/serving/checkpoints_manifest.json). training_contract: the
+# deploy-contract sidecar written from the local FQL dataset (scripts/check_realworld_deploy.py contracts); the deploy API
+# checks it against the checkpoint (condition, export sha256, action contract, image size). sha256: policy.pt.
+# SinCro / SNeRL policies are still pretraining and ours is deferred (no checkpoint): add entries when they exist.
+policies:
+  dynamo-drawer-open:
+    {condition: dynamo, task: drawer-open, checkpoint: runs/rwng-20261107b-fql-dynamo-drawer-open-s0/policy.pt,
+     export: runs/rwng-20261107-dynamo-drawer-open-pre/encoder.pt,
+     training_contract: contracts/rwng-20261107b-fql-dynamo-drawer-open-s0.deploy_contract.json,
+     sha256: a5544d62f3e697142d3240e2d7373804fc659dc6140aca79bda54f844a565772}
+  dynamo-mug-hanging:
+    {condition: dynamo, task: mug-hanging, checkpoint: runs/rwng-20261107b-fql-dynamo-mug-hanging-s0/policy.pt,
+     export: runs/rwng-20261107-dynamo-mug-hanging-pre/encoder.pt,
+     training_contract: contracts/rwng-20261107b-fql-dynamo-mug-hanging-s0.deploy_contract.json,
+     sha256: 77fa723c323e732bce4775b11f9e597c6bf0b69468c74a1340a1e970c4b32017}
+  reviwo-drawer-open:
+    {condition: reviwo, task: drawer-open, checkpoint: runs/rwng-20261107b-fql-reviwo-drawer-open-s0/policy.pt,
+     export: runs/rwng-20261107-reviwo-drawer-open-pre/encoder.pt,
+     training_contract: contracts/rwng-20261107b-fql-reviwo-drawer-open-s0.deploy_contract.json,
+     sha256: 6fbac7f9cee429d051fccb5b93c9e8a4da6eeea1a1ed72b7a8f7cdcda392ddb0}
+  reviwo-mug-hanging:
+    {condition: reviwo, task: mug-hanging, checkpoint: runs/rwcal-20261109-fql-reviwo-mug-hanging-s0/policy.pt,
+     export: runs/rwcal-20261109-reviwo-mug-hanging-pre/encoder.pt,
+     training_contract: contracts/rwcal-20261109-fql-reviwo-mug-hanging-s0.deploy_contract.json,
+     sha256: f834568864ee50ac8a0783089eb9ede81f46d3f20aeb2fd899cb9137624f3088}
+  e2e_cnn-drawer-open:
+    {condition: e2e_cnn, task: drawer-open, checkpoint: runs/rwng-20261107b-fql-e2e_cnn-drawer-open-s0/policy.pt,
+     training_contract: contracts/rwng-20261107b-fql-e2e_cnn-drawer-open-s0.deploy_contract.json,
+     sha256: 5c85db1cd89575a88b7d97b9049554cd6e8c1d16bf6b76969aabb276d1f98253}
+  mvp3d_single-drawer-open:
+    {condition: mvp3d_single, task: drawer-open,
+     checkpoint: runs/rwcal-20261109-fql-mvp3d_single-drawer-open-s0/policy.pt,
+     export: runs/rwcal-20261109-mvp3d-drawer-open-pre/encoder.pt,
+     training_contract: contracts/rwcal-20261109-fql-mvp3d_single-drawer-open-s0.deploy_contract.json,
+     sha256: 376b4416599b72ffb4cda03e3a94623da004ba23effdff9e4efeb2c5c0c4d31b}
+  mvp3d_single-mug-hanging:
+    {condition: mvp3d_single, task: mug-hanging,
+     checkpoint: runs/rwcal-20261109-fql-mvp3d_single-mug-hanging-s0/policy.pt,
+     export: runs/rwcal-20261109-mvp3d-mug-hanging-pre/encoder.pt,
+     training_contract: contracts/rwcal-20261109-fql-mvp3d_single-mug-hanging-s0.deploy_contract.json,
+     sha256: f7c8dd2584dcc7aefb20f63420fd82ca538636db5a7593b10dcce999aee156d4}
+  mvp3d_multiview-drawer-open:
+    {condition: mvp3d_multiview, task: drawer-open,
+     checkpoint: runs/rwcal-20261109-fql-mvp3d_multiview-drawer-open-s0/policy.pt,
+     export: runs/rwcal-20261109-mvp3d-drawer-open-pre/encoder.pt,
+     training_contract: contracts/rwcal-20261109-fql-mvp3d_multiview-drawer-open-s0.deploy_contract.json,
+     sha256: 1b7601393c80c27f40805e541aee349627241131016031b42b48f4528490a389}
+  mvp3d_multiview-mug-hanging:
+    {condition: mvp3d_multiview, task: mug-hanging,
+     checkpoint: runs/rwcal-20261109-fql-mvp3d_multiview-mug-hanging-s0/policy.pt,
+     export: runs/rwcal-20261109-mvp3d-mug-hanging-pre/encoder.pt,
+     training_contract: contracts/rwcal-20261109-fql-mvp3d_multiview-mug-hanging-s0.deploy_contract.json,
+     sha256: dc6fc5707e979356409ef9ae6537a62ad0c4be5b687a4c545a2f5db30fbfb48a}
