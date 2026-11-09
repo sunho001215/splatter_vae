@@ -1,20 +1,23 @@
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import shlex
+import shutil
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from types import ModuleType
 from unittest.mock import patch
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
 from ops.remote import access  # noqa: E402
-from ops.resources.gpu_guard import validate_runtime_path  # noqa: E402
+from ops.resources.gpu_guard import APPROVED_HOST_GPUS, validate_runtime_path  # noqa: E402
 
 
 class RemoteAccessTests(unittest.TestCase):
@@ -397,6 +400,10 @@ class RemoteAccessTests(unittest.TestCase):
                 return tip + "\trefs/heads/main" if args[-1] == "refs/heads/main" else ""
             if args[0] == "rev-parse":
                 return tip if args[-1] == "refs/remotes/origin/main" else sha
+            if args[:2] == ("ls-tree", "--name-only"):
+                return "ops/jobs/run_identity.py" if args[-1] == "ops/jobs/run_identity.py" else ""
+            if args[0] == "show":
+                return 'RELEASE_ORIGIN_REFS = {"main": "refs/remotes/origin/main"}\n'
             if args[:2] == ("bundle", "create"):
                 Path(args[2]).write_bytes(b"boundary-only-bundle")
             return ""
@@ -416,11 +423,11 @@ class RemoteAccessTests(unittest.TestCase):
         ):
             code = self.client.sync_code(sha)
         self.assertEqual(code, access.REMOTE_ROOT + "/releases/" + sha + "/code")
-        self.assertIn("/releases/" + sha + "/provenance.json", checkout.call_args_list[0].args[0])
-        self.assertIn("fetch --quiet", checkout.call_args_list[1].args[0])
-        self.assertIn(" refs/remotes/origin/main:refs/remotes/origin/main; ", checkout.call_args_list[1].args[0])
-        self.assertIn(" update-ref refs/remotes/origin/main " + tip + "; ", checkout.call_args_list[1].args[0])
-        self.assertNotIn("splatter4d", checkout.call_args_list[1].args[0].replace("/workspace/splatter4d", ""))
+        self.assertEqual(paths.call_args_list[0].args, (f"releases/{sha}/provenance.json",))
+        self.assertIn("fetch --quiet", checkout.call_args_list[0].args[0])
+        self.assertIn(" refs/remotes/origin/main:refs/remotes/origin/main; ", checkout.call_args_list[0].args[0])
+        self.assertIn(" update-ref refs/remotes/origin/main " + tip + "; ", checkout.call_args_list[0].args[0])
+        self.assertNotIn("splatter4d", checkout.call_args_list[0].args[0].replace("/workspace/splatter4d", ""))
         self.assertIn("status --porcelain", checkout.call_args.args[0])
         for mountpoint in ("runs", "outputs", ".cache"):
             self.assertTrue(any(call.args == (code + "/" + mountpoint,) and
@@ -436,46 +443,185 @@ class RemoteAccessTests(unittest.TestCase):
         self.assertEqual(proof["origin_commit"], tip)
         self.assertEqual(proof["verified_origin_commit"], tip)
         self.assertEqual((proof["origin_branch"], proof["origin_ref"]), ("main", "refs/remotes/origin/main"))
+        self.assertEqual(proof["verified_against"], "refs/heads/main")
         self.assertTrue(proof["verified_ancestor"])
         self.assertTrue(upload.call_args_list[-1].args[1].endswith("/provenance.json"))
 
-    def test_code_release_keeps_a_release_proven_under_the_legacy_branch(self):
-        sha, tip = "a" * 40, "b" * 40
-        legacy = {"commit": sha, "origin_commit": "c" * 40, "verified_origin_commit": "c" * 40,
-                  "origin_branch": "splatter4d", "origin_ref": "refs/remotes/origin/splatter4d",
-                  "origin_url": "https://github.com/sunho001215/splatter_vae.git", "verified_ancestor": True,
-                  "bundle_sha256": "d" * 64, "verified_at": "2026-11-01T00:00:00+00:00"}
-        with (
-            patch.object(self.client, "_git", side_effect=self.released_git(sha, tip)) as provenance,
-            patch.object(self.client, "ensure_remote_path") as paths,
-            patch.object(self.client, "rsync_upload") as upload,
-            patch.object(self.client, "checked_ssh",
-                         return_value=self.result(stdout=json.dumps(legacy, indent=2, sort_keys=True))) as ssh,
-        ):
-            code = self.client.sync_code(sha)
-        self.assertEqual(code, access.REMOTE_ROOT + "/releases/" + sha + "/code")
-        self.assertEqual(ssh.call_count, 1)  # only the read of the existing proof
-        self.assertIn("cat -- " + access.REMOTE_ROOT + "/releases/" + sha + "/provenance.json",
-                      ssh.call_args.args[0])
-        upload.assert_not_called()
-        paths.assert_not_called()
-        self.assertFalse(any(call.args[:1] == ("bundle",) for call in provenance.call_args_list))
-        self.assertFalse((self.client.network_dir / "releases" / sha / "provenance.json").exists())
-        # Any other existing proof (main, unreadable, another commit's) is re-proven against main as before.
-        for existing in ({**legacy, "origin_branch": "main", "origin_ref": "refs/remotes/origin/main"}, "not json",
-                         {**legacy, "commit": "e" * 40}):
-            text = existing if isinstance(existing, str) else json.dumps(existing)
-            with (
-                patch.object(self.client, "_git", side_effect=self.released_git(sha, tip)),
-                patch.object(self.client, "ensure_remote_path",
-                             side_effect=lambda p, **kw: self.client.remote_path(p)),
-                patch.object(self.client, "rsync_upload") as upload,
-                patch.object(self.client, "checked_ssh", side_effect=[self.result(stdout=text)]
-                             + [self.result()] * 8),
-            ):
+    @staticmethod
+    def fixture_git(repo, *args):
+        env = {**os.environ, "GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1"}
+        return subprocess.run(
+            ["git", "-C", str(repo), "-c", "user.name=Release test", "-c", "user.email=test@example.invalid", *args],
+            capture_output=True, text=True, check=True, env=env,
+        ).stdout.strip()
+
+    def make_release_repo(self, files):
+        repo = Path(tempfile.mkdtemp(prefix="source-", dir=self.repo))
+        self.fixture_git(repo, "init", "-q", "--initial-branch=main")
+        for name, source in {"code.py": "VALUE = 1\n", **files}.items():
+            path = repo / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(source)
+        self.fixture_git(repo, "add", ".")
+        self.fixture_git(repo, "commit", "-qm", "fixture")
+        sha = self.fixture_git(repo, "rev-parse", "HEAD")
+        self.fixture_git(repo, "remote", "add", "origin", "https://github.com/sunho001215/splatter_vae.git")
+        self.fixture_git(repo, "update-ref", access.ORIGIN_REF, sha)
+        return repo, sha
+
+    def test_release_origin_uses_only_the_targets_literal_branch_mapping(self):
+        main = 'RELEASE_ORIGIN_REFS = {"main": "refs/remotes/origin/main"}\n'
+        legacy = 'def check(proof):\n    return proof.get("origin_branch") != "splatter4d"\n'
+        cases = (
+            ({"ops/jobs/run_identity.py": main}, "main"),
+            ({"ops/jobs/run_identity.py": legacy}, "splatter4d"),
+            ({"s4d/run_identity.py": main}, "main"),
+            ({"s4d/run_identity.py": legacy}, "splatter4d"),
+            ({"ops/jobs/run_identity.py": legacy, "s4d/run_identity.py": main}, "splatter4d"),
+            ({}, "splatter4d"),
+            ({"ops/jobs/run_identity.py": repr(main) + "\n# " + main}, "splatter4d"),
+            ({"ops/jobs/run_identity.py": "def unrelated():\n    " + main}, "splatter4d"),
+            ({"ops/jobs/run_identity.py": main.replace("origin/main", "origin/splatter4d")}, "splatter4d"),
+            ({"ops/jobs/run_identity.py": main + "RELEASE_ORIGIN_REFS = dict()\n"}, "splatter4d"),
+            ({"ops/jobs/run_identity.py": main.replace("REFS =", "REFS: dict =")}, "main"),
+        )
+        for files, branch in cases:
+            with self.subTest(files=files):
+                repo, sha = self.make_release_repo(files)
+                self.client.repo = repo
+                # Worktree content must not affect proof selection for the immutable target.
+                for path in files:
+                    (repo / path).write_text(main if branch == "splatter4d" else legacy)
+                self.assertEqual(self.client._release_origin(sha), (branch, access.RELEASE_ORIGIN_REFS[branch]))
+
+    def test_release_origin_rejects_unreadable_or_invalid_target_verifiers(self):
+        repo, sha = self.make_release_repo({"ops/jobs/run_identity.py": "not valid Python!\n"})
+        self.client.repo = repo
+        with self.assertRaisesRegex(access.RemoteCommandError, "Cannot parse target release verifier"):
+            self.client._release_origin(sha)
+        git = self.client._git
+
+        def unreadable(*args, **kwargs):
+            if args[0] == "show":
+                raise access.RemoteCommandError("unreadable object")
+            return git(*args, **kwargs)
+
+        with patch.object(self.client, "_git", side_effect=unreadable):
+            with self.assertRaisesRegex(access.RemoteCommandError, "unreadable object"):
+                self.client._release_origin(sha)
+
+    @contextlib.contextmanager
+    def local_release_transport(self, repo, tip):
+        """Execute bundles and checkout scripts locally; no SSH, network, jobs, or GPU access."""
+        self.client.repo = repo
+        self.client.root = tempfile.mkdtemp(prefix="remote-", dir=self.repo)
+        git = self.client._git
+
+        def local_git(*args, **kwargs):
+            if args[-3:] == ("ls-remote", "origin", "refs/heads/main"):
+                return tip + "\trefs/heads/main"
+            return git(*args, **kwargs)
+
+        def local_shell(command, **kwargs):
+            result = subprocess.run(["sh", "-c", command], capture_output=True, text=True, cwd=self.repo)
+            if result.returncode:
+                raise access.RemoteCommandError("Local release simulation rejected: " + result.stderr)
+            return result
+
+        def upload(source, target):
+            shutil.copyfile(source, self.client.ensure_remote_path(target, create_parent=True))
+
+        with patch.object(self.client, "_git", side_effect=local_git), \
+                patch.object(self.client, "checked_ssh", side_effect=local_shell), \
+                patch.object(self.client, "rsync_upload", side_effect=upload):
+            yield Path(self.client.root)
+
+    def test_legacy_sync_reproves_incomplete_missing_and_existing_proofs_idempotently(self):
+        source = self.fixture_git(REPO, "show", "a14bcfe:ops/jobs/run_identity.py")
+        repo, sha = self.make_release_repo({"ops/jobs/run_identity.py": source})
+        # The advertised main tip accepts main; the ancestor being released still requires splatter4d.
+        (repo / "ops/jobs/run_identity.py").write_text((REPO / "ops/jobs/run_identity.py").read_text())
+        self.fixture_git(repo, "add", ".")
+        self.fixture_git(repo, "commit", "-qm", "main-aware verifier")
+        tip = self.fixture_git(repo, "rev-parse", "HEAD")
+        self.fixture_git(repo, "update-ref", access.ORIGIN_REF, tip)
+        verifier = ModuleType("legacy_run_identity")
+        exec(compile(source, "legacy_run_identity.py", "exec"), verifier.__dict__)
+        with self.local_release_transport(repo, tip) as remote:
+            proof_path = remote / "releases" / sha / "provenance.json"
+            proof_path.parent.mkdir(parents=True)
+            partial = {"commit": sha, "origin_branch": "splatter4d", "origin_ref": access.LEGACY_ORIGIN_REF}
+            proof_path.write_text(json.dumps(partial))  # missing checkout and fields must never bypass re-proving
+            for attempt in range(3):
+                code = Path(self.client.sync_code(sha))
+                proof = json.loads(proof_path.read_text())
+                self.assertEqual((proof["origin_branch"], proof["origin_ref"]),
+                                 ("splatter4d", access.LEGACY_ORIGIN_REF))
+                self.assertEqual(proof["verified_against"], "refs/heads/main")
+                for ref in (access.ORIGIN_REF, access.LEGACY_ORIGIN_REF):
+                    self.assertEqual(self.fixture_git(code, "rev-parse", ref), tip)
+                self.assertEqual(self.fixture_git(code, "rev-parse", "HEAD"), sha)
+                self.assertEqual(self.fixture_git(code, "status", "--porcelain"), "")
+                env = {"S4D_HOST_CONFIG": str(REPO / "configs/hosts/remote.yaml"), "S4D_EXPECTED_COMMIT": sha,
+                       "S4D_IMAGE_DIGEST": "sha256:" + "b" * 64, "S4D_DATA_ID": "c" * 64,
+                       "S4D_JOB_ID": "fixture", "S4D_ATTEMPT": "1", "S4D_RELEASE_PROOF": str(proof_path),
+                       "S4D_TEST_EVIDENCE_DIR": str(self.repo / "evidence"),
+                       "CUDA_VISIBLE_DEVICES": APPROVED_HOST_GPUS["remote"][0]}
+                # This verifier checks strings, files, and Git only; it never opens a GPU or launches work.
+                self.assertEqual(verifier.verify_remote_identity(code, env)["verified_origin_commit"], tip)
+                if attempt == 0:
+                    proof_path.unlink()  # proof-loss recovery uses the same target-selected form
+                elif attempt == 1:
+                    previous = {k: v for k, v in proof.items() if k != "verified_at"}
+                else:
+                    self.assertEqual({k: v for k, v in proof.items() if k != "verified_at"}, previous)
+
+    def test_main_sync_replaces_a_legacy_proof_with_the_targets_main_form(self):
+        repo, sha = self.make_release_repo({"ops/jobs/run_identity.py":
+                                          (REPO / "ops/jobs/run_identity.py").read_text()})
+        with self.local_release_transport(repo, sha) as remote:
+            proof_path = remote / "releases" / sha / "provenance.json"
+            proof_path.parent.mkdir(parents=True)
+            proof_path.write_text(json.dumps({"commit": sha, "origin_branch": "splatter4d",
+                                             "origin_ref": access.LEGACY_ORIGIN_REF}))
+            code = Path(self.client.sync_code(sha))
+            proof = json.loads(proof_path.read_text())
+            self.assertEqual((proof["origin_branch"], proof["origin_ref"]), ("main", access.ORIGIN_REF))
+            self.assertEqual(proof["verified_against"], "refs/heads/main")
+            self.assertEqual(self.fixture_git(code, "rev-parse", access.ORIGIN_REF), sha)
+            self.assertEqual(self.fixture_git(code, "for-each-ref", "--format=%(refname)", access.LEGACY_ORIGIN_REF), "")
+
+    def test_sync_rejects_proof_symlinks_before_checkout_or_bundle_mutation(self):
+        repo, sha = self.make_release_repo({})
+        for parent_link in (False, True):
+            with self.subTest(parent_link=parent_link), self.local_release_transport(repo, sha) as remote:
+                release = remote / "releases" / sha
+                release.mkdir(parents=True)
+                outside = remote / "outside"
+                outside.mkdir()
+                proof_path = release / "provenance.json"
+                if parent_link:
+                    release.rmdir()
+                    release.symlink_to(outside, target_is_directory=True)
+                else:
+                    proof_path.symlink_to(outside / "proof.json")
+                with self.assertRaises(access.RemoteCommandError):
+                    self.client.sync_code(sha)
+                self.assertFalse((remote / "bundles").exists())
+                self.assertFalse((release / "code").exists())
+                self.assertEqual(list(outside.iterdir()), [])
+
+    def test_sync_does_not_skip_dirty_legacy_checkouts(self):
+        repo, sha = self.make_release_repo({})
+        with self.local_release_transport(repo, sha) as remote:
+            code = Path(self.client.sync_code(sha))
+            proof_path = remote / "releases" / sha / "provenance.json"
+            previous = proof_path.read_bytes()
+            (code / "code.py").write_text("VALUE = 2\n")
+            with self.assertRaises(access.RemoteCommandError):
                 self.client.sync_code(sha)
-            proof = json.loads(upload.call_args_list[-1].args[0].read_text())
-            self.assertEqual((proof["origin_branch"], proof["origin_ref"]), ("main", "refs/remotes/origin/main"))
+            self.assertEqual(proof_path.read_bytes(), previous)
+            self.assertEqual((code / "code.py").read_text(), "VALUE = 2\n")
 
     def test_result_manifest_refuses_replay_traversal_and_duplicates(self):
         digest = "a" * 64

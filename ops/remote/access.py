@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import contextlib
 import fcntl
 import fnmatch
@@ -39,8 +40,8 @@ DOWNLOAD_BUDGET_KIB = 600
 BULK_CHUNK_FILES = 48
 LEGACY_WAIT_SECONDS = 900.0
 # Single long-lived branch: `main` since 2026-11-09, formerly `splatter4d`. origin/main contains the whole splatter4d
-# history, so every commit ever released is its ancestor. New releases are proven against origin/main; a release proven
-# earlier keeps its proof, which records the legacy branch, and launch/identity checks accept either recorded form.
+# history, so every commit ever released is its ancestor. Sync always proves ancestry against origin/main, then records
+# the branch/ref pair accepted by the target commit's own verifier (older releases require the legacy pair).
 ORIGIN_BRANCH = "main"
 ORIGIN_REF = "refs/remotes/origin/" + ORIGIN_BRANCH
 LEGACY_ORIGIN_BRANCH = "splatter4d"
@@ -486,6 +487,35 @@ class RemoteClient:
             fcntl.flock(lock, fcntl.LOCK_EX)
             return self._sync_code(commit)
 
+    def _release_origin(self, sha: str) -> tuple[str, str]:
+        """Select proof syntax from the target's verifier without importing or executing it.
+
+        Prefer ops/jobs/run_identity.py, falling back to its pre-ops location. Only a module-level literal
+        RELEASE_ORIGIN_REFS mapping containing the exact main branch/ref pair declares main support. Older verifiers
+        use direct splatter4d comparisons; absent verifiers and unrecognized declarations retain that legacy form.
+        """
+        for path in ("ops/jobs/run_identity.py", "s4d/run_identity.py"):
+            if not self._git("ls-tree", "--name-only", sha, "--", path):
+                continue
+            source = self._git("show", f"{sha}:{path}")
+            try:
+                module = ast.parse(source)
+            except SyntaxError as exc:
+                raise RemoteCommandError(f"Cannot parse target release verifier: {path}") from exc
+            refs = None
+            for node in module.body:
+                if isinstance(node, (ast.Assign, ast.AnnAssign)):
+                    targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+                    if any(isinstance(target, ast.Name) and target.id == "RELEASE_ORIGIN_REFS" for target in targets):
+                        try:
+                            refs = ast.literal_eval(node.value)
+                        except (ValueError, TypeError):
+                            refs = None
+            if isinstance(refs, dict) and refs.get(ORIGIN_BRANCH) == ORIGIN_REF:
+                return ORIGIN_BRANCH, ORIGIN_REF
+            break
+        return LEGACY_ORIGIN_BRANCH, LEGACY_ORIGIN_REF
+
     def _sync_code(self, commit: str) -> str:
         if not re.fullmatch(r"[0-9a-f]{7,40}", commit):
             raise ValueError("A concrete hexadecimal commit is required")
@@ -511,10 +541,9 @@ class RemoteClient:
         self._git("merge-base", "--is-ancestor", sha, tip)
         if self._git("rev-parse", ORIGIN_REF) != tip:
             raise RemoteCommandError(f"Local origin/{ORIGIN_BRANCH} is stale; refresh it before release")
-        if self._legacy_release(sha):
-            # Proven under the legacy branch name: pending/retried jobs pinned to it validate that exact proof (and
-            # the legacy origin ref of its checkout), so the release is kept as it is, never re-proven against main.
-            return self.remote_path(f"releases/{sha}/code")
+        origin_branch, origin_ref = self._release_origin(sha)
+        # Reject symlinks in the proof or any parent before changing the release checkout's refs.
+        proof_target = self.ensure_remote_path(f"releases/{sha}/provenance.json")
         bundle_dir = self.network_dir / "bundles"
         bundle_dir.mkdir(parents=True, exist_ok=True)
         bundle = bundle_dir / f"{tip}.bundle"
@@ -543,6 +572,8 @@ class RemoteClient:
             + git + " remote remove origin 2>/dev/null || :; "
             + git + " remote add origin " + shlex.quote(origin) + "; "
             + git + " update-ref " + ORIGIN_REF + " " + shlex.quote(tip) + "; "
+            + (git + " update-ref " + LEGACY_ORIGIN_REF + " " + shlex.quote(tip) + "; "
+               if origin_branch == LEGACY_ORIGIN_BRANCH else "")
             + git + " checkout --quiet --detach " + shlex.quote(sha) + "; "
             + "test \"$(" + git + " rev-parse HEAD)\" = " + shlex.quote(sha) + "; "
             + "test -z \"$(" + git + " status --porcelain)\"; "
@@ -553,7 +584,7 @@ class RemoteClient:
             self.ensure_remote_path(code + "/" + mountpoint, create_parent=True, directory=True)
         self.checked_ssh("test -z \"$(" + git + " status --porcelain)\"", idempotent=True)
         proof = {"commit": sha, "verified_origin_commit": tip, "origin_commit": tip,
-                 "origin_branch": ORIGIN_BRANCH, "origin_ref": ORIGIN_REF,
+                 "origin_branch": origin_branch, "origin_ref": origin_ref, "verified_against": "refs/heads/main",
                  "origin_url": origin, "bundle_sha256": expected, "verified_ancestor": True,
                  "verified_at": datetime.now(timezone.utc).isoformat()}
         if submodules:
@@ -561,21 +592,8 @@ class RemoteClient:
         local_proof = self.network_dir / "releases" / sha / "provenance.json"
         local_proof.parent.mkdir(parents=True, exist_ok=True)
         local_proof.write_text(json.dumps(proof, indent=2, sort_keys=True))
-        self.rsync_upload(local_proof, f"releases/{sha}/provenance.json")
+        self.rsync_upload(local_proof, proof_target)
         return code
-
-    def _legacy_release(self, sha: str) -> bool:
-        """Whether ``releases/<sha>`` already carries a proof recorded under the legacy branch name (pre 2026-11-09)."""
-        proof = shlex.quote(self.remote_path(f"releases/{sha}/provenance.json"))
-        text = self.checked_ssh("if [ -f " + proof + " ] && [ ! -L " + proof + " ]; then cat -- " + proof + "; fi",
-                                idempotent=True).stdout
-        try:
-            recorded = json.loads(text) if text.strip() else None
-        except ValueError:
-            return False
-        return (isinstance(recorded, dict) and recorded.get("commit") == sha
-                and recorded.get("origin_branch") == LEGACY_ORIGIN_BRANCH
-                and recorded.get("origin_ref") == LEGACY_ORIGIN_REF)
 
     def _sync_submodules(self, sha: str, code: str, git: str) -> dict:
         """Release the pinned third-party submodules: ``git bundle`` does not carry them.

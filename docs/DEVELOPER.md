@@ -143,30 +143,59 @@ CUDA_VISIBLE_DEVICES="$GPU4" .venv/bin/python -I scripts/run_tests.py
 .venv/bin/ruff check s4d ops scripts tests
 ```
 
-**Single branch: `main` (since 2026-11-09; formerly `splatter4d`).** Integrate tested work into `main` and publish it
-with `git push origin main`; there is no other long-lived branch. `sync_code.sh` releases only commits that are
-ancestors of `origin/main` and records `origin_branch: main` / `origin_ref: refs/remotes/origin/main` in the release
-proof. Releases proven under `origin/splatter4d` before the rename keep their proofs unchanged and stay launchable (the
-launcher and the in-container identity check accept either recorded form); nothing requires `origin/splatter4d` to exist.
+**Single branch: `main` (since 2026-11-09; formerly `splatter4d`).** There is no other long-lived branch. Prepare the
+candidate in a clean detached worktree, then publish that exact commit as a fast-forward (never force):
 
-## Working with Codex (user policy 2026-11-09, in force until the user changes it)
+```bash
+# From the clean detached candidate worktree; use the full candidate SHA.
+git push origin <candidate-sha>:refs/heads/main
+```
+
+From the main checkout, verify that candidate using the clean detached worktree as the sync source:
+
+```bash
+.venv/bin/python -I runs/setup/tools/release_chain.py <full-sha> --image <digest> --tag <tag> --native-gpu <reserved-gate-GPU-UUID> --sync-repo <clean-detached-worktree>
+```
+
+After the release chain passes, run a dated `runs/setup/tools/merge_adopt_<sha>_<YYYYMMDD>.py <verify-id>` tool in the
+main checkout. Prepare it with the full candidate and accepted-base SHAs. Under the admission hold
+(`runs/setup/remote-hold-admissions`) and both driver locks (`stage2-driver.lock` and `remote-driver.lock` under
+`runs/setup/`), it must fetch only `origin main`, assert `refs/remotes/origin/main == candidate`, assert `HEAD` equals
+the full accepted base and the current branch is `main`, and require successful `merge-base --is-ancestor BASE
+CANDIDATE`. Then `merge --ff-only` the candidate and run `adopt_remote_suite_evidence.py <verify-id>` to adopt the
+checksum-verified suite. Before releasing the locks, assert `HEAD == candidate`, branch `main`, and upstream
+`origin/main`. Preserve any existing admission hold unchanged; remove only a temporary hold created by this tool.
+Use the main-to-main flow, without the branch-conversion steps in the historical rename adoption tool.
+
+`sync_code.sh` always verifies pushed ancestry against `origin/main`. It selects the proof's branch/ref pair from
+the target commit's own verifier: a literal `RELEASE_ORIGIN_REFS` mapping accepting `main` uses `main` /
+`refs/remotes/origin/main`; otherwise it uses `splatter4d` / `refs/remotes/origin/splatter4d`. Both forms record
+`verified_against: refs/heads/main` and install the verified tip at the release checkout's `origin/main`; the legacy
+form also installs that tip at its `origin/splatter4d`. This compatibility ref does not require a server-side legacy
+branch. Existing releases stay launchable, and re-syncing re-proves each in the form its own verifier accepts.
+
+## Working with Codex (user policy v2, 2026-11-09, in force until the user changes it)
 
 - Use the shared account first, through plain `codex` (`CODEX_HOME=/root/.codex-public`, provider `cliproxyapi`; the
   credential is sourced from `~/.config/cliproxy/claude.env` inside the same shell call and never printed).
 - Pin the model per invocation with `-m gpt-6.1-sol`. Never use Astra and never substitute another model silently.
-  Use `xhigh` reasoning for difficult implementation and review work, and low or medium for trivial checks.
+  Use `xhigh` reasoning for difficult implementation and review work, and cheap effort (low or medium) for trivial checks.
 - Fall back to the user's personal account, `codex -c 'model_provider="openai"'`, only when the shared account has
-  genuinely run out of allowance (`usage_limit_reached`, `model_cooldown`, HTTP 429). Check the effective provider and
-  model in the Codex header.
+  exhausted its allowance (`usage_limit_reached`, `model_cooldown`, HTTP 429) **or is in a known cooldown**. Check the
+  effective provider and model in the Codex header.
 - Never change global credentials, log out, or overwrite account configuration to switch providers. Respect each
   account's permissions and usage controls.
 - Delegate bounded implementation, dependency audits, test analysis and independent review to Codex. Claude coordinates,
   judges the findings and integrates the work. Give each run only the relevant context. Avoid unnecessary agents,
   repeated full-repository reviews and redundant review cycles, and reuse earlier findings.
+- **If neither account is available, Claude does the work immediately**, using Claude subagents where useful. Codex
+  availability never pauses executable work: do not wait or poll for credits. Label Codex and Claude reviews accurately
+  in records.
 - Wrapper: `/home/ws/ws/validation-20261031/codex/run_codex.sh <workdir> <read-only|workspace-write> <prompt> <log>
-  [effort=xhigh] [auto|shared|personal]`. `auto` tries the shared account and falls back on exhaustion. The wrapper
-  prints the account, provider and model, fails unless the model is `gpt-6.1-sol`, and writes the final answer to
-  `<log>.last.md`.
+  [effort=xhigh] [auto|shared|personal]`. `auto` tries the shared account and falls back on exhaustion or a known cooldown
+  recorded in `/home/ws/ws/validation-20261031/codex/.shared-cooldown-until`. The wrapper prints the account, provider
+  and model, fails unless the model is `gpt-6.1-sol`, and writes the final answer to `<log>.last.md`. If neither account
+  is available, it exits **10** with **`CODEX UNAVAILABLE`**; Claude immediately continues the work itself.
 
 ## Deliberately not moved
 

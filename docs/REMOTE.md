@@ -12,6 +12,41 @@ Status (2026-10-11 17:10 +09:00): release `5a7177e` deployed; remote full native
 - First observed SSH host key: ED25519 `SHA256:AbgsuCXv6V1LvlnFsHF+5qQPxXbZoBcPeP6OBBPUFWI`. Retain that key; never disable host-key verification on subsequent connections.
 - Access helpers wait mechanically with bounded backoff (approximately 10 minutes) when requested. Scheduler reachability checks must mark an unreachable host unknown, not fail/relaunch its jobs, and must not hold up healthy local reconciliation indefinitely.
 
+## Release flow on main (2026-11-09)
+
+Prepare the candidate in a clean detached worktree. From that worktree, push its full SHA to the single branch as a
+fast-forward, never force:
+
+```bash
+git push origin <candidate-sha>:refs/heads/main
+```
+
+Then, from the main checkout, run the release chain with the detached worktree as the sync source and the reserved
+gate GPU UUID:
+
+```bash
+.venv/bin/python -I runs/setup/tools/release_chain.py <full-sha> --image <digest> --tag <tag> --native-gpu <reserved-gate-GPU-UUID> --sync-repo <clean-detached-worktree>
+```
+
+After verification passes, use a dated `runs/setup/tools/merge_adopt_<sha>_<YYYYMMDD>.py <verify-id>` tool containing
+the full candidate and accepted-base SHAs. Keep `runs/setup/remote-hold-admissions` in place and hold both
+`runs/setup/stage2-driver.lock` and `runs/setup/remote-driver.lock` throughout fetch, checks, merge, and adoption:
+
+1. Fetch only `origin main`; assert `refs/remotes/origin/main == candidate`.
+2. Assert `HEAD == accepted base` using the full SHA and branch `main`; require
+   `merge-base --is-ancestor BASE CANDIDATE` to succeed.
+3. Run `merge --ff-only` to the candidate, then `adopt_remote_suite_evidence.py <verify-id>` to adopt the
+   checksum-verified suite.
+4. Assert `HEAD == candidate`, branch `main`, and upstream `origin/main` before releasing either lock. Preserve an
+   existing hold unchanged; remove only a temporary hold created by the adoption tool. The historical rename tool's
+   branch-conversion steps do not apply.
+
+Sync always verifies pushed ancestry against `origin/main`. The target commit's own verifier determines the proof
+form: `main` / `refs/remotes/origin/main` when its literal `RELEASE_ORIGIN_REFS` mapping accepts that pair, otherwise
+`splatter4d` / `refs/remotes/origin/splatter4d`. Both forms record `verified_against: refs/heads/main` and install the
+verified tip at the release checkout's `origin/main`; legacy proofs additionally need the same tip at that checkout's
+`origin/splatter4d`. No server-side legacy branch is needed. Re-syncing re-proves the release in its required form.
+
 ## Initial remote inventory (2026-10-10 18:25 +09:00)
 
 | Resource | Observed |
@@ -40,7 +75,7 @@ Foreign work exists on remote GPUs 4-7. It is neither eligible capacity nor ours
 2. **Local authority, detached execution.** The main queue, append-only registry, PROGRESS, EXPERIMENT_LOG, RESULTS, and decision evidence remain the sole record. The remote is an execution backend, not a second independent scheduler. Jobs carry `host=remote`, an immutable code commit and image digest, data/config identity, deterministic owned container name, and attempt number.
 3. **Unknown is not failed.** Reserve a launch intent locally before contacting Docker. A dropped SSH response never justifies a second container. Reconcile the deterministic owned container after reconnection. A remote success satisfies dependencies only after required results have returned and checksums verify.
 4. **Filesystem/Docker boundaries.** All remote host files, release checkouts, data, manifests, artifacts, and build contexts are beneath the allowed root, with symlink/realpath checks before writes. Only owned `s4d-` images/containers/networks; bind sources beneath that root; no named volumes, foreign-resource removal, or system-wide prune. Campaign code runs in detached Docker, not an SSH-bound process.
-5. **Code identity.** Campaign jobs must use a clean immutable checkout of a commit already pushed to `origin/main` (the single branch since 2026-11-09, formerly `splatter4d`; releases proven against `origin/splatter4d` before then keep their proofs and stay launchable); never edit remote code. A shared decision uses the same commit, numerical configs, checksummed data, and protocol. Existing item-1 runs predate the extension and cannot retroactively acquire identical whole-commit provenance. Keep all 20 on the main host for now rather than claim migration is automatically equivalent.
+5. **Code identity.** Campaign jobs must use a clean immutable checkout of a commit already pushed to `origin/main` (the single branch since 2026-11-09, formerly `splatter4d`; legacy-only verifiers use the compatible proof and checkout ref described above); never edit remote code. A shared decision uses the same commit, numerical configs, checksummed data, and protocol. Existing item-1 runs predate the extension and cannot retroactively acquire identical whole-commit provenance. Keep all 20 on the main host for now rather than claim migration is automatically equivalent.
 6. **Runtime identity.** Build from the same `uv.lock`, matching `docs/runtime_versions.json` and exact prebuilt native artifacts for sm_120. No gsplat/fused-ssim source/JIT-build workaround. Store the immutable image digest and runtime/native hashes. Driver difference is explicit and must be tested, not dismissed.
 7. **Validation gates.** Full suite inside the remote image and one-UUID CUDA/EGL isolation on each authorized GPU before long runs. Native tests are neither mocked nor skipped. Cross-host step-0 loss and short-run equivalence must be demonstrated before any decision mixes hosts. Main CUDA/native acceptance recovered; the clean pushed release exists, but fresh same-input comparisons have not been demonstrated and the bootstrap guard exception remains unauthorized.
 8. **Resource admission.** Remote SSD free floor is at least 15% of total: 1,129,338,552,730 bytes (approximately 1.13 TB), recomputed from measured capacity if it changes. Also reserve declared future per-run growth, including 46 GB per 1M-step CNN replay, before launch. Initial remote host-RAM reserve: 120 GiB (about 8% of total), with the same launch-ramp accounting; use measured job PSS. Per-GPU GPU-memory cap 90 GiB and at most 20 job slots are ceilings, not permission to compete with foreign processes. Local disk floor remains 300 GB; deployed RAM reserve is now 128 GiB tenant headroom, with new heavy admissions held for long-window footprint evidence.
