@@ -356,7 +356,9 @@ def test_native_depth_cli_build(tmp_path):
                              "--out-store", str(fixture.out), "--workers", "2", "--episodes",
                              "drawer-open/episode_000000"], capture_output=True, text=True, timeout=60)
     assert result.returncode == 0, result.stdout + result.stderr
-    assert json.loads(result.stdout) == {"built": 1, "skipped": 0, "descriptor_written": True,
+    payload = "\n".join(line for line in result.stdout.splitlines() if not line.startswith("[gpu_guard]"))
+    assert result.stdout.startswith("[gpu_guard]")  # the scheduler-required guard ran first
+    assert json.loads(payload) == {"built": 1, "skipped": 0, "descriptor_written": True,
                                         "out_store": str(fixture.out)}
     store = open_store(fixture.out)
     assert store.depth_source == C.NATIVE_DEPTH
@@ -476,3 +478,10 @@ def test_training_depth_contract_and_checkpoint_compatibility(tmp_path):
     with pytest.raises(ValueError, match="deployment depth"):
         validate_frame(wrong, spec)
     store.close()
+
+
+def test_native_depth_script_passes_the_scheduler_gpu_guard_check():
+    """The scheduler refuses (raises in its tick) for a job script without a GPU guard call (2026-11-10 incident)."""
+    from ops.jobs.scheduler import check_guarded
+
+    assert check_guarded("scripts/realworld_native_depth.py").name == "realworld_native_depth.py"

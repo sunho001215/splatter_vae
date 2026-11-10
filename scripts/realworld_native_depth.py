@@ -6,7 +6,11 @@ import json
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _bootstrap import guard_gpus  # noqa: E402
+
+# every scheduler job script validates its GPU allocation (this is CPU work registered with gpu: any)
+GPU_MAPPING = guard_gpus()
 
 from s4d.rwlearn.native_depth import build_native_depth  # noqa: E402
 
