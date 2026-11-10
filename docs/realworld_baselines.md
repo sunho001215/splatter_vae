@@ -135,8 +135,16 @@ For an amended task the ingest worker's `counts.complete` 100-rule does not appl
 - every listed episode is valid with the recorded sha256;
 - every other check passes unchanged, on exactly `target` episodes.
 
-The report records the per-task `target` and `amendment` (path, sha256). Splits are unchanged and therefore identical
-across methods: every consumer binds the gate's episodes and derives `split_episodes` (seed 0, 10 %) from them.
+The report records the per-task `target` and `amendment` (path, sha256).
+
+The split is the same for every method by construction:
+
+- `inputs` writes the canonical `split_episodes(store)` (seed 0, 10 %) once per task as `split_seed0.json`;
+- every generated pretraining row reads that file;
+- the registrar refuses unless the staged split equals `split_episodes` of the bound store.
+
+The trainers themselves check only that the split is a disjoint, complete partition of the gate's episodes. They do
+not check the seed.
 
 Each task is gated alone (no joint target). GEOMETRY-DEPENDENT consumers (SNeRL, 3D-MVP, SinCro, our method)
 additionally need the per-episode `calibration_validated` record bound to the current calibration, and a store built

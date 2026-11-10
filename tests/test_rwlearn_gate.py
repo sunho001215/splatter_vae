@@ -674,9 +674,13 @@ def test_amendment_records_never_duplicate_content_or_tasks(tmp_path):
         gate.load_amendments(tmp_path)
 
 
-RECORDS = {  # the versioned amendment records (user decisions 2026-11-10): target, excluded indices, index range
-    "covering": (98, (57, 61), "AMEND-covering-98.md", (0, 106)),
-    "pick-and-place": (97, (14, 80, 101), "AMEND-pick-and-place-97.md", (2, 114)),
+# the versioned amendment records (user decisions 2026-11-10): target, excluded indices, document, index range and
+RECORDS = {
+    # the sha256 of the record file (immutable: changing an approved key or checksum needs a new dated decision)
+    "covering": (98, (57, 61), "AMEND-covering-98.md", (0, 106),
+                 "685fdd216aad8f029a7c584fb9ceb68fc470b32efb93ed29a816af58de980566"),
+    "pick-and-place": (97, (14, 80, 101), "AMEND-pick-and-place-97.md", (2, 114),
+                       "098231dc642ab448b4c6f40ee63d0baf67d5dca8a72c7dc73541804259a353a5"),
 }
 
 
@@ -688,8 +692,10 @@ def test_the_versioned_amendment_records_are_exactly_the_user_decisions():
 
 @pytest.mark.parametrize("task", sorted(RECORDS))
 def test_the_versioned_amendment_record(task):
-    target, excluded, doc, (first, last) = RECORDS[task]
-    rec = gate.load_amendments()[task]["record"]
+    target, excluded, doc, (first, last), digest = RECORDS[task]
+    loaded = gate.load_amendments()[task]
+    assert loaded["sha256"] == digest  # the approved episode list and checksums, byte for byte
+    rec = loaded["record"]
     assert rec["target"] == len(rec["episodes"]) == target and rec["base_target"] == gate.TARGET
     assert sorted(rec["excluded"]) == [f"{task}/episode_{i:06d}.h5" for i in excluded]
     assert all(v["validation_reasons"] and v["validator"] == "rw-ingest-validator/1"
