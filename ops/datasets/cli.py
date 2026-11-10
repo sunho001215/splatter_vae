@@ -23,13 +23,15 @@ import sys
 import time
 from pathlib import Path
 
-from ops.datasets import catalog, storage
+from ops.datasets import catalog, health, storage
 from ops.datasets.runner import (
     DEFAULT_CONFIG,
     Runner,
     load_config,
+    on_disk_bytes,
     resolve_selection,
     selection_fingerprint,
+    staged_depth_bytes,
     temp_path,
 )
 from ops.datasets.state import OwnerLock, StateStore, fsync_dir, read_json, write_json_atomic
@@ -54,15 +56,27 @@ def emit(payload) -> None:
     print(json.dumps(payload, indent=1, sort_keys=True, default=str))
 
 
-def storage_report(root: Path, plan: dict, config: dict, state_items: dict | None = None) -> dict:
+def storage_report(root: Path, plan: dict, config: dict, state: dict | None = None) -> dict:
+    """Final + peak of the enabled groups and of all groups against free space and the effective margin, crediting
+    bytes already on disk; ``peak_table`` lists every term (see ops/datasets/storage.py)."""
+    state = state or {}
+    state_items = state.get("items") or {}
     groups = [g for g in catalog.GROUPS if config["groups"].get(g)]
     selection = resolve_selection(config["pointworld_selection"], plan, root)
     selection = None if selection in (None, "pending") else selection
     usage = storage.fs_usage(root)
-    enabled = storage.plan_fit(plan["items"], groups, usage, config["margin_fraction"], state_items, selection)
-    complete = storage.plan_fit(plan["items"], catalog.GROUPS, usage, config["margin_fraction"], state_items, selection)
-    return {"fs": usage, "margin_fraction": config["margin_fraction"], "enabled_groups": groups,
-            "selection": config["pointworld_selection"], "enabled": enabled, "all_groups": complete}
+    mount = health.mount_entry(str(root))[0]
+    margin = storage.effective_margin(float(config["margin_fraction"]), mount)
+    on_disk, staged = on_disk_bytes(root, plan["items"], state_items), {"pw_depth": staged_depth_bytes(root)}
+    published = ((state.get("sections") or {}).get("stream") or {}).get("status") == "published"
+    pool_max = int({**health.DEFAULTS, **config.get("controller", {})}["pool_max"])
+    members = sum(len(m) for m in plan["flow_members"].values())
+    tables = {name: storage.peak_table(plan["items"], names, usage, margin, state_items, on_disk, staged, published,
+                                       pool_max, members, selection)
+              for name, names in (("enabled", groups), ("all_groups", catalog.GROUPS))}
+    return {"fs": usage, "mount_point": mount, "margin_fraction": margin, "configured_margin": config["margin_fraction"],
+            "enabled_groups": groups, "selection": config["pointworld_selection"],
+            "schedule": config.get("schedule"), "pool_max": pool_max, **tables}
 
 
 def cmd_plan(args) -> int:
@@ -84,22 +98,23 @@ def cmd_plan(args) -> int:
         write_json_atomic(sd / "plan.json", plan)
     if not (sd / "config.json").exists():
         write_json_atomic(sd / "config.json", DEFAULT_CONFIG, indent=1)
-    report = storage_report(root, plan, load_config(sd))
+    report = storage_report(root, plan, load_config(sd), read_json(sd / "state.json", {}))
     write_json_atomic(sd / "storage.json", report, indent=1)
     emit({"items": len(plan["items"]), "sources": plan["sources"], "storage": report})
     return 0
 
 
 def cmd_storage(args) -> int:
-    root = Path(args.root)
-    sd = state_dir(root)
-    plan = read_json(sd / "plan.json")
-    state = read_json(sd / "state.json", {}) or {}
-    emit(storage_report(root, plan, load_config(sd), state.get("items")))
-    return 0
+    """The space table of the current configuration, or of a proposed one (same options as configure; nothing is
+    written)."""
+    return configure(args, write=False)
 
 
 def cmd_configure(args) -> int:
+    return configure(args, write=True)
+
+
+def configure(args, write: bool) -> int:
     root = Path(args.root)
     sd = state_dir(root)
     plan = read_json(sd / "plan.json")
@@ -111,7 +126,14 @@ def cmd_configure(args) -> int:
     if args.pointworld_selection is not None:
         config["pointworld_selection"] = args.pointworld_selection
     if args.margin_fraction is not None:
+        mount = health.mount_entry(str(root))[0]
+        if storage.effective_margin(args.margin_fraction, mount) != args.margin_fraction:
+            emit({"error": f"refused: a margin below {storage.DEFAULT_MARGIN} is allowed only on "
+                           f"{storage.LOW_MARGIN_MOUNTS}, not on {mount}"})
+            return 2
         config["margin_fraction"] = args.margin_fraction
+    if args.schedule is not None:
+        config["schedule"] = args.schedule
     for key in ("pool_initial", "pool_min", "pool_max"):
         if getattr(args, key) is not None:
             config["controller"][key] = getattr(args, key)
@@ -123,13 +145,16 @@ def cmd_configure(args) -> int:
             emit({"error": "refused: extraction already started with another pointworld_selection",
                   "frozen": frozen})
             return 2
-    report = storage_report(root, plan, config, state.get("items"))
-    if not report["enabled"]["final_fits"] and config["pointworld_selection"] != "pending":
-        emit({"error": "refused: the final footprint of the enabled groups would cross the margin",
-              "deficit": report["enabled"]["deficit"], "report": report})
+    report = storage_report(root, plan, config, state)
+    if config["pointworld_selection"] != "pending" and not (report["enabled"]["fits"]["final"] and (
+            report["enabled"]["fits"]["peak_depth_first"] if config.get("schedule") == "depth_first"
+            else report["enabled"]["fits"]["peak_unordered"])):
+        emit({"error": "refused: the final footprint or the peak of the enabled groups (with the configured "
+                       "schedule) would cross the margin", "config": config, "report": report})
         return 2
-    write_json_atomic(sd / "config.json", config, indent=1)
-    emit({"config": config, "storage": report})
+    if write:
+        write_json_atomic(sd / "config.json", config, indent=1)
+    emit({"config": config, "written": write, "storage": report})
     return 0
 
 
@@ -227,7 +252,8 @@ def cmd_adopt(args) -> int:
     try:
         source, size = Path(args.source), int(item["size"])
         usage = storage.fs_usage(root)
-        if usage["avail"] - size < storage.margin_bytes(usage["size"], load_config(sd)["margin_fraction"]):
+        margin = storage.effective_margin(float(load_config(sd)["margin_fraction"]), health.mount_entry(str(root))[0])
+        if usage["avail"] - size < storage.margin_bytes(usage["size"], margin):
             emit({"adopted": False, "reason": "would cross the free-space margin"})
             return 2
         if source.stat().st_size != size or not hash_file(source, item["checksum"], size):
@@ -295,11 +321,13 @@ def parser() -> argparse.ArgumentParser:
         if name == "adopt":
             p.add_argument("--item", required=True)
             p.add_argument("--source", required=True)
-        if name == "configure":
+        if name in ("configure", "storage"):
             p.add_argument("--enable", action="append", choices=catalog.GROUPS)
             p.add_argument("--disable", action="append", choices=catalog.GROUPS)
             p.add_argument("--pointworld-selection", default=None, help="pending | all | <episode list file>")
-            p.add_argument("--margin-fraction", type=float, default=None)
+            p.add_argument("--margin-fraction", type=float, default=None,
+                           help=f"below {storage.DEFAULT_MARGIN} only on {', '.join(storage.LOW_MARGIN_MOUNTS)}")
+            p.add_argument("--schedule", choices=("round_robin", "depth_first"), default=None)
             p.add_argument("--pool-initial", dest="pool_initial", type=int, default=None)
             p.add_argument("--pool-min", dest="pool_min", type=int, default=None)
             p.add_argument("--pool-max", dest="pool_max", type=int, default=None)

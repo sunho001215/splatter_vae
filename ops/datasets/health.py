@@ -63,14 +63,20 @@ def meminfo(path: Path = Path("/proc/meminfo")) -> dict:
     return values
 
 
-def mount_device(path: str, mountinfo: Path = Path("/proc/self/mountinfo")) -> str | None:
-    """Kernel name (``nvme1n1p1``) of the block device holding ``path`` (longest mount-point prefix)."""
+def mount_entry(path: str, mountinfo: Path = Path("/proc/self/mountinfo")) -> tuple[str, str | None]:
+    """(mount point, source device) of the file system holding ``path`` (longest mount-point prefix)."""
     best, device = "", None
     for line in mountinfo.read_text().splitlines():
         left, _, right = line.partition(" - ")
         mount_point, source = left.split()[4], right.split()[1]
         if (path == mount_point or path.startswith(mount_point.rstrip("/") + "/")) and len(mount_point) > len(best):
             best, device = mount_point, source
+    return best, device
+
+
+def mount_device(path: str, mountinfo: Path = Path("/proc/self/mountinfo")) -> str | None:
+    """Kernel name (``nvme1n1p1``) of the block device holding ``path``."""
+    device = mount_entry(path, mountinfo)[1]
     return device.rsplit("/", 1)[1] if device and device.startswith("/dev/") else None
 
 

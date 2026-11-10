@@ -3,6 +3,7 @@
     .venv/bin/python -I scripts/datasets/droid_datasets_remote.py deploy --sha <commit>
     .venv/bin/python -I scripts/datasets/droid_datasets_remote.py latency [--n 8]
     .venv/bin/python -I scripts/datasets/droid_datasets_remote.py remote --sha <commit> -- status
+    .venv/bin/python -I scripts/datasets/droid_datasets_remote.py stage-upload --kib 600 <file> [...]
 
 See ops/datasets/control.py and docs/dataset_downloads.md.
 """

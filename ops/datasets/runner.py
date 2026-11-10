@@ -46,6 +46,7 @@ DEFAULT_CONFIG = {
     "groups": {g: g != "pw_flows" for g in GROUPS},
     "pointworld_selection": "pending",
     "margin_fraction": 0.15,
+    "schedule": "round_robin",  # or "depth_first": depth parts before RLDS and flow shards
     "max_attempts": 8,
     "max_extract_attempts": 3,
     "controller": {},
@@ -94,6 +95,39 @@ def token_fingerprint(token: str | None) -> str | None:
     return hashlib.sha256(token.encode()).hexdigest()[:16] if token else None
 
 
+def staged_depth_bytes(root: Path) -> int:
+    folder = Path(root) / ".staging" / "pw_depth" / "depth_320x180"
+    total = 0
+    try:
+        with os.scandir(folder) as entries:
+            for entry in entries:
+                try:
+                    total += entry.stat().st_size
+                except FileNotFoundError:  # renamed by a concurrent publication
+                    pass
+    except FileNotFoundError:
+        return 0
+    return total
+
+
+def on_disk_bytes(root: Path, items: list[dict], state_items: dict, inflight: dict | None = None) -> dict:
+    """Bytes of unfinished items already on disk: held archives (downloaded/publishing) and partial temp files."""
+    out = {}
+    for item in items:
+        status = state_items.get(item["id"], {}).get("status", "pending")
+        if status in ("done", "extracted"):
+            continue
+        if status in ("downloaded", "publishing"):
+            out[item["id"]] = int(item["size"])
+        elif inflight and item["id"] in inflight:
+            out[item["id"]] = inflight[item["id"]]["on_disk"]
+        else:
+            temp = temp_path(root, item)
+            if temp.exists():
+                out[item["id"]] = temp.stat().st_size
+    return out
+
+
 class Runner:
     def __init__(self, root: Path, tools_sha: str = "", probe=None, clock=time.monotonic):
         self.root = Path(root)
@@ -129,6 +163,7 @@ class Runner:
         self.cfg = {**health.DEFAULTS, **self.config.get("controller", {})}
         self.control = health.Control(pool=int(self.cfg["pool_initial"]))
         self.selection = "pending"
+        self.margin = storage.DEFAULT_MARGIN
         self.gates = {}
 
     def load_state(self) -> None:
@@ -144,6 +179,8 @@ class Runner:
     def reload_config(self) -> None:
         self.config = load_config(self.state_dir)
         self.cfg = {**health.DEFAULTS, **self.config.get("controller", {})}
+        self.margin = storage.effective_margin(float(self.config["margin_fraction"]),
+                                               health.mount_entry(str(self.root))[0])
         low, high = int(self.cfg["pool_min"]), max(int(self.cfg["pool_min"]), int(self.cfg["pool_max"]))
         self.control.pool = min(high, max(low, self.control.pool))
         gates = {}
@@ -183,8 +220,9 @@ class Runner:
     def fit(self) -> dict:
         groups = [g for g in GROUPS if self.config["groups"].get(g)]
         selection = None if self.selection in (None, "pending") else self.selection
-        return storage.plan_fit(self.items, groups, storage.fs_usage(self.root), self.config["margin_fraction"],
-                                self.state.items, selection)
+        return storage.plan_fit(self.items, groups, storage.fs_usage(self.root), self.margin, self.state.items,
+                                selection, on_disk_bytes(self.root, self.items, self.state.items, self.inflight),
+                                {"pw_depth": self.staged["pw_depth"]})
 
     def idle(self) -> float:
         return min(5.0, float(self.cfg["interval_s"]))
@@ -269,11 +307,11 @@ class Runner:
         with self.counter_lock:
             outstanding = self.outstanding()
         usage = storage.fs_usage(self.root)
-        return usage["avail"], outstanding, storage.margin_bytes(usage["size"], self.config["margin_fraction"])
+        return usage["avail"], outstanding, storage.margin_bytes(usage["size"], self.margin)
 
     def space_low(self) -> bool:
         usage = storage.fs_usage(self.root)
-        return usage["avail"] < storage.margin_bytes(usage["size"], self.config["margin_fraction"])
+        return usage["avail"] < storage.margin_bytes(usage["size"], self.margin)
 
     # ---- scheduling ----------------------------------------------------------------------------------------------
     def candidates(self) -> list[dict]:
@@ -283,13 +321,16 @@ class Runner:
                  and self.state.items[i["id"]].get("not_before", 0) <= now and i["id"] not in self.inflight]
         small = [i for i in ready if i["group"] not in BIG_GROUPS]
         queues = {g: [i for i in ready if i["group"] == g] for g in BIG_GROUPS}
-        order = list(BIG_GROUPS)
+        first = []
+        if self.config.get("schedule") == "depth_first":
+            first = queues.pop("pw_depth")
+        order = list(queues)
         start = int(now) % len(order)
         order = order[start:] + order[:start]
         interleaved = []
         for k in range(max((len(q) for q in queues.values()), default=0)):
             interleaved += [queues[g][k] for g in order if k < len(queues[g])]
-        return small + interleaved
+        return small + first + interleaved
 
     def next_item(self) -> dict | None:
         """The first candidate whose claim fits; candidates that do not fit are skipped (a small file waiting for
@@ -557,20 +598,6 @@ class Runner:
         self.state.save(force=True)
         return dict(report)
 
-    def staged_bytes(self) -> int:
-        folder = self.root / ".staging" / "pw_depth" / "depth_320x180"
-        total = 0
-        try:
-            with os.scandir(folder) as entries:
-                for entry in entries:
-                    try:
-                        total += entry.stat().st_size
-                    except FileNotFoundError:  # renamed by a concurrent publication
-                        pass
-        except FileNotFoundError:
-            return 0
-        return total
-
     def throughput(self, window: float) -> float | None:
         now = self.clock()
         points = [p for p in self.rates if now - p[0] <= window]
@@ -613,7 +640,7 @@ class Runner:
             "eta_s": remaining / rate if rate else None, "health": sample, "baseline": baseline,
             "errors_total": self.errors, "recent_errors": list(self.recent_errors)[-5:],
             "space_wait": self.space_wait, "selection": self.config["pointworld_selection"],
-            "margin_fraction": self.config["margin_fraction"],
+            "margin_fraction": self.margin, "schedule": self.config.get("schedule"),
         }
 
     def finished(self) -> bool:
@@ -622,7 +649,7 @@ class Runner:
 
     def tick(self, probe, baseline: dict, errors_seen: int) -> tuple[tuple[str, str], int, dict]:
         self.reload_config()
-        self.staged["pw_depth"] = self.staged_bytes()
+        self.staged["pw_depth"] = staged_depth_bytes(self.root)
         with self.counter_lock:
             total, errors = self.bytes_total, self.errors
         self.rates.append((self.clock(), total))

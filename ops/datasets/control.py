@@ -25,6 +25,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[2]
 TOOLS_ROOT = "/data_8T/kaist/sunho/tools"
 DATA_ROOT = "/data_8T/kaist/sunho/datasets"
+UPLOAD_STAGING = DATA_ROOT + "/.downloads/adopt"  # on /data_8T, never on the REMOTE system disk
 DEPLOY_PATHS = (
     "ops/__init__.py", "ops/datasets", "scripts/datasets/droid_datasets.py", "s4d/__init__.py", "s4d/data/__init__.py",
     "s4d/data/droid/__init__.py", "s4d/data/droid/largescale/__init__.py", "s4d/data/droid/largescale/extract.py",
@@ -94,6 +95,48 @@ def remote(sha: str, args: list[str], timeout: float = 900) -> subprocess.Comple
     return client().ssh(shlex.join(remote_command(sha, args)), wait=False, idempotent=False, timeout=timeout)
 
 
+def staging_paths(name: str, digest: str) -> tuple[str, str]:
+    if "/" in name or name.startswith(".") or len(digest) != 64:
+        raise ValueError("plain file name and a sha256 digest expected")
+    target = f"{UPLOAD_STAGING}/{name}"
+    return target, f"{target}.s4d-partial-{digest}"
+
+
+def stage_upload(local: Path, kib_per_s: int) -> dict:
+    """Upload one local file into the adopt staging directory on /data_8T (then ``adopt`` installs it): explicit
+    ``--bwlimit`` as the existing upload policy requires, resumable partial name, sha256 verified on the remote host,
+    renamed only if the target does not exist (never overwritten)."""
+    from ops.provenance.hashing import sha256_file
+
+    if int(kib_per_s) <= 0:
+        raise ValueError("an explicit positive --bwlimit (KiB/s) is required")
+    remote_client, local = client(), Path(local)
+    digest, start = sha256_file(local), time.monotonic()
+    target, partial = staging_paths(local.name, digest)
+
+    def remote_sha(path: str) -> str | None:
+        out = remote_client.checked_ssh(f"if [ -f {shlex.quote(path)} ]; then sha256sum -- {shlex.quote(path)}; fi",
+                                        wait=False, idempotent=True, timeout=600).stdout.split()
+        return out[0] if out else None
+
+    remote_client.checked_ssh("mkdir -p " + shlex.quote(UPLOAD_STAGING), wait=False, idempotent=True)
+    existing = remote_sha(target)
+    if existing is not None:
+        if existing != digest:
+            raise RuntimeError(f"{target} exists with another sha256; not overwritten")
+        return {"file": local.name, "status": "present", "sha256": digest}
+    remote_client._rsync_run(str(local), f"{remote_client.target}:{partial}", [f"--bwlimit={int(kib_per_s)}",
+                                                                               "--timeout=300"], True, True, (0,))
+    if remote_sha(partial) != digest or sha256_file(local) != digest:
+        raise RuntimeError(f"{local.name}: uploaded sha256 differs or the source changed")
+    remote_client.checked_ssh(f"test ! -e {shlex.quote(target)} && mv -T -- {shlex.quote(partial)} "
+                              f"{shlex.quote(target)}", wait=False, idempotent=False)
+    if remote_sha(target) != digest:
+        raise RuntimeError(f"{target}: sha256 differs after the rename")
+    return {"file": local.name, "status": "uploaded", "sha256": digest, "bytes": local.stat().st_size,
+            "seconds": round(time.monotonic() - start, 1), "kib_per_s": int(kib_per_s), "remote": target}
+
+
 def fresh_ssh_args(args: list[str]) -> list[str]:
     """RemoteClient's ssh arguments without connection sharing (a cold connection each time)."""
     out, skip = [], False
@@ -138,6 +181,9 @@ def main(argv=None) -> int:
     p.add_argument("--n", type=int, default=8)
     p.add_argument("--label", default="")
     p.add_argument("--log", default=None, help="append the JSON result to this file")
+    p = sub.add_parser("stage-upload")
+    p.add_argument("--kib", type=int, required=True, help="rsync --bwlimit in KiB/s (upload policy)")
+    p.add_argument("files", nargs="+")
     p = sub.add_parser("remote")
     p.add_argument("--sha", required=True)
     p.add_argument("--timeout", type=float, default=900)
@@ -152,6 +198,10 @@ def main(argv=None) -> int:
         if args.log:
             with open(args.log, "a") as out:
                 out.write(json.dumps(result) + "\n")
+        return 0
+    if args.command == "stage-upload":
+        for path in args.files:
+            print(json.dumps(stage_upload(Path(path), args.kib)))
         return 0
     forwarded = [a for a in args.args if a != "--"]
     result = remote(args.sha, forwarded, timeout=args.timeout)

@@ -40,7 +40,8 @@ Layout (`root` = `/data_8T/kaist/sunho/datasets`): `droid/1.0.1/` (`data.rlds_da
 - The episode selection is frozen once the first flow shard or the depth stream is extracted (`configure` refuses
   another one; the owner gates both groups if the config is edited by hand).
 - Space: every download is admitted only if the claims of all admitted unfinished work plus its own leave
-  `margin_fraction` x file-system size available (default 0.15). Claims are upper bounds: a shard archive claims its
+  `margin_fraction` x file-system size available (default 0.15; a lower value is honoured only on `/data_8T`, user
+  decision 2026-11-10: 0.085 there, every other file system keeps 0.15 whatever the configuration says). Claims are upper bounds: a shard archive claims its
   full expansion; the depth stream claims, from its first part on, every remaining part plus its whole expansion. The
   flow group is refused while the final footprint of the enabled groups would cross the margin. Extraction stops
   while free space is below the margin, and all transfers pause (partials kept) while free space cannot cover the
@@ -68,16 +69,25 @@ Remote (host `python3`, from the deployed copy; `<sha>` = deployed commit):
 ```bash
 T=/data_8T/kaist/sunho/tools/<sha>/scripts/datasets/droid_datasets.py
 python3 -I $T plan                      # official listings -> .state/plan.json + storage projection
-python3 -I $T storage                   # final + peak vs free and the margin
+python3 -I $T storage [configure options]  # final + peak table (current or proposed config; never writes)
 python3 -I $T start                     # reconcile, then the detached owner (setsid, nice 10, ionice -c2 -n7)
 python3 -I $T status [--full]           # live owner check + last status
 python3 -I $T stop                      # graceful; partials kept
 python3 -I $T configure --pointworld-selection all|<episode list> --enable pw_flows [--margin-fraction F]
+                        [--schedule depth_first]   # refused if the final or the scheduled peak crosses the margin
 python3 -I $T adopt --item droid3d/extrinsics.jsonl --source <existing copy>   # verified copy, source untouched
 python3 -I $T retry                     # failed -> pending
 ```
 
-Local: `.venv/bin/python -I scripts/datasets/droid_datasets_remote.py {deploy --sha S | latency | remote --sha S -- <cmd>}`.
+Local: `.venv/bin/python -I scripts/datasets/droid_datasets_remote.py {deploy --sha S | latency | remote --sha S -- <cmd>
+| stage-upload --kib N <files>}` (`stage-upload`: explicit `--bwlimit`, partial name, sha256 verified on the remote
+host, into `.downloads/adopt/` on /data_8T; then `adopt`).
+
+Space table (`storage`): final growth (credits for bytes already on disk), block rounding (one 4 KiB block per file
+still to be written; measured 2.0-2.8 KB per extracted member, 6-8 KB per multi-GB file), the depth parts held until
+the stream is published, in-flight flow shard archives at the maximum pool, one shard archive during its extraction;
+peaks unordered and with `schedule: depth_first` (depth parts before RLDS and flow shards; the depth stream claims its
+remaining parts and expansion from its first part on, so the order cannot be violated, only waited for).
 
 Resume after a reboot or an outage: `start` (it refuses a second owner while the lock is held; a stale `owner.json`
 after a crash or reboot is ignored because the lock is free; `downloading` items return to `pending` and continue

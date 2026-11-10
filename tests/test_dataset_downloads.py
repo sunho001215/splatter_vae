@@ -76,6 +76,12 @@ class Server:
         return f"http://127.0.0.1:{self.port}/{name}"
 
 
+@pytest.fixture(autouse=True)
+def low_margin_allowed_here(tmp_path, monkeypatch):
+    """Tests configure small margins on their temporary file system (in production only /data_8T allows them)."""
+    monkeypatch.setattr(storage, "LOW_MARGIN_MOUNTS", ("/data_8T", health.mount_entry(str(tmp_path))[0]))
+
+
 @pytest.fixture
 def server(monkeypatch):
     monkeypatch.setattr(transfer, "SECURE_SCHEMES", ("https", "http"))  # the local test server speaks http
@@ -607,6 +613,11 @@ def test_cli_configure_refuses_to_cross_the_margin_and_adopt_verifies(server, tm
     usage = {"size": 10**7, "avail": 3_000_000}
     monkeypatch.setattr(storage, "fs_usage", lambda path: usage)
     args = ["--root", str(root)]
+    assert cli.main(["storage", *args, "--enable", "pw_flows", "--pointworld-selection", "all",
+                     "--margin-fraction", "0.0"]) == 0  # a proposal is evaluated, never written
+    proposal = json.loads(capsys.readouterr().out)
+    assert proposal["written"] is False and proposal["storage"]["enabled"]["fits"]["final"]
+    assert not (root / ".state" / "config.json").exists()
     assert cli.main(["configure", *args, "--enable", "pw_flows", "--pointworld-selection", "all",
                      "--margin-fraction", "0.15"]) == 2
     assert "refused" in capsys.readouterr().out
@@ -808,3 +819,63 @@ def test_own_writes_pause_when_space_cannot_cover_margin_and_claims(server, tmp_
     events = [json.loads(line)["event"] for line in (root / ".state" / "progress.jsonl").read_text().splitlines()]
     assert events.count("space_pause") == events.count("space_resume") == 1
     owner.stop_event.set()
+
+
+# ---- user decisions 2026-11-10 ~14:55 (8.5 % floor on /data_8T only, depth first, verified peak) -------------------
+def test_low_margin_only_on_the_data_disk(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(storage, "LOW_MARGIN_MOUNTS", ("/data_8T",))
+    assert storage.effective_margin(0.085, "/data_8T") == 0.085
+    assert storage.effective_margin(0.085, "/") == storage.effective_margin(0.0, "/home") == 0.15
+    assert storage.effective_margin(0.2, "/") == 0.2
+    root = tmp_path / "datasets"
+    (root / ".state").mkdir(parents=True)
+    state.write_json_atomic(root / ".state" / "plan.json", {"items": [], "flow_members": {}})
+    assert cli.main(["configure", "--root", str(root), "--margin-fraction", "0.085"]) == 2
+    assert "only on" in capsys.readouterr().out
+    state.write_json_atomic(root / ".state" / "config.json", {"margin_fraction": 0.085})
+    owner = runner.Runner(root)
+    owner.reload_config()
+    assert owner.margin == 0.15  # a hand-edited config cannot lower the floor elsewhere either
+
+
+def test_fit_credits_bytes_already_on_disk_and_peak_terms():
+    items = storage_items()
+    usage = {"size": 1000, "avail": 500}
+    plain = storage.plan_fit(items, ("rlds", "pw_depth", "pw_flows"), usage, 0.15)
+    credited = storage.plan_fit(items, ("rlds", "pw_depth", "pw_flows"), usage, 0.15,
+                                on_disk={"d0": 50, "r": 30}, staged={"pw_depth": 20})
+    assert plain["final_growth"] - credited["final_growth"] == 100
+    table = storage.peak_table(items, ("rlds", "pw_depth", "pw_flows"), {"size": 10**6, "avail": 10**6}, 0.15,
+                               {}, {"d0": 50}, {}, False, 2, 6)
+    files = 1 + 4 + 2 + 6  # plain rlds file, flow members of both shards, depth members (= flow episodes)
+    assert table["fs_overhead"] == files * storage.FS_OVERHEAD_PER_FILE
+    assert table["held_depth_parts"] == 100 and table["inflight_shard_archives"] == 2 * 40
+    assert table["shard_archive_during_extraction"] == 40
+    final = table["final_growth"] + table["fs_overhead"]
+    assert table["peak_unordered"] == final + 100 + 80 + 40
+    assert table["depth_first_at_end"] == final + 3 * 40
+    assert table["depth_first_at_stream_publish"] == (100 + 120 - 50) + 100 + 2 * (40 + 80) + table["fs_overhead"]
+    assert table["fits"]["peak_depth_first"] and table["headroom"]["final"] == table["usable"] - final
+
+
+def test_depth_first_schedule(server, tmp_path):
+    root, plan, owner = owner_with_selection(server, tmp_path)
+    order = [i["id"] for i in owner.candidates()]
+    state.write_json_atomic(root / ".state" / "config.json",
+                            {**runner.DEFAULT_CONFIG, "pointworld_selection": "all", "schedule": "depth_first",
+                             "groups": {"pw_flows": True}})
+    owner.reload_config()
+    depth_first = [i["id"] for i in owner.candidates()]
+    big = [i for i in depth_first if not i.startswith(("t/pw/cams", "droid3d"))]
+    assert big[:2] == ["t/pw/d0", "t/pw/d1"] and sorted(order) == sorted(depth_first)
+
+
+def test_stage_upload_paths_stay_on_the_data_disk():
+    target, partial = control.staging_paths("extrinsics.jsonl", "a" * 64)
+    assert target == "/data_8T/kaist/sunho/datasets/.downloads/adopt/extrinsics.jsonl"
+    assert partial == target + ".s4d-partial-" + "a" * 64
+    for bad in (("../x", "a" * 64), ("x", "short")):
+        with pytest.raises(ValueError):
+            control.staging_paths(*bad)
+    with pytest.raises(ValueError, match="bwlimit"):
+        control.stage_upload(Path("/nonexistent"), 0)
