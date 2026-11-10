@@ -742,38 +742,7 @@ def cmd_stage(a, *, hook: bool = False) -> int:
     log = lambda m: print(m, file=sys.stderr, flush=True)  # noqa: E731
     with open(a.lock_file, "a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)  # one catalog read-merge-write transaction at a time (concurrent hooks)
-        changed = {r: errs for r in a.runs if rows[r]["class"]["status"] in ("deployable", "restricted")
-                   and (errs := _identity_errors(src, rows[r], a.sidecar_dir))}  # checked under the lock
-        if changed:
-            print(json.dumps({"error": "inputs changed since the evaluation (re-evaluate)", "runs": changed}))
-            return 2
         catalog = read_host_catalog(host) if a.execute or a.read_host else {"policies": {}, "aliases": {}}
-        entries = dict(catalog.get("policies") or {})
-        report, files, evaluated = {}, {}, {}
-        for run in a.runs:  # 1. withdrawals first: they never depend on any upload
-            row = rows[run]
-            status = row["class"]["status"]
-            report[run] = {"policy_id": row["policy_id"], "status": status, "reasons": row["class"]["reasons"]}
-            labelled = status == "quarantined" and getattr(a, "label_quarantined", False) and row["policy"]["local"] \
-                and (a.sidecar_dir / f"{run}.deploy_contract.json").is_file()
-            if status not in ("deployable", "restricted") and not labelled and \
-                    (entries.get(row["policy_id"]) or {}).get("run") == run and \
-                    entries[row["policy_id"]]["status"] != "quarantined":
-                entries[row["policy_id"]] = withdrawn_entry(entries[row["policy_id"]], row)
-                report[run]["catalog_status"] = "withdrawn (quarantined)"
-        withdrawals_only = dict(entries)
-        for run in a.runs:  # 2. staged entries
-            row = rows[run]
-            status = row["class"]["status"]
-            labelled = status == "quarantined" and getattr(a, "label_quarantined", False) and row["policy"]["local"] \
-                and (a.sidecar_dir / f"{run}.deploy_contract.json").is_file()
-            if status in ("deployable", "restricted") or labelled:
-                part = staging_files(src, row, a.sidecar_dir)
-                files.update(part)
-                evaluated.update(_evaluated_shas(row, a.sidecar_dir))
-                entries[row["policy_id"]] = catalog_entry(row, local_input_spec(src, row, a.sidecar_dir))
-                report[run]["staged"] = bool(a.execute)
-                report[run]["catalog_status"] = status
         crit = sha256_file(a.criteria) if a.criteria.is_file() else None
 
         def publish(policies: dict) -> None:
@@ -786,18 +755,47 @@ def cmd_stage(a, *, hook: bool = False) -> int:
                 write_host_catalog(host, build_catalog(policies, aliases=aliases, criteria_sha256=crit),
                                    execute=a.execute, log=log)
                 signal_reload(host, execute=a.execute, log=log)
+                catalog.update(policies=dict(policies), aliases=aliases)
 
-        if files:
-            try:
+        def labelled(row) -> bool:
+            return row["class"]["status"] == "quarantined" and getattr(a, "label_quarantined", False) and \
+                row["policy"]["local"] and (a.sidecar_dir / f"{row['run']}.deploy_contract.json").is_file()
+
+        entries = dict(catalog.get("policies") or {})
+        report, files, evaluated = {}, {}, {}
+        for run in a.runs:  # 1. withdrawals, PUBLISHED FIRST: nothing below (checks, uploads) can hold them back
+            row = rows[run]
+            status = row["class"]["status"]
+            report[run] = {"policy_id": row["policy_id"], "status": status, "reasons": row["class"]["reasons"]}
+            if status not in ("deployable", "restricted") and not labelled(row) and \
+                    (entries.get(row["policy_id"]) or {}).get("run") == run and \
+                    entries[row["policy_id"]]["status"] != "quarantined":
+                entries[row["policy_id"]] = withdrawn_entry(entries[row["policy_id"]], row)
+                report[run]["catalog_status"] = "withdrawn (quarantined)"
+        if entries != (catalog.get("policies") or {}):
+            publish(entries)
+        try:  # 2. new entries: identity checks under the lock, preparation, upload, hash comparison
+            changed = {r: errs for r in a.runs if rows[r]["class"]["status"] in ("deployable", "restricted")
+                       and (errs := _identity_errors(src, rows[r], a.sidecar_dir))}
+            if changed:
+                raise RuntimeError(f"inputs changed since the evaluation (re-evaluate): {changed}")
+            for run in a.runs:
+                row = rows[run]
+                if row["class"]["status"] in ("deployable", "restricted") or labelled(row):
+                    files.update(staging_files(src, row, a.sidecar_dir))
+                    evaluated.update(_evaluated_shas(row, a.sidecar_dir))
+                    entries[row["policy_id"]] = catalog_entry(row, local_input_spec(src, row, a.sidecar_dir))
+                    report[run]["staged"] = bool(a.execute)
+                    report[run]["catalog_status"] = row["class"]["status"]
+            if files:
                 uploaded = stage_files(host, files, execute=a.execute, log=log)
                 bad = sorted(rel for rel, h in evaluated.items() if uploaded.get(rel) != h)
                 if bad:
                     raise RuntimeError(f"staged files differ from the evaluated inputs: {bad}")
-            except Exception as exc:  # withdrawals are still published; the new entries are not
-                publish(withdrawals_only)
-                print(json.dumps({"error": f"staging failed: {type(exc).__name__}: {exc}", "runs": report},
-                                 default=str))
-                return 2
+        except Exception as exc:  # the withdrawals are already published; no new entry is
+            print(json.dumps({"error": f"staging failed: {type(exc).__name__}: {exc}", "runs": report},
+                             default=str))
+            return 2
         publish(entries)
     print(json.dumps({"execute": bool(a.execute), "runs": report}, indent=1, default=str))
     return 0 if all(r["status"] in ("deployable", "restricted") for r in report.values()) or not hook else 3

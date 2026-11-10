@@ -410,7 +410,9 @@ def classify(condition: str, checks: dict, *, quarantine: str | None = None) -> 
 
 
 def _r(x, n=4):
-    return None if x is None else float(f"{x:.{n}g}")
+    """Rounded published number; None for a missing or NON-FINITE value (a NaN / Infinity measurement is published
+    as null next to its FAIL, never written as a number the catalog validator or the JSON wire would refuse)."""
+    return None if x is None or not math.isfinite(x) else float(f"{x:.{n}g}")
 
 
 def criteria_summary(condition: str, checks: dict) -> dict:

@@ -408,12 +408,14 @@ def _stage_env(tmp_path, monkeypatch, runs=("r-fql-e2e_cnn-t-s0",), status="depl
         sc.mkdir(exist_ok=True)
         (sc / f"{run}.deploy_contract.json").write_text("{}")
         seed = int(run[-1])
+        f_ok = {"pass": True, "final_q_mean": -40.0, "late_q_mean_median": -41.0, "peak_q_mean": [5000, -12.0]}
         rows.append({"run": run, "condition": "e2e_cnn", "task": "t", "seed": seed, "policy_id": f"e2e_cnn-t-s{seed}",
                      "policy": {"path": f"runs/{run}/policy.pt", "sha256": S.sha256_file(data / "runs" / run /
                                                                                          "policy.pt"), "local": True},
                      "export": None, "class": {"status": status, "reasons": [] if status == "deployable" else ["x"],
                                                "flags": []},
-                     "checks": {"d": {"pass": True, "sha256": S.sha256_file(sc / f"{run}.deploy_contract.json")}}})
+                     "checks": {"d": {"pass": True, "sha256": S.sha256_file(sc / f"{run}.deploy_contract.json")},
+                                "f": f_ok}})
     crit = tmp_path / "criteria.md"
     crit.write_text("criteria")
     inv = tmp_path / "inv.json"
@@ -439,11 +441,14 @@ def test_stage_publishes_idempotently_repairs_partial_publication_and_withdraws(
     assert S.cmd_stage(args) == 0 and host.writes == 2 and host.copies["host"] == host.copies["container"]
     data = json.loads(inv.read_text())  # re-evaluation now fails: the staged entry of that run is withdrawn
     data["fql"][0]["class"] = {"status": "quarantined", "reasons": ["f: q_mean runaway"], "flags": []}
+    data["fql"][0]["checks"]["f"] = {"pass": False, "final_q_mean": float("nan"), "late_q_mean_median": 150.0,
+                                     "peak_q_mean": [900, float("inf")]}  # non-finite measurements must not block
     inv.write_text(json.dumps(data))
     assert S.cmd_stage(args, hook=True) == 3
     entry = json.loads(host.copies["host"])["policies"]["e2e_cnn-t-s0"]
     assert entry["status"] == "quarantined" and entry["usage"] == "none" and "f: q_mean runaway" in entry["reasons"]
-    assert entry["criteria"]["d_deploy_contract"]["pass"] is True  # the re-evaluation's results, not stale ones
+    f = entry["criteria"]["f_stability"]  # the re-evaluation's results replace the staged (passing) ones
+    assert f["pass"] is False and f["final_q_mean"] is None and f["peak_q_mean"] == [900, None]
 
 
 def test_stage_refuses_inputs_changed_since_the_evaluation(tmp_path, monkeypatch):
@@ -499,3 +504,17 @@ def test_probe_ratios_stay_json_safe_when_the_noise_change_is_zero(tmp_path, mon
     assert r["d_noise"] == 0 and r["d_vis_over_noise"] is None and r["pass"]
     summary = C.criteria_summary("reviwo", {"e2": r})
     json.dumps(summary, allow_nan=False)
+
+
+def test_withdrawal_is_published_before_another_runs_identity_failure(tmp_path, monkeypatch):
+    host = FakeHost()
+    monkeypatch.setattr(S, "Host", lambda **k: host)
+    args, inv = _stage_env(tmp_path, monkeypatch, runs=("r-fql-e2e_cnn-t-s0", "r-fql-e2e_cnn-t-s1"))
+    assert S.cmd_stage(args) == 0
+    data = json.loads(inv.read_text())
+    data["fql"][0]["class"] = {"status": "quarantined", "reasons": ["re-evaluated: fails"], "flags": []}
+    inv.write_text(json.dumps(data))
+    (args.sidecar_dir / "r-fql-e2e_cnn-t-s1.deploy_contract.json").write_text('{"changed": true}')
+    assert S.cmd_stage(args) == 2  # B's inputs changed ...
+    pol = json.loads(host.copies["host"])["policies"]
+    assert pol["e2e_cnn-t-s0"]["status"] == "quarantined"  # ... but A's withdrawal is published

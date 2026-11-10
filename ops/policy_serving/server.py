@@ -1078,12 +1078,6 @@ class PolicyServer:
                     refusal = ("bad_request", f"session choices refused: {exc}")
             if refusal is None:
                 s = Session(sid, sp, spec, history, history.capacity)
-                try:  # the SPEC is built BEFORE the session is registered: a failure leaves nothing live behind
-                    spec_msg = self._spec_message(s, resumed=False, redeliver=[])
-                except (ValueError, TypeError) as exc:
-                    sp.policy.end_session(sid)
-                    refusal = ("bad_request", f"session spec not serialisable: {exc}")
-            if refusal is None:
                 with self.lock:  # final check: a reload may have withdrawn the policy while the session was bound
                     current = self.entries.get(sp.policy_id)
                     if self.policies.get(sp.policy_id) is not sp or sp.retired or (
@@ -1092,6 +1086,11 @@ class PolicyServer:
                         refusal = ("bad_request", f"policy {sp.policy_id} was withdrawn while this session was being "
                                                   "bound")
                     else:
+                        try:  # SPEC encoded under the lock with the CURRENT labels, before registration
+                            spec_msg = self._spec_message(s, resumed=False, redeliver=[])
+                        except (ValueError, TypeError) as exc:
+                            refusal = ("bad_request", f"session spec not serialisable: {exc}")
+                    if refusal is None:
                         self.sessions[sid] = s
                         sp.sessions[sid] = s
                         s.conn, conn.session = conn, s
