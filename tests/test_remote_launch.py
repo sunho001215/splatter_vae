@@ -1017,3 +1017,16 @@ def test_no_cotenant_keeps_the_existing_declared_reservation_policy(tmp_path):
     # Without a co-tenant, even a managed job exceeding its declaration retains the old admission behavior.
     result = _guard(tmp_path, apps=[f"{gpu}, 11, {88 * 1024}"], gpu_used_mib=88 * 1024)
     assert result.returncode == 0 and result.stdout == "ADMITTED\n", result.stderr
+
+
+def test_native_depth_stage_alone_gains_the_read_only_configs_mount():
+    from ops.containers.mounts import SCRIPT_READ_ROOTS, realworld_mounts
+
+    configs = REMOTE_ROOT + "/realworld/configs"
+    assert SCRIPT_READ_ROOTS == {"scripts/realworld_native_depth.py": (configs,)}
+    stage = {"id": "rwcal-20261110-nativedepth-mvp3d-drawer-open", "host": "remote",
+             "script": "scripts/realworld_native_depth.py", "role": "realworld_fql", "args": ["build"]}
+    mounts = realworld_mounts(stage)  # the registered rows carry role realworld_fql
+    assert (configs, configs, True) in mounts
+    fql = {**stage, "script": "scripts/train_realworld_fql.py"}
+    assert all(src != configs for src, _, _ in realworld_mounts(fql))
