@@ -157,9 +157,17 @@ def _passing(**over):
 
 def test_classification_rules():
     assert C.classify("dynamo", _passing())["status"] == "deployable"
-    att = C.classify("dynamo", _passing(e1=C.check(False, offset_to_signal=2.5, ln_unit_std_raw=0.33,
-                                                   offset_pass=True, ln_pass=False)))
-    assert att["status"] == "deployable" and att["flags"] == [C.ATTENUATED]
+    ln = _passing(e1=C.check(False, offset_to_signal=2.5, ln_unit_std_raw=0.33, offset_pass=True, ln_pass=False))
+    res = C.classify("dynamo", ln)  # amendment A2: the failed gate stays FAILED; dry run / replay only
+    assert res["status"] == "restricted" and "LayerNorm-spread FAIL" in res["reasons"][0]
+    assert res["reasons"][-1] == C.LN_SPREAD_DECISION and res["flags"] == []
+    summary = C.criteria_summary("dynamo", {**ln, "e2": C.check(True, d_vis=0.2, action_spread=0.3, d_noise=0.01,
+                                                              d_vis_over_spread=0.667, d_vis_over_noise=20.0,
+                                                              samples=192)})
+    assert summary["e1_layernorm_spread"] == {"pass": False, "value": 0.33, "threshold": ">= 0.5"}
+    assert summary["e1_offset_to_signal"]["pass"] is True and summary["e2_visual_sensitivity"]["pass"] is True
+    ln_e2_fail = {**ln, "e2": C.check(False, d_vis=0.0, action_spread=0.3, d_noise=0.2)}
+    assert C.classify("dynamo", ln_e2_fail)["status"] == "quarantined"  # LN failure + no visual use: quarantined
     off = C.classify("mvp3d_single", _passing(e1=C.check(False, offset_to_signal=120, ln_unit_std_raw=0.01,
                                                          offset_pass=False, ln_pass=False)))
     assert off["status"] == "quarantined"
@@ -294,3 +302,157 @@ def test_staging_files_never_include_datasets_and_dry_run_touches_no_host(tmp_pa
     cat = S.build_catalog({"dynamo-t-s0": S.catalog_entry(row)}, aliases={}, criteria_sha256=None)
     S.write_host_catalog(host, cat, execute=False, log=lambda m: None)
     S.signal_reload(host, execute=False, log=lambda m: None)
+
+
+def test_usage_restrictions_fail_closed_and_validator_rules():
+    for status in ("deployable", "restricted", "quarantined"):
+        u = S.usage_of(status)
+        assert u["execution_eligible"] is False and u["usage_reasons"]
+    assert S.usage_of("restricted")["usage"] == "dry_run_replay_only"
+    assert S.usage_of("restricted")["usage_reasons"][0] == C.LN_SPREAD_DECISION
+    assert S.usage_of("quarantined")["usage"] == "none"
+    base = {**S.catalog_entry(_row()), "checkpoint": "runs/x/policy.pt"}
+
+    def cat(**over):
+        return {"schema": "s4d-policy-catalog/1", "policies": {"p": {**base, **over}}, "aliases": {}}
+
+    validate_catalog(cat())
+    with pytest.raises(ValueError, match="states its reasons"):
+        validate_catalog(cat(status="restricted", reasons=[]))
+    with pytest.raises(ValueError, match="execution-eligible"):
+        validate_catalog(cat(execution_eligible=True))  # never without an explicit execution usage
+    with pytest.raises(ValueError, match="execution-eligible"):
+        validate_catalog(cat(status="restricted", reasons=["x"], usage="execution", execution_eligible=True))
+    with pytest.raises(ValueError, match="dry-run/replay only"):
+        validate_catalog(cat(status="restricted", reasons=["x"], usage="execution"))
+    with pytest.raises(ValueError, match="usage"):
+        validate_catalog(cat(usage="anything"))
+    with pytest.raises(ValueError, match="true or false"):
+        validate_catalog(cat(execution_eligible="yes"))
+
+
+def test_completion_must_be_the_evaluated_checkpoint():
+    b = C.fql_complete({"train": {"offline_steps": 1000}}, {"status": "completed", "steps": 1000})
+    assert C.checkpoint_matches_completion(b, 1000, {"matches_remote": True})["pass"]
+    mid = C.checkpoint_matches_completion(b, 500, {"matches_remote": True})
+    assert not mid["pass"] and "step 500" in mid["reason"]
+    other = C.checkpoint_matches_completion(b, 1000, {"matches_remote": False})
+    assert not other["pass"] and "remote-verified" in other["reason"]
+    assert not C.checkpoint_matches_completion(b, 1000, {"matches_remote": None})["pass"]
+
+
+def test_constant_action_policy_fails_visual_sensitivity(tmp_path, monkeypatch):
+    policy = make_fixture_policy(tmp_path / "const", "reviwo")
+    real = policy.offline.act_from_features
+
+    def constant(*a, **k):
+        out = real(*a, **k)
+        out["action_norm"] = np.zeros_like(out["action_norm"])
+        return out
+
+    monkeypatch.setattr(policy.offline, "act_from_features", constant)
+    r = C.visual_probe(policy, _samples(policy))
+    assert r["action_spread"] == 0 and r["d_vis"] == 0 and not r["pass"]
+
+
+class FakeHost(S.Host):
+    """In-memory inference host: host + container catalog copies; every other command succeeds."""
+
+    def __init__(self, slow_read: float = 0.0):
+        super().__init__()
+        self.copies, self.writes, self.reloads, self.slow_read = {}, 0, 0, slow_read
+        self.fail_container_write = False
+
+    def run(self, cmd, *, stdin=None, check=True):
+        import time as _t
+
+        out, rc = "", 0
+        if cmd.startswith(f"cat {self.root}/"):
+            _t.sleep(self.slow_read)
+            out = self.copies.get("host", "")
+            rc = 0 if out else 1
+        elif cmd.startswith(f"docker exec {self.container} cat "):
+            out = self.copies.get("container", "")
+            rc = 0 if out else 1
+        elif cmd.startswith("chmod u+w"):
+            self.copies["host"] = stdin
+            self.writes += 1
+        elif cmd.startswith(f"docker exec -i {self.container} sh -c 'cat >"):
+            if self.fail_container_write:
+                raise subprocess.CalledProcessError(1, cmd)
+            self.copies["container"] = stdin
+        elif "pgrep" in cmd:
+            self.reloads += 1
+        return subprocess.CompletedProcess(cmd, rc, out, "")
+
+
+def _stage_env(tmp_path, monkeypatch, runs=("r-fql-e2e_cnn-t-s0",), status="deployable"):
+    import argparse
+
+    data, sc = tmp_path / "data", tmp_path / "sc"
+    rows = []
+    for run in runs:
+        (data / "runs" / run).mkdir(parents=True, exist_ok=True)
+        (data / "runs" / run / "policy.pt").write_text(run)
+        sc.mkdir(exist_ok=True)
+        (sc / f"{run}.deploy_contract.json").write_text("{}")
+        seed = int(run[-1])
+        rows.append({"run": run, "condition": "e2e_cnn", "task": "t", "seed": seed, "policy_id": f"e2e_cnn-t-s{seed}",
+                     "policy": {"path": f"runs/{run}/policy.pt", "sha256": S.sha256_file(data / "runs" / run /
+                                                                                         "policy.pt"), "local": True},
+                     "export": None, "class": {"status": status, "reasons": [] if status == "deployable" else ["x"],
+                                               "flags": []},
+                     "checks": {"d": {"pass": True, "sha256": S.sha256_file(sc / f"{run}.deploy_contract.json")}}})
+    crit = tmp_path / "criteria.md"
+    crit.write_text("criteria")
+    inv = tmp_path / "inv.json"
+    inv.write_text(json.dumps({"criteria_sha256": S.sha256_file(crit), "fql": rows}))
+    monkeypatch.setattr(S, "stage_files", lambda host, files, **k: {r: "0" * 64 for r in files})
+    monkeypatch.setattr(S, "local_input_spec", lambda *a: None)
+    args = argparse.Namespace(inventory=inv, criteria=crit, runs=list(runs), sidecar_dir=sc, ssh="irsl", bwlimit="1m",
+                              lock_file=tmp_path / "stage.lock", execute=True, read_host=False,
+                              label_quarantined=False, data_root=data, splits=tmp_path, raw_root=tmp_path,
+                              rig_dir=None, no_probe=False, evaluate=False)
+    return args, inv
+
+
+def test_stage_publishes_idempotently_repairs_partial_publication_and_withdraws(tmp_path, monkeypatch):
+    host = FakeHost()
+    monkeypatch.setattr(S, "Host", lambda **k: host)
+    args, inv = _stage_env(tmp_path, monkeypatch)
+    assert S.cmd_stage(args) == 0 and host.writes == 1 and host.copies["host"] == host.copies["container"]
+    entry = json.loads(host.copies["host"])["policies"]["e2e_cnn-t-s0"]
+    assert entry["status"] == "deployable" and entry["execution_eligible"] is False
+    assert S.cmd_stage(args) == 0 and host.writes == 1  # unchanged: nothing written, no reload
+    host.copies["container"] = ""  # a publication interrupted after the host copy
+    assert S.cmd_stage(args) == 0 and host.writes == 2 and host.copies["host"] == host.copies["container"]
+    data = json.loads(inv.read_text())  # re-evaluation now fails: the staged entry of that run is withdrawn
+    data["fql"][0]["class"] = {"status": "quarantined", "reasons": ["f: q_mean runaway"], "flags": []}
+    inv.write_text(json.dumps(data))
+    assert S.cmd_stage(args, hook=True) == 3
+    entry = json.loads(host.copies["host"])["policies"]["e2e_cnn-t-s0"]
+    assert entry["status"] == "quarantined" and entry["usage"] == "none" and "f: q_mean runaway" in entry["reasons"]
+
+
+def test_stage_refuses_inputs_changed_since_the_evaluation(tmp_path, monkeypatch):
+    host = FakeHost()
+    monkeypatch.setattr(S, "Host", lambda **k: host)
+    args, _ = _stage_env(tmp_path, monkeypatch)
+    (args.sidecar_dir / "r-fql-e2e_cnn-t-s0.deploy_contract.json").write_text('{"camera_orders": [["other"]]}')
+    assert S.cmd_stage(args) == 2 and host.writes == 0
+
+
+def test_concurrent_stage_transactions_do_not_lose_updates(tmp_path, monkeypatch):
+    import threading
+
+    host = FakeHost(slow_read=0.3)  # both would read the same old catalog without the lock
+    monkeypatch.setattr(S, "Host", lambda **k: host)
+    args, _ = _stage_env(tmp_path, monkeypatch, runs=("r-fql-e2e_cnn-t-s0", "r-fql-e2e_cnn-t-s1"))
+    a0 = type(args)(**{**vars(args), "runs": ["r-fql-e2e_cnn-t-s0"]})
+    a1 = type(args)(**{**vars(args), "runs": ["r-fql-e2e_cnn-t-s1"]})
+    ts = [threading.Thread(target=S.cmd_stage, args=(a,)) for a in (a0, a1)]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join(30)
+    assert set(json.loads(host.copies["host"])["policies"]) == {"e2e_cnn-t-s0", "e2e_cnn-t-s1"}

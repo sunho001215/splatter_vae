@@ -1360,3 +1360,125 @@ def test_cli_serves_the_catalog_lazily_and_reloads_on_sighup(staged, tmp_path):
         if proc.poll() is None:
             proc.kill()
             proc.wait(10)
+
+
+# ------------------------------------------------------------------------------------------------ labels, races (POL)
+def test_label_refresh_keeps_the_resident_model_and_execution_eligibility_fails_closed(staged, tmp_path):
+    root, fx = staged
+    pol, e = fx["r1"]
+    cat = write_catalog(tmp_path / "catalog.json", {"r1": e})
+    with serve_catalog(root, cat) as srv:
+        info = welcome(srv)["policies"]["r1"]["info"]
+        assert info["execution_eligible"] is False and info["usage"] == "dry_run_replay_only"  # field absent: closed
+        c, _ = client_for(srv, "r1", pol)
+        c.close()
+        sp = srv.policies["r1"]
+        restricted = {**e, "status": "restricted", "reasons": ["e1 LayerNorm-spread FAIL (fixture label)"],
+                      "usage": "dry_run_replay_only", "execution_eligible": False, "usage_reasons": ["decision"],
+                      "criteria": {"e1_layernorm_spread": {"pass": False, "value": 0.35, "threshold": ">= 0.5"}}}
+        write_catalog(cat, {"r1": restricted})
+        summary = srv.reload_catalog()
+        assert summary["changed"] == [] and srv.policies["r1"] is sp and srv.counts["policies_loaded"] == 1
+        info = welcome(srv)["policies"]["r1"]["info"]
+        assert info["status"] == "restricted" and info["criteria"]["e1_layernorm_spread"]["pass"] is False
+        assert info["resident"] is True and info["execution_eligible"] is False
+        spec_msg = raw_hello(srv, "r1", choices_of(pol))
+        assert spec_msg.type == P.SPEC and spec_msg.header["info"]["status"] == "restricted"
+        assert spec_msg.header["info"]["usage_reasons"] == ["decision"]
+
+
+def _blocking_loads(monkeypatch, gate: threading.Event, started: threading.Event):
+    import ops.policy_serving.server as server_mod
+
+    real = server_mod.load_policy
+
+    def slow(*a, **k):
+        started.set()
+        assert gate.wait(30)
+        return real(*a, **k)
+
+    monkeypatch.setattr(server_mod, "load_policy", slow)
+
+
+def _hello_in_thread(srv, pid, pol, out: dict):
+    def run():
+        try:
+            out["client"] = client_for(srv, pid, pol)[0]
+        except ServingError as exc:
+            out["error"] = exc
+
+    t = threading.Thread(target=run, daemon=True)
+    t.start()
+    return t
+
+
+def test_entry_quarantined_while_loading_is_never_published_or_bound(staged, tmp_path, monkeypatch):
+    root, fx = staged
+    pol, e = fx["r1"]
+    cat = write_catalog(tmp_path / "catalog.json", {"r1": e})
+    gate, started, out = threading.Event(), threading.Event(), {}
+    with serve_catalog(root, cat) as srv:
+        _blocking_loads(monkeypatch, gate, started)
+        t = _hello_in_thread(srv, "r1", pol, out)
+        assert started.wait(20)
+        write_catalog(cat, {"r1": {**e, "status": "quarantined", "reasons": ["decided while loading"]}})
+        assert srv.reload_catalog() is not None
+        gate.set()
+        t.join(30)
+        assert "client" not in out and "unservable" in str(out["error"]) and srv.policies == {}
+
+
+def test_concurrent_loads_respect_the_resident_cap(staged, tmp_path, monkeypatch):
+    root, fx = staged
+    pol = fx["r1"][0]
+    cat = write_catalog(tmp_path / "catalog.json", {n: fx[n][1] for n in ("r1", "r2")})
+    gate, started, a, b = threading.Event(), threading.Event(), {}, {}
+    with serve_catalog(root, cat, max_resident_policies=1) as srv:
+        _blocking_loads(monkeypatch, gate, started)
+        ta = _hello_in_thread(srv, "r1", pol, a)
+        assert started.wait(20)
+        tb = _hello_in_thread(srv, "r2", pol, b)
+        tb.join(30)  # the reservation of the running load counts: refused at once
+        assert "overloaded" in str(b.get("error"))
+        gate.set()
+        ta.join(30)
+        assert "client" in a and set(srv.policies) == {"r1"}
+        a["client"].close()
+
+
+def test_measured_footprint_is_enforced_against_the_budget(staged, tmp_path, monkeypatch):
+    root, fx = staged
+    pol, e = fx["r1"]
+    cat = write_catalog(tmp_path / "catalog.json", {"r1": e})
+    fp = policy_footprint_bytes(pol)
+    with serve_catalog(root, cat, gpu_memory_budget_bytes=fp - 1) as srv:
+        monkeypatch.setattr(srv, "_estimate", lambda entry: 1)  # an estimate that fits, a model that does not
+        with pytest.raises(ServingError, match="overloaded"):
+            client_for(srv, "r1", pol)
+        assert srv.policies == {} and srv.counts["budget_refusals_measured"] == 1
+
+
+def test_an_evicted_policy_is_not_kept_alive_by_the_worker(staged, tmp_path):
+    import gc
+    import weakref
+
+    root, fx = staged
+    pol, e = fx["r3"]
+    cat = write_catalog(tmp_path / "catalog.json", {"r3": e})
+    with serve_catalog(root, cat) as srv:
+        c, feed = client_for(srv, "r3", pol)
+        for k in range(3):
+            feed.add(k)
+        assert feed.step(2).ok
+        ref = weakref.ref(srv.policies["r3"].policy)
+        c.close()
+        wait_until(lambda: not srv.policies["r3"].sessions)
+        write_catalog(cat, {})
+        srv.reload_catalog()
+        assert "r3" not in srv.policies
+
+        def freed():
+            gc.collect()
+            return ref() is None
+
+        wait_until(freed, 10)

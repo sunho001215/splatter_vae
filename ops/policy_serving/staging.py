@@ -313,7 +313,10 @@ def evaluate(src: Sources, rows: list[dict], pre_rows: dict[str, dict], *, sidec
         ck = src.runs / run / "policy.pt"
         payload = torch.load(ck, map_location="cpu", weights_only=False)
         meta, norm = payload["meta"], C.feature_norm_of(payload)
+        checks["b"] = C.checkpoint_matches_completion(checks["b"], payload.get("step"), r["policy"])
         del payload
+        if not checks["b"]["pass"]:  # not the completed artefact: no further criteria
+            continue
         ds = src.runs / Path(meta["dataset"]).parent.name / "dataset.h5"
         attrs = _dataset_attrs(ds)
         enc = None
@@ -382,13 +385,32 @@ def catalog_entry(row: dict, input_spec: dict | None = None) -> dict:
     ``input_spec``: the advertised unbound spec (``server.describe_entry`` of the local files; the server checks it
     against the loaded policy)."""
     exp = row.get("export") or {}
+    status = row["class"]["status"]
     out = {"checkpoint": row["policy"]["path"], "sha256": row["policy"]["sha256"],
            "export": exp.get("path"), "training_contract": f"contracts/{row['run']}.deploy_contract.json",
            "condition": row["condition"], "task": row["task"], "seed": row["seed"], "run": row["run"],
-           "status": row["class"]["status"], "flags": row["class"]["flags"], "reasons": row["class"]["reasons"]}
+           "status": status, "flags": row["class"]["flags"], "reasons": row["class"]["reasons"],
+           "criteria": C.criteria_summary(row["condition"], row.get("checks") or {}),
+           **usage_of(status)}
     if input_spec is not None:
         out["input_spec"] = input_spec
     return out
+
+
+DIRECTIVE_NO_EXECUTION = ("Directive I (2026-11-10): no robot operation; staging never grants execution "
+                          "eligibility (an explicit later decision would)")
+
+
+def usage_of(status: str) -> dict:
+    """Usage restriction of a staged entry. FAIL CLOSED: staging never writes ``execution_eligible: true`` (a missing
+    field means not eligible for every consumer); quarantined entries are not usable at all."""
+    if status == "quarantined":
+        return {"usage": "none", "execution_eligible": False,
+                "usage_reasons": ["quarantined: refused by the server unless --allow-quarantined (pipeline tests)"]}
+    reasons = [DIRECTIVE_NO_EXECUTION]
+    if status == "restricted":
+        reasons.insert(0, C.LN_SPREAD_DECISION)
+    return {"usage": "dry_run_replay_only", "execution_eligible": False, "usage_reasons": reasons}
 
 
 def local_input_spec(src: Sources, row: dict, sidecar_dir: Path) -> dict:
@@ -502,13 +524,29 @@ def stage_files(host: Host, files: dict[str, Path], *, execute: bool, log=print)
     return shas
 
 
+def _catalog_text(host: Host, where: str) -> str | None:
+    """The published catalog text on the host root or (``container``) in the container RAM root; None if absent."""
+    path = f"{host.ram_root}/{CATALOG_NAME}" if where == "container" else f"{host.root}/{CATALOG_NAME}"
+    cmd = f"docker exec {host.container} cat {path}" if where == "container" else f"cat {path}"
+    r = host.run(cmd, check=False)
+    return r.stdout if r.returncode == 0 and r.stdout.strip() else None
+
+
 def read_host_catalog(host: Host) -> dict:
-    r = host.run(f"cat {host.root}/{CATALOG_NAME}", check=False)
-    return json.loads(r.stdout) if r.returncode == 0 and r.stdout.strip() else {"policies": {}, "aliases": {}}
+    text = _catalog_text(host, "host")
+    return json.loads(text) if text else {"policies": {}, "aliases": {}}
+
+
+def catalog_copies_agree(host: Host) -> bool:
+    """The host and container copies are byte-identical (a publication interrupted between them is not)."""
+    return _catalog_text(host, "host") == _catalog_text(host, "container")
 
 
 def write_host_catalog(host: Host, catalog: dict, *, execute: bool, log=print) -> None:
-    """Atomic replace on the host root and in the container RAM root (rename after a complete write)."""
+    """Atomic replace on the host root and in the container RAM root (complete write to a unique temporary name,
+    then rename; the container copy is verified byte-identical)."""
+    import uuid
+
     from ops.policy_serving.config import validate_catalog
 
     validate_catalog(catalog)
@@ -516,10 +554,13 @@ def write_host_catalog(host: Host, catalog: dict, *, execute: bool, log=print) -
     if not execute:
         log(f"[catalog] would write {len(catalog['policies'])} policies, {len(catalog['aliases'])} aliases (dry run)")
         return
-    host.run(f"chmod u+w {host.root} && cat > {host.root}/.{CATALOG_NAME}.part && "
-             f"mv {host.root}/.{CATALOG_NAME}.part {host.root}/{CATALOG_NAME}", stdin=text)
-    host.run(f"docker exec -i {host.container} sh -c 'cat > {host.ram_root}/.{CATALOG_NAME}.part && "
-             f"mv {host.ram_root}/.{CATALOG_NAME}.part {host.ram_root}/{CATALOG_NAME}'", stdin=text)
+    tmp = f".{CATALOG_NAME}.{uuid.uuid4().hex}.part"
+    host.run(f"chmod u+w {host.root} && cat > {host.root}/{tmp} && mv {host.root}/{tmp} {host.root}/{CATALOG_NAME}",
+             stdin=text)
+    host.run(f"docker exec -i {host.container} sh -c 'cat > {host.ram_root}/{tmp} && "
+             f"mv {host.ram_root}/{tmp} {host.ram_root}/{CATALOG_NAME}'", stdin=text)
+    if _catalog_text(host, "container") != text:
+        raise RuntimeError("container catalog differs from the published host catalog after writing")
     log(f"[catalog] {len(catalog['policies'])} policies written (sha256 {hashlib.sha256(text.encode()).hexdigest()})")
 
 
@@ -557,7 +598,7 @@ def markdown(inv: dict, *, criteria_sha256: str | None) -> str:
                  f"{'yes' if r['a']['pass'] else 'no'} | {(e.get('sha256') or '-')[:12]}{'' if e['local'] else ' (remote)'}"
                  f" | {r['superseded'] or r['a'].get('reason', '')} |")
     L += ["", "## (B) FQL policies", "",
-          "| policy id | run | registry | steps / budget | policy.pt sha256 | class | 5090 catalog | flags / reasons |",
+          "| policy id | run | registry | steps / budget | policy.pt sha256 | class | 5090 catalog | reasons |",
           "|---|---|---|---|---|---|---|---|"]
     for r in inv["fql"]:
         c = r["completed"] or {}
@@ -569,11 +610,13 @@ def markdown(inv: dict, *, criteria_sha256: str | None) -> str:
                  f"{'' if r['policy']['local'] else ' (remote)'} | **{cls.get('status', '?')}** | "
                  f"{r.get('host_catalog') or '-'} | {why} |")
     L += ["", "## (C) Classes", ""]
-    for status in ("deployable", "incomplete", "quarantined", "superseded"):
+    for status in ("deployable", "restricted", "incomplete", "quarantined", "superseded"):
         ids = [r["policy_id"] if status != "superseded" else r["run"] for r in inv["fql"]
                if r.get("class", {}).get("status") == status]
         L.append(f"* **{status}** ({len(ids)}): " + (", ".join(ids) if ids else "none"))
     L.append("* **fixture-only**: ours (training deferred; labelled FIXTURE interfaces/tests only)")
+    L.append("* restricted = every criterion passes except the e1 LayerNorm-spread gate (FAILED, not waived): served "
+             "for dry run / replay only (amendment A2). No catalog entry is execution-eligible (Directive I).")
     L += ["", "## Check values (candidates)", "",
           "| policy id | c export chain | d sidecar | e1 offset / LN std | e2 D_vis/S, D_vis/D_noise | f final q / late "
           "median / peak |", "|---|---|---|---|---|---|"]
@@ -635,9 +678,36 @@ def cmd_inventory(a) -> int:
     return 0
 
 
+def _identity_errors(src: Sources, row: dict, sidecar_dir: Path) -> list[str]:
+    """Every staged input must be the one the criteria were evaluated on: policy.pt, the deploy-contract sidecar and
+    the encoder export (sha256 recorded by the evaluation)."""
+    errs = []
+    if sha256_file(src.runs / row["run"] / "policy.pt") != row["policy"]["sha256"]:
+        errs.append("policy.pt changed since the evaluation")
+    d = (row.get("checks") or {}).get("d") or {}
+    sidecar = sidecar_dir / f"{row['run']}.deploy_contract.json"
+    if not d.get("sha256") or not sidecar.is_file() or sha256_file(sidecar) != d["sha256"]:
+        errs.append("deploy-contract sidecar missing or changed since the evaluation")
+    exp = row.get("export")
+    if exp and (not (src.data_root / exp["path"]).is_file() or sha256_file(src.data_root / exp["path"]) != exp["sha256"]):
+        errs.append("encoder export missing or changed since the evaluation")
+    return errs
+
+
+def withdrawn_entry(entry: dict, row: dict) -> dict:
+    """A staged entry whose run no longer passes: quarantined with the re-evaluation's reasons (never left
+    selectable); the staged files stay (immutable) but the server refuses it."""
+    return {**entry, "status": "quarantined", "usage": "none", "execution_eligible": False,
+            "usage_reasons": ["withdrawn by re-evaluation"],
+            "reasons": [f"re-evaluation {datetime.date.today()}: {row['class']['status']}"] + row["class"]["reasons"]}
+
+
 def cmd_stage(a, *, hook: bool = False) -> int:
-    """``stage``: stage rows the inventory classifies deployable (``hook``: exactly the given completed runs; a
-    non-deployable run is reported and NOT staged) and merge them into the host catalog; then reload."""
+    """``stage``: stage rows the inventory classifies deployable / restricted (``hook``: exactly the given completed
+    runs, re-evaluated; a run that does not pass is reported, NOT staged, and an existing catalog entry of that run is
+    withdrawn = quarantined) and merge them into the host catalog under a local lock; then reload."""
+    import fcntl
+
     if getattr(a, "inventory", None):  # a just-evaluated inventory (stage only; the hook always re-evaluates)
         inv = json.loads(a.inventory.read_text())
         if inv.get("criteria_sha256") != (sha256_file(a.criteria) if a.criteria.is_file() else None):
@@ -647,44 +717,52 @@ def cmd_stage(a, *, hook: bool = False) -> int:
         a.evaluate = True
         inv = _evaluated(a, a.runs)
     rows = {r["run"]: r for r in inv["fql"]}
-    stale = [r for r in a.runs if r in rows and rows[r]["class"]["status"] == "deployable"
-             and sha256_file(_sources(a).runs / r / "policy.pt") != rows[r]["policy"]["sha256"]]
-    if stale:
-        print(json.dumps({"error": f"policy.pt changed since the inventory: {stale}"}))
-        return 2
     missing = [r for r in a.runs if r not in rows]
     if missing:
         print(json.dumps({"error": f"unknown FQL runs {missing}"}))
         return 2
+    src = _sources(a)
+    changed = {r: errs for r in a.runs if rows[r]["class"]["status"] in ("deployable", "restricted")
+               and (errs := _identity_errors(src, rows[r], a.sidecar_dir))}
+    if changed:
+        print(json.dumps({"error": "inputs changed since the evaluation (re-evaluate)", "runs": changed}))
+        return 2
     host = Host(ssh=a.ssh, bwlimit=a.bwlimit)
-    catalog = read_host_catalog(host) if a.execute or a.read_host else {"policies": {}, "aliases": {}}
-    entries = dict(catalog.get("policies") or {})
-    report, files = {}, {}
-    for run in a.runs:
-        row = rows[run]
-        status = row["class"]["status"]
-        report[run] = {"policy_id": row["policy_id"], "status": status, "reasons": row["class"]["reasons"],
-                       "flags": row["class"]["flags"]}
-        labelled = status == "quarantined" and getattr(a, "label_quarantined", False) and row["policy"]["local"] \
-            and (a.sidecar_dir / f"{run}.deploy_contract.json").is_file()
-        if status == "deployable" or labelled:
-            files.update(staging_files(_sources(a), row, a.sidecar_dir))
-            entries[row["policy_id"]] = catalog_entry(row, local_input_spec(_sources(a), row, a.sidecar_dir))
-            report[run]["staged"] = bool(a.execute)
-            report[run]["catalog_status"] = status
-    if files:
-        stage_files(host, files, execute=a.execute, log=lambda m: print(m, file=sys.stderr, flush=True))
+    a.lock_file.parent.mkdir(parents=True, exist_ok=True)
+    with open(a.lock_file, "a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)  # one catalog read-merge-write transaction at a time (concurrent hooks)
+        catalog = read_host_catalog(host) if a.execute or a.read_host else {"policies": {}, "aliases": {}}
+        entries = dict(catalog.get("policies") or {})
+        report, files = {}, {}
+        for run in a.runs:
+            row = rows[run]
+            status = row["class"]["status"]
+            report[run] = {"policy_id": row["policy_id"], "status": status, "reasons": row["class"]["reasons"]}
+            labelled = status == "quarantined" and getattr(a, "label_quarantined", False) and row["policy"]["local"] \
+                and (a.sidecar_dir / f"{run}.deploy_contract.json").is_file()
+            if status in ("deployable", "restricted") or labelled:
+                files.update(staging_files(src, row, a.sidecar_dir))
+                entries[row["policy_id"]] = catalog_entry(row, local_input_spec(src, row, a.sidecar_dir))
+                report[run]["staged"] = bool(a.execute)
+                report[run]["catalog_status"] = status
+            elif (entries.get(row["policy_id"]) or {}).get("run") == run and \
+                    entries[row["policy_id"]]["status"] != "quarantined":
+                entries[row["policy_id"]] = withdrawn_entry(entries[row["policy_id"]], row)
+                report[run]["catalog_status"] = "withdrawn (quarantined)"
+        if files:
+            stage_files(host, files, execute=a.execute, log=lambda m: print(m, file=sys.stderr, flush=True))
         crit = sha256_file(a.criteria) if a.criteria.is_file() else None
         aliases = {k: v for k, v in {**(catalog.get("aliases") or {}), **legacy_aliases(entries)}.items()
                    if v in entries}
-        if entries == (catalog.get("policies") or {}) and aliases == (catalog.get("aliases") or {}):
+        unchanged = entries == (catalog.get("policies") or {}) and aliases == (catalog.get("aliases") or {})
+        if unchanged and (not a.execute or catalog_copies_agree(host)):
             print("[catalog] unchanged: nothing written, no reload (idempotent re-run)", file=sys.stderr, flush=True)
-        else:
+        elif entries:
             write_host_catalog(host, build_catalog(entries, aliases=aliases, criteria_sha256=crit),
                                execute=a.execute, log=lambda m: print(m, file=sys.stderr, flush=True))
             signal_reload(host, execute=a.execute, log=lambda m: print(m, file=sys.stderr, flush=True))
     print(json.dumps({"execute": bool(a.execute), "runs": report}, indent=1, default=str))
-    return 0 if all(r["status"] == "deployable" for r in report.values()) or not hook else 3
+    return 0 if all(r["status"] in ("deployable", "restricted") for r in report.values()) or not hook else 3
 
 
 def main(argv=None) -> int:
@@ -716,6 +794,7 @@ def main(argv=None) -> int:
                            help="also stage QUARANTINED runs as labelled catalog entries (refused unless the server "
                                 "runs with --allow-quarantined; never deployable)")
         s.add_argument("--ssh", default="irsl")
+        s.add_argument("--lock-file", type=Path, default=Path("/home/ws/ws/realworld-ops/serving/.pol-staging.lock"))
         s.add_argument("--bwlimit", default="10m")
     a = ap.parse_args(argv)
     if a.cmd == "inventory":

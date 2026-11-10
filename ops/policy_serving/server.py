@@ -59,6 +59,7 @@ if __package__ in (None, ""):  # ``python ops/policy_serving/server.py``: make t
 import numpy as np  # noqa: E402
 
 from ops.policy_serving import protocol as P  # noqa: E402
+from ops.policy_serving.config import SERVABLE_STATUSES  # noqa: E402
 
 LOG = logging.getLogger("ops.policy_serving.server")
 HELLO_CHOICES = frozenset({"camera_id", "native_hw", "calibration", "native_depth_correction"})
@@ -136,13 +137,21 @@ class CatalogEntry:
     source: str = "config"  # config | catalog | preloaded
 
     def identity(self) -> str:
-        return json.dumps([self.status, {k: self.entry.get(k) for k in IDENTITY_KEYS}], sort_keys=True, default=str)
+        """What the loaded object depends on: the staged artefacts and whether the entry may be served at all. Labels
+        (deployable <-> restricted, reasons, criteria, usage) refresh without reloading the model."""
+        servable = self.status in SERVABLE_STATUSES
+        return json.dumps([servable if self.status != "error" else "error",
+                           {k: self.entry.get(k) for k in IDENTITY_KEYS}], sort_keys=True, default=str)
 
     def info(self) -> dict:
+        """Published labels. FAIL CLOSED: ``execution_eligible`` is true only if the entry says exactly true;
+        ``usage`` defaults to dry_run_replay_only."""
         e = self.entry
         out = {"condition": e.get("condition") or (self.spec or {}).get("condition"), "task": e.get("task"),
                "seed": e.get("seed"), "run": e.get("run"), "status": self.status, "flags": list(e.get("flags", [])),
-               "checkpoint_sha256": e.get("sha256")}
+               "checkpoint_sha256": e.get("sha256"), "usage": e.get("usage", "dry_run_replay_only"),
+               "execution_eligible": e.get("execution_eligible") is True,
+               "usage_reasons": list(e.get("usage_reasons", [])), "criteria": e.get("criteria", {})}
         if self.reasons:
             out["reasons"] = list(self.reasons)
         return out
@@ -407,7 +416,9 @@ class PolicyServer:
                                  None if spec is None else spec_json(spec), source)
             old = previous.get(pid)
             if old is not None and old.source == source and old.identity() == entry.identity():
-                entry = old
+                entry.spec = old.spec  # same artefacts: keep the described spec; labels come from the new entry
+                if old.status == "error":
+                    entry.status, entry.reasons = old.status, old.reasons
             elif entry.spec is None:
                 try:
                     entry.spec = describe_entry(entry.entry, self.checkpoint_root)
@@ -492,7 +503,10 @@ class PolicyServer:
                 self.catalog_stamp, self.catalog_sha256 = stamp, digest
                 for pid, sp in list(self.policies.items()):
                     e = entries.get(pid)
-                    if sp.pinned or (e is not None and e.identity() == sp.entry.identity()):
+                    if sp.pinned:
+                        continue
+                    if e is not None and e.identity() == sp.entry.identity():
+                        sp.entry = e  # same artefacts: refreshed labels (status, criteria, usage) are published
                         continue
                     sp.retired = True
                     if not sp.sessions and not sp.claims:
@@ -511,8 +525,14 @@ class PolicyServer:
                 entry = self.entries.get(pid)
                 if entry is None:
                     return None, ("bad_request", f"policy {pid} left the catalog")
+                refusal = self._refusal(entry)  # re-checked here: a reload may have quarantined it since HELLO
+                if refusal is not None:
+                    return None, ("bad_request", refusal)
                 sp = self.policies.get(pid)
                 if sp is not None and not sp.pinned and sp.entry.identity() != entry.identity():
+                    if sp.claims:  # another HELLO is binding to the previous version right now
+                        return None, ("session_busy", f"policy {pid} changed in the catalog while another HELLO "
+                                                      "binds its previous version; retry")
                     if sp.sessions and not takeover:
                         return None, ("session_busy", f"policy {pid} changed in the catalog; its previous version "
                                                       f"still serves {len(sp.sessions)} session(s); HELLO "
@@ -534,6 +554,11 @@ class PolicyServer:
             except Exception as exc:  # noqa: BLE001 - a broken checkpoint is refused, never served
                 LOG.exception("policy %s could not be loaded", pid)
                 return None, ("bad_request", f"policy {pid} could not be loaded: {type(exc).__name__}: {exc}")
+
+    @staticmethod
+    def _current_info(sp: ServedPolicy) -> dict:
+        """Load-time info + the CURRENT catalog labels of the entry it was loaded from (refreshed on reload)."""
+        return {**sp.info, **(sp.entry.info() if sp.entry is not None and sp.entry.source != "preloaded" else {})}
 
     def _release(self, sp: ServedPolicy) -> None:
         with self.lock:
@@ -615,15 +640,27 @@ class PolicyServer:
             warmup_ms = self._warm(pid, policy)
             footprint = policy_footprint_bytes(policy)
             delta = (torch.cuda.memory_allocated() - before) if cuda else None
-        finally:
+        except BaseException:
             with self.lock:
                 self.reserved.pop(pid, None)
+            raise
         info.update(entry.info(), load_s=round(load_s, 3))
         sp = ServedPolicy(pid, policy, info, warmup_ms=warmup_ms, entry=entry, footprint=footprint,
                           last_used=time.monotonic(), claims=1)
-        with self.lock:
-            self.policies[pid] = sp
+        with self.lock:  # reservation -> resident in ONE step (no window for another load to take the slot)
+            self.reserved.pop(pid, None)
             self.known_footprint[entry.identity()] = footprint
+            current = self.entries.get(pid)
+            stale = current is None or current.identity() != entry.identity() or self._refusal(current) is not None
+            try:
+                if not stale:
+                    self._make_room(pid, footprint)  # the MEASURED footprint must fit, not only the estimate
+            except BudgetExceeded:
+                self.counts["budget_refusals_measured"] += 1
+                raise
+            if stale:
+                raise ValueError(f"catalog entry of {pid} changed or became unservable during the load; retry")
+            self.policies[pid] = sp
             self.counts["policies_loaded"] += 1
             resident = sorted(self.policies)
         log_event("policy_loaded", policy_id=pid, load_s=round(load_s, 3), warmup_ms=warmup_ms,
@@ -714,7 +751,7 @@ class PolicyServer:
         """The registry part of the READY line: offered ids, aliases, resident policies, unavailable ids, catalog."""
         offered = self.policy_specs()
         with self.lock:
-            resident = {pid: {**P.jsonable(sp.info), "warmup_ms": P.jsonable(sp.warmup_ms),
+            resident = {pid: {**P.jsonable(self._current_info(sp)), "warmup_ms": P.jsonable(sp.warmup_ms),
                               "footprint_bytes": sp.footprint} for pid, sp in self.policies.items()}
             aliases = {a: p for a, p in self.aliases.items() if a in offered}
         return {"offered": sorted(p for p in offered if p not in aliases), "aliases": aliases, "resident": resident,
@@ -811,6 +848,7 @@ class PolicyServer:
                 if s.pending is job:
                     s.pending = None
                 if s.closed:
+                    job = s = None
                     continue
                 s.running = job
             try:
@@ -824,6 +862,9 @@ class PolicyServer:
                         s.running = None
                     s.last_activity = time.monotonic()
             self._respond(s, job.seq, data)
+            # drop the finished request before waiting: the job / session / window reference the policy, which must
+            # be freeable once evicted (otherwise its tensors stay allocated while the next policy loads)
+            job = s = data = None  # noqa: F841
 
     def _execute(self, job: Job) -> bytes:
         s = job.session
@@ -1001,7 +1042,15 @@ class PolicyServer:
         refusal = None
         with sp.lock:  # serialises session binding with this policy's inference
             with self.lock:
-                if len(sp.sessions) >= self.max_sessions_per_policy:
+                current = self.entries.get(sp.policy_id)
+                if self.policies.get(sp.policy_id) is not sp or sp.retired:
+                    refusal = ("session_busy", f"policy {sp.policy_id} was replaced or unloaded during this HELLO; "
+                                               "retry")
+                elif not sp.pinned and (current is None or self._refusal(current) is not None
+                                        or current.identity() != sp.entry.identity()):
+                    refusal = ("bad_request", f"policy {sp.policy_id} is no longer servable in this form: "
+                                              f"{'left the catalog' if current is None else self._refusal(current)}")
+                elif len(sp.sessions) >= self.max_sessions_per_policy:
                     oldest = min(sp.sessions.values(), key=lambda x: x.last_activity)
                     if not takeover:
                         idle = time.monotonic() - oldest.last_activity
@@ -1067,7 +1116,7 @@ class PolicyServer:
 
     def _spec_message(self, s: Session, *, resumed: bool, redeliver: list) -> bytes:
         return P.encode({"type": P.SPEC, "session_id": s.id, "policy_id": s.served.policy_id, "resumed": resumed,
-                         "input_spec": s.spec.to_json(), "info": P.jsonable(s.served.info),
+                         "input_spec": s.spec.to_json(), "info": P.jsonable(self._current_info(s.served)),
                          "last_seq_received": s.last_seq, "redeliver": redeliver,
                          "limits": {"max_queue": self.max_queue, "max_payload_bytes": self.max_payload_bytes,
                                     "max_header_bytes": self.max_header_bytes,

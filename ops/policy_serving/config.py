@@ -55,9 +55,12 @@ POLICY_KEYS = {"checkpoint", "export", "dataset", "training_contract", "sha256",
 # and when a HELLO names an unknown id). Paths are relative to the checkpoint root unless absolute.
 CATALOG_SCHEMA = "s4d-policy-catalog/1"
 CATALOG_TOP_KEYS = frozenset({"schema", "generated_utc", "criteria_sha256", "policies", "aliases", "note"})
-CATALOG_ENTRY_KEYS = frozenset(POLICY_KEYS | {"seed", "run", "status", "flags", "reasons", "input_spec"})
+CATALOG_ENTRY_KEYS = frozenset(POLICY_KEYS | {"seed", "run", "status", "flags", "reasons", "input_spec", "criteria",
+                                             "usage", "usage_reasons", "execution_eligible"})
 CATALOG_REQUIRED_KEYS = frozenset({"checkpoint", "sha256", "condition", "task", "status"})
-CATALOG_STATUSES = ("deployable", "quarantined")
+CATALOG_STATUSES = ("deployable", "restricted", "quarantined")  # restricted: served, a criterion FAILED (see reasons)
+SERVABLE_STATUSES = ("deployable", "restricted")
+CATALOG_USAGES = ("dry_run_replay_only", "none", "execution")  # usage restriction published to the robot-PC client
 
 
 def _load_file(path: Path) -> dict:
@@ -123,8 +126,23 @@ def validate_catalog(raw: dict, source="catalog") -> dict:
         for key in ("flags", "reasons"):
             if not isinstance(entry.get(key, []), list) or not all(isinstance(x, str) for x in entry.get(key, [])):
                 raise ValueError(f"{source}: policy {pid}: {key} must be a list of strings")
-        if entry["status"] == "quarantined" and not entry.get("reasons"):
-            raise ValueError(f"{source}: policy {pid}: a quarantined entry states its reasons")
+        if entry["status"] in ("quarantined", "restricted") and not entry.get("reasons"):
+            raise ValueError(f"{source}: policy {pid}: a {entry['status']} entry states its reasons")
+        if "execution_eligible" in entry and not isinstance(entry["execution_eligible"], bool):
+            raise ValueError(f"{source}: policy {pid}: execution_eligible must be true or false")
+        if entry.get("usage", "dry_run_replay_only") not in CATALOG_USAGES:
+            raise ValueError(f"{source}: policy {pid}: usage {entry.get('usage')!r} not in {CATALOG_USAGES}")
+        if entry.get("execution_eligible") is True and (entry["status"] != "deployable"
+                                                         or entry.get("usage") != "execution"):
+            raise ValueError(f"{source}: policy {pid}: only a deployable entry with usage 'execution' can be "
+                             "execution-eligible")
+        if entry["status"] == "restricted" and entry.get("usage") not in ("dry_run_replay_only", "none"):
+            raise ValueError(f"{source}: policy {pid}: a restricted entry is dry-run/replay only")
+        if not isinstance(entry.get("usage_reasons", []), list) or \
+                not all(isinstance(x, str) for x in entry.get("usage_reasons", [])):
+            raise ValueError(f"{source}: policy {pid}: usage_reasons must be a list of strings")
+        if not isinstance(entry.get("criteria", {}), dict):
+            raise ValueError(f"{source}: policy {pid}: criteria must be an object")
         out["policies"][str(pid)] = copy.deepcopy(entry)
     aliases = raw.get("aliases") or {}
     if not isinstance(aliases, dict):

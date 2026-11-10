@@ -10,7 +10,8 @@ writes run files or talks to a robot. Torch / h5py are imported inside the funct
 - ``probe_samples`` + ``visual_probe`` (e2): held-out recorded frames through the deploy path; action change under
   visual-input replacement vs the action spread and the FQL-noise-only change.
 - ``stability`` (f): finite metrics, no Q runaway, feasible late-phase Q.
-- ``classify``: rule set of POL-CRITERIA.md -> deployable / incomplete / quarantined (+ flags).
+- ``classify``: rule set of POL-CRITERIA.md (+ amendment A2) -> deployable / restricted / incomplete / quarantined.
+- ``criteria_summary``: per-criterion PASS / FAIL with values and thresholds (published with every catalog entry).
 """
 
 from __future__ import annotations
@@ -26,11 +27,13 @@ E1_LN_UNIT_STD_MIN = 0.5
 E2_SAMPLES = 192
 E2_SPREAD_FRACTION = 0.2
 E2_NOISE_FRACTION = 0.25
+E2_MIN_EFFECT = 1e-6  # degenerate-probe guard (normalised action units): constant outputs cannot pass
 F2_Q_RUNAWAY = 100.0
 F3_Q_FEASIBLE = 1.0
 F3_LATE_FRACTION = 0.8
 Q_KEYS = ("training/critic/q_mean", "validation/critic/q_mean")
-ATTENUATED = "attenuated_visual_input"
+LN_SPREAD_DECISION = ("user decision 2026-11-10: dry-run/replay only while it fails the e1 LayerNorm-spread "
+                      "criterion and passes visual sensitivity (no waiver; DYNAMO-LN-CRITERION-REVIEW.md)")
 
 
 def check(passed: bool | None, **detail) -> dict:
@@ -67,6 +70,21 @@ def pretraining_complete(config: dict, completion: dict | None) -> dict:
     ok = done is not None and (int(done) >= value if kind == "epochs" else int(done) >= value - 1)
     return check(ok, kind=kind, budget=value, done=done,
                  **({} if ok else {"reason": f"{kind} {done} < budget {value}"}))
+
+
+def checkpoint_matches_completion(check_b: dict, checkpoint_step, policy_record: dict) -> dict:
+    """b (artefact part): the evaluated policy.pt IS the completed run's final artefact: its recorded training step
+    equals the budget and its sha256 equals the remote-verified one of the final sync."""
+    reasons = []
+    if checkpoint_step is None or int(checkpoint_step) != int(check_b.get("budget", -1)):
+        reasons.append(f"policy.pt step {checkpoint_step} != completion budget {check_b.get('budget')}")
+    if policy_record.get("matches_remote") is not True:
+        reasons.append(f"policy.pt sha256 does not match the remote-verified final sync "
+                       f"(matches_remote={policy_record.get('matches_remote')})")
+    if not reasons:
+        return {**check_b, "checkpoint_step": int(checkpoint_step), "synced_artifact": True}
+    return {**check_b, "pass": False, "checkpoint_step": checkpoint_step,
+            "reason": "; ".join(([check_b["reason"]] if "reason" in check_b else []) + reasons)}
 
 
 def fql_complete(config: dict, completion: dict | None) -> dict:
@@ -305,7 +323,10 @@ def visual_probe(policy, samples: list[dict], *, seed: int = 0) -> dict:
     spread = float(real.std(0).mean())
     d_vis = float(np.abs(vis - real).mean())
     d_noise = float(np.abs(nz2 - real).mean())
-    ok = d_vis >= E2_SPREAD_FRACTION * spread and d_vis >= E2_NOISE_FRACTION * d_noise
+    finite = bool(np.isfinite(real).all() and np.isfinite(vis).all() and np.isfinite(nz2).all())
+    # a degenerate probe (constant actions: spread = D_vis = 0) never passes: positive spread and visual change needed
+    ok = finite and spread >= E2_MIN_EFFECT and d_vis >= E2_MIN_EFFECT and d_vis >= E2_SPREAD_FRACTION * spread \
+        and d_vis >= E2_NOISE_FRACTION * d_noise
     return check(bool(ok), samples=n, action_spread=spread, d_vis=d_vis, d_noise=d_noise,
                  d_vis_over_spread=d_vis / spread if spread else math.inf,
                  d_vis_over_noise=d_vis / d_noise if d_noise else math.inf,
@@ -346,27 +367,30 @@ def stability(rows: list[dict], budget: int) -> dict:
 
 # ------------------------------------------------------------------------------------------------ classification
 def classify(condition: str, checks: dict, *, quarantine: str | None = None) -> dict:
-    """POL-CRITERIA.md classes. ``checks``: a, b, c, d, e1, e2, f (each a ``check`` dict; a/e1 may be absent where
-    the condition has none). ``quarantine``: an explicit coordinator/user decision (reason)."""
+    """POL-CRITERIA.md classes (amendment A2, user decision 2026-11-10). ``checks``: a, b, c, d, e1, e2, f (each a
+    ``check`` dict; a/e1 may be absent where the condition has none). ``quarantine``: an explicit decision (reason).
+    ``restricted``: every criterion passes EXCEPT the e1 LayerNorm-spread gate (offset gate and e2 pass): the
+    criterion stays FAILED and the policy is available for dry run / replay only, never for execution."""
     if condition == "ours":
         return {"status": "fixture-only", "reasons": ["ours: training deferred; interfaces + labelled fixtures only"],
                 "flags": []}
-    reasons, flags = [], []
+    reasons, failed = [], []
     for k in ("a", "b"):
         if k in checks and not checks[k]["pass"]:
             reasons.append(f"{k}: {checks[k].get('reason', 'failed')}")
     if reasons:
-        return {"status": "incomplete", "reasons": reasons, "flags": flags}
+        return {"status": "incomplete", "reasons": reasons, "flags": []}
     e1, e2 = checks.get("e1"), checks.get("e2")
+    ln_only = False
     if condition != "e2e_cnn":
         if e1 is None or e1["pass"] is None:
             reasons.append("e1: not evaluated")
         elif not e1["offset_pass"]:
             reasons.append(f"e1: offset_to_signal {e1['offset_to_signal']:.3g} > {E1_OFFSET_MAX}")
-        elif not e1["ln_pass"] and e2 is not None and e2["pass"]:
-            flags.append(ATTENUATED)
         elif not e1["ln_pass"]:
-            reasons.append(f"e1: LN unit std {e1['ln_unit_std_raw']:.3g} < {E1_LN_UNIT_STD_MIN}")
+            ln_only = True
+            failed.append(f"e1 LayerNorm-spread FAIL: LN unit std {e1['ln_unit_std_raw']:.3g} < "
+                          f"{E1_LN_UNIT_STD_MIN} (offset/signal {e1['offset_to_signal']:.3g} <= {E1_OFFSET_MAX}: PASS)")
     if e2 is None or e2["pass"] is None:
         reasons.append(f"e2: not evaluated ({(e2 or {}).get('reason', 'missing')})")
     elif not e2["pass"]:
@@ -378,4 +402,41 @@ def classify(condition: str, checks: dict, *, quarantine: str | None = None) -> 
             reasons.append(f"{k}: {checks[k].get('reason', 'failed')}")
     if quarantine:
         reasons.insert(0, f"quarantined by decision: {quarantine}")
-    return {"status": "quarantined" if reasons else "deployable", "reasons": reasons, "flags": flags}
+    if reasons:
+        return {"status": "quarantined", "reasons": failed + reasons, "flags": []}
+    if ln_only:
+        return {"status": "restricted", "reasons": failed + [LN_SPREAD_DECISION], "flags": []}
+    return {"status": "deployable", "reasons": [], "flags": []}
+
+
+def _r(x, n=4):
+    return None if x is None else float(f"{x:.{n}g}")
+
+
+def criteria_summary(condition: str, checks: dict) -> dict:
+    """Per-criterion PASS / FAIL with the measured values and thresholds (catalog ``criteria``; nothing is
+    re-interpreted: a failed gate is published as failed)."""
+    out = {}
+    for k in ("a", "b", "c", "d"):
+        if k in checks:
+            out[k] = {"pass": checks[k]["pass"]}
+    e1 = checks.get("e1")
+    if condition != "e2e_cnn" and e1 is not None and "offset_to_signal" in e1:
+        out["e1_offset_to_signal"] = {"pass": e1["offset_pass"], "value": _r(e1["offset_to_signal"]),
+                                      "threshold": f"<= {E1_OFFSET_MAX}", "normalized": e1.get("normalized", False)}
+        out["e1_layernorm_spread"] = {"pass": e1["ln_pass"], "value": _r(e1["ln_unit_std_raw"]),
+                                      "threshold": f">= {E1_LN_UNIT_STD_MIN}"}
+    e2 = checks.get("e2")
+    if e2 is not None and e2.get("pass") is not None:
+        out["e2_visual_sensitivity"] = {"pass": e2["pass"], "d_vis_over_spread": _r(e2["d_vis_over_spread"]),
+                                        "threshold_spread": f">= {E2_SPREAD_FRACTION}",
+                                        "d_vis_over_noise": _r(e2["d_vis_over_noise"]),
+                                        "threshold_noise": f">= {E2_NOISE_FRACTION}", "samples": e2["samples"]}
+    f = checks.get("f")
+    if f is not None and f.get("pass") is not None and "final_q_mean" in f:
+        out["f_stability"] = {"pass": f["pass"], "final_q_mean": _r(f["final_q_mean"]),
+                              "late_q_mean_median": _r(f["late_q_mean_median"]),
+                              "peak_q_mean": None if f["peak_q_mean"] is None else
+                              [f["peak_q_mean"][0], _r(f["peak_q_mean"][1])],
+                              "rules": "finite; q_mean <= 100 always; late (>= 0.8 budget) median and final <= +1"}
+    return out
