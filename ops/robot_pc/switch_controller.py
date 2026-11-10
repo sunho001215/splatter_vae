@@ -96,7 +96,8 @@ def state_sample(msg, t_recv_ns: int) -> dict:
           p.orientation.w]
     send = getattr(getattr(msg.metadata, "send_time", None), "seconds", None)
     q, dq, tau = (np.asarray(getattr(msg, k, ()), np.float64) for k in ("q", "dq", "tau_ext"))
-    return {"t_ns": int(t_recv_ns), "seq": int(msg.sequence), "q": q, "flange_pose7": flange_from_ee(ee),
+    return {"t_ns": int(t_recv_ns), "seq": int(msg.sequence), "q": q, "dq": dq, "tau": tau,
+            "flange_pose7": flange_from_ee(ee),
             "ee_pose7": np.asarray(ee, np.float64), "t_send_unix": send,
             "signature": q.tobytes() + dq.tobytes() + tau.tobytes()}  # the collector's frozen-state signature
 

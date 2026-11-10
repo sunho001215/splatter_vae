@@ -35,9 +35,10 @@ SRC = ["ops/__init__.py", "ops/policy_serving/__init__.py", "ops/policy_serving/
        "docs/realworld_policy_serving.md"]
 SETUP = "scripts/robot_pc/setup.sh"  # copied to the bundle top level
 CORE = ("numpy", "pillow", "pyyaml", "scipy", "h5py")
-LIVE = ("pyzmq", "robot-msg-irsl")  # the read-only RobotState reader: the teleop collector's exact pins
+LIVE = ("pyzmq", "robot-msg-irsl", "pyserial", "opencv-python-headless")  # controller link, gripper, session MP4
 PINS = {"numpy": "1.26.4", "pillow": "11.3.0", "pyyaml": "6.0.3", "scipy": "1.15.3", "h5py": "3.16.0",  # uv.lock
-        "pip": "24.3.1", "pyrealsense2": "2.59.1.11053", "pyzmq": "27.2.0", "robot-msg-irsl": "0.4.0"}
+        "pip": "24.3.1", "pyrealsense2": "2.59.1.11053", "pyzmq": "27.2.0", "robot-msg-irsl": "0.4.0", "pyserial": "3.5",
+        "opencv-python-headless": "4.10.0.84"}
 URDF = Path("/home/ws/ws/validation-20261031/panda_assets/panda_robotiq_2f85_droid_iso50.urdf")
 RIG = Path("/home/ws/ws/realworld-ops/calib-loma/rel/rig")
 RIG_DOCS = ("rig-loma-drawer-open", "rig-loma-mug-hanging-fx")
@@ -61,7 +62,7 @@ def requirements(wheels: Path, names) -> str:
         dist, version = w.name.split("-")[:2]
         name = dist.lower().replace("_", "-")
         if name in names:
-            if PINS.get(name) != version or not ("cp312" in w.name or "py3-none-any" in w.name):
+            if PINS.get(name) != version or not any(t in w.name for t in ("cp312", "py3-none-any", "abi3")):
                 raise SystemExit(f"{w.name}: not the pinned {name}=={PINS.get(name)} cp312 / py3 wheel")
             lines.append(f"{dist}=={version} --hash=sha256:{sha256(w)}")
     if len(lines) != len(names):

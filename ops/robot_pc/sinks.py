@@ -3,12 +3,10 @@
 * ``MockSink``: records in memory (recorded replay, tests);
 * ``DryRunSink``: appends one JSON line per command to a log (or keeps them in memory); it opens no socket, device or
   port and never sends anything;
-* ``LiveSink``: the future manual execution path, bound to switch_controller's RobotAction format. It refuses to exist
-  without an ``ExecutionAuthorization`` (explicit manual mode: CLI flag + typed confirmation + config
-  ``execution.armed``) and, in this revision, even with one (``safety.EXECUTION_PERMITTED`` is False); it never
-  creates a socket (the publisher is supplied by a future, separately approved caller).
+* ``LiveSink``: execution only (``ExecutionAuthorization`` required): setpoints -> ``controller.ControllerLink``,
+  gripper closure -> the gripper worker.
 
-Nothing in setup, tests, replay, dry run or the benchmark constructs a ``LiveSink`` (tests/test_robot_pc.py).
+Nothing in setup, replay, dry run or the benchmark constructs a ``LiveSink`` (tests/test_robot_pc.py).
 """
 
 from __future__ import annotations
@@ -69,44 +67,28 @@ class DryRunSink(CommandSink):
 
 
 class LiveSink(CommandSink):
-    """The future manual execution path, bound to switch_controller's message format (``switch_controller.robot_action``:
-    the collector's RobotAction for the flange goal of each executor setpoint) and to a caller-supplied ``publisher``
-    (``.send(bytes)``; this package creates no command socket). Refused without an ``ExecutionAuthorization`` and,
-    in this revision, refused even with one (``safety.EXECUTION_PERMITTED`` is False). Gripper commands have no path
-    (the teleop collector owns the Robotiq port)."""
+    """Execution: executor setpoints -> ``ControllerLink.send_flange_pose`` (switch_controller RobotAction) and the
+    gripper closure -> the gripper worker's command (when given). Requires an ``ExecutionAuthorization``."""
 
     mode = Mode.EXECUTE
     sends_to_robot = True
 
-    def __init__(self, authorization: ExecutionAuthorization, publisher=None, *, robot_msg=None,
-                 target_dt: float | None = None):
-        from ops.robot_pc import safety
-
+    def __init__(self, authorization: ExecutionAuthorization, link, gripper=None, *, log=None):
         if not isinstance(authorization, ExecutionAuthorization):
-            raise ExecutionRefused("LiveSink requires an ExecutionAuthorization (manual execution mode)")
-        if not safety.EXECUTION_PERMITTED:
-            raise ExecutionRefused("Directive I (2026-11-10): the robot is never operated; EXECUTION_PERMITTED is "
-                                   f"False (controller binding: {CONTROLLER_BINDING}, no command transport)")
-        if publisher is None or robot_msg is None:
-            raise Unbound("LiveSink needs the command publisher and robot_msg (the commander-owned :28402 PUB); "
-                          "none is created by this package")
-        from ops.robot_pc import switch_controller as sc
-
-        self.publisher, self.robot_msg = publisher, robot_msg
-        self.target_dt = sc.TARGET_DT_S if target_dt is None else float(target_dt)
-        self.sent = 0
+            raise ExecutionRefused("LiveSink requires an ExecutionAuthorization (execution mode)")
+        if link is None:
+            raise Unbound("LiveSink needs the ControllerLink")
+        self.link, self.gripper, self.log, self.sent = link, gripper, log, 0
 
     def send(self, item) -> None:
-        from ops.robot_pc import switch_controller as sc
-
-        from ops.robot_pc import safety
-
-        if not safety.EXECUTION_PERMITTED:  # re-checked on every send, not only at construction
-            raise ExecutionRefused("execution is not permitted in this revision")
         if getattr(item, "kind", None) != "track":
             raise ExecutionRefused("LiveSink sends only executor setpoints, never raw policy commands")
-        self.publisher.send(self.robot_msg.encode(sc.robot_action(self.robot_msg, item.pose7, self.target_dt)))
+        self.link.send_flange_pose(item.pose7)
+        if self.gripper is not None and item.gripper_closure is not None:
+            self.gripper.set_closure(item.gripper_closure)
         self.sent += 1
+        if self.log is not None:
+            self.log(item, True)
 
 
 def make_sink(mode: Mode, *, log_path=None, authorization: ExecutionAuthorization | None = None) -> CommandSink:
@@ -114,4 +96,4 @@ def make_sink(mode: Mode, *, log_path=None, authorization: ExecutionAuthorizatio
         return MockSink()
     if mode is Mode.DRY_RUN:
         return DryRunSink(log_path)
-    return LiveSink(authorization)  # refused (no authorization / EXECUTION_PERMITTED False / no publisher)
+    raise ExecutionRefused("execution sinks are built by the launcher with the ControllerLink (scripts/robot_pc/run.py)")

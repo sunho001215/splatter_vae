@@ -175,6 +175,54 @@ up to input rounding), and `LiveStateReader` (read-only SUB, `approved=True` req
 cannot detect a frozen publisher). Not connected in this directive. `LiveSink` formats executor setpoints as these
 RobotActions for a caller-supplied publisher, but is refused (`EXECUTION_PERMITTED = False`) and no publisher exists.
 
+## LIVE integration design (Directive J, 2026-11-10; P0 read-only inspection of panda-teleop)
+
+Evidence (read-only; teleop_collector = `TC`, switch_controller = `SC`):
+
+| topic | fact | source |
+|---|---|---|
+| state | SC binds RobotState PUB `tcp://*:28400`, ~1 kHz; consumers connect a CONFLATE SUB | SC docs/communication.md "Topology"; TC robot.py:4, :74 |
+| commands | the COMMANDER binds PUBs `:28401` (ControllerCommand `ctrl_mode`) and `:28402` (RobotAction); SC's SUBs connect to `127.0.0.1` | TC robot.py:87 (`_bound_pub`), :122 (`send_ee_pose`), :151 (`request_mode`); SC config/panda_real.yaml:31-35 |
+| action | `RobotAction(frame_id="world", real_time_action.ee_pose_rt=[ee pose], target_dt)`; SC holds the measured pose when no action within target_dt, rejects targets > 0.2 m / 0.5 rad | TC robot.py:1-13, :122; SC communication.md "Motion actions" |
+| modes | 0 STOP (software cancel), 1 IDLE (backend IdleControl), 3 task impedance (the collector's mode); a selection stops the old worker first | SC docs/controllers.md "Selection", table |
+| engage | TC requests mode 3 on the first enable press (re-sent on every engage), waits `CONTROLLER_SETTLE_S` 0.5 s, engages at the measured pose | TC app.py:53, :305-330 |
+| disengage / exit | final command at the MEASURED pose (immediate hold), then on exit wait until still and request IDLE (mode 1) | TC app.py:347-363, :785-797 |
+| health | state older than 50 ms, invalid, or q/dq/tau bit-identical > 0.25 s blocks motion | TC app.py:54, :243-275 |
+| frames | SC ee = flange rotated -90 deg about z; recorded flange = ee @ inv(T) | TC teleop.py:134-139 |
+| gripper | Robotiq 2F-85, Modbus RTU `/dev/ttyUSB0` 115200 8N1 slave 9, status FC03 @0x07D0, command FC16 @0x03E8, 50 Hz worker thread that is the ONLY master, activates an unactivated gripper (fingers move), closure c <-> register 3 + 227 c | TC gripper.py:1-27, :72-108, :154-219 |
+| recording | one writer owns the HDF5, `.h5.partial` renamed on finish, extendible chunked datasets, rows batched; leftovers trimmed on restart | TC recorder.py:3-5, :77, :139-224 |
+| launch | SC container `panda_robot --backend real` starts in IDLE and publishes state; `launch_real.sh` refuses without the RT kernel | SC docs/panda-docker.md "Launch" |
+
+Live verification (P2, READ-ONLY SUB, 2026-11-10 ~19:00, controller up, robot at rest): 1000.0 Hz, 0 sequence gaps,
+0 decode errors, send -> receive 0.06 ms on the same host; flange pose from the ee frame == URDF FK of panda_link8 for
+the live joints (2e-15 m, 2e-13 deg); `state_blockers` empty (`realworld-ops/serving/robj-evidence/`).
+
+**Design.**
+* **State**: `switch_controller.LiveStateReader` (SUB, never binds/sends) as the live robot source; the collector's
+  health rules gate bindings and the executor.
+* **Gripper (measured + command, no second Modbus master)**: `ops/robot_pc/gripper.py` ports the collector's Robotiq
+  RTU protocol and 50 Hz worker into OUR process, which becomes the single master only while the collector is NOT
+  running: it refuses when any other process holds the port or a teleop collector runs, takes an exclusive `flock` and
+  opens the port with `exclusive=True` (TIOCEXCL: any later open, e.g. a collector started meanwhile, fails). Dry run /
+  validation = status reads ONLY (no activation, no command: fingers cannot move); execution additionally sends the
+  closure command (deadband / keepalive as the collector) and NEVER activates (an unactivated gripper is reported and
+  commands are withheld - activation stays the operator's / collector's action). Measured samples (gPO with host time)
+  feed the binding; commands are recorded separately and can never be read back as state (`gripper_origin` guard).
+  Blocker found: `/dev/ttyUSB0` is root:dialout 0660 and the robot-PC user is not in `dialout` (the collector reaches it
+  from docker): user decision (group membership, or a container with `--device`).
+* **Commander**: `ops/robot_pc/controller.py` binds the two PUBs exactly as the collector (so the collector and this
+  launcher can never command at the same time: the second bind fails), waits for SC's subscribers, requests mode 3,
+  settles 0.5 s, streams RobotAction setpoints from the executor (500 Hz), final hold at the measured pose and IDLE on
+  stop, like the collector.
+* **Safety** (simplified, directive item 4): one arm/start action (`--execute`, then ENTER) and an immediate stop
+  (Ctrl-C, `s`, SIGTERM, or any failure); the hardware e-stop stays the operator's. Kept: the collector's rate / lead
+  limits, task workspace boxes, stale / frozen / invalid state stop, expired action -> nothing sent (SC holds),
+  communication failure -> stop, controller-compatibility checks (state live, subscribers connected, mode 3), and
+  execution only for policies the catalog marks `execution_eligible`.
+* **Acquisition**: RealSense RGB (+ native depth aligned to RGB only when the policy needs it); never IR.
+* **Recording**: `inference_outputs/inference_YYYYMMDD_HHMMSS/{inference.h5, camera_<serial>.mp4, summary.json}`
+  (`ops/robot_pc/recorder.py`), non-blocking writer thread, `.partial` + rename on finalize.
+
 ## Live robot state and measured gripper: UNRESOLVED interfaces
 
 **Robot state (switch_controller RobotState).** Known from the code (read-only): PUB bound by switch_controller on

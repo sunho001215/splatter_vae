@@ -8,7 +8,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 DEFAULT_PATH = REPO / "configs/robot_pc/robot_pc.yaml"
-SECTIONS = {"root", "server", "cameras", "assets", "tasks", "limits", "executor", "execution", "static_latency_state"}
+SECTIONS = {"root", "server", "cameras", "assets", "tasks", "limits", "executor", "static_latency_state"}
 TASK_KEYS = {"rig_document", "m5_max_sync_ns", "workspace_min_m", "workspace_max_m"}
 
 
@@ -24,8 +24,6 @@ def load(path: str | Path | None = None, *, root: str | Path | None = None) -> d
             raise ValueError(f"task {task}: unknown keys {sorted(set(entry) - TASK_KEYS)}")
     cfg = copy.deepcopy(cfg)
     cfg["root"] = str(Path(root or cfg.get("root") or ".").expanduser())
-    if cfg.get("execution", {}).get("armed") not in (False, True):
-        raise ValueError("execution.armed must be a boolean")
     return cfg
 
 
