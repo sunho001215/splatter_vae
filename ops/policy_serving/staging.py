@@ -404,8 +404,9 @@ def build_catalog(entries: dict[str, dict], *, aliases: dict[str, str], criteria
 
 
 def legacy_aliases(entries: dict[str, dict]) -> dict[str, str]:
-    """The pre-catalog IDs ``<condition>-<task>`` -> ``-s0`` where that policy is deployable."""
-    return {pid[:-3]: pid for pid, e in entries.items() if pid.endswith("-s0") and e["status"] == "deployable"}
+    """The pre-catalog IDs ``<condition>-<task>`` -> the staged ``-s0`` entry (a quarantined one is refused by the
+    server with its reasons instead of an unknown-id error)."""
+    return {pid[:-3]: pid for pid in entries if pid.endswith("-s0")}
 
 
 # ------------------------------------------------------------------------------------------------ host staging
@@ -654,10 +655,13 @@ def cmd_stage(a, *, hook: bool = False) -> int:
         status = row["class"]["status"]
         report[run] = {"policy_id": row["policy_id"], "status": status, "reasons": row["class"]["reasons"],
                        "flags": row["class"]["flags"]}
-        if status == "deployable":
+        labelled = status == "quarantined" and getattr(a, "label_quarantined", False) and row["policy"]["local"] \
+            and (a.sidecar_dir / f"{run}.deploy_contract.json").is_file()
+        if status == "deployable" or labelled:
             files.update(staging_files(_sources(a), row, a.sidecar_dir))
             entries[row["policy_id"]] = catalog_entry(row, local_input_spec(_sources(a), row, a.sidecar_dir))
             report[run]["staged"] = bool(a.execute)
+            report[run]["catalog_status"] = status
     if files:
         stage_files(host, files, execute=a.execute, log=lambda m: print(m, file=sys.stderr, flush=True))
         crit = sha256_file(a.criteria) if a.criteria.is_file() else None
@@ -696,6 +700,9 @@ def main(argv=None) -> int:
         s.add_argument("--read-host", action="store_true", help="dry run: read the host catalog for the merge")
         if name == "stage":
             s.add_argument("--inventory", type=Path, help="use this evaluated inventory JSON instead of re-evaluating")
+            s.add_argument("--label-quarantined", action="store_true",
+                           help="also stage QUARANTINED runs as labelled catalog entries (refused unless the server "
+                                "runs with --allow-quarantined; never deployable)")
         s.add_argument("--ssh", default="irsl")
         s.add_argument("--bwlimit", default="10m")
     a = ap.parse_args(argv)

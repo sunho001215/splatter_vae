@@ -250,7 +250,7 @@ def test_catalog_entries_aliases_and_schema():
     entries = {"dynamo-t-s0": S.catalog_entry(_row()), "dynamo-t-s1": S.catalog_entry(_row(seed=1)),
                "dynamo-u-s0": {**S.catalog_entry(_row(status="quarantined")), "task": "u"}}
     aliases = S.legacy_aliases(entries)
-    assert aliases == {"dynamo-t": "dynamo-t-s0"}  # quarantined s0 policies get no alias
+    assert aliases == {"dynamo-t": "dynamo-t-s0", "dynamo-u": "dynamo-u-s0"}  # s0 only; quarantined: refused w/ reasons
     cat = S.build_catalog(entries, aliases=aliases, criteria_sha256="f" * 64)
     validate_catalog(json.loads(json.dumps(cat)))
     e = cat["policies"]["dynamo-t-s0"]
