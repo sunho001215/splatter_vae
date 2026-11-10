@@ -219,7 +219,8 @@ def build_plan(get=fetch_json, get_bytes=fetch_bytes) -> dict:
             "droid3d": f"{DROID3D_REPO}@{DROID3D_REVISION}",
             "hand_eye": [f"{repo}@{ref}:{path}" for repo, ref, path, _ in HAND_EYE],
         },
-        "flow_members": {s["shard_id"]: sorted(m.rsplit("/", 1)[1][: -len("_flows.h5")] for m in s["members"])
+        # episode uuids for *_flows.h5 members; other manifest members (bookkeeping files) keep their file name
+        "flow_members": {s["shard_id"]: sorted(m.rsplit("/", 1)[1].removesuffix("_flows.h5") for m in s["members"])
                          for s in manifest["shards"]},
         "items": items,
     }

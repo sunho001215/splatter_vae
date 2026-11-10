@@ -74,7 +74,7 @@ def resolve_selection(value, plan: dict, root: Path) -> dict | None | str:
     path = Path(value) if Path(value).is_absolute() else root / value
     wanted = {line.strip() for line in path.read_text().splitlines() if line.strip()}
     per_shard = {shard: len(wanted.intersection(members)) for shard, members in plan["flow_members"].items()}
-    total = sum(len(m) for m in plan["flow_members"].values())
+    total = sum(len(archives.split_members(m)[0]) for m in plan["flow_members"].values())
     return {"episodes": wanted, "per_shard": per_shard, "fraction": sum(per_shard.values()) / max(1, total),
             "source": str(path)}
 
@@ -489,7 +489,7 @@ class Runner:
             if item["group"] == "pw_flows":
                 self.freeze_selection()
                 selection = None if self.selection in (None, "pending") else self.selection
-                members = self.plan["flow_members"][name]
+                members, others = archives.split_members(self.plan["flow_members"][name])
                 if selection is not None:
                     members = sorted(set(members) & selection["episodes"])
                 expected = item["archive"]["expanded"] if selection is None else None
@@ -498,7 +498,8 @@ class Runner:
                                         item["archive"]["kinds"], None if expected is not None or members is None
                                         else set(members), self.extraction_stop)
                 if item["group"] == "pw_flows":
-                    report = archives.verify_flow_shard(staging, members, expected)
+                    report = archives.verify_flow_shard(staging, members, expected,
+                                                        len(others) if expected is not None else 0)
                 else:
                     report = archives.verify_cameras(staging, item["archive"]["members"], item["archive"]["expanded"])
                 self.state.update(item_id, status="publishing", extracted=report)
@@ -567,7 +568,8 @@ class Runner:
                     archives.extract_stream(archives.file_chunks(self.depth_parts(), self.extraction_stop), staging,
                                             ["depth_320x180"], None if selection is None else selection["episodes"],
                                             self.extraction_stop)
-                    flows = {e for members in self.plan["flow_members"].values() for e in members}
+                    flows = {e for members in self.plan["flow_members"].values()
+                             for e in archives.split_members(members)[0]}
                     report = archives.verify_depth(staging, flows if selection is None
                                                    else flows & selection["episodes"])
                     stream = {"status": "publishing", "report": report, "time": time.time()}

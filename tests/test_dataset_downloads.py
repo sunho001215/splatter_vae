@@ -459,7 +459,8 @@ def test_flow_shard_extraction_verification_and_publication(tmp_path):
     report = archives.extract_stream(archives.file_chunks([archive]), staging, ["flows-fs-optimized"])
     assert report["written"] == 2
     expected = sum(len(v) for v in members.values())
-    assert archives.verify_flow_shard(staging, EPISODES, expected) == {"members": 2, "bytes": expected}
+    assert archives.verify_flow_shard(staging, EPISODES, expected) == {"members": 2, "bytes": expected,
+                                                                    "non_episode_members_ignored": 0}
     with pytest.raises(archives.ExtractionError, match="raw_member_bytes"):
         archives.verify_flow_shard(staging, EPISODES, expected + 1)
     with pytest.raises(archives.ExtractionError, match="differ"):
@@ -984,3 +985,40 @@ def test_configure_refuses_inconsistent_pool_limits(server, tmp_path, capsys):
     root, plan, owner = owner_with_selection(server, tmp_path)
     assert cli.main(["configure", "--root", str(root), "--pool-min", "8", "--pool-max", "1"]) == 2
     assert "pool limits" in capsys.readouterr().out
+
+
+# ---- shard-000005 (2026-11-10 23:00): the manifest lists a non-episode bookkeeping member ---------------------------
+def test_non_episode_manifest_member_is_excluded_exactly(tmp_path):
+    note = "migration_state_h5_repack_droid_qnorm1_gzip1.json"
+    members = {f"droid/flows-fs-optimized/{e}_flows.h5": HDF5 + os.urandom(500 + k) for k, e in enumerate(EPISODES)}
+    members[f"droid/flows-fs-optimized/{note}"] = b"{}" * 100
+    archive = tmp_path / "shard.zst"
+    archive.write_bytes(tar_zst(members))
+    staging = tmp_path / "st"
+    report = archives.extract_stream(archives.file_chunks([archive]), staging, ["flows-fs-optimized"])
+    assert report["written"] == 2 and report["ignored"] == 1
+    listed = sorted(EPISODES + [note])  # what the plan now records (catalog keeps non-episode names whole)
+    episodes, others = archives.split_members(listed)
+    assert episodes == sorted(EPISODES) and others == [note]
+    raw = sum(len(v) for v in members.values())  # raw_member_bytes counts the bookkeeping file
+    assert archives.verify_flow_shard(staging, episodes, raw, len(others))["non_episode_members_ignored"] == 1
+    with pytest.raises(archives.ExtractionError, match="raw_member_bytes"):
+        archives.verify_flow_shard(staging, episodes, raw)  # without the exception the byte check stays exact
+    episode_bytes = raw - 200
+    with pytest.raises(archives.ExtractionError, match="non-episode"):
+        archives.verify_flow_shard(staging, episodes, episode_bytes, 1)  # a missing file of size 0 is not accepted
+    assert archives.split_members(["migration_state_h5_repack_droid_qnorm1_g"])[0] == []  # the old truncated name
+
+
+def test_memory_pressure_rule_follows_our_cgroup_with_a_host_floor(tmp_path):
+    cfg, base = dict(health.DEFAULTS), {"wan_rtt_ms": 40.0}
+    foreign = sample(50e6, psi_mem=15.8, psi_mem_own=0.0)  # 2026-11-10 22:15: another tenant's container
+    assert health.degraded_reasons(foreign, base, cfg) == []
+    assert health.degraded_reasons(sample(50e6, psi_mem_own=12.0), base, cfg) == ["psi_mem_own 12.0"]
+    assert health.degraded_reasons(sample(50e6, mem_avail_frac=0.08), base, cfg) == ["low_memory"]
+    (tmp_path / "cgroup").write_text("0::/user.slice/user-1000.slice/session-1.scope\n")
+    own = health.own_cgroup_dir(tmp_path / "cgroup", tmp_path / "fs")
+    assert own == tmp_path / "fs/user.slice/user-1000.slice/session-1.scope"
+    own.mkdir(parents=True)
+    (own / "memory.pressure").write_text("some avg10=3.25 avg60=0 avg300=0 total=1\nfull avg10=0\n")
+    assert health.read_psi("memory.pressure", own) == 3.25

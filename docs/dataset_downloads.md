@@ -56,7 +56,8 @@ One HTTP connection per file; no tool with internal parallelism. Pool starts at 
 `interval_s` (20 s) the owner samples throughput, PSI cpu/io/memory, available memory, data-disk utilisation, ICMP
 RTT to 8.8.8.8 and to the gateway, the sshd sessions' kernel RTT and transfer errors (`.state/health.jsonl`). Healthy:
 add one file, keep it only if throughput rises >= 7 %, else revert and hold 15 min. Degraded (internet RTT > 2.5x
-baseline and > baseline + 60 ms, gateway RTT > 10 ms, io PSI > 25 %, memory PSI > 10 %, low memory, disk > 90 % busy,
+baseline and > baseline + 60 ms, gateway RTT > 10 ms, io PSI > 25 %, memory PSI of OUR cgroup > 10 % (host-wide memory PSI is
+only reported: on 2026-11-10 it came from another tenant), host MemAvailable < 10 %, disk > 90 % busy,
 >= 3 errors per interval) twice in a row: drop one file; at the minimum pool, a per-process rate cap at 0.7x the
 current rate, tightened while degraded, relaxed x1.3 per healthy period and removed. No fixed cap otherwise.
 Local control-channel latency (fresh SSH connect + `true`, command RTT over the shared connection):

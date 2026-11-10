@@ -36,8 +36,8 @@ DEFAULTS = {
     "wan_rtt_add_ms": 60.0,
     "gw_rtt_ms": 10.0,           # degraded: gateway RTT above this
     "psi_io_some": 25.0,         # degraded: io pressure "some avg10" above this (percent)
-    "psi_mem_some": 10.0,
-    "mem_avail_min_frac": 0.05,
+    "psi_mem_some": 10.0,        # applies to OUR cgroup's memory pressure (host-wide PSI is reported, not acted on)
+    "mem_avail_min_frac": 0.10,  # host safety floor: degraded while host MemAvailable < 10 % of RAM
     "disk_util_max": 0.90,
     "errors_max": 3,             # degraded: this many transfer errors within one interval
     "cap_factor": 0.7,           # rate cap = factor x current rate (and x factor again while still degraded)
@@ -53,7 +53,19 @@ def pool_bounds(cfg: dict) -> tuple[int, int]:
     return low, max(low, int(cfg["pool_max"]))
 
 
+def own_cgroup_dir(cgroup_file: Path = Path("/proc/self/cgroup"), mount: Path = Path("/sys/fs/cgroup")) -> Path | None:
+    """The cgroup v2 directory of this process (the remote owner runs in a user session scope)."""
+    try:
+        for line in cgroup_file.read_text().splitlines():
+            if line.startswith("0::"):
+                return mount / line[3:].lstrip("/")
+    except OSError:
+        pass
+    return None
+
+
 def read_psi(kind: str, root: Path = Path("/proc/pressure")) -> float | None:
+    """``some avg10`` of ``root/kind`` (host: /proc/pressure/<kind>; a cgroup: <dir>/<kind>.pressure)."""
     try:
         text = (root / kind).read_text()
     except OSError:
@@ -137,6 +149,7 @@ class Probe:
 
     def __init__(self, data_path: str, ping_wan: str | None, clock=time.monotonic):
         self.device = mount_device(data_path)
+        self.cgroup = own_cgroup_dir()
         self.ping_wan, self.gateway = ping_wan, default_gateway()
         self.clock = clock
         self._last = None
@@ -146,6 +159,7 @@ class Probe:
         mem = meminfo()
         out = {
             "time": time.time(), "psi_cpu": read_psi("cpu"), "psi_io": read_psi("io"), "psi_mem": read_psi("memory"),
+            "psi_mem_own": read_psi("memory.pressure", self.cgroup) if self.cgroup else None,
             "mem_avail_frac": mem.get("MemAvailable", 0) / max(1, mem.get("MemTotal", 1)),
             "wan_rtt_ms": ping_ms(self.ping_wan), "gw_rtt_ms": ping_ms(self.gateway, count=3),
             "sshd_rtt_ms": sshd_rtt_ms(), "errors": errors, "throughput_bps": None, "disk_util": None,
@@ -170,8 +184,10 @@ def degraded_reasons(sample: dict, baseline: dict, cfg: dict) -> list[str]:
         reasons.append(f"gateway_rtt {sample['gw_rtt_ms']:.1f} ms")
     if (sample.get("psi_io") or 0) > cfg["psi_io_some"]:
         reasons.append(f"psi_io {sample['psi_io']}")
-    if (sample.get("psi_mem") or 0) > cfg["psi_mem_some"]:
-        reasons.append(f"psi_mem {sample['psi_mem']}")
+    # memory pressure WE cause (our cgroup); host-wide PSI is dominated by other tenants and is only reported, the
+    # host is protected by the MemAvailable floor below
+    if (sample.get("psi_mem_own") or 0) > cfg["psi_mem_some"]:
+        reasons.append(f"psi_mem_own {sample['psi_mem_own']}")
     if sample.get("mem_avail_frac", 1.0) < cfg["mem_avail_min_frac"]:
         reasons.append("low_memory")
     if (sample.get("disk_util") or 0) > cfg["disk_util_max"]:

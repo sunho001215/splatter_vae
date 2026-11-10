@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import threading
@@ -25,6 +26,11 @@ from pathlib import Path
 from s4d.data.droid.largescale.extract import extract_members
 
 HDF5_SIGNATURE = b"\x89HDF\r\n\x1a\n"
+# A DROID episode uuid (the episode part of extract.MEMBER). The flow shard manifest also lists a few non-episode
+# bookkeeping files (shard-000005: droid/flows-fs-optimized/migration_state_h5_repack_droid_qnorm1_gzip1.json, 28,874 B,
+# counted in its raw_member_bytes); the strict extractor ignores them, so verification excludes them explicitly.
+EPISODE = re.compile(r"[A-Za-z0-9_\-]+\+[0-9A-Za-z]+\+\d{4}-\d{2}-\d{2}-\d{2}h-\d{2}m-\d{2}s")
+NON_EPISODE_MEMBER_MAX = 1 << 20
 # The decompressor: the host's zstd, single-threaded, stdin -> stdout. Tests substitute another stdin -> stdout codec
 # where no zstd binary exists (the release image) and run the real zstd wherever it is installed.
 DECOMPRESS = ("zstd", "-dc", "-T1", "-q")
@@ -135,21 +141,34 @@ def verify_hdf5(staging: Path, kind: str, names) -> list[str]:
     return bad
 
 
-def verify_flow_shard(staging: Path, members: list[str], expected_bytes: int | None) -> dict:
+def split_members(names) -> tuple[list[str], list[str]]:
+    """(episode names, other manifest members) of a flow shard's manifest member list."""
+    episodes = [n for n in names if EPISODE.fullmatch(n)]
+    return episodes, [n for n in names if not EPISODE.fullmatch(n)]
+
+
+def verify_flow_shard(staging: Path, members: list[str], expected_bytes: int | None, non_episode: int = 0) -> dict:
     """``members``: the shard's (selected) episode names; ``expected_bytes``: ``raw_member_bytes`` (None with a
-    selection, whose per-member sizes are not published)."""
+    selection, whose per-member sizes are not published); ``non_episode``: manifest members that are not episodes
+    (ignored by the extractor): the staged bytes must then fall short of ``raw_member_bytes`` by at least one byte and
+    at most ``NON_EPISODE_MEMBER_MAX`` per such member, instead of matching exactly."""
     files = staged_files(staging, "flows-fs-optimized")
     names = {episode_of(n) for n in files}
     if names != set(members):
         raise ExtractionError(f"flow members differ from the manifest: missing {sorted(set(members) - names)[:3]}, "
                               f"extra {sorted(names - set(members))[:3]}")
     total = sum(files.values())
-    if expected_bytes is not None and total != expected_bytes:
-        raise ExtractionError(f"flow member bytes {total} != raw_member_bytes {expected_bytes}")
+    if expected_bytes is not None:
+        short = expected_bytes - total
+        if non_episode == 0 and short != 0:
+            raise ExtractionError(f"flow member bytes {total} != raw_member_bytes {expected_bytes}")
+        if non_episode and not 0 < short <= non_episode * NON_EPISODE_MEMBER_MAX:
+            raise ExtractionError(f"flow member bytes {total} vs raw_member_bytes {expected_bytes}: {short} bytes "
+                                  f"cannot be {non_episode} non-episode member(s)")
     bad = verify_hdf5(staging, "flows-fs-optimized", files)
     if bad:
         raise ExtractionError(f"not HDF5: {bad[:3]}")
-    return {"members": len(files), "bytes": total}
+    return {"members": len(files), "bytes": total, "non_episode_members_ignored": non_episode}
 
 
 def verify_cameras(staging: Path, members: int, expected_bytes: int) -> dict:
