@@ -1,0 +1,40 @@
+23:16:19 /home/ws/ws/splatter4d/.worktrees/schedfix/s4d/remote_access.py sync-code 60ee8bc9f934e519805a21f1a8f43b54327d08ec -> 0 /home/compu/kaist/sunho/releases/60ee8bc9f934e519805a21f1a8f43b54327d08ec/code 
+23:16:19 /home/compu/kaist/sunho/releases/60ee8bc9f934e519805a21f1a8f43b54327d08ec/code
+23:16:26 sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a --tag cc -> 0 /home/ws/ws/splatter4d/runs/remote/verification/native-60ee8bc-cc-queue.yaml 
+23:17:43 remote co-tenants: 3 known, 133 GB RAM not yet in use charged; GPU-9e9f1e97 3 (82.0 GB charged, 13.6 GB free after pending reservations)
+23:17:43 launched verify-native-60ee8bc-cc on remote/GPU-ca65e1b7-c0ac-6757-7d3f-816c3119a4c1 (s4d-verify-native-60ee8bc-cc-a1, attempt 1)
+23:17:43 wait {'verify-native-60ee8bc-cc': 'running'}
+23:24:05 rwcal-20261110-nativedepth-mvp3d-mug-hanging: remote state unknown (container missing from confirmed snapshot); no relaunch
+23:24:05 verify-native-60ee8bc-cc: live result sync unavailable; job remains running
+23:24:05 remote co-tenants: 3 known, 134 GB RAM not yet in use charged; GPU-9e9f1e97 3 (72.0 GB charged, 20.4 GB free after pending reservations)
+23:24:06 wait {'verify-native-60ee8bc-cc': 'running'}
+23:25:27 remote co-tenants: 3 known, 134 GB RAM not yet in use charged; GPU-9e9f1e97 3 (72.0 GB charged, 23.6 GB free after pending reservations)
+23:25:28 wait {'verify-native-60ee8bc-cc': 'running'}
+23:27:20 remote co-tenants: 3 known, 131 GB RAM not yet in use charged; GPU-9e9f1e97 3 (72.0 GB charged, 17.1 GB free after pending reservations)
+23:27:21 wait {'verify-native-60ee8bc-cc': 'running'}
+23:28:46 remote co-tenants: 3 known, 130 GB RAM not yet in use charged; GPU-9e9f1e97 3 (72.0 GB charged, 23.5 GB free after pending reservations)
+23:28:46 wait {'verify-native-60ee8bc-cc': 'running'}
+23:30:35 remote co-tenants: 3 known, 130 GB RAM not yet in use charged; GPU-9e9f1e97 3 (72.0 GB charged, 23.5 GB free after pending reservations)
+23:30:36 wait {'verify-native-60ee8bc-cc': 'running'}
+23:31:58 verify-native-60ee8bc-cc: live result sync unavailable; job remains running
+23:31:58 remote co-tenants: 3 known, 130 GB RAM not yet in use charged; GPU-9e9f1e97 3 (72.0 GB charged, 23.5 GB free after pending reservations)
+23:31:59 wait {'verify-native-60ee8bc-cc': 'running'}
+23:37:11 verify-native-60ee8bc-cc: live result sync unavailable; job remains running
+23:37:11 remote co-tenants: 2 known, 85 GB RAM not yet in use charged; GPU-9e9f1e97 2 (48.0 GB charged, 41.4 GB free after pending reservations)
+23:37:11 foreign processes on remote/GPU-9e9f1e97-b2ca-04e0-eb2a-8035398daa79; not launching there
+23:37:11 wait {'verify-native-60ee8bc-cc': 'running'}
+23:40:03 wait {'verify-native-60ee8bc-cc': 'running'}
+23:41:28 wait {'verify-native-60ee8bc-cc': 'running'}
+23:43:18 done {'verify-native-60ee8bc-cc': 'done'}
+23:43:18 {"exit_code": 0, "counts": {"passed": 2661, "error": 0, "failed": 0, "skipped": 0}, "full_suite_passed": true}
+23:43:26 sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a --tag cc -> 0 /home/ws/ws/splatter4d/runs/remote/verification/isolation-60ee8bc-cc-queue.yaml 
+23:46:30 launched verify-isolation-0-60ee8bc-cc on remote/GPU-4391fcee-537f-d408-d138-10d8a3866eea (s4d-verify-isolation-0-60ee8bc-cc-a1, attempt 1)
+23:46:30 launched verify-isolation-1-60ee8bc-cc on remote/GPU-6122c7a9-eaa6-b539-6005-f20e339da4ea (s4d-verify-isolation-1-60ee8bc-cc-a1, attempt 1)
+23:46:30 launched verify-isolation-2-60ee8bc-cc on remote/GPU-9e9f1e97-b2ca-04e0-eb2a-8035398daa79 (s4d-verify-isolation-2-60ee8bc-cc-a1, attempt 1)
+23:46:30 launched verify-isolation-3-60ee8bc-cc on remote/GPU-ca65e1b7-c0ac-6757-7d3f-816c3119a4c1 (s4d-verify-isolation-3-60ee8bc-cc-a1, attempt 1)
+23:46:30 wait {'verify-isolation-0-60ee8bc-cc': 'running', 'verify-isolation-1-60ee8bc-cc': 'running', 'verify-isolation-2-60ee8bc-cc': 'running', 'verify-isolation-3-60ee8bc-cc': 'running'}
+23:47:53 verify-isolation-3-60ee8bc-cc exited with 0 on remote; results checksum verified
+23:47:53 remote co-tenants: 2 known, 96 GB RAM not yet in use charged; GPU-9e9f1e97 2 (48.0 GB charged, 47.6 GB free after pending reservations)
+23:47:53 done {'verify-isolation-0-60ee8bc-cc': 'done', 'verify-isolation-1-60ee8bc-cc': 'done', 'verify-isolation-2-60ee8bc-cc': 'done', 'verify-isolation-3-60ee8bc-cc': 'done'}
+23:47:54 sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a --tag cc -> 0 ACCEPTED /home/ws/ws/splatter4d/runs/remote/acceptance/60ee8bc-cc/manifest.json 0442cb2a43fc8d864caf69f2c6a529697e49252e228b348e47d90979264838e6 56bd8ce9c59e 
+23:47:54 ACCEPTED /home/ws/ws/splatter4d/runs/remote/acceptance/60ee8bc-cc/manifest.json 0442cb2a43fc8d864caf69f2c6a529697e49252e228b348e47d90979264838e6 56bd8ce9c59e
