@@ -93,6 +93,11 @@ class HardwareTest:
     def prepare(self):
         """Measured preconditions, before the operator is offered START."""
         self.checkpoint()
+        # a RealSense start stalls the status stream once (~0.3 s measured on the robot PC): wait <= 1 s for health
+        deadline = time.monotonic() + 1.0
+        while not self.state.gripper.healthy() and time.monotonic() < deadline:
+            self.checkpoint()
+            self.stop_event.wait(0.02)
         self._healthy_gripper()
         if self.test == "gripper":
             if self.state.gripper.latest.position > closure_to_position(0.05):
