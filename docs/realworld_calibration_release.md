@@ -86,6 +86,49 @@ registration on the existing recordings):
    every calibrate record built with it gets a new fingerprint and build id.
 4. If FIXREG finds movement: do not fill; the cameras stay held and mug-hanging geometry consumers stay held.
 
+### 3a. Recording periods (user decision 2026-11-10 ~13:00, covering)
+
+The user's instruction was to "handle credible recording-period camera movement explicitly rather than forcing one
+shared calibration". A task recorded in several sessions can therefore get one document per recording period:
+
+    python -m s4d.realworld.calib.loma.publish split-periods --rig rel/rig/rig-loma-<task>[-fx].json \
+        --periods period_steps.json --cameras <cameras with a credible period step> --evidence <FIXREG results> \
+        [<addendum>] --decided-by <who> --reference "<addendum / decision>" --out-dir rel/rig/periods
+
+The input `period_steps.json` (`rwx-period-steps/1`) comes from the pre-registered analysis
+`realworld-ops/rwx/tools/period_steps.py`. It runs on the frozen FIXREG registrations. Per camera, estimator B, rigid
+part only (scale is common-mode thermal), it computes:
+
+- within-period first differences and drift;
+- the step of each period's median versus the base period, i.e. the period that dominates the shared solve. The step
+  needs a permutation test p < 0.001, a size >= 0.10 px, and estimator A in agreement.
+
+`split-periods` refuses to write anything when any of these holds:
+
+- within-period movement;
+- an inconclusive step;
+- a camera-specific scale flag;
+- a step above `MAX_PERIOD_ROT_DEG` = 0.035 deg (1/10 of the tolerance).
+
+Each of these cases goes to the user. Otherwise every period document is the published document with these changes:
+
+- only its period's episodes (`episodes`, G5b `fixedness_evidence`, `pool_frames`);
+- a `period` block (base document name and sha256, evidence with sha256, decision);
+- for a camera with a credible step, the pose `exp([omega]x) @ T_cam_base`, where omega is the camera rotation whose
+  image field best matches the measured rigid step (`rotation_from_rigid`, least squares over FIXREG's grid). It is
+  recorded in `period_pose` together with the base pose.
+
+The verdict, depth scales, robot model, reference arrays and fixedness exception are unchanged; fill the exception
+before splitting. The format is still `s4d.realworld.rig_calibration/1`, so the released rig mode needs no change.
+
+- Rig mode rejects every episode of another period, because the document has no G5b evidence for it.
+- Phase B selects each episode's period document in its calibrate config.
+- `calib.release plan --rig <task>=<period A> --rig <task>=<period B>` checks the following and fails closed:
+  - the documents derive from one published document;
+  - their periods partition the task's valid episodes;
+  - each episode's calibrate record was built with its own period's document.
+- The records name the period (`metrics.period`).
+
 ## 4. Per-camera depth scale (single source of truth = the accepted calibration record)
 
 The rig solve estimates each camera's metric depth scale jointly with its pose (`log z = log d + alpha`); the pose is

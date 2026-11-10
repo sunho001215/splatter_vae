@@ -1,0 +1,221 @@
+{
+ "format": "rw-gate-amendment/1",
+ "task": "covering",
+ "version": 1,
+ "target": 98,
+ "base_target": 100,
+ "decision": "Permit training on the 98 valid episodes through a documented task-specific amendment. Use identical episodes and splits across compared methods. Never duplicate episodes or arbitrarily repair timestamps to reach 100.",
+ "decided_by": "user (2026-11-10 ~13:00 KST, Directive I item 5)",
+ "decided_at": "2026-11-10T13:00:00+09:00",
+ "document": {
+  "path": "realworld-ops/rwx/AMEND-covering-98.md",
+  "sha256": "23e19ec7e6ed179760e88046d0e891f2f8a0aab47818e34f17467f456ca47965"
+ },
+ "evidence": [
+  {
+   "path": "realworld-ops/rwx/results/amend-covering-manifest-extract.json",
+   "sha256": "f9d22c82b3fd87187a7c80285ef7056ef7f2dd382684cf6b6764de63a5a082f6"
+  },
+  {
+   "path": "realworld-ops/rwx/results/amend-covering-invalid-timestamps.json",
+   "sha256": "86a73baee4b6e12fe1796b323220108792802eba617ae3a3f98ca98f18b64ab7"
+  }
+ ],
+ "splits": "s4d.rwlearn.store.split_episodes(store, validation_fraction=0.1, seed=0) on the gate-bound store of exactly these episodes, identical for every method (AMEND-covering-98.md section 4)",
+ "episodes": {
+  "covering/episode_000000.h5": "236633478910e9b055579d42dd85808a8f58f1308c40789bce9d42a1304ef499",
+  "covering/episode_000001.h5": "79a60127d3c44e0f63df0e35a4ccc7d7806645cbae4453a513ffae02ccb5fbfe",
+  "covering/episode_000002.h5": "2252e82cdf6c2fcf28f95470d1945f1a8331c0d68848a70d3fcee8a5fa557068",
+  "covering/episode_000003.h5": "50908d50d521ed3f82774d48fb7c18f617ff48d1ca7fb976af639878c8461c7d",
+  "covering/episode_000004.h5": "f74782f5041b22d1c761344ab0cd33e6c8d4b7b7e3dfb7d8c0effb024f0938e1",
+  "covering/episode_000005.h5": "d820b0092b0f88d17bcf1bffab81a9e784cb07e2768332ffae5e459f5c9e1e90",
+  "covering/episode_000006.h5": "ea318f16d70dffd1e458d2d310451f7a1ab8d3b6693e3d4226572fc823867744",
+  "covering/episode_000007.h5": "88f4a018ea62d6ac6fbf92c69cc0858dfe7877b0b0560cc1fee0a2b97839ab78",
+  "covering/episode_000009.h5": "e5e371dc79ccadfc5a041f0da45a0ecc8ad7183691f24bf375309fca2bc37228",
+  "covering/episode_000010.h5": "6eb2bb6b072d677f5fe1aa1d38c47121b8a92a2b68bbe79100d617bb20bb1605",
+  "covering/episode_000011.h5": "4129ceb226dc4dcaf149b721b4ee6f00fed1d9318940abb63dc93d74deb3f1bd",
+  "covering/episode_000012.h5": "e140f92fad41b725e89f066c77c64971fbb1c476852449e9e05fdab86152ad96",
+  "covering/episode_000013.h5": "6101829fea3a9dcad7221890c1e1388b02827abf4cee3c58870f4c7acc2c4157",
+  "covering/episode_000014.h5": "ecad64f4d4a7db70bed673d3810582081867bfec376c6d02debcfa38a6c43be7",
+  "covering/episode_000015.h5": "6bb586dc2acd0848f04f1cec6659c79f068c56fd13c77d505d103965eadc12d9",
+  "covering/episode_000016.h5": "cb8020cdb15ce7d7d258e766b776ab2f3517d115d3a6532180de3908bc02da25",
+  "covering/episode_000017.h5": "1839c3253c1d3342c021bdae56c54629fa1a0cb9ac37905498801410c16f39ca",
+  "covering/episode_000018.h5": "132bb9bed8c059561709489ab4b85d3f636ad5fb3c08b16fc019cb3a1ac5f92e",
+  "covering/episode_000019.h5": "e3b54fd7cdd5fd8eeca915d7efa009dde403edaa973c63fa4b2b72f6217a0872",
+  "covering/episode_000020.h5": "6981bb37d11ecf3ac72eecc18897a286b6a2b693f05bd84cae21663b5ea72b74",
+  "covering/episode_000021.h5": "d85abafe6afa3994939b31965b7a038351ffa8562ba176c77bec34fcc5747922",
+  "covering/episode_000022.h5": "1330ac4213be442ca130a82beb9db3031b223c354a373c97f42012ee645354d3",
+  "covering/episode_000023.h5": "c1e1e2b39caf442d57823ad2939b6dba79469a2978a220d20e2235e4353dd66f",
+  "covering/episode_000024.h5": "d1c5747de7b5a0672de842154247caaf0690cefcedeadc1506fc62ce165f2dd5",
+  "covering/episode_000025.h5": "418f6b768e364d6f3d2a351b25dde93c46393c8757a352c5fd3e8199ffe62a1a",
+  "covering/episode_000026.h5": "8aabf60b5905f9a0fb5acede7f32d720d98177604e454e7ba68a92095303eb74",
+  "covering/episode_000027.h5": "2c4a28db85893dd52365ef71ac117ea7649e9a48e936373c0f3cdaef9504d0ba",
+  "covering/episode_000028.h5": "421382047a7b1164b1336551e09409e11f1771b926651a42eb737ca45feb02ee",
+  "covering/episode_000029.h5": "f5309e9f37565e016d8cbe4d988e3aa7b7b5690c5caed291266b7aad986e9a3a",
+  "covering/episode_000030.h5": "92cf1575e7097219e02e65cb08fb6c79701326f39dddd68ab9ad1c0d2d382665",
+  "covering/episode_000031.h5": "d695120033094dc50bbbd3c52cd7178728e6f49b49e6c9fedf5c6c6be4ba7239",
+  "covering/episode_000032.h5": "e45f2c3b040314f8e2fdf78172746f62b4900e5363862d2ed0a81fff2a70facd",
+  "covering/episode_000033.h5": "b03758b8e42bee976995b5a6bc8a51b5ad8f931c3c75fcad3f7c52c2b23c5a02",
+  "covering/episode_000034.h5": "6d6370b22fd367b244cb1691fc44c5c3f9ad8921700e42e4b27bdc3df3065f1b",
+  "covering/episode_000035.h5": "a6f94308086f49e026f2792215755c830fcb1ba3b2a07a78ebe063fccecbb872",
+  "covering/episode_000036.h5": "15938f01ca1aeac0ea3eab07908867c2c372be70c1a3c7bec88f81b8f7907f52",
+  "covering/episode_000038.h5": "8500a1b01d3c75cf3dc6471a45268a7395f4d30de20b1e652869b07f61797216",
+  "covering/episode_000039.h5": "f9216a1cc2eb599fae80bc3dd7b34538eb4c15ebf61dc66e03eb8a0a9942f4e2",
+  "covering/episode_000040.h5": "25620be73c5ae49076678be3801080c1959e8427237088d611c0dbdc37d2d1e4",
+  "covering/episode_000041.h5": "9dfbc409239443cc4cd52e1d289f3e565d6b623146c4228caafcb0e5407d6ec9",
+  "covering/episode_000042.h5": "e34b725a66c50643ef8c705d91913b690e1495d8cf7ab17544bf84654b05d567",
+  "covering/episode_000043.h5": "d170a8e9a42e75192aa2fc6cb82796200386cc505a8558097b64403df72f5e15",
+  "covering/episode_000044.h5": "7bd96345cd70cfd6c9daad4cabb355c3cd08f747fadde8f19aa651014dd5c3d9",
+  "covering/episode_000046.h5": "0d9cc79157007b400cfead68c85c260a1f7449ca588c6ba2758548a07e792649",
+  "covering/episode_000047.h5": "2c74c6637009975bac06a9b0e7c4dd833bfc9090da6e91e28276e9cc83d79f04",
+  "covering/episode_000048.h5": "79ba8636b84b9c6f2a756f93344d7f8215dd8d53ac0348f05ce7b96be15dfdfc",
+  "covering/episode_000049.h5": "42b6802b73d93429cd1e262a65dc482ddef4972a09106a72ecc2f5010055737a",
+  "covering/episode_000050.h5": "b829d041e5cb57d590f7248fd562f9b603dd360bd44b9951813f3243df4c5bb0",
+  "covering/episode_000051.h5": "abf130f28914d7ae233436b78fa6b716fdbb3c974ca97401c5c7c5a5d7c96c67",
+  "covering/episode_000053.h5": "622a8e30a0f34c79493fbac50c39c53903f05af0d32b8033903515c8b825313c",
+  "covering/episode_000054.h5": "2fdac8338c5a905ee4918c3a052afa0693b046a12a89b07a50467c025d7b3d71",
+  "covering/episode_000056.h5": "d40f02014678f26ed31e6c35f43ab91429c7f3e5286d08e2c731dbc8d842c28a",
+  "covering/episode_000058.h5": "8a6a3251bcb3b029427362e07d0bafc75f6fa921813a9dbef7ecee06a23c3855",
+  "covering/episode_000059.h5": "da886b82dc8b2faea2c3f5eee6126a2c889c2eb35f4c1dc8aebb4b68dc21379b",
+  "covering/episode_000060.h5": "5b604af32395012c78333e644a4469255444756707e8a9cde47b4ab80899fcfd",
+  "covering/episode_000062.h5": "ba4b35430f2aec94f011de37f34aedbac77d597a6516fb15f86bd20237a150e1",
+  "covering/episode_000063.h5": "e9b05ca13664b5850d4fed1ef431b9cd6dceab8785b615faa88a39072e15b812",
+  "covering/episode_000064.h5": "f9c3be7e856b704bc8bf86e6cef64bcae21c9880576edcb0d5c67ad87ff21ee2",
+  "covering/episode_000065.h5": "cd3a8eabaec1a64731e1d438c055304c27e428bdc8022bfaac7df8b1750dd222",
+  "covering/episode_000066.h5": "364303b4c3df21743b0a6b6cda66c2b156b9f75164aa141cb5e87a837953dc40",
+  "covering/episode_000067.h5": "ad72f7d12d96b493c5cae75b519473c83592add7b1ac8b823a4c488cda75d821",
+  "covering/episode_000068.h5": "09b5cdb06a450692f6f7cfb6ca7e9d74d755c7b55a28200de16cd58bfa80a4c0",
+  "covering/episode_000069.h5": "8c086f34728a4c146fa75f0af7a18d27f8a456e50764483bbf81e5404817f2ac",
+  "covering/episode_000070.h5": "9bbeffe1bda85891737fba7e23a27a59fe776664e877f3c121eac80b412f0761",
+  "covering/episode_000071.h5": "8e2629f14e0fa2f0c698b7271696983a8d5976aef49c0be1c0e47d619fa279e9",
+  "covering/episode_000072.h5": "19d36333068e19231eb6047cefd70184704677938fcd230596f04ded017d5c05",
+  "covering/episode_000073.h5": "7c2b20247639d33118af56a215925987d0c23afde544c5429d85ad9edbe5e7d6",
+  "covering/episode_000074.h5": "2d94a714ecb24395434e8bb8eef14cf0920cd2dd9f16d3dc7453aa0145b16652",
+  "covering/episode_000077.h5": "6b361c422c3af6252e653732507109180492870eb96a35030d3f48997fc4f256",
+  "covering/episode_000078.h5": "e1b50f8dd76ef30c8c39991b99176fccf02b5763efab055125467445c7bb5513",
+  "covering/episode_000079.h5": "6b58ae224a4e4ca8da480b0cb19aab8becfb4827e4aaa5cf7de6197f5a1ac469",
+  "covering/episode_000080.h5": "2b6b9b9806d684420f7a09b4426c65aa61ba7af98574e2fe3a787eec8cd926f1",
+  "covering/episode_000081.h5": "1931ed73a31e6735a3e0160f8c79e8ba169d21ffd11409a75bb1f6282a41a554",
+  "covering/episode_000082.h5": "b897e7a8f44f3ee7063df9e078ea152dbe52622e6908257692aa9d41f4a9eb03",
+  "covering/episode_000083.h5": "45a7cf1521b5f2e6bc146b8a0d7ac8e30c996491487d278531267a82c5ebf0bc",
+  "covering/episode_000084.h5": "ed8a527e34c115c3fd551586a29d914f6e31d8ed06a4e2f10899fb3e8906ea33",
+  "covering/episode_000085.h5": "a428f8177235d5cb8ae076564045d29378a83797a85caf83ac2fb15ca830f249",
+  "covering/episode_000086.h5": "077b173c08dac9b6ff134f0ac484a2e834064f709bba12d1c1737464160679b3",
+  "covering/episode_000087.h5": "6e41fd3697342368889709163af0f1abfbac26f47f9cde81f08a4a6f1adb0a99",
+  "covering/episode_000088.h5": "6cc62ef7810338fc398afd62a6eb68ffecbc19d8fdf642e40f82c3ee21a6be67",
+  "covering/episode_000089.h5": "b816eab13a682ffe5a93d4bf034284ec0b18bc82cd420a9822dcff389356ddaf",
+  "covering/episode_000090.h5": "da89c0df87989a12bacdf640d61393495790644131fa3ba5640a09fe14930c19",
+  "covering/episode_000091.h5": "ddedc61ea9b3c9bad5466fa1be328fe79c038ceae39134bc0fc8ac600cd732fc",
+  "covering/episode_000092.h5": "49830a81bc967581b0d118b21e20c976337aa6231b5594631e5d89894c82fcd2",
+  "covering/episode_000093.h5": "9fdc6fbad1d209d2170df9272cefd5712ec37c92264db50db6ecfdc41bfd037d",
+  "covering/episode_000094.h5": "290dcceb52430127dbfb091d55f133fc8e90b979d744be51c84336110da59312",
+  "covering/episode_000095.h5": "60c7602fb8d020526250474214fe1f19d86dd281d24736ed9fb9497b5ffcd4d6",
+  "covering/episode_000096.h5": "1881b4595e010142f194a2a3dccb8683243459023b1284dd9ce73e0ca935d092",
+  "covering/episode_000097.h5": "fc8398621a44cebf3ed401ae4672f71a37008f992c23842aa58a7d7fd65547f6",
+  "covering/episode_000098.h5": "3ed7221909ceb25e2df49f3f8edc951f5ca961f0ab392a6e5b9e0a0f9263b153",
+  "covering/episode_000099.h5": "92cbd0a3b171a69bb9bccd03ee0a75721735e9a95e966fe365c37deea91a9a39",
+  "covering/episode_000100.h5": "a9b5396a6dd5ff8b83272eb2cc7c1de40eb762b3fe4442286cf5a397bfdf654b",
+  "covering/episode_000101.h5": "4e9e8f434299e2b6bb6aed1bcc37af1797d477f3b71480f1cfa8af5aec72b493",
+  "covering/episode_000102.h5": "817ee0b0c81751a0db8e303359ab10c2bc42c39cdc09ca54374b09beb37f5a44",
+  "covering/episode_000103.h5": "9173018537a4dc7b6f2f518d3178aa55170c46c570cb8fa33fa2a1e49dd8113f",
+  "covering/episode_000104.h5": "2067e14914b7fe8a2eeb21a2e2a16303c4afa149fe28786feb0a1219a1a2a061",
+  "covering/episode_000105.h5": "6c240dbc9d76c28e5dd2cf5e24c34473ccaa967749f6f00c297390e59e1cf639",
+  "covering/episode_000106.h5": "d3d3564f8e8713647ff9d591e4cc8655e69565977f19b0545fc19c2296d6f81f"
+ },
+ "excluded": {
+  "covering/episode_000057.h5": {
+   "reason": "invalid by the ingest validator (device timestamps not strictly increasing); kept invalid - no timestamp repair (user decision 2026-11-10)",
+   "validator": "rw-ingest-validator/1",
+   "validation_reasons": [
+    "cameras/cam_135122076054/frame_timestamp_us: not strictly increasing",
+    "cameras/cam_135122076054/sensor_timestamp_us: not strictly increasing",
+    "cameras/cam_135122076054/stereo/frame_timestamp_us: not strictly increasing",
+    "cameras/cam_135122076054/stereo/sensor_timestamp_us: not strictly increasing"
+   ],
+   "first_failed_at": "2026-11-09T23:03:15+09:00",
+   "raw_sha256": "0c7ec8080c565c27d41539bbf674bc9c981cf3eec5a7304c7a9cf3b9cc953475",
+   "raw_size": 209814304,
+   "timestamp_wrap": {
+    "cam_135122076054/frame_timestamp_us": {
+     "nonincreasing_at": [
+      145
+     ],
+     "before": 4294937714,
+     "after": 37138,
+     "diff_plus_2_32": 66720
+    },
+    "cam_135122076054/sensor_timestamp_us": {
+     "nonincreasing_at": [
+      145
+     ],
+     "before": 4294937631,
+     "after": 37055,
+     "diff_plus_2_32": 66720
+    },
+    "cam_135122076054/stereo/frame_timestamp_us": {
+     "nonincreasing_at": [
+      145
+     ],
+     "before": 4294937670,
+     "after": 37094,
+     "diff_plus_2_32": 66720
+    },
+    "cam_135122076054/stereo/sensor_timestamp_us": {
+     "nonincreasing_at": [
+      145
+     ],
+     "before": 4294935759,
+     "after": 35183,
+     "diff_plus_2_32": 66720
+    }
+   }
+  },
+  "covering/episode_000061.h5": {
+   "reason": "invalid by the ingest validator (device timestamps not strictly increasing); kept invalid - no timestamp repair (user decision 2026-11-10)",
+   "validator": "rw-ingest-validator/1",
+   "validation_reasons": [
+    "cameras/cam_135122073201/frame_timestamp_us: not strictly increasing",
+    "cameras/cam_135122073201/sensor_timestamp_us: not strictly increasing",
+    "cameras/cam_135122073201/stereo/frame_timestamp_us: not strictly increasing",
+    "cameras/cam_135122073201/stereo/sensor_timestamp_us: not strictly increasing"
+   ],
+   "first_failed_at": "2026-11-09T23:09:25+09:00",
+   "raw_sha256": "736dcb57bf2acbefd1c0a6d4a5abd884309c84ac4bc36e8ecee617996c2daa1c",
+   "raw_size": 241793202,
+   "timestamp_wrap": {
+    "cam_135122073201/frame_timestamp_us": {
+     "nonincreasing_at": [
+      8
+     ],
+     "before": 4294926810,
+     "after": 26234,
+     "diff_plus_2_32": 66720
+    },
+    "cam_135122073201/sensor_timestamp_us": {
+     "nonincreasing_at": [
+      8
+     ],
+     "before": 4294926727,
+     "after": 26151,
+     "diff_plus_2_32": 66720
+    },
+    "cam_135122073201/stereo/frame_timestamp_us": {
+     "nonincreasing_at": [
+      8
+     ],
+     "before": 4294926766,
+     "after": 26190,
+     "diff_plus_2_32": 66720
+    },
+    "cam_135122073201/stereo/sensor_timestamp_us": {
+     "nonincreasing_at": [
+      8
+     ],
+     "before": 4294924435,
+     "after": 23859,
+     "diff_plus_2_32": 66720
+    }
+   }
+  }
+ }
+}

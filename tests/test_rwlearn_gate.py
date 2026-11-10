@@ -375,10 +375,13 @@ def test_preview_matches_a_fully_passed_plan_and_the_table(scenes, monkeypatch):
     if scenes == "measured":
         measured_scenes(monkeypatch)
     m = manifest(validated=True)
-    for task in NEW_TASKS:
-        m["counts"][task] = {"complete": True, "target": 100}
-        m["episodes"].update({f"{task}/episode_{i:06d}.h5": entry(task, i, validated=True) for i in range(100)})
-    rep = gate.evaluate(m, launch.TASKS)
+    m["counts"]["pick-and-place"] = {"complete": True, "target": 100}
+    m["episodes"].update({f"pick-and-place/episode_{i:06d}.h5": entry("pick-and-place", i, validated=True)
+                          for i in range(100)})
+    covering = amended_manifest()  # covering passes through its 98-episode amendment
+    m["counts"].update(covering["counts"])
+    m["episodes"].update(covering["episodes"])
+    rep = gate.evaluate(m, launch.TASKS, amendments=amendment())
     plan = launch.plan(rep, launch.TASKS, "c")
     full = plan["rows"]
     prev = launch.plan_preview("c")["rows"]
@@ -523,7 +526,8 @@ def test_new_tasks_have_an_independent_100_episode_gate(task, tmp_path, monkeypa
          "episodes": {f"{task}/episode_{i * 2:06d}.h5": entry(task, i * 2, validated=True) for i in range(100)}}
     path = tmp_path / "manifest.json"
     path.write_text(json.dumps(m))
-    default = gate.evaluate_file(path)  # the default enumerates every registered target, each gated on its own
+    # the default 100-episode rule (covering's 98-episode amendment is tested below)
+    default = gate.evaluate_file(path, amendments={})  # the default enumerates every registered target, each alone
     assert tuple(default["tasks"]) == TARGETS and not default["passed"]
     assert default["tasks"][task]["passed"] and default["calibration_hold"][task]["passed"]
     assert all(not default["tasks"][t]["passed"] for t in TARGETS if t != task)
@@ -536,7 +540,7 @@ def test_new_tasks_have_an_independent_100_episode_gate(task, tmp_path, monkeypa
     plan = launch.plan(default, [task], "new-pin")
     assert len(plan["rows"]) == 33 and not plan["refused"]
     m["episodes"].pop(next(iter(m["episodes"])))
-    rep = gate.evaluate(m, [task])
+    rep = gate.evaluate(m, [task], amendments={})
     assert not rep["tasks"][task]["passed"] and not launch.plan(rep, [task], "new-pin")["rows"]
 
 
@@ -555,3 +559,129 @@ def test_documented_training_plan_is_the_preview():
             row["realworld_consumer"] = launch.FQL_CONSUMER[cond]
     assert rows == launch.plan_preview()["rows"]
     assert doc["table"] == launch.plan_table()
+
+
+# ---------------------------------------------------------------------------------------------- task amendments
+EXCLUDED = (57, 61)  # covering: device timestamps not strictly increasing (AMEND-covering-98.md)
+
+
+def amendment(task="covering", excl=EXCLUDED, **over):
+    rec = {"format": gate.AMENDMENT_FORMAT, "task": task, "version": 1, "target": 100 - len(excl),
+           "base_target": 100, "decision": "permit the valid episodes", "decided_by": "user",
+           "decided_at": "2026-11-10T13:00:00+09:00", "document": {"path": "AMEND.md", "sha256": "d" * 64},
+           "episodes": {f"{task}/episode_{i:06d}.h5": hashlib.sha256(f"{task}-{i}".encode()).hexdigest()
+                        for i in range(100) if i not in excl},
+           "excluded": {f"{task}/episode_{i:06d}.h5": {"reason": "timestamps not strictly increasing"}
+                        for i in excl}}
+    rec.update(over)
+    return {task: {"record": rec, "path": f"/cfg/{task}-amend.json", "sha256": "e" * 64}}
+
+
+def amended_manifest(task="covering", excluded=EXCLUDED, validated=True):
+    eps = {}
+    for i in range(100):
+        e = entry(task, i, validated=validated)
+        if i in excluded:  # as the ingest worker records an invalid recording: no sha256, never transferred
+            e.update(sha256=None, validation={"status": "invalid"}, transfer={"status": "pending"}, preprocessing={})
+        eps[f"{task}/episode_{i:06d}.h5"] = e
+    return {"schema": gate.SCHEMA, "schema_version": gate.SCHEMA_VERSION, "episodes": eps,
+            "counts": {task: {"complete": False, "target": 100}}}  # the ingest worker's 100-rule stays unmet
+
+
+def test_amendment_releases_exactly_its_episodes_and_keeps_every_other_check():
+    rep = gate.evaluate(amended_manifest(), ["covering"], amendments=amendment())
+    t = rep["tasks"]["covering"]
+    assert rep["passed"] and rep["geometry_passed"], t["problems"]
+    assert t["valid_and_preprocessed"] == 98 and t["target"] == 98 and len(t["episodes"]) == 98
+    assert t["amendment"]["target"] == 98 and t["amendment"]["excluded"] == [
+        "covering/episode_000057.h5", "covering/episode_000061.h5"] and t["amendment"]["sha256"] == "e" * 64
+    assert rep["calibration_hold"]["covering"]["validated"] == 98
+    assert gate.task_passed(rep, "covering", "snerl") and gate.task_passed(rep, "covering", "e2e_cnn")
+    # without the amendment the same manifest fails the default rule
+    rep = gate.evaluate(amended_manifest(), ["covering"], amendments={})
+    text = " ".join(rep["tasks"]["covering"]["problems"])
+    assert not rep["passed"] and "ingestion not complete" in text and "need exactly 100" in text
+    # every other check is unchanged: one episode's open stage fails the amended task as before
+    m = amended_manifest()
+    m["episodes"]["covering/episode_000004.h5"]["preprocessing"]["stages"].pop("sam3_masks")
+    rep = gate.evaluate(m, ["covering"], amendments=amendment())
+    assert not rep["passed"] and "need exactly 98" in " ".join(rep["tasks"]["covering"]["problems"])
+    # the calibration hold needs all 98
+    m = amended_manifest()
+    m["episodes"]["covering/episode_000004.h5"]["preprocessing"]["stages"].pop(gate.CALIBRATION_STAGE)
+    rep = gate.evaluate(m, ["covering"], amendments=amendment())
+    assert rep["passed"] and not rep["geometry_passed"] and rep["calibration_hold"]["covering"]["validated"] == 97
+
+
+def test_amendment_is_task_specific_and_the_default_stays_100():
+    m = manifest(n_drawer=98)
+    m["episodes"].update(amended_manifest()["episodes"])
+    m["counts"]["covering"] = {"complete": False, "target": 100}
+    rep = gate.evaluate(m, ["drawer-open", "mug-hanging", "covering"], amendments=amendment())
+    assert rep["tasks"]["covering"]["passed"] and rep["tasks"]["mug-hanging"]["passed"]
+    assert not rep["tasks"]["drawer-open"]["passed"] and rep["tasks"]["drawer-open"]["target"] == 100
+    assert rep["tasks"]["drawer-open"]["amendment"] is None
+    assert "need exactly 100" in " ".join(rep["tasks"]["drawer-open"]["problems"])
+
+
+@pytest.mark.parametrize("mutate,reason", [
+    (lambda m: m["episodes"].update({"covering/episode_000100.h5": entry("covering", 100)}),
+     "not in the gate amendment"),
+    (lambda m: m["episodes"].update({"covering/episode_000057.h5": entry("covering", 57)}),
+     "excluded by the amendment but validation is 'valid'"),
+    (lambda m: m["episodes"].pop("covering/episode_000061.h5"), "amendment episode missing from the manifest"),
+    (lambda m: m["episodes"].pop("covering/episode_000005.h5"), "amendment episode missing from the manifest"),
+    (lambda m: m["episodes"].update({"covering/episode_000005.h5": entry("covering", 5, sha="f" * 64)}),
+     "sha256 differs from the gate amendment"),
+    (lambda m: m["counts"]["covering"].update(target=98), "amendment base_target 100"),
+])
+def test_amendment_fails_closed_on_any_other_episode_set(mutate, reason):
+    m = amended_manifest()
+    mutate(m)
+    rep = gate.evaluate(m, ["covering"], amendments=amendment())
+    text = " ".join(rep["tasks"]["covering"]["problems"])
+    assert not rep["passed"] and reason in text, text
+
+
+@pytest.mark.parametrize("over,reason", [
+    ({"format": "x"}, "format"),
+    ({"target": 99}, "target 99 != 98"),
+    ({"base_target": 98}, "base_target"),
+    ({"document": {"path": "AMEND.md"}}, "document"),
+    ({"decided_by": ""}, "provenance"),
+    ({"excluded": {"covering/episode_000057.h5": {}}}, "reason"),
+    ({"excluded": {"drawer-open/episode_000057.h5": {"reason": "x"}}}, "manifest keys of the task"),
+])
+def test_malformed_amendment_records_are_refused(over, reason, tmp_path):
+    rec = amendment(**over)["covering"]["record"]
+    assert reason in gate.amendment_problem(rec)
+    (tmp_path / "a.json").write_text(json.dumps(rec))
+    with pytest.raises(RuntimeError, match="gate amendment"):
+        gate.load_amendments(tmp_path)
+
+
+def test_amendment_records_never_duplicate_content_or_tasks(tmp_path):
+    rec = amendment()["covering"]["record"]
+    dup = copy.deepcopy(rec)
+    dup["episodes"]["covering/episode_000001.h5"] = dup["episodes"]["covering/episode_000000.h5"]
+    assert "duplicated content" in gate.amendment_problem(dup)
+    overlap = copy.deepcopy(rec)
+    overlap["excluded"]["covering/episode_000000.h5"] = {"reason": "x"}
+    assert gate.amendment_problem(overlap)
+    for name in ("a.json", "b.json"):
+        (tmp_path / name).write_text(json.dumps(rec))
+    with pytest.raises(RuntimeError, match="two gate amendments"):
+        gate.load_amendments(tmp_path)
+
+
+def test_the_versioned_covering_amendment_record():
+    """configs/realworld/gate_amendments: exactly covering's 98-episode record (user decision 2026-11-10)."""
+    amends = gate.load_amendments()
+    assert set(amends) == {"covering"}
+    rec = amends["covering"]["record"]
+    assert rec["target"] == len(rec["episodes"]) == 98 and rec["base_target"] == gate.TARGET
+    assert sorted(rec["excluded"]) == ["covering/episode_000057.h5", "covering/episode_000061.h5"]
+    assert all("not strictly increasing" in " ".join(v["validation_reasons"]) for v in rec["excluded"].values())
+    assert rec["document"]["path"].endswith("AMEND-covering-98.md")
+    indices = sorted(int(k[-9:-3]) for k in rec["episodes"])
+    assert indices[0] == 0 and indices[-1] == 106 and len(set(indices)) == 98

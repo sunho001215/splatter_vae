@@ -74,7 +74,7 @@ def main() -> None:
         if args.out:
             args.out.write_text(text + "\n")
         print(json.dumps({"passed": report["passed"], "geometry_passed": report["geometry_passed"],
-                          **{t: {**{k: v[k] for k in ("passed", "valid_and_preprocessed", "problem_count")},
+                          **{t: {**{k: v[k] for k in ("passed", "valid_and_preprocessed", "target", "problem_count")},
                                  "calibration_hold": {k: report["calibration_hold"][t][k]
                                                       for k in ("passed", "validated", "problem_count")}}
                              for t, v in report["tasks"].items()}}, indent=1))

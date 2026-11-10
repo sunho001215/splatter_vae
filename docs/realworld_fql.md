@@ -18,6 +18,7 @@ pretrainings (`docs/realworld_baselines.md`); one condition trains its CNN end-t
 | New baseline | ONE end-to-end random-init CNN + FQL (trained jointly, not frozen), official FQL pixel handling, matched to the other conditions | `s4d/rwlearn/pixel.py`, condition `e2e_cnn` |
 | Single view | random camera per sample, fixed through the history and the paired next observation | `OfflineTransitions` / `OfflinePixelTransitions`, tests |
 | Calibration hold | only geometry-dependent consumers wait for `calibration_validated`; the 100-episode gate is unchanged | `s4d/rwlearn/gate.py` |
+| covering 98 episodes | user decision 2026-11-10: task-specific gate amendment on its 98 valid episodes. The same episodes and splits apply to every method; there is no duplication and no timestamp repair | `configs/realworld/gate_amendments/covering-98-20261110.json`, `docs/realworld_baselines.md` |
 
 ## Implementation choice: faithful PyTorch port + official-code equivalence
 

@@ -26,6 +26,19 @@ pose refinement exists anywhere in the release path.
         [--exception-eligible 135122070988/color ...] --out rig-loma-T.json
     python -m s4d.realworld.rig_loma_publish fill-exception --rig rig-loma-T.json --cameras C ... \
         --evidence FILE ... --decision accepted --decided-by NAME --reference TEXT --out rig-loma-T-fx.json
+    python -m s4d.realworld.rig_loma_publish split-periods --rig rig-loma-T[-fx].json --periods period_steps.json \
+        --cameras C ... --evidence FILE ... --decided-by NAME --reference TEXT --out-dir DIR
+
+RECORDING PERIODS (user decision 2026-11-10 ~13:00, covering: "handle credible recording-period camera movement
+explicitly rather than forcing one shared calibration"): ``split-periods`` writes one NEW document per recording period
+(``<stem>.<period>.json``) from a published document and the pre-registered period analysis (``rwx-period-steps/1``,
+realworld-ops/rwx/tools/period_steps.py on the FIXREG registrations). Each period document lists only its period's
+episodes (episodes, per-episode G5b evidence, pool frames: the released rig mode therefore rejects every other
+episode); a camera with a credible rigid step between a period and the BASE period (the one the shared solve is
+dominated by) gets that period's pose ``exp([omega]x) @ T_cam_base`` - omega = the camera rotation whose image field
+best matches the measured rigid image step - bounded by ``MAX_PERIOD_ROT_DEG``; everything else (verdict, depth
+scales, exception, reference arrays) is the published document's. Format, rig mode and records are unchanged; the
+records builder takes the period documents of a task together (``calib.release plan --rig T=A --rig T=B``).
 """
 
 from __future__ import annotations
@@ -39,7 +52,7 @@ from pathlib import Path
 
 import numpy as np
 
-from s4d.realworld.calib.dw.geom import pose_distance
+from s4d.realworld.calib.dw.geom import pose_distance, so3_exp
 from s4d.realworld.calib.dw.publish import CAMS, GATES, fixedness_epipolar, fixedness_registration, verdict
 from s4d.realworld.robotics.model import GRIPPER_MAP_2F85
 
@@ -56,6 +69,10 @@ EPISODE_CHECKS = {"max_heldout_depth_median_m": GATES["depth_median_mm"] / 1000.
                   "min_explained_fraction": GATES["explained"]}
 ROBOT_MODEL = {"gripper_map": GRIPPER_MAP_2F85, "surface": "visual"}
 EVIDENCE_FIELDS = ("path", "sha256")
+PERIOD_FORMAT = "rwx-period-steps/1"
+MAX_PERIOD_ROT_DEG = 0.035  # 1/10 of the 0.35 deg rig tolerance (G1 spread, G6 perturbation); larger -> user decision
+# FIXREG's evaluation grid (calib-loma/fixreg PREREG: 10 x 7 points spanning x 32..608, y 32..448 px)
+PERIOD_GRID = np.array([(x, y) for y in np.linspace(32.0, 448.0, 7) for x in np.linspace(32.0, 608.0, 10)])
 
 
 def sha256_file(path) -> str:
@@ -185,7 +202,8 @@ def depth_scales(final: dict, others: dict) -> tuple[dict, dict]:
     return ds, agree
 
 
-def build_document(*, task, R, final, fixed, frozen, ref_files, depth_results, eligible, commit, sources) -> dict:
+def build_document(*, task, R, final, fixed, frozen, ref_files, depth_results, eligible, commit, sources,
+                   user_decision=USER_DECISION) -> dict:
     from s4d.realworld.calib.rig import FIXEDNESS_RULE_G5AB, FORMAT
 
     if final.get("task") != task or R["full"].get("task") != task:
@@ -219,7 +237,7 @@ def build_document(*, task, R, final, fixed, frozen, ref_files, depth_results, e
                                                 "decision from the FIXREG stream with "
                                                 "`rig_loma_publish fill-exception` (writes a new document)"},
            "episode_checks": EPISODE_CHECKS, "robot_model": ROBOT_MODEL,
-           "provenance": {"frozen_commit": commit, "gate_version": GATE_VERSION, "user_decision": USER_DECISION,
+           "provenance": {"frozen_commit": commit, "gate_version": GATE_VERSION, "user_decision": user_decision,
                           "final_variant": final["variant"], "config": final["config"],
                           "depth_pose_agreement": agree, **sources},
            "cameras": {}}
@@ -264,7 +282,7 @@ def publish(a) -> dict:
                "depth_results": {s.split("=", 1)[0]: _ref(s.split("=", 1)[1]) for s in a.depth_result or []}}
     doc = build_document(task=a.task, R=R, final=final, fixed=fixed, frozen=frozen, ref_files=ref_files,
                          depth_results=depth_results, eligible=tuple(a.exception_eligible or ()), commit=a.commit,
-                         sources=sources)
+                         sources=sources, user_decision=getattr(a, "user_decision", None) or USER_DECISION)
     return publish_rig(out, doc, ref_files)
 
 
@@ -294,6 +312,109 @@ def fill_exception(doc: dict, *, cameras, evidence, decision, decided_by, refere
     return new
 
 
+def rotation_from_rigid(rigid, K, grid=PERIOD_GRID) -> np.ndarray:
+    """Camera rotation omega (rad, camera frame) whose small-angle pure-rotation image field (K R K^-1, FIXREG
+    ``design_rot``) best matches, in least squares over ``grid``, the rigid image step ``rigid`` = (tx px, ty px,
+    in-plane rotation deg) about the principal point (FIXREG similarity without its scale, which is common-mode
+    thermal). Image content displaced by that step <=> ``T_cam_base' = exp([omega]x) @ T_cam_base``."""
+    fx, fy, cx, cy = map(float, K)
+    tx, ty, rot = float(rigid[0]), float(rigid[1]), np.radians(float(rigid[2]))
+    x, y = grid[:, 0], grid[:, 1]
+    field = np.stack([tx - rot * (y - cy), ty + rot * (x - cx)], 1)
+    xh, yh = (x - cx) / fx, (y - cy) / fy
+    J = np.zeros((len(grid), 2, 3))
+    J[:, 0] = np.stack([-fx * xh * yh, fx * (1 + xh ** 2), -fx * yh], 1)
+    J[:, 1] = np.stack([-fy * (1 + yh ** 2), fy * xh * yh, fy * xh], 1)
+    return np.linalg.lstsq(J.reshape(-1, 3), field.reshape(-1), rcond=None)[0]
+
+
+def period_steps(doc: dict, ev: dict) -> tuple[dict, str, dict]:
+    """(periods {name: sorted episodes}, base period, {camera: {period: omega rad}}) of a pre-registered period
+    analysis (``rwx-period-steps/1``) for ``doc``. Refuses (SystemExit, nothing is written) whenever the analysis does
+    not support period poses: periods not partitioning the document's episodes, credible within-period movement, an
+    inconclusive step, a camera-specific scale flag, a step larger than ``MAX_PERIOD_ROT_DEG`` or an omega that does
+    not reproduce from the recorded step."""
+    from s4d.realworld.calib.rig import FORMAT
+
+    if ev.get("format") != PERIOD_FORMAT or ev.get("task") != doc.get("task") or doc.get("format") != FORMAT:
+        raise SystemExit(f"not a {PERIOD_FORMAT} analysis of task {doc.get('task')!r}")
+    periods = {p: sorted(e) for p, e in (ev.get("periods") or {}).items()}
+    base = ev.get("base_period")
+    flat = [e for v in periods.values() for e in v]
+    if len(periods) < 2 or base not in periods or len(flat) != len(set(flat)) or sorted(flat) != sorted(doc["episodes"]):
+        raise SystemExit("the periods must partition the document's episodes exactly (>= 2 periods incl. the base)")
+    steps = {}
+    for cam in doc["cameras"]:
+        c = (ev.get("cameras") or {}).get(cam) or {}
+        within = c.get("within") or {}
+        if within.get("event") is not False:
+            raise SystemExit(f"{cam}: within-period movement {within.get('event')!r} {within.get('reasons')} -> user "
+                             "decision")
+        for p in periods:
+            if p == base:
+                continue
+            s = (c.get("period_steps") or {}).get(p) or {}
+            if s.get("class") not in ("step", "no_step") or s.get("scale_flag") is not False:
+                raise SystemExit(f"{cam} {p}: period step {s.get('class')!r}, scale flag {s.get('scale_flag')!r} -> "
+                                 "user decision")
+            if s["class"] == "no_step":
+                continue
+            omega = rotation_from_rigid(s["rigid"], c["K"])
+            if not np.allclose(np.degrees(omega), s.get("omega_deg"), rtol=0, atol=1e-9):
+                raise SystemExit(f"{cam} {p}: recorded omega {s.get('omega_deg')} does not reproduce")
+            if np.degrees(np.linalg.norm(omega)) > MAX_PERIOD_ROT_DEG:
+                raise SystemExit(f"{cam} {p}: period step {np.degrees(np.linalg.norm(omega)):.4f} deg > "
+                                 f"{MAX_PERIOD_ROT_DEG} deg -> user decision")
+            steps.setdefault(cam, {})[p] = omega
+    return periods, base, steps
+
+
+def split_periods(doc: dict, ev: dict, *, cameras, evidence, decided_by, reference, source_sha256,
+                  decided_at=None) -> dict:
+    """{period: NEW document} (see the module docstring). ``cameras`` must be exactly the cameras with a credible
+    period step (the pre-registered rule applies to all of them); ``evidence``: [(path, sha256)]."""
+    periods, base, steps = period_steps(doc, ev)
+    if not steps:
+        raise SystemExit("no camera has a credible period step: the published document applies to every period")
+    if sorted(cameras) != sorted(steps):
+        raise SystemExit(f"cameras {sorted(cameras)} != cameras with a credible period step {sorted(steps)}")
+    if not evidence or not decided_by or not reference:
+        raise SystemExit("evidence, decided_by and reference are required")
+    names = {p: f"{doc['name']}-{p}" for p in periods}
+    record = {"base_period": base, "periods": {p: len(v) for p, v in periods.items()}, "documents": sorted(names.values()),
+              "derived_from": {"name": doc["name"], "sha256": source_sha256}, "cameras_with_period_pose": sorted(steps),
+              "evidence": [{"path": str(p), "sha256": h} for p, h in evidence], "decided_by": decided_by,
+              "decided_at": decided_at or time.strftime("%Y-%m-%dT%H:%M:%S%z"), "reference": reference,
+              "rule": f"{PERIOD_FORMAT}: T_period = exp([omega]x) @ T_cam_base for cameras with a credible rigid step "
+                      f"vs the base period (|omega| <= {MAX_PERIOD_ROT_DEG} deg); every other field is the published "
+                      "document's; within-period movement, an inconclusive step or a camera-specific scale refuses"}
+    out = {}
+    for p, eps in periods.items():
+        keep = set(eps)
+        new = copy.deepcopy(doc)
+        new.pop("reference_sha256", None)
+        new["name"], new["episodes"] = names[p], eps
+        new["fixedness_evidence"] = {c: {e: v for e, v in rows.items() if e in keep}
+                                     for c, rows in doc["fixedness_evidence"].items()}
+        new["pool_frames"] = {e: v for e, v in (doc.get("pool_frames") or {}).items() if e in keep}
+        for cam, entry in new["cameras"].items():
+            entry["provenance"] = {**(entry.get("provenance") or {}), "rig": names[p]}
+            omega = steps.get(cam, {}).get(p)
+            if omega is None:
+                continue
+            T = np.asarray(doc["cameras"][cam]["T_cam_base"], float)
+            R = np.eye(4)
+            R[:3, :3] = so3_exp(omega)
+            entry["T_cam_base"] = (R @ T).tolist()
+            entry["period_pose"] = {"period": p, "base_period": base, "omega_deg": np.degrees(omega).tolist(),
+                                    "rot_deg": float(np.degrees(np.linalg.norm(omega))),
+                                    "rigid_step": ev["cameras"][cam]["period_steps"][p]["rigid"],
+                                    "base_T_cam_base": T.tolist()}
+        new["period"] = {"name": p, "episodes": eps, **record}
+        out[p] = new
+    return out
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -308,6 +429,8 @@ def main(argv=None):
     p.add_argument("--commit", required=True)
     p.add_argument("--depth-result", action="append", help="stage=all.json of an independent solve (depth scale)")
     p.add_argument("--exception-eligible", nargs="*", default=[])
+    p.add_argument("--user-decision", help="the task's decision text for the provenance (default: the 2026-11-08 "
+                                           "drawer-open / mug-hanging release text)")
     p.add_argument("--out", required=True)
     f = sub.add_parser("fill-exception")
     f.add_argument("--rig", required=True)
@@ -317,6 +440,14 @@ def main(argv=None):
     f.add_argument("--decided-by", required=True)
     f.add_argument("--reference", required=True, help="decision reference (e.g. HANDOFF line, FIXREG report)")
     f.add_argument("--out", required=True)
+    s = sub.add_parser("split-periods")
+    s.add_argument("--rig", required=True, help="the published (or exception-filled) document")
+    s.add_argument("--periods", required=True, help=f"the pre-registered period analysis ({PERIOD_FORMAT})")
+    s.add_argument("--cameras", nargs="+", required=True, help="exactly the cameras with a credible period step")
+    s.add_argument("--evidence", nargs="*", default=[], help="further evidence files (sha256 computed now)")
+    s.add_argument("--decided-by", required=True)
+    s.add_argument("--reference", required=True)
+    s.add_argument("--out-dir", required=True)
     a = ap.parse_args(argv)
     if a.cmd == "publish":
         doc = publish(a)
@@ -326,6 +457,22 @@ def main(argv=None):
         return
     from s4d.realworld.calib.rig import load_rig, publish_rig
 
+    if a.cmd == "split-periods":
+        doc, ref, _ = load_rig(a.rig)
+        docs = split_periods(doc, json.loads(Path(a.periods).read_text()), cameras=a.cameras,
+                             evidence=[(p, sha256_file(p)) for p in (a.periods, *a.evidence)],
+                             decided_by=a.decided_by, reference=a.reference, source_sha256=sha256_file(a.rig))
+        paths = {p: Path(a.out_dir) / f"{Path(a.rig).stem}.{p}.json" for p in docs}
+        if any(x.exists() or x.with_suffix(".reference.npz").exists() for x in paths.values()):
+            raise SystemExit(f"{a.out_dir}: a period document exists already (published documents are never replaced)")
+        arrays = {f"{c.replace('/', '__')}__{k}": v for c, d in ref.items() for k, v in d.items()}
+        Path(a.out_dir).mkdir(parents=True, exist_ok=True)
+        for p, d in docs.items():
+            pub = publish_rig(paths[p], d, arrays)
+            print(json.dumps({"path": str(paths[p]), "name": pub["name"], "episodes": len(pub["episodes"]),
+                              "period_poses": {c: v["period_pose"]["rot_deg"] for c, v in pub["cameras"].items()
+                                               if "period_pose" in v}}))
+        return
     out = Path(a.out)
     if out.exists() or out.with_suffix(".reference.npz").exists():
         raise SystemExit(f"{out} exists: published documents are never replaced")

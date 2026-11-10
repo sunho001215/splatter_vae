@@ -117,6 +117,22 @@ they hold.
   compact store's stage `train_data`. The list is configurable; a name that is never recorded makes the gate fail closed.
   DINO is not required.
 
+**Task-specific amendments** (user decision 2026-11-10 ~13:00 for covering). A versioned record
+`configs/realworld/gate_amendments/<name>.json` (`rw-gate-amendment/1`) can fix one task's episode set. It lists the
+valid episodes (manifest key -> sha256) and the excluded invalid ones. Its `target` replaces 100 for that task only.
+covering's record `covering-98-20261110.json` has 98 episodes; 000057 and 000061 are excluded (one 32-bit device
+timestamp wrap each). They are never repaired or duplicated (`realworld-ops/rwx/AMEND-covering-98.md`).
+
+For an amended task the ingest worker's `counts.complete` 100-rule does not apply. Instead the gate requires:
+
+- the manifest's task episodes are exactly the listed and excluded keys, so a new recording fails the gate;
+- the excluded episodes are still invalid;
+- every listed episode is valid with the recorded sha256;
+- every other check passes unchanged, on exactly `target` episodes.
+
+The report records the per-task `target` and `amendment` (path, sha256). Splits are unchanged and therefore identical
+across methods: every consumer binds the gate's episodes and derives `split_episodes` (seed 0, 10 %) from them.
+
 Each task is gated alone (no joint target). GEOMETRY-DEPENDENT consumers (SNeRL, 3D-MVP, SinCro, our method)
 additionally need the per-episode `calibration_validated` record bound to the current calibration, and a store built
 from it (`docs/realworld_fql.md`, "Calibration hold per consumer"); ReViWo and DynaMo do not. Every generated config
@@ -142,7 +158,7 @@ The gate is enforced twice:
      `accept` override (`source_missing` is never cleared), and files no longer present;
    - unknown flags and unknown validation states fail;
    - `remote_sha256` must equal the sha256;
-   - exactly 100 counted, preprocessed episodes are required.
+   - exactly 100 counted, preprocessed episodes are required (an amended task: exactly its record's `target`).
 
 Nothing is registered or launched by this branch.
 

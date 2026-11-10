@@ -14,6 +14,15 @@ iff
 * no episode of the task is still pending / incomplete / retrying (the set is final), and
 * every valid episode's ``preprocessing.status == "done"`` and each REQUIRED stage is ``done`` for that episode's sha256.
 
+TASK-SPECIFIC AMENDMENTS (user decision 2026-11-10 ~13:00, covering: "permit training on the 98 valid episodes
+through a documented task-specific amendment ... never duplicate episodes or repair timestamps"): a versioned record
+``configs/realworld/gate_amendments/<name>.json`` (format ``rw-gate-amendment/1``) fixes a task's episode set - the
+listed episodes (manifest key -> sha256) and the excluded invalid ones - and its ``target`` (= the number of listed
+episodes). For that task the ingest worker's ``counts.complete`` (its 100-rule) is replaced by: the manifest's task
+episodes are EXACTLY the listed + excluded keys (no new arrival, none missing), every excluded key is still invalid,
+every listed episode is valid with the recorded sha256, ``counts.target`` equals the record's ``base_target``; every
+other check is unchanged and exactly ``target`` episodes must pass. Tasks without a record keep the default 100.
+
 Every episode also needs ``train_data.output_format`` >= ``s4d.realworld.train/1.1.0`` and explicit family verdicts
 from ``qa.output_format == "rwprep-qa/3"``. Stage-name overrides cannot waive these evidence requirements; old
 train_data@1 / qa@2 records and reports without families never release a consumer.
@@ -69,6 +78,8 @@ MANIFEST = Path("/home/ws/ws/realworld-ops/ingest/manifest.json")
 SCHEMA, SCHEMA_VERSION = "rw-ingest-manifest", 2
 STAGE_SCHEMA, STAGE_SCHEMA_VERSION = "rw-preprocess", 1
 TARGET = 100
+AMENDMENTS = Path(__file__).resolve().parents[2] / "configs" / "realworld" / "gate_amendments"
+AMENDMENT_FORMAT = "rw-gate-amendment/1"
 # Preprocessing stages the baselines and FQL consume, named as the preprocessing dispatcher records them
 # (realworld-ops/pre/tools/rwprep_dispatch.py: the pipeline's stage records + its QA record) plus the compact training
 # store (stage ``train_data`` of s4d.realworld.train_store, format branch). DINO is NOT required: SNeRL's DINO
@@ -200,7 +211,70 @@ def _decision(e: dict) -> str | None:
     return o.get("decision") if isinstance(o, dict) else None
 
 
-def evaluate(manifest: dict, tasks, *, required_stages=REQUIRED_STAGES, target: int = TARGET) -> dict:
+# ---------------------------------------------------------------------------------------------- task amendments
+def amendment_problem(rec: dict, base_target: int = TARGET) -> str | None:
+    """Why a ``rw-gate-amendment/1`` record is malformed (None: well-formed). It may only shrink a task's set to its
+    valid recordings among ``base_target`` received ones: listed + excluded = ``base_target``, distinct content."""
+    if not isinstance(rec, dict) or rec.get("format") != AMENDMENT_FORMAT:
+        return f"format is not {AMENDMENT_FORMAT}"
+    task, eps, exc = rec.get("task"), rec.get("episodes"), rec.get("excluded")
+    if not isinstance(task, str) or not task:
+        return "task missing"
+    if not (isinstance(eps, dict) and eps and isinstance(exc, dict) and exc):
+        return "episodes and excluded must be non-empty maps"
+    if not all(isinstance(k, str) and k.startswith(f"{task}/") for k in (*eps, *exc)):
+        return "episode keys must be manifest keys of the task"
+    if not all(isinstance(s, str) and _SHA.match(s) for s in eps.values()) or len(set(eps.values())) != len(eps):
+        return "every listed episode needs its own sha256 (no duplicated content)"
+    if set(eps) & set(exc):
+        return "an episode is both listed and excluded"
+    if not all(isinstance(v, dict) and v.get("reason") for v in exc.values()):
+        return "every exclusion needs a reason"
+    if rec.get("target") != len(eps):
+        return f"target {rec.get('target')!r} != {len(eps)} listed episodes"
+    if rec.get("base_target") != base_target or len(eps) + len(exc) != base_target:
+        return f"listed + excluded must equal base_target {base_target}"
+    doc = rec.get("document")
+    if not (isinstance(doc, dict) and doc.get("path") and _SHA.match(str(doc.get("sha256", "")))):
+        return "document path + sha256 missing"
+    if not all(rec.get(k) for k in ("decision", "decided_by", "decided_at")):
+        return "decision provenance missing"
+    return None
+
+
+def load_amendments(directory: Path = AMENDMENTS) -> dict:
+    """{task: {"record", "path", "sha256"}} of the versioned amendment records; a malformed record or two records for
+    one task raise (fail closed)."""
+    out = {}
+    for path in sorted(Path(directory).glob("*.json")):
+        raw = path.read_bytes()
+        rec = json.loads(raw)
+        why = amendment_problem(rec)
+        if why:
+            raise RuntimeError(f"gate amendment {path}: {why}")
+        if rec["task"] in out:
+            raise RuntimeError(f"two gate amendments for {rec['task']}: {out[rec['task']]['path']}, {path}")
+        out[rec["task"]] = {"record": rec, "path": str(path), "sha256": hashlib.sha256(raw).hexdigest()}
+    return out
+
+
+def amendment_mismatch(rec: dict, mine: dict) -> list[str]:
+    """Problems of a task's manifest episodes against its amendment: the set must be exactly listed + excluded and
+    every excluded episode still invalid."""
+    listed, excluded = set(rec["episodes"]), set(rec["excluded"])
+    out = [f"{k}: not in the gate amendment (new recording? the amendment needs a new decision)"
+           for k in sorted(set(mine) - listed - excluded)]
+    out += [f"{k}: amendment episode missing from the manifest" for k in sorted((listed | excluded) - set(mine))]
+    out += [f"{k}: excluded by the amendment but validation is {(mine[k].get('validation') or {}).get('status')!r}"
+            for k in sorted(excluded & set(mine)) if (mine[k].get("validation") or {}).get("status") != "invalid"]
+    return out
+
+
+def evaluate(manifest: dict, tasks, *, required_stages=REQUIRED_STAGES, target: int = TARGET,
+             amendments: dict | None = None) -> dict:
+    """``target``: the default per-task episode count; ``amendments`` ({task: load_amendments() entry}, default: the
+    versioned records) replace it for their task."""
+    amendments = load_amendments() if amendments is None else amendments
     report = {"passed": False, "geometry_passed": False, "checked_at_unix": time.time(),
               "schema": manifest.get("schema"), "required_stages": list(required_stages),
               "calibration_stage": CALIBRATION_STAGE, "target": target, "tasks": {}, "calibration_hold": {},
@@ -217,11 +291,19 @@ def evaluate(manifest: dict, tasks, *, required_stages=REQUIRED_STAGES, target: 
         problems, hold_problems, hold_ok, identities = [], [], {}, {}
         family_fail = {f: [] for f in QA_FAMILIES}
         counts = (manifest.get("counts") or {}).get(task) or {}
-        if counts.get("complete") is not True:
-            problems.append("ingestion not complete for this task (counts.complete is not true)")
-        if counts.get("target") != target:
-            problems.append(f"manifest target {counts.get('target')} != {target}")
+        amend = amendments.get(task)
+        rec = amend["record"] if amend else None
+        task_target = rec["target"] if rec else target
         mine = {k: e for k, e in episodes.items() if e.get("task") == task}
+        if rec is None:
+            if counts.get("complete") is not True:
+                problems.append("ingestion not complete for this task (counts.complete is not true)")
+            if counts.get("target") != target:
+                problems.append(f"manifest target {counts.get('target')} != {target}")
+        else:  # the amendment's exact episode set replaces the ingest worker's 100-rule
+            if counts.get("target") != rec["base_target"]:
+                problems.append(f"manifest target {counts.get('target')} != amendment base_target {rec['base_target']}")
+            problems += amendment_mismatch(rec, mine)
         valid, indices, excluded = [], set(), []
         for key, e in sorted(mine.items()):
             if _decision(e) == "exclude":
@@ -255,6 +337,9 @@ def evaluate(manifest: dict, tasks, *, required_stages=REQUIRED_STAGES, target: 
                 continue
             if transfer.get("status") != "verified" or transfer.get("remote_sha256") != sha:
                 problems.append(f"{key}: transfer {transfer.get('status')} / remote content not verified equal")
+                continue
+            if rec is not None and rec["episodes"].get(key) != sha:
+                problems.append(f"{key}: sha256 differs from the gate amendment's")
                 continue
             idx = e.get("episode_index")
             if not isinstance(idx, int) or idx in indices:
@@ -311,17 +396,22 @@ def evaluate(manifest: dict, tasks, *, required_stages=REQUIRED_STAGES, target: 
             match_recordings(identities, identities)
         except RuntimeError as exc:
             problems.append(str(exc))
-        if len(valid) != target:
-            problems.append(f"{len(valid)} episodes valid + preprocessed, need exactly {target}")
+        if len(valid) != task_target:
+            problems.append(f"{len(valid)} episodes valid + preprocessed, need exactly {task_target}"
+                            + (f" (gate amendment {Path(amend['path']).name})" if rec else ""))
         passed = not problems
         all_ok &= passed
         report["tasks"][task] = {"passed": passed, "valid_and_preprocessed": len(valid), "excluded": excluded,
+                                 "target": task_target,
+                                 "amendment": {"path": amend["path"], "sha256": amend["sha256"], "target": rec["target"],
+                                               "base_target": rec["base_target"], "excluded": sorted(rec["excluded"])}
+                                 if rec else None,
                                  "problems": problems[:50], "problem_count": len(problems),
                                  "episodes": valid if passed else [],
                                  "episode_identities": identities if passed else {}, "store_episodes": []}
         report["families"][task] = {f: {"passed": passed and not family_fail[f], "failed_count": len(family_fail[f]),
                                         "failed_episodes": family_fail[f][:50]} for f in QA_FAMILIES}
-        hold_passed = passed and not hold_problems and len(hold_ok) == target
+        hold_passed = passed and not hold_problems and len(hold_ok) == task_target
         geo_ok &= hold_passed
         report["calibration_hold"][task] = {
             "passed": hold_passed, "validated": len(hold_ok), "problems": hold_problems[:50],

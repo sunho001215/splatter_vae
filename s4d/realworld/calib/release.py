@@ -20,6 +20,11 @@ Two steps, both refusing on any failed check (fail closed, per task: one failing
 
     python -m s4d.realworld.calibration_release plan --manifest M.json --rig drawer-open=rig-loma-drawer-open.json \
         [--path-map /remote/prefix=/local/prefix] --out plan.json
+
+Recording-period documents (``calib.loma.publish split-periods``): ``--rig T=A --rig T=B`` gives a task several
+documents; they must be the period documents of ONE published document, their periods partition exactly the task's
+valid episodes, and each episode is checked against the document of its period (its calibrate record must have been
+built with exactly that document). A single document keeps the previous behaviour.
     python -m s4d.realworld.calibration_release apply --plan plan.json --state-dir /home/ws/ws/realworld-ops/ingest \
         [--apply]
 """
@@ -166,31 +171,64 @@ def check_episode(key: str, entry: dict, rig_doc: dict, rig_sha: str, path_map=(
     return record, []
 
 
+def period_problems(docs: list, task: str) -> list:
+    """Problems of several documents given for one task: they must be the period documents (``period``) of one
+    published document with disjoint episode sets."""
+    periods = [d.get("period") for d, _ in docs]
+    if not all(isinstance(p, dict) and p.get("name") and p.get("episodes") for p in periods):
+        return [f"{task}: several documents but not all are recording-period documents"]
+    problems = []
+    if len({json.dumps(p.get("derived_from"), sort_keys=True) for p in periods}) != 1:
+        problems.append(f"{task}: the period documents derive from different published documents")
+    if sorted(p["name"] for p in periods) != sorted(periods[0].get("periods") or {}):
+        problems.append(f"{task}: the period documents are not exactly the periods {sorted(periods[0].get('periods'))}")
+    eps = [e for p in periods for e in p["episodes"]]
+    if len(eps) != len(set(eps)):
+        problems.append(f"{task}: an episode belongs to two period documents")
+    return problems
+
+
 def plan(manifest: dict, rigs: dict, *, path_map=(), code_commit: str | None = None) -> dict:
     """{"tasks": {task: {"refused", "problems", "records": {key: record}}}} - records only for tasks without any
-    problem. ``rigs``: {task: path of the release document}."""
+    problem. ``rigs``: {task: path of the release document, or a list of a task's recording-period documents}."""
     from s4d.realworld.calib.rig import load_rig
 
     commit = code_commit or _code_commit()
     out = {"stage": STAGE, "output_format": OUTPUT_FORMAT, "code_commit": commit, "tasks": {}}
-    for task, path in rigs.items():
-        doc, _, fp = load_rig(path)  # refuses unknown formats and a reference that does not match
+    for task, paths in rigs.items():
+        paths = [paths] if isinstance(paths, (str, Path)) else list(paths)
+        docs = [(doc, fp["rig_calibration"]) for doc, _, fp in map(load_rig, paths)]  # refuses unknown / mismatched
         problems, records = [], {}
-        if doc.get("task") != task:
-            problems.append(f"document task {doc.get('task')!r} != {task!r}")
-        if not doc.get("gate_version") or not doc.get("fixedness_rule"):
-            problems.append("not a release document (gate_version / fixedness_rule missing)")
+        for doc, _ in docs:
+            if doc.get("task") != task:
+                problems.append(f"document task {doc.get('task')!r} != {task!r}")
+            if not doc.get("gate_version") or not doc.get("fixedness_rule"):
+                problems.append("not a release document (gate_version / fixedness_rule missing)")
+        if len(docs) > 1:
+            problems += period_problems(docs, task)
         entries = _valid_entries(manifest, task)
         if not entries:
             problems.append("no valid manifest episodes")
         for key, entry in entries.items():
-            rec, why = check_episode(key, entry, doc, fp["rig_calibration"], path_map)
+            doc, sha = docs[0]
+            if len(docs) > 1:  # the episode's period document (the calibrate output dir is named by the episode id)
+                outputs = (((entry.get("preprocessing") or {}).get("stages") or {}).get("calibrate") or {}).get("outputs")
+                eid = Path(str(outputs)).name if outputs else None
+                mine = [(d, s) for d, s in docs if eid in d["period"]["episodes"]]
+                if len(mine) != 1:
+                    problems.append(f"{key}: episode {eid!r} is in {len(mine)} period documents (need exactly 1)")
+                    continue
+                doc, sha = mine[0]
+            rec, why = check_episode(key, entry, doc, sha, path_map)
             problems += why
             if rec is not None:
+                if doc.get("period"):
+                    rec["metrics"]["period"] = {"name": doc["period"]["name"],
+                                                "derived_from": doc["period"].get("derived_from")}
                 records[key] = {**rec, "code_commit": commit}
         refused = bool(problems)
-        out["tasks"][task] = {"refused": refused, "rig": {"path": str(path), "name": doc.get("name"),
-                                                          "sha256": fp["rig_calibration"]},
+        rig = [{"path": str(p), "name": d.get("name"), "sha256": s} for p, (d, s) in zip(paths, docs)]
+        out["tasks"][task] = {"refused": refused, "rig": rig[0] if len(rig) == 1 else rig,
                               "episodes": len(entries), "problems": problems[:200], "problem_count": len(problems),
                               "records": {} if refused else records}
     return out
@@ -251,7 +289,11 @@ def main(argv=None) -> int:
         out = Path(a.out)
         if out.exists():
             raise SystemExit(f"{out} exists")
-        doc = plan(json.loads(Path(a.manifest).read_text()), dict(r.split("=", 1) for r in a.rig),
+        rigs = {}
+        for item in a.rig:  # repeated task=path: the task's recording-period documents
+            task, path = item.split("=", 1)
+            rigs.setdefault(task, []).append(path)
+        doc = plan(json.loads(Path(a.manifest).read_text()), {t: p[0] if len(p) == 1 else p for t, p in rigs.items()},
                    path_map=[tuple(m.split("=", 1)) for m in a.path_map])
         out.write_text(json.dumps(doc, indent=1))
         for task, t in doc["tasks"].items():

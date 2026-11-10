@@ -775,3 +775,188 @@ def test_check_episode_reads_the_completion_record_written_by_run_stage(tmp_path
         "outputs": str(rio.episode_dir(root, ep))}}}}
     record, problems = check_episode("drawer-open/episode_000000.h5", entry, doc, fp["rig_calibration"])
     assert problems == [] and record["metrics"]["calibrate_build_id"] == rec["build_id"]
+
+
+# ------------------------------------------------------------------------------------------------ recording periods
+K_COLOR = [605.6, 604.3, 324.2, 246.9]
+
+
+def test_rotation_from_rigid_recovers_the_camera_rotation_of_a_rigid_image_step():
+    """A camera rotated by omega (T' = exp([omega]x) @ T) moves static scene points by an image field whose rigid
+    similarity part (FIXREG's tx, ty, in-plane rotation) converts back to omega."""
+    from s4d.realworld.calib.dw.geom import so3_exp
+    from s4d.realworld.calib.loma.publish import rotation_from_rigid
+
+    fx, fy, cx, cy = K_COLOR
+    rng = np.random.default_rng(1)
+    uv = np.stack([rng.uniform(32, 608, 400), rng.uniform(32, 448, 400)], 1)
+    z = rng.uniform(0.8, 3.0, 400)
+    X = np.stack([(uv[:, 0] - cx) / fx * z, (uv[:, 1] - cy) / fy * z, z], 1)
+    for omega in (np.radians([0.0, 0.016, 0.0]), np.radians([-0.012, 0.004, 0.009])):
+        Y = X @ so3_exp(omega).T
+        d = np.stack([fx * Y[:, 0] / Y[:, 2] + cx, fy * Y[:, 1] / Y[:, 2] + cy], 1) - uv
+        u = uv - [cx, cy]
+        A = np.zeros((len(uv), 2, 4))
+        A[:, 0, 0] = A[:, 1, 1] = 1
+        A[:, 0, 2], A[:, 1, 2], A[:, 0, 3], A[:, 1, 3] = u[:, 0], u[:, 1], -u[:, 1], u[:, 0]
+        tx, ty, _, th = np.linalg.lstsq(A.reshape(-1, 4), d.reshape(-1), rcond=None)[0]
+        got = rotation_from_rigid([tx, ty, np.degrees(th)], K_COLOR)
+        assert np.linalg.norm(got - omega) < 0.05 * np.linalg.norm(omega), (np.degrees(got), np.degrees(omega))
+    # sign convention: content moving to +x (tx > 0) is a camera rotation about +y
+    assert rotation_from_rigid([0.2, 0.0, 0.0], K_COLOR)[1] > 0
+
+
+def _period_fixture(step_cam=CAMS[2], **over):
+    from s4d.realworld.calib.loma.publish import PERIOD_FORMAT, rotation_from_rigid
+
+    eps = [f"t-{k:06d}" for k in range(6)]
+    doc = _release_doc(list(CAMS), eps[0])
+    doc["episodes"] = eps
+    doc["fixedness_evidence"] = {c: {e: {"registration": "fixed", "epipolar": "ok"} for e in eps} for c in CAMS}
+    doc["fixedness_exception"]["eligible_cameras"] = [CAMS[2]]
+    rigid = [-0.05, 0.04, 0.008]
+    ev = {"format": PERIOD_FORMAT, "task": doc["task"], "base_period": "S2", "periods": {"S1": eps[:2], "S2": eps[2:]},
+          "cameras": {c: {"K": K_COLOR, "within": {"event": False, "reasons": []},
+                          "period_steps": {"S1": {"class": "step" if c == step_cam else "no_step", "rigid": rigid,
+                                                  "omega_deg": np.degrees(rotation_from_rigid(rigid, K_COLOR)).tolist(),
+                                                  "scale_flag": False}}} for c in CAMS}}
+    for path, value in over.items():
+        node = ev
+        *head, last = path.split(".")
+        for k in head:
+            node = node[k]
+        node[last] = value
+    return doc, ev, eps
+
+
+def test_split_periods_writes_one_document_per_period(tmp_path):
+    from s4d.realworld.calib.dw.geom import pose_distance
+    from s4d.realworld.calib.loma.publish import main, split_periods
+    from s4d.realworld.calib.rig import FixednessConfig, load_rig, publish_rig, release_fixedness
+
+    doc, ev, eps = _period_fixture()
+    docs = split_periods(doc, ev, cameras=[CAMS[2]], evidence=[("period_steps.json", "b" * 64)], decided_by="coord",
+                         reference="COV addendum", source_sha256="c" * 64)
+    s1, s2 = docs["S1"], docs["S2"]
+    assert s1["name"] == "rel-test-S1" and s1["episodes"] == eps[:2] and s2["episodes"] == eps[2:]
+    assert all(set(s1["fixedness_evidence"][c]) == set(eps[:2]) for c in CAMS)
+    rot, cen = pose_distance(np.asarray(s1["cameras"][CAMS[2]]["T_cam_base"]), np.eye(4))
+    assert rot == pytest.approx(s1["cameras"][CAMS[2]]["period_pose"]["rot_deg"]) and 0.005 < rot < 0.035 and cen < 1e-9
+    assert all(s1["cameras"][c]["T_cam_base"] == doc["cameras"][c]["T_cam_base"] for c in CAMS[:2])
+    assert all(s2["cameras"][c]["T_cam_base"] == doc["cameras"][c]["T_cam_base"] for c in CAMS)
+    assert s1["period"]["derived_from"] == {"name": "rel-test", "sha256": "c" * 64} and s1["period"]["base_period"] == "S2"
+    assert s1["fixedness_exception"] == doc["fixedness_exception"] and doc["episodes"] == eps  # source untouched
+    # the released rig mode rejects an episode of the other period (no G5b evidence in that document)
+    fixed = {"fixed": True, "segments": [{"patches": 40, "inlier_patches": 38, "shift_px": 0.01, "fixed": True}]}
+    assert "not covered" in release_fixedness(s1, CAMS[0], eps[3], fixed, FixednessConfig(segments=1))["reason"]
+    # CLI: one new document per period next to each other, never replacing
+    arrays = {f"{c.replace('/', '__')}__{k}": np.zeros((2, 2)) for c in CAMS for k in ("grey", "dynamic")}
+    publish_rig(tmp_path / "rig-t.json", doc, arrays)
+    (tmp_path / "steps.json").write_text(json.dumps(ev))
+    argv = ["split-periods", "--rig", str(tmp_path / "rig-t.json"), "--periods", str(tmp_path / "steps.json"),
+            "--cameras", CAMS[2], "--decided-by", "coord", "--reference", "x", "--out-dir", str(tmp_path / "p")]
+    main(argv)
+    for p in ("S1", "S2"):
+        d, _, _ = load_rig(tmp_path / "p" / f"rig-t.{p}.json")
+        assert d["period"]["name"] == p and d["period"]["evidence"][0]["path"].endswith("steps.json")
+    with pytest.raises(SystemExit, match="never replaced"):
+        main(argv)
+
+
+@pytest.mark.parametrize("over,cameras,reason", [
+    ({}, [CAMS[0]], "!= cameras with a credible period step"),
+    ({f"cameras.{CAMS[1]}.within": {"event": True, "reasons": ["W1 step"]}}, [CAMS[2]], "within-period movement"),
+    ({f"cameras.{CAMS[1]}.within": {}}, [CAMS[2]], "within-period movement"),
+    ({f"cameras.{CAMS[2]}.period_steps.S1.class": "inconclusive"}, [CAMS[2]], "user decision"),
+    ({f"cameras.{CAMS[0]}.period_steps.S1.scale_flag": True}, [CAMS[2]], "scale flag"),
+    ({f"cameras.{CAMS[2]}.period_steps.S1.rigid": [0.5, 0.0, 0.0],
+      f"cameras.{CAMS[2]}.period_steps.S1.omega_deg": [0.0, float(np.degrees(0.5 / 605.6)), 0.0]}, [CAMS[2]],
+     "does not reproduce"),
+    ({"periods": {"S1": ["t-000000"], "S2": ["t-000002", "t-000003", "t-000004", "t-000005"]}}, [CAMS[2]], "partition"),
+    ({"format": "other"}, [CAMS[2]], "not a rwx-period-steps/1"),
+])
+def test_split_periods_refuses_whatever_the_analysis_does_not_support(over, cameras, reason):
+    from s4d.realworld.calib.loma.publish import split_periods
+
+    doc, ev, _ = _period_fixture(**over)
+    with pytest.raises(SystemExit, match=reason):
+        split_periods(doc, ev, cameras=cameras, evidence=[("e", "b" * 64)], decided_by="c", reference="r",
+                      source_sha256="c" * 64)
+
+
+def test_split_periods_bounds_the_period_rotation():
+    from s4d.realworld.calib.loma.publish import MAX_PERIOD_ROT_DEG, rotation_from_rigid, split_periods
+
+    rigid = [0.6, 0.0, 0.0]  # ~0.057 deg at fx 605
+    omega = np.degrees(rotation_from_rigid(rigid, K_COLOR))
+    assert np.linalg.norm(omega) > MAX_PERIOD_ROT_DEG
+    doc, ev, _ = _period_fixture(**{f"cameras.{CAMS[2]}.period_steps.S1.rigid": rigid,
+                                    f"cameras.{CAMS[2]}.period_steps.S1.omega_deg": omega.tolist()})
+    with pytest.raises(SystemExit, match="user decision"):
+        split_periods(doc, ev, cameras=[CAMS[2]], evidence=[("e", "b" * 64)], decided_by="c", reference="r",
+                      source_sha256="c" * 64)
+    doc, ev, _ = _period_fixture(step_cam=None)
+    with pytest.raises(SystemExit, match="applies to every period"):
+        split_periods(doc, ev, cameras=[CAMS[2]], evidence=[("e", "b" * 64)], decided_by="c", reference="r",
+                      source_sha256="c" * 64)
+
+
+def test_period_documents_give_each_episode_the_record_of_its_period(tmp_path):
+    from s4d.realworld.calib.loma.publish import split_periods
+    from s4d.realworld.calib.release import plan
+    from s4d.realworld.calib.rig import load_rig, publish_rig
+
+    doc, ev, eps = _period_fixture()
+    doc["task"] = "covering"
+    ev["task"] = "covering"
+    docs = split_periods(doc, ev, cameras=[CAMS[2]], evidence=[("e", "b" * 64)], decided_by="c", reference="r",
+                         source_sha256="c" * 64)
+    arrays = {f"{c.replace('/', '__')}__{k}": np.zeros((2, 2)) for c in CAMS for k in ("grey", "dynamic")}
+    paths, loaded = {}, {}
+    for p, d in docs.items():
+        paths[p] = tmp_path / f"rig.{p}.json"
+        publish_rig(paths[p], d, arrays)
+        loaded[p] = load_rig(paths[p])
+    manifest = {"schema": "rw-ingest-manifest", "schema_version": 2, "episodes": {}}
+    remote = tmp_path / "remote"
+
+    def build(ep, period):
+        d, _, fp = loaded[period]
+        k = int(ep[-6:])
+        root = remote / ep
+        _fake_calibrate_outputs(root, ep, d, fp["rig_calibration"], build_id=f"{k}" * 32)
+        return root
+
+    for ep in eps:
+        k = int(ep[-6:])
+        root = build(ep, "S1" if ep in eps[:2] else "S2")
+        manifest["episodes"][f"covering/episode_{k:06d}.h5"] = {
+            "task": "covering", "sha256": f"{k}" * 64, "validation": {"status": "valid"},
+            "preprocessing": {"stages": {"calibrate": {"status": "done", "input_sha256": f"{k}" * 64,
+                                                       "metrics": {"build_id": f"{k}" * 32},
+                                                       "outputs": str(rio.episode_dir(root, ep))}}}}
+    both = [str(paths["S1"]), str(paths["S2"])]
+    p = plan(manifest, {"covering": both}, code_commit="c" * 40)
+    t = p["tasks"]["covering"]
+    assert not t["refused"], t["problems"]
+    assert len(t["records"]) == 6 and len(t["rig"]) == 2
+    rec = t["records"]["covering/episode_000000.h5"]["metrics"]
+    assert rec["period"]["name"] == "S1" and rec["shared_calibration"]["name"] == "rel-test-S1"
+    assert t["records"]["covering/episode_000003.h5"]["metrics"]["shared_calibration"]["name"] == "rel-test-S2"
+    # one document alone does not cover the other period's episodes; an episode built with the other period's
+    # document is refused; documents of different sources / overlapping periods are refused
+    assert plan(manifest, {"covering": str(paths["S1"])}, code_commit="c")["tasks"]["covering"]["refused"]
+    build(eps[0], "S2")
+    bad = plan(manifest, {"covering": both}, code_commit="c")["tasks"]["covering"]
+    assert bad["refused"] and any("not built with the release document" in x for x in bad["problems"])
+    build(eps[0], "S1")
+    other = json.loads(json.dumps(docs["S2"]))
+    other["period"]["derived_from"] = {"name": "x", "sha256": "d" * 64}
+    publish_rig(tmp_path / "other.json", other, arrays)
+    bad = plan(manifest, {"covering": [str(paths["S1"]), str(tmp_path / "other.json")]}, code_commit="c")
+    assert any("different published documents" in x for x in bad["tasks"]["covering"]["problems"])
+    over = json.loads(json.dumps(docs["S2"]))
+    over["period"]["episodes"] = eps
+    publish_rig(tmp_path / "over.json", over, arrays)
+    bad = plan(manifest, {"covering": [str(paths["S1"]), str(tmp_path / "over.json")]}, code_commit="c")
+    assert any("two period documents" in x for x in bad["tasks"]["covering"]["problems"])
