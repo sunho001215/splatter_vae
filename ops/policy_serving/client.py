@@ -769,12 +769,14 @@ class RealSenseCapture:
     pass a result to ``PolicyClient.add_capture``."""
 
     def __init__(self, serial: str, *, native_hw, fps: int = 15, depth: bool = False, correction: dict | None = None,
-                 K_native=None, out_size: int = 128, rs_module=None, pipeline=None, clock: DeviceClock | None = None):
+                 K_native=None, out_size: int = 128, rs_module=None, pipeline=None, clock: DeviceClock | None = None,
+                 keep_native: bool = False):
         if rs_module is None:
             import pyrealsense2 as rs_module
         from s4d.rwlearn.deploy.realsense import RealSenseRGBD
 
         self.rs, self.serial, self.depth, self.out_size = rs_module, str(serial), bool(depth), int(out_size)
+        self.keep_native = bool(keep_native)  # also return the native RGB frame (session recording)
         self.native_hw = tuple(int(x) for x in native_hw)
         self.K_native = None if K_native is None else np.asarray(K_native, np.float64)
         h, w = self.native_hw
@@ -818,6 +820,12 @@ class RealSenseCapture:
         color_ms, number = float(color.get_timestamp()), int(color.get_frame_number())
         capture_ns = self.clock.map(color_ms, domain, offset_ns=offset)
         t0 = time.monotonic_ns()
+        native_depth = depth_scale = None
+        if self.keep_native and self.rgbd is not None:  # the camera's own z16 frame (not aligned), before processing
+            d = frames.get_depth_frame()
+            if d:
+                native_depth = np.array(np.asanyarray(d.get_data()), np.uint16, copy=True)
+                depth_scale = float(d.get_units())
         if self.rgbd is not None:
             out = self.rgbd.process(frames)
         else:
@@ -828,6 +836,10 @@ class RealSenseCapture:
             out["metadata"] = {"color_timestamp_ms": color_ms, "color_frame_number": number,
                                "color_timestamp_domain": timestamp_domain_name(domain)}
         t1 = time.monotonic_ns()
+        if self.keep_native:
+            out["native_rgb"] = np.array(np.asanyarray(color.get_data()), copy=True)
+            if native_depth is not None:  # recorded only for depth policies (the rgbd path); never IR
+                out["native_depth"], out["depth_scale_m"] = native_depth, depth_scale
         out.update(frame_id=number, capture_ns=capture_ns, preprocess_ns=(t0, t1), native_hw=list(self.native_hw))
         out["K"] = np.asarray(out["K"]).tolist()
         return out

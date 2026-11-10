@@ -65,7 +65,8 @@ def choose_policy(cfg: dict, args) -> tuple[str, str, dict, dict]:
     """(policy id, task, unbound input spec, catalog info): explicit id or the unique deployable match; the task from
     the catalog info unless given."""
     offered = welcome(cfg, args)["policies"]
-    pid = selection.select_policy(offered, args.policy, condition=args.condition, task=args.task, seed=args.seed)
+    pid = selection.select_policy(offered, args.policy, condition=args.condition, task=args.task, seed=args.seed,
+                                  allow_restricted=bool(getattr(args, "dry_run", False)))  # dry run: any offered
     task = args.task or (offered[pid].get("info") or {}).get("task")
     if task is None:
         raise SystemExit(f"{pid}: the server gives no task; pass --task")

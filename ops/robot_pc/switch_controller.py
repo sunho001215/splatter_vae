@@ -96,7 +96,8 @@ def state_sample(msg, t_recv_ns: int) -> dict:
           p.orientation.w]
     send = getattr(getattr(msg.metadata, "send_time", None), "seconds", None)
     q, dq, tau = (np.asarray(getattr(msg, k, ()), np.float64) for k in ("q", "dq", "tau_ext"))
-    return {"t_ns": int(t_recv_ns), "seq": int(msg.sequence), "q": q, "flange_pose7": flange_from_ee(ee),
+    return {"t_ns": int(t_recv_ns), "seq": int(msg.sequence), "q": q, "dq": dq, "tau": tau,
+            "flange_pose7": flange_from_ee(ee),
             "ee_pose7": np.asarray(ee, np.float64), "t_send_unix": send,
             "signature": q.tobytes() + dq.tobytes() + tau.tobytes()}  # the collector's frozen-state signature
 
@@ -128,8 +129,13 @@ def state_blockers(samples: list, now_ns: int) -> list:
 def robot_action(robot_msg, flange_goal7, target_dt: float = TARGET_DT_S):
     """The RobotAction the collector publishes for a flange goal (robot.SwitchControllerClient.send_ee_pose): ee pose
     in the base ("world") frame, ``target_dt`` hold timeout. Message construction only; nothing is sent here."""
-    ee = ee_from_flange(flange_goal7)
-    pose = robot_msg.Pose(robot_msg.Vec3(*map(float, ee[:3])), robot_msg.Quaternion(*map(float, ee[3:])))
+    return robot_action_ee(robot_msg, ee_from_flange(flange_goal7), target_dt)
+
+
+def robot_action_ee(robot_msg, ee_pose7, target_dt: float = TARGET_DT_S):
+    """robot.SwitchControllerClient.send_ee_pose / _pose_msg (robot.py:61-62, :127-128) verbatim: a controller-ee pose
+    [x y z qx qy qz qw] in the base frame."""
+    pose = robot_msg.Pose(robot_msg.Vec3(*map(float, ee_pose7[:3])), robot_msg.Quaternion(*map(float, ee_pose7[3:7])))
     return robot_msg.RobotAction(frame_id="world", real_time_action=robot_msg.RobotActionRealTimeAction(
         ee_pose_rt=[pose], target_dt=float(target_dt)))
 

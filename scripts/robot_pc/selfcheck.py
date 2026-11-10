@@ -1,6 +1,6 @@
 """ROBOT PC self-check after setup (no device access, no robot, no session): interpreter and pinned packages, the
 client stack imports WITHOUT torch, bundle file / asset sha256s, the M5 helper on the shipped URDF + surface asset,
-the rig documents, the safety configuration (execution not armed, not permitted, manual mode refused), the token
+the rig documents, the execution gate (an execution_eligible policy is required), the token
 file's permissions; with ``--server`` also the server's WELCOME through the tunnel (no session is opened).
 
     venv/bin/python -I src/scripts/robot_pc/selfcheck.py [--server]
@@ -22,8 +22,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 import numpy as np  # noqa: E402
 
 PINS = {"numpy": "1.26.4", "PIL": "11.3.0", "yaml": "6.0.3", "scipy": "1.15.3", "h5py": "3.16.0"}
-OPTIONAL = {"pyrealsense2": "2.59.1", "zmq": "27.2.0", "robot_msg": "0.4.0"}
-DISTRIBUTIONS = {"robot_msg": "robot-msg-irsl"}
+OPTIONAL = {"pyrealsense2": "2.59.1", "zmq": "27.2.0", "robot_msg": "0.4.0", "serial": "3.5", "cv2": "4.10.0"}
+DISTRIBUTIONS = {"robot_msg": "robot-msg-irsl", "serial": "pyserial"}
 
 
 def sha256(path: Path) -> str:
@@ -77,7 +77,7 @@ def main(argv=None) -> int:
     rs = versions["pyrealsense2"]
     check("pyrealsense2", rs is None or str(rs).startswith(OPTIONAL["pyrealsense2"]),
           rs or "not installed (live acquisition off)")
-    checks["live_state_reader_deps"] = {"ok": True, "detail": {k: versions[k] for k in ("zmq", "robot_msg")}}
+    checks["live_deps"] = {"ok": True, "detail": {k: versions[k] for k in ("zmq", "robot_msg", "serial", "cv2")}}
 
     from ops.robot_pc import cli
     from ops.robot_pc import config as C
@@ -122,11 +122,21 @@ def main(argv=None) -> int:
             check(f"rig_{task}", True, {c: v["factor"] for c, v in out["native_depth_correction"].items()})
         except Exception as exc:  # noqa: BLE001 - reported
             check(f"rig_{task}", False, f"{type(exc).__name__}: {exc}")
-    ex = cfg.get("execution") or {}
-    check("execution_not_armed", ex.get("armed") is False, ex)
+    try:  # infer.py --cameras: the user-editable name -> serial mapping (config/camera_names.yaml)
+        from scripts.robot_pc.infer import camera_names
+
+        names = camera_names(cfg)
+        known = set((cfg.get("cameras") or {}).get("serials", []))
+        check("camera_names", set(names.values()) <= known, names)
+    except BaseException as exc:  # noqa: BLE001 - reported (SystemExit included)
+        check("camera_names", False, f"{type(exc).__name__}: {exc}")
     from ops.robot_pc import safety
 
-    check("execution_not_permitted", safety.EXECUTION_PERMITTED is False, "safety.EXECUTION_PERMITTED")
+    try:  # execution needs an execution_eligible policy (and the flag + the operator's start, not testable here)
+        safety.authorize_execution(cli_execute=True, operator_start=True, policy_info={})
+        check("execution_requires_eligible_policy", False, "authorized without an eligible policy")
+    except safety.ExecutionRefused as exc:
+        check("execution_requires_eligible_policy", True, str(exc)[:120])
     tok = C.path(cfg, (cfg.get("server") or {}).get("token_file"))
     if tok is not None and tok.is_file():
         mode = stat.S_IMODE(tok.stat().st_mode)

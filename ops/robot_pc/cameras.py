@@ -49,13 +49,13 @@ class LiveCameras:
     correction) -> reader threads -> ``drain``. Never touches a device when the busy guard refuses."""
 
     def __init__(self, serials, *, native_hw=(480, 640), fps: int = 15, depth: bool = False, rs_module=None,
-                 check_devices: bool = True, queue: int = 8):
+                 check_devices: bool = True, queue: int = 8, keep_native: bool = False, allow_controller: bool = False):
         if check_devices:
-            self.device_scan = devices.require_free()
+            self.device_scan = devices.require_free(allow_controller=allow_controller)
         if rs_module is None:
             import pyrealsense2 as rs_module
         self.rs, self.serials, self.native_hw = rs_module, [str(s) for s in serials], tuple(native_hw)
-        self.fps, self.depth, self._queue_len = int(fps), bool(depth), int(queue)
+        self.fps, self.depth, self._queue_len, self.keep_native = int(fps), bool(depth), int(queue), bool(keep_native)
         self.captures, self._queues, self._threads, self.errors = {}, {}, [], collections.Counter()
         self._stop = threading.Event()
         self._started = False
@@ -69,7 +69,8 @@ class LiveCameras:
         try:
             for s in self.serials:
                 cap = RealSenseCapture(s, native_hw=self.native_hw, fps=self.fps, depth=self.depth,
-                                       correction=(corrections or {}).get(s), rs_module=self.rs)
+                                       correction=(corrections or {}).get(s), rs_module=self.rs,
+                                       keep_native=self.keep_native)
                 self.captures[s] = cap
                 vp = cap.profile.get_stream(self.rs.stream.color).as_video_stream_profile()
                 Ks[s] = color_intrinsics(vp.get_intrinsics())

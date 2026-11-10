@@ -8,8 +8,10 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 DEFAULT_PATH = REPO / "configs/robot_pc/robot_pc.yaml"
-SECTIONS = {"root", "server", "cameras", "assets", "tasks", "limits", "executor", "execution", "static_latency_state"}
-TASK_KEYS = {"rig_document", "m5_max_sync_ns", "workspace_min_m", "workspace_max_m"}
+SECTIONS = {"root", "server", "cameras", "assets", "tasks", "limits", "executor", "gripper", "static_latency_state"}
+TASK_KEYS = {"rig_document", "m5_max_sync_ns"}
+REMOVED = {"workspace_min_m", "workspace_max_m", "max_translation_m", "max_rotation_deg", "max_linear_speed",
+           "max_angular_speed", "max_linear_accel", "max_angular_accel", "lead_m", "lead_rot_deg"}  # directive K
 
 
 def load(path: str | Path | None = None, *, root: str | Path | None = None) -> dict:
@@ -19,13 +21,16 @@ def load(path: str | Path | None = None, *, root: str | Path | None = None) -> d
     unknown = set(cfg) - SECTIONS
     if unknown:
         raise ValueError(f"unknown robot-PC config sections {sorted(unknown)}")
+    stale = {k for sec in ("limits", "executor") for k in (cfg.get(sec) or {}) if k in REMOVED} | \
+        {k for e in (cfg.get("tasks") or {}).values() for k in e if k in REMOVED}
+    if stale:
+        raise ValueError(f"config keys {sorted(stale)} were removed (directive K: no workspace box / speed / lead caps); "
+                         "copy the new configs/robot_pc/robot_pc.yaml template")
     for task, entry in (cfg.get("tasks") or {}).items():
         if set(entry) - TASK_KEYS:
             raise ValueError(f"task {task}: unknown keys {sorted(set(entry) - TASK_KEYS)}")
     cfg = copy.deepcopy(cfg)
     cfg["root"] = str(Path(root or cfg.get("root") or ".").expanduser())
-    if cfg.get("execution", {}).get("armed") not in (False, True):
-        raise ValueError("execution.armed must be a boolean")
     return cfg
 
 
@@ -46,9 +51,8 @@ def task_entry(cfg: dict, task: str) -> dict:
 def limits(cfg: dict, task: str):
     from ops.robot_pc.validation import ActionLimits
 
-    t = task_entry(cfg, task)
-    return ActionLimits.from_config({**(cfg.get("limits") or {}), "workspace_min_m": t["workspace_min_m"],
-                                     "workspace_max_m": t["workspace_max_m"]})
+    task_entry(cfg, task)
+    return ActionLimits.from_config(dict(cfg.get("limits") or {}))
 
 
 def client(cfg: dict, policy_id: str, choices, *, name: str, token_file: str | Path | None = None, **overrides):

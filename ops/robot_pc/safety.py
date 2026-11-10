@@ -1,15 +1,19 @@
-"""Execution-mode guard of the robot PC: nothing in this package can command a robot unless a human explicitly selects
-the manual execution mode, and in this revision not even then.
+"""Execution mode of the robot PC (Directive J, 2026-11-10: controlled live execution with the operator at the
+hardware e-stop). ONE arm/start action and an immediate stop:
 
-Four independent conditions are required to obtain an ``ExecutionAuthorization`` (``authorize_execution``):
-the ``--execute`` command-line flag, the typed confirmation phrase ``CONFIRMATION``, ``execution.armed: true`` in
-the robot-PC config file, and a policy whose server catalog entry says ``execution_eligible: true`` (a missing field is
-NOT eligible: fail closed; e.g. DynaMo is dry-run / replay only by user decision 2026-11-10). The authorization object cannot be built any other way (private construction token), and
-``sinks.LiveSink`` refuses to exist without one. On top, ``EXECUTION_PERMITTED`` is False for Directive I (the robot is
-never operated): ``LiveSink`` refuses even an authorized construction. The controller binding is the MESSAGE FORMAT
-only (``switch_controller.robot_action``, written from the robot PC's code); no command transport (socket) exists in
-this package. Setup, tests, recorded replay, dry run and the benchmark never call ``authorize_execution``.
-Standard library only.
+* ``authorize_execution(cli_execute=True, operator_start=True, policy_info=...)``: the launcher's ``--execute`` flag,
+  the operator's start key (ENTER at the console after the preflight checks) and a policy whose catalog entry is
+  ``execution_eligible: true`` (missing = NOT eligible: fail closed). The ``ExecutionAuthorization`` object is only
+  issued by that function; ``sinks.LiveSink`` and ``controller.ControllerLink`` refuse to exist without it.
+* stop: Ctrl-C / ``s`` / SIGTERM / any failure (stale / frozen state, communication, controller) -> the loop stops
+  streaming, sends a hold at the measured pose and requests IDLE, as the teleop collector does (docs/robot_pc.md).
+
+* ``authorize_hardware_test(test=..., cli_flag=True, operator_start=True)``: the controlled hardware tests of
+  scripts/robot_pc/hwtest.py (P3) that run NO policy: ``gripper`` (Robotiq open/close to fixed small targets) and
+  ``hold`` (zero-motion: the measured start pose streamed through the executor). Policy rollouts can only be
+  authorized by ``authorize_execution`` (execution eligibility is never bypassed).
+
+Setup, tests, recorded replay, dry run and the benchmark never call either function. Standard library only.
 """
 
 from __future__ import annotations
@@ -19,24 +23,25 @@ import os
 import time
 from dataclasses import dataclass, field
 
-CONTROLLER_BINDING = "message-format-only"  # switch_controller RobotAction built from its code; no command transport
-EXECUTION_PERMITTED = False  # Directive I (2026-11-10): the robot is never operated; a later directive may lift it
-CONFIRMATION = "I am at the robot, the workspace is clear and the emergency stop is in my hand"
+CONTROLLER_BINDING = "switch_controller robot_msg 2 (state SUB :28400, command/action PUBs :28401/:28402)"
 _TOKEN = object()  # only authorize_execution can construct an ExecutionAuthorization
 
 
 class Mode(str, enum.Enum):
     REPLAY = "replay"  # recorded episode -> server -> MockSink (no camera, no robot)
     DRY_RUN = "dry_run"  # live cameras + read-only state -> server -> validation -> DryRunSink (never sends)
-    EXECUTE = "execute"  # future manual mode: LiveSink (refused in this revision: EXECUTION_PERMITTED is False)
+    EXECUTE = "execute"  # operator-started live execution: LiveSink -> ControllerLink (+ gripper command)
 
 
 class ExecutionRefused(RuntimeError):
-    """The manual execution mode was not selected with all three explicit conditions."""
+    """The execution mode was not selected (flag, operator start, eligible policy) or an action is refused."""
 
 
 class Unbound(RuntimeError):
     """A robot-side interface that is not available (not approved, or no read-only source exists); nothing connects."""
+
+
+HARDWARE_TESTS = ("gripper", "hold")
 
 
 @dataclass(frozen=True)
@@ -45,6 +50,7 @@ class ExecutionAuthorization:
     granted_monotonic_ns: int
     reasons: tuple = ()
     _token: object = field(default=None, repr=False, compare=False)
+    hardware_test: str | None = None  # set only by authorize_hardware_test (no policy may be executed with it)
 
     def __post_init__(self):
         if self._token is not _TOKEN or self.mode is not Mode.EXECUTE:
@@ -80,21 +86,34 @@ def execution_eligible(policy_info: dict | None) -> bool:
     return isinstance(policy_info, dict) and policy_info.get("execution_eligible") is True
 
 
-def authorize_execution(*, cli_execute: bool, typed_confirmation: str | None, config_armed: bool,
-                        policy_info: dict | None = None) -> ExecutionAuthorization:
-    """All four explicit conditions, or ExecutionRefused naming every missing one."""
+def authorize_execution(*, cli_execute: bool, operator_start: bool, policy_info: dict | None) -> \
+        ExecutionAuthorization:
+    """The execution mode: ``--execute`` + the operator's start key + an execution-eligible policy."""
     missing = []
     if cli_execute is not True:
         missing.append("the --execute flag")
-    if typed_confirmation != CONFIRMATION:
-        missing.append(f"the typed confirmation {CONFIRMATION!r}")
-    if config_armed is not True:
-        missing.append("execution.armed: true in the robot-PC config")
+    if operator_start is not True:
+        missing.append("the operator's start key")
     if not execution_eligible(policy_info):
         missing.append(f"a policy whose catalog entry is execution_eligible: true (got "
                        f"{(policy_info or {}).get('execution_eligible', 'missing')!r})")
     if missing:
-        raise ExecutionRefused("manual execution mode NOT selected; missing: " + "; ".join(missing))
+        raise ExecutionRefused("execution mode NOT selected; missing: " + "; ".join(missing))
     return ExecutionAuthorization(Mode.EXECUTE, time.monotonic_ns(),
-                                  ("cli --execute", "typed confirmation", "config execution.armed",
-                                   "policy execution_eligible"), _TOKEN)
+                                  ("cli --execute", "operator start", "policy execution_eligible"), _TOKEN)
+
+
+def authorize_hardware_test(*, test: str, cli_flag: bool, operator_start: bool) -> ExecutionAuthorization:
+    """A policy-free controlled hardware test (``HARDWARE_TESTS``): the test's explicit CLI selection + the operator's
+    start key. The returned authorization names the test; policy execution checks ``hardware_test is None``."""
+    missing = []
+    if test not in HARDWARE_TESTS:
+        missing.append(f"a known hardware test (got {test!r}; known {HARDWARE_TESTS})")
+    if cli_flag is not True:
+        missing.append("the test's explicit command line selection")
+    if operator_start is not True:
+        missing.append("the operator's start key")
+    if missing:
+        raise ExecutionRefused("hardware test NOT authorized; missing: " + "; ".join(missing))
+    return ExecutionAuthorization(Mode.EXECUTE, time.monotonic_ns(), (f"hardware test {test}", "operator start"),
+                                  _TOKEN, hardware_test=test)

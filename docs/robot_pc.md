@@ -8,6 +8,91 @@ command sink. **The robot is never operated in this revision**: nothing here com
 switches controllers of any robot, arm or gripper. Science (preprocessing, history, contracts, M5 rule) comes from
 `s4d/rwlearn/deploy/` (`docs/realworld_deployment.md`).
 
+## OPERATOR GUIDE: robot inference (user directive K, 2026-11-10)
+
+One entry point, `scripts/robot_pc/infer.py`. Run everything on the robot PC from `cd ~/workspace/s4d-robot-pc`
+(`sg dialout -c "..."` gives the gripper serial port's group to a session that predates `usermod -aG dialout irsl`).
+
+```bash
+# 0. prepare / check (no robot needed)
+venv/bin/python -I src/scripts/robot_pc/tunnel.py status            # route to the 5090 policy server (start: tunnel.py start)
+venv/bin/python -I src/scripts/robot_pc/selfcheck.py --server        # package, pins, rig docs, camera names, WELCOME
+venv/bin/python -I src/scripts/robot_pc/infer.py --list              # task / method / seed / policy id / eligible / cameras
+# 1. dry run (cameras + robot state + gripper status live; commands computed, recorded, NOT sent)
+sg dialout -c "venv/bin/python -I src/scripts/robot_pc/infer.py --task drawer-open --method e2e_cnn --seed 0 --cameras right --duration-s 20 --dry-run"
+# 2. on the robot (switch_controller running, teleop collector stopped, operator at the e-stop): press ENTER to start
+sg dialout -c "venv/bin/python -I src/scripts/robot_pc/infer.py --task drawer-open --method e2e_cnn --seed 0 --cameras right --duration-s 30"
+#    or by id:  infer.py --policy reviwo-drawer-open-s1 --cameras left
+# stop: s + ENTER, Ctrl-C or SIGTERM (hold at the measured pose, wait still, IDLE); the hardware e-stop stays yours
+# 3. outputs
+ls inference_outputs/                                                 # <task>_<method>_seed<N>_<cameras>_runNNN/
+venv/bin/python -I src/scripts/robot_pc/verify_session.py inference_outputs/drawer-open_e2e_cnn_seed0_right_run001
+```
+
+Selection: `--task` + `--method` (alias `--baseline`) + `--seed` select the unique catalog policy (or `--policy <id>`).
+Execution (no `--dry-run`) needs the catalog's `execution_eligible: true` (`--list` column `eligible`) and the
+operator's ENTER; `--dry-run` runs any offered policy. `--cameras`: camera NAMES; default = the policy contract's first
+trained camera; a single-view policy takes exactly one name; a wrong count / untrained camera is refused with the
+contract in the message. Live multi-view policies (synchronised camera sets) are not implemented yet (clear error).
+
+**Camera names** (`config/camera_names.yaml`, user-editable; template `configs/robot_pc/camera_names.yaml`):
+`left = 135122070988`, `middle = 135122076054`, `right = 135122073201`. Evidence: camera positions in the robot base
+frame (panda_link0, +y = the ROBOT's left, teleop_collector DATASET.md) = `inv(T_cam_base)[:3, 3]` of the released rig
+documents (`assets/rig/rig-loma-drawer-open.json`, all three "validated"; `rig-loma-mug-hanging-fx.json` within 3 mm):
+070988 (1.210, +0.421, 0.839) m, 076054 (1.193, 0.000, 0.837) m, 073201 (1.186, -0.431, 0.841) m; all ~1.2 m in front
+of the robot looking back at it (optical axes -x, down), so "left" follows the robot's left (on the right of a person
+standing behind the cameras facing the robot).
+
+**Output folder** `inference_outputs/<task>_<method>_seed<N>_<camera names joined by ->_runNNN/` (NNN = 1 + the largest
+existing index of that prefix, created exclusively, never reused):
+
+| file | content |
+|---|---|
+| `inference.h5` (`.partial` while recording) | format version 2: `/robot` (q, dq, tau_ext, flange + controller-ee poses, sequence), `/gripper` (separate numeric status columns), `/gripper_commands` (actual target / hold writes), `/cameras/<name>` (native RGB, optional supplied depth, RealSense frame_number, calibration), `/observations/<name>` (policy RGB + optional depth), `/action` (500 Hz setpoints, closure, u1 send outcome), `/policy` (one row per step with validated command, goal, closure and latency), `/events`; host CLOCK_MONOTONIC seconds `t` + int64 `t_ns` throughout, resolved config + camera mapping in root attributes |
+| `<camera name>.mp4` | one per camera (`left.mp4` ...): native RGB, frame k = the H5 row k |
+| `config.json` | resolved experiment: policy id, task, method, seed, mode, cameras (name + serial), camera mapping, catalog info, input contract, gripper speed/force, full config, argv |
+| `summary.json` | status (complete / stopped / error) + reason, counts, drops, video status |
+
+**What runs between the policy and the robot (directive K: no experimental restrictions).**
+Removed: workspace box / start radius, the slow profile (0.05 m/s, 0.25 rad/s, acceleration caps), the 2 cm / 8 deg
+lead leash, per-step 0.04 m / 20 deg action rejection, goal clamping / boundary hold, the abort after N rejected steps,
+the not-following (progress) detector, minimum gripper force. The policy goal is interpolated (linear position + slerp)
+from the previously sent setpoint over one policy period (1/15 s) at 500 Hz and held until the next action.
+Kept, each for a failure switch_controller does not handle itself:
+
+| kept | why |
+|---|---|
+| never send a setpoint beyond switch_controller's guard (log6 error > 0.2 m / 0.5 rad from the measured pose, 5 % margin) | the controller would reject it and reset its command (action_manager_base.cpp:197-208) |
+| stale (> 50 ms) / frozen (bit-identical > 0.25 s) / invalid robot state -> stop | the collector's state_ok (app.py:243-275); a stopped controller republishes its last state |
+| action expired (observation older than 200 ms) -> nothing sent | the controller holds the measured pose after target_dt 0.05 s |
+| policy server / route: 5 consecutive steps without an answer -> stop; camera without frames 2 s -> stop | communication loss |
+| controller subscriber disconnect, failed send, gripper communication loss / fault -> stop | communication loss |
+| release on every exit: measured-pose hold, wait still (<= 1 s), IDLE; gripper hold at its measured position | clean stop, as the collector |
+| `execution_eligible` catalog flag + operator ENTER; single commander (port bind) and single Modbus master | policy restriction / no second commander or master |
+
+Gripper: speed 146 (collector `config/default.yaml:63`, rSP; DROID goto(speed=0.05)), force **255** = the rFR maximum
+(0..255, `default.yaml:64`; written as one byte by `gripper.py write_request`).
+
+### HARDWARE VALIDATION PROCEDURE (when the robot is on) - NOT yet validated on hardware with directive K
+
+1. `tunnel.py status`, `selfcheck.py --server` (all ok), `infer.py --list` (eligible policies shown).
+2. Operator: switch_controller running, teleop collector stopped, `sudo fuser -v /dev/ttyUSB0` shows no holder.
+3. Dry run 20 s with the policy and camera of the real run (`--dry-run`); then
+   `verify_session.py <dir>`: ok, 0 drops, `executed` sent 0, `controller_guard` 0 in the executor counts (console
+   STOPPED line), MP4 frames == H5 rows, executor ~500 Hz.
+4. Gripper at maximum force: `hwtest.py gripper --closures 0.3 0.0 --dwell-s 2 --camera right` (fingers move to 30 %
+   and back; expect a firmer grasp than before; nothing in the gripper).
+5. Short execution (10 s, operator at the e-stop): `infer.py ... --duration-s 10`; watch the motion speed (no software
+   speed cap any more: the robot follows the policy's goals as fast as the controller's impedance allows), stop with
+   `s` + ENTER; then `verify_session.py` (release hold + IDLE sent, `controller_guard` count, robot-state age).
+6. Full-duration run; inspect `inference_outputs/<...>_runNNN/` (`left.mp4` ..., `config.json`).
+7. Depth policies only (none execution-eligible today): a `--dry-run` must record native z16 depth
+   (`/cameras/<name>/depth` + depth scale) next to the RGB; RGB-only policies record no depth, never IR.
+
+Validated OFFLINE (fakes, CPU): selection / camera-name contract errors / `--list` / run-folder numbering / config
+refusal of removed keys / executor interpolation + controller guard + expiry + state stops / launcher ordering /
+recorder read-back. Needs HARDWARE: everything in the procedure above.
+
 ## Safety guarantees (and the tests proving them, `tests/test_robot_pc.py`)
 
 | guarantee | mechanism | test |
@@ -110,8 +195,13 @@ checking its command line (never `pkill -f`). If the shkim_rw IP changes, the pe
 
 | module | role |
 |---|---|
-| `ops/robot_pc/safety.py` | execution modes, `authorize_execution`, `CONTROLLER_BINDING = "UNBOUND"` |
-| `ops/robot_pc/sinks.py` | MockSink, DryRunSink (JSONL, never sends), LiveSink (refuses, then Unbound) |
+| `ops/robot_pc/safety.py` | execution modes, `authorize_execution` (--execute + operator ENTER + catalog `execution_eligible`), `authorize_hardware_test` (policy-free gripper / hold tests only) |
+| `ops/robot_pc/sinks.py`, `live.py` | MockSink, DryRunSink (never sends), LiveSink (ControllerLink + expiring gripper target); `LiveSession` (live cameras + state -> policy -> 500 Hz executor -> sink, recorded), `MotionShutdown` (executor join -> gripper clear -> controller release before any I/O close) |
+| `ops/robot_pc/controller.py` | commander side of switch_controller (execution only): binds :28401/:28402, re-sent mode 3, RobotAction, release = fresh measured-ee hold + bounded still wait + IDLE |
+| `ops/robot_pc/gripper.py` | Robotiq 2F-85 Modbus RTU single owner (flock + TIOCEXCL + holder recheck), 50 Hz measured gPO, expiring targets, fault inhibit |
+| `ops/robot_pc/recorder.py` | session recorder: inference_outputs/inference_YYYYMMDD_HHMMSS/{inference.h5, camera_<serial>.mp4, summary.json}; batched, zero-drop |
+| `ops/robot_pc/hwtests.py` | policy-free hardware tests (gripper open/close, zero-motion hold) |
+| `scripts/robot_pc/infer.py`, `hwtest.py`, `verify_session.py` | THE inference entry point (execute on ENTER; `--dry-run`), hardware tests (`--rehearse` = read-only), read-back verification of a recorded session |
 | `ops/robot_pc/validation.py`, `poses.py` | action validation -> `Command` (absolute goal bound to its observation, expiry) |
 | `ops/robot_pc/executor.py` | local high-rate loop design (500 Hz setpoints, speed + lead limits, hold on expiry) |
 | `ops/robot_pc/robot_state.py` | read-only state: recorded, static latency-only, live UNBOUND skeleton |
@@ -175,6 +265,108 @@ up to input rounding), and `LiveStateReader` (read-only SUB, `approved=True` req
 cannot detect a frozen publisher). Not connected in this directive. `LiveSink` formats executor setpoints as these
 RobotActions for a caller-supplied publisher, but is refused (`EXECUTION_PERMITTED = False`) and no publisher exists.
 
+## LIVE integration design (Directive J, 2026-11-10; P0 read-only inspection of panda-teleop)
+
+> **Superseded in part by user directive K (2026-11-10 22:10, see "OPERATOR GUIDE" above).** The design below records
+> Directive J. Its speed / acceleration caps, 0.04 m / 20 deg (and slow-profile 0.02 m / 8 deg) lead leash, per-step
+> rejection, task workspace boxes, start radius, rejection abort and not-following detector were REMOVED; the executor
+> now interpolates to the policy's raw goal and only never sends beyond switch_controller's 0.2 m / 0.5 rad guard.
+> State-health stops, expiry, communication-loss stops, release, single commander / Modbus master and
+> execution_eligible remain as described.
+
+Evidence (read-only; teleop_collector = `TC`, switch_controller = `SC`):
+
+| topic | fact | source |
+|---|---|---|
+| state | SC binds RobotState PUB `tcp://*:28400`, ~1 kHz; consumers connect a CONFLATE SUB | SC docs/communication.md "Topology"; TC robot.py:4, :74 |
+| commands | the COMMANDER binds PUBs `:28401` (ControllerCommand `ctrl_mode`) and `:28402` (RobotAction); SC's SUBs connect to `127.0.0.1` | TC robot.py:87 (`_bound_pub`), :122 (`send_ee_pose`), :151 (`request_mode`); SC config/panda_real.yaml:31-35 |
+| action | `RobotAction(frame_id="world", real_time_action.ee_pose_rt=[ee pose], target_dt)`; SC holds the measured pose when no action within target_dt, rejects targets > 0.2 m / 0.5 rad | TC robot.py:1-13, :122; SC communication.md "Motion actions" |
+| modes | 0 STOP (software cancel), 1 IDLE (backend IdleControl), 3 task impedance (the collector's mode); a selection stops the old worker first | SC docs/controllers.md "Selection", table |
+| engage | TC requests mode 3 on the first enable press (re-sent on every engage), waits `CONTROLLER_SETTLE_S` 0.5 s, engages at the measured pose | TC app.py:53, :305-330 |
+| disengage / exit | final command at the MEASURED pose (immediate hold), then on exit wait until still and request IDLE (mode 1) | TC app.py:347-363, :785-797 |
+| health | state older than 50 ms, invalid, or q/dq/tau bit-identical > 0.25 s blocks motion | TC app.py:54, :243-275 |
+| frames | SC ee = flange rotated -90 deg about z; recorded flange = ee @ inv(T) | TC teleop.py:134-139 |
+| gripper | Robotiq 2F-85, Modbus RTU `/dev/ttyUSB0` 115200 8N1 slave 9, status FC03 @0x07D0, command FC16 @0x03E8, 50 Hz worker thread that is the ONLY master, activates an unactivated gripper (fingers move), closure c <-> register 3 + 227 c | TC gripper.py:1-27, :72-108, :154-219 |
+| recording | one writer owns the HDF5, `.h5.partial` renamed on finish, extendible chunked datasets, rows batched; leftovers trimmed on restart | TC recorder.py:3-5, :77, :139-224 |
+| launch | SC container `panda_robot --backend real` starts in IDLE and publishes state; `launch_real.sh` refuses without the RT kernel | SC docs/panda-docker.md "Launch" |
+
+Live verification (P2, READ-ONLY SUB, 2026-11-10 ~19:00, controller up, robot at rest): 1000.0 Hz, 0 sequence gaps,
+0 decode errors, send -> receive 0.06 ms on the same host; flange pose from the ee frame == URDF FK of panda_link8 for
+the live joints (2e-15 m, 2e-13 deg); `state_blockers` empty (`realworld-ops/serving/robj-evidence/`).
+
+**Design.**
+* **State**: `switch_controller.LiveStateReader` (SUB, never binds/sends) as the live robot source; the collector's
+  health rules gate bindings and the executor.
+* **Gripper (measured + command, no second Modbus master)**: `ops/robot_pc/gripper.py` ports the collector's Robotiq
+  RTU protocol and 50 Hz worker into OUR process, which becomes the single master only while the collector is NOT
+  running: it refuses known port holders or a teleop collector, takes the lock-file `flock`, opens with pyserial
+  `exclusive=True` (an advisory flock), explicitly applies `ioctl(TIOCEXCL)`, then rechecks existing holders and closes
+  if any are found. Unreadable `/proc/<pid>/fd` entries/directories are counted as `unverifiable` and exposed in
+  status/logs; that count alone does not refuse ownership. TIOCEXCL blocks later unprivileged opens; privileged
+  processes can bypass it, and root processes cannot be inspected without sudo. Before the first actuating test,
+  the operator confirms `sudo fuser -v /dev/ttyUSB0` (expected: no other holder). After exclusivity and the holder
+  recheck, reset the input buffer and listen for 0.3 s without sending; any byte refuses ownership as possible
+  traffic from another Modbus master. Three consecutive bad replies (CRC, length or echo mismatch) latch the worker's
+  error and stop execution. Dry run /
+  validation = status reads ONLY (no activation, no command: fingers cannot move); execution additionally sends the
+  closure command (deadband / keepalive as the collector) and NEVER activates (an unactivated gripper is reported and
+  commands are withheld - activation stays the operator's / collector's action). Targets carry the accepted command's
+  monotonic expiry; expired/cleared targets cannot be replayed on reconnect, including keepalives. The target mailbox
+  lock never covers serial I/O; serial write timeout is 50 ms (read timeout 50 ms). A command in flight completes in
+  < 1 transaction. After any target has been written, stop, session abort and expiry each request one bounded FC16
+  hold at the latest measured gPO, with the same speed/force, only when activated, fault-free and <100 ms old.
+  The Robotiq holds position after a position command equal to its current position. Hold writes appear in `sent`
+  as `(t_ns, register)` and in `holds` as `(t_ns, register, reason)`; read-only workers never write a hold. Faults
+  inhibit writes. Execution preflight requires activated gSTA=3, fault=0, no communication error and a status <100 ms
+  old; it waits up to 1 s for readiness (initial idle-bus fault 0x09 can clear). Execution stops on a fault/inactive
+  status or no fresh status for 200 ms; dry run logs/records health only. Measured samples (gPO with host time)
+  feed the binding; commands are recorded separately and can never be read back as state (`gripper_origin` guard).
+  Blocker found: `/dev/ttyUSB0` is root:dialout 0660 and the robot-PC user is not in `dialout` (the collector reaches it
+  from docker): user decision (group membership, or a container with `--device`).
+* **Commander**: `ops/robot_pc/controller.py` binds the two PUBs exactly as the collector (so the collector and this
+  launcher can never command at the same time: the second bind fails), waits for SC's subscriber TCP connections
+  (monitor ACCEPTED), and repeats mode 3 requests every ~100 ms during the 0.5 s settle (send count logged). This
+  recovers requests dropped during subscription propagation; TCP connection and PUB send do not prove subscription
+  readiness or mode acceptance. RobotState has **no mode field**: the operator confirms acceptance on the controller
+  UI. Alongside the leash/rate-conflict latch, policy execution stops if the emitted position stays at least half
+  `lead_m` away from the measured flange continuously for >1 s (mode possibly not accepted); this check does not
+  apply to dry run or the hold test. Either subscriber DISCONNECTED event
+  latches a session stop, even if reconnected before the next tick. Release sends one hold at the measured ee pose as
+  received only with a finite sample <50 ms old and a unit quaternion (norm error <1e-3), waits at least
+  target_dt=50 ms and at most 1 s for fresh |dq|<0.02,
+  then requests IDLE + 50 ms sleep whenever a mode was requested. Hold/wait failures cannot skip IDLE; close always runs.
+  A transport lock finishes any in-flight streaming send before release latches streaming off; hold, IDLE and socket
+  close use the same lock. Later streaming sends are refused. Release returns/stores `release_outcome` with `hold`
+  (`sent`, `skipped: ...`, `error: ...`), `still` (boolean or `error: ...`) and `idle` (`sent`, `not requested`,
+  `error: ...`); shutdown records a `release {...}` event and the policy launcher prints it. A real hold-test PASS
+  requires hold and IDLE both `sent`; verification requires a release event with IDLE `sent` for engaged execute/hold
+  sessions. State-gap verification includes intervals overlapping the streaming boundaries and checks the latest
+  preceding robot-state age at every executed setpoint against `state_timeout_s`, reporting the maximum age.
+* **Safety** (simplified, directive item 4): one arm/start action (`--execute`, then ENTER) and an immediate stop
+  (Ctrl-C, `s`, SIGTERM, or any failure); the hardware e-stop stays the operator's. Kept: the collector's rate / lead
+  limits, task workspace boxes, stale / frozen / invalid state stop, expired action -> nothing sent (SC holds),
+  communication failure -> stop, controller-compatibility checks (state live, subscribers connected; mode acceptance
+  confirmed on the UI), and execution only for policies the catalog marks `execution_eligible`. Policy sessions
+  require `hardware_test is None`; a hold test requires the `hold` authorization stored by its sink; a gripper
+  authorization cannot construct an arm link or sink. After ENTER, policy execution validates fresh healthy, still
+  state, builds and records the start workspace intersection from that pose, and rechecks health before engagement.
+  One cancellation
+  event covers startup and streaming, checked before engagement, after ENTER, after subscriber wait, after engage,
+  and before streaming; release is registered immediately on link construction. The idempotent stop path runs on a
+  separate shutdown thread: stop/join the executor (timeout logged), clear gripper target without serial I/O,
+  release the controller, then physically hold and stop/join the gripper worker (bounded join). Only afterwards close
+  recorder, client, cameras and state reader. Release does not depend on gripper I/O, an outstanding policy call or
+  recorder/disk progress. SIGINT/SIGTERM interrupt the blocking START prompt immediately via `Cancelled`; throughout
+  cleanup and recorder finalization they only log "shutdown in progress", preserving the exit status. Resource close
+  loops catch `BaseException` so subsequent resources still close. Worker exceptions latch a stop; main-loop exceptions stop
+  then propagate. Consecutive failures count steps without an accepted command, including validation rejection.
+* **Acquisition**: RealSense RGB (+ native depth aligned to RGB only when the policy needs it); never IR. LiveSession
+  and the launcher refuse policies needing multiple cameras: live multiview sync sets are not implemented.
+* **Recording**: `inference_outputs/inference_YYYYMMDD_HHMMSS/{inference.h5, camera_<serial>.mp4, summary.json}`
+  (`ops/robot_pc/recorder.py`), non-blocking writer thread, `.partial` + rename on finalize. Executed rows mark
+  `sent=True` only when the execution sink returns successfully; detail distinguishes the arm send from gripper
+  target queueing and includes either component's error. Gripper queueing does not attest a serial write.
+
 ## Live robot state and measured gripper: UNRESOLVED interfaces
 
 **Robot state (switch_controller RobotState).** Known from the code (read-only): PUB bound by switch_controller on
@@ -197,6 +389,13 @@ static latency-only state is the one explicit exception) and `PolicyLoop` applie
 (`test_policy_gripper_input_is_the_measured_register_never_the_command`).
 
 ## Control path design (no actuation)
+
+> **Superseded in part by user directive K (2026-11-10 22:10, see "OPERATOR GUIDE" above).** The design below records
+> Directive J. Its speed / acceleration caps, 0.04 m / 20 deg (and slow-profile 0.02 m / 8 deg) lead leash, per-step
+> rejection, task workspace boxes, start radius, rejection abort and not-following detector were REMOVED; the executor
+> now interpolates to the policy's raw goal and only never sends beyond switch_controller's 0.2 m / 0.5 rad guard.
+> State-health stops, expiry, communication-loss stops, release, single commander / Modbus master and
+> execution_eligible remain as described.
 
 1. **Binding** (training rule, checked by the client and the server): pose = latest robot sample at or before the
    observation time (<= 15 ms old), register = latest register sample (<= 100 ms old); the action's goal is relative to

@@ -1,0 +1,16 @@
+# Camera NAMES used on the command line (infer.py --cameras left,middle,right) and in output folders / MP4 names.
+# Edit THIS copy on the robot PC (<root>/config/camera_names.yaml) if the rig changes. Names are free text
+# ([a-z0-9_]); every serial at most once.
+#
+# Derivation (2026-11-10, ROB-K): camera positions in the robot base frame (panda_link0: +x forward, +y the ROBOT'S
+# LEFT, +z up; teleop_collector DATASET.md "Base frame") = inv(T_cam_base)[:3, 3] of the released rig documents
+# assets/rig/rig-loma-drawer-open.json (rig-loma-drawer-open-a935aef, all three cameras "validated") and
+# assets/rig/rig-loma-mug-hanging-fx.json (identical within 3 mm):
+#   135122070988  (1.210, +0.421, 0.839) m   optical axis (-0.81, -0.40, -0.42)   -> y > 0: robot's LEFT
+#   135122076054  (1.193, +0.000, 0.837) m   optical axis (-0.87, -0.03, -0.49)   -> y = 0: MIDDLE
+#   135122073201  (1.186, -0.431, 0.841) m   optical axis (-0.79, +0.37, -0.49)   -> y < 0: robot's RIGHT
+# All three stand ~1.2 m in front of the robot looking back at it, so for a person standing behind the cameras
+# (facing the robot) "left" is on THEIR RIGHT: names follow the ROBOT's left / right, as the base frame does.
+left: "135122070988"
+middle: "135122076054"
+right: "135122073201"

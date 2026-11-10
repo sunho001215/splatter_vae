@@ -15,8 +15,11 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-RECORDER_PATTERNS = ("panda_teleop", "teleop_collector", "teleop", "realsense-viewer", "rs-record", "rs-capture",
-                     "switch_controller")
+# the teleop collector (module / mounted source / image), RealSense tools; NOT a bare "teleop": the switch_controller
+# container's command line mounts .../panda-teleop/switch_controller/config and is the controller, not a recorder
+RECORDER_PATTERNS = ("panda_teleop", "teleop_collector", "panda-teleop:latest", "realsense-viewer", "rs-record",
+                     "rs-capture")
+CONTROLLER_PATTERNS = ("switch_controller", "panda_robot")  # the controller: required for live runs, never a recorder
 COLLECTOR_IPC = "/tmp/teleop_collector_requests.ipc"
 DEVICE_PREFIXES = ("/dev/video", "/dev/bus/usb/")
 
@@ -29,7 +32,7 @@ def scan(proc_root: str = "/proc", *, patterns=RECORDER_PATTERNS, ipc_paths=(COL
          self_pid: int | None = None) -> dict:
     """{"holders": [(pid, device, cmdline)], "recorders": [(pid, cmdline)], "ipc": [path], "unreadable": n}."""
     me = os.getpid() if self_pid is None else int(self_pid)
-    holders, recorders, unreadable = [], [], 0
+    holders, recorders, controllers, unreadable = [], [], [], 0
     for d in Path(proc_root).iterdir():
         if not d.name.isdigit() or int(d.name) == me:
             continue
@@ -40,6 +43,8 @@ def scan(proc_root: str = "/proc", *, patterns=RECORDER_PATTERNS, ipc_paths=(COL
         low = cmd.lower()
         if cmd and any(p in low for p in patterns) and "robot_pc" not in low:
             recorders.append((int(d.name), cmd))
+        if cmd and any(p in low for p in CONTROLLER_PATTERNS) and "robot_pc" not in low:
+            controllers.append((int(d.name), cmd))
         try:
             fds = list((d / "fd").iterdir())
         except OSError:
@@ -52,16 +57,19 @@ def scan(proc_root: str = "/proc", *, patterns=RECORDER_PATTERNS, ipc_paths=(COL
                 continue
             if target.startswith(DEVICE_PREFIXES):
                 holders.append((int(d.name), target, cmd))
-    return {"holders": holders, "recorders": recorders, "ipc": [p for p in ipc_paths if Path(p).exists()],
-            "unreadable": unreadable}
+    return {"holders": holders, "recorders": recorders, "controllers": controllers,
+            "ipc": [p for p in ipc_paths if Path(p).exists()], "unreadable": unreadable}
 
 
-def require_free(**kw) -> dict:
-    """``scan`` and raise ``DevicesBusy`` naming every finding; returns the scan when nothing is busy."""
+def require_free(*, allow_controller: bool = True, **kw) -> dict:
+    """``scan`` and raise ``DevicesBusy`` naming every finding; returns the scan when nothing is busy. A running
+    switch_controller is not a recorder (live runs need it); ``allow_controller=False`` refuses it too."""
     s = scan(**kw)
     reasons = [f"pid {p} holds {dev} ({cmd[:80]})" for p, dev, cmd in s["holders"]]
     reasons += [f"pid {p} looks like a recorder/teleop process ({cmd[:80]})" for p, cmd in s["recorders"]]
     reasons += [f"collector IPC {p} exists (a running or crashed teleop collector)" for p in s["ipc"]]
+    if not allow_controller:
+        reasons += [f"pid {p} is switch_controller ({cmd[:80]})" for p, cmd in s["controllers"]]
     if reasons:
         raise DevicesBusy("refusing live acquisition (it could interfere with a recording): " + "; ".join(reasons))
     return s
