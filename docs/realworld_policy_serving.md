@@ -8,9 +8,11 @@ the client. Directive 2026-11-09 (network policy inference). **Dry-run only: not
 |---|---|---|
 | science | `s4d/rwlearn/deploy/` (docs/realworld_deployment.md) | input contracts (`InputSpec`), CPU crop/resize + native depth (`preprocess_frame`, `realsense`), trained history (`HistoryWindow`), encoder + FQL + action conversion (`DeployPolicy`), typed refusals (`errors`), recorded replay helpers (`replay`) |
 | networking | `ops/policy_serving/` | wire protocol, persistent server (sessions, seq/ack, queue, staleness), CPU client (reconnect, resume, action expiry), bench |
-| config | `configs/realworld/policy_serving.yaml` | bind address/port, limits, timeouts, served checkpoints (paths relative to `checkpoint_root`) |
+| config | `configs/realworld/policy_serving.yaml` | bind address/port, limits, timeouts, GPU memory budget, catalog path (+ optional static policies) |
+| catalog | `<checkpoint_root>/catalog.json` (`config.load_catalog`, written by the staging tool) | selectable policy ids `<condition>-<task>-s<seed>`, aliases, status deployable / quarantined + reasons, advertised input spec, staged paths + sha256 |
 | demo | `scripts/policy_replay_demo.py` | recorded episode -> client -> server -> actions JSONL (+ direct equality, recorded commands) |
-| tests | `tests/test_policy_serving.py` | CPU loopback, labelled FIXTURE policies of every condition |
+| staging | `ops/policy_serving/staging.py` + `criteria.py` | inventory of every real-world pretraining / FQL row (registry + queue read as data), the deployability criteria (realworld-ops/serving/POL-CRITERIA.md), staging of deployable policies to the inference host + catalog + reload (dry run by default) |
+| tests | `tests/test_policy_serving.py`, `tests/test_policy_staging.py` | CPU loopback, labelled FIXTURE policies of every condition; criteria, inventory, catalog, dry-run staging |
 
 `ops/policy_serving` imports only `s4d.rwlearn.deploy` (+ numpy/stdlib); it never reinterprets an input or output.
 The client side (`protocol`, `client`, `bench`, `config`) imports without torch (tested).
@@ -33,7 +35,7 @@ deadline, at most `io_timeout_s`) also makes the connection unusable: it is drop
 
 | message | direction | fields |
 |---|---|---|
-| WELCOME | s -> c (on connect) | `server`, `nonce`, `auth_required`, `policies: {id: {input_spec (unbound), info}}` |
+| WELCOME | s -> c (on connect) | `server`, `nonce`, `auth_required`, `policies: {id or alias: {input_spec (unbound), info {condition, task, seed, run, status, flags, checkpoint_sha256, resident, alias_of}}}`, `unavailable: {id: {status, reasons}}` |
 | HELLO | c -> s | `policy_id`, `choices` {`camera_id` (single view), `native_hw` {cam: [H, W]}, `calibration` {cam: {K_native, c2w}}, `native_depth_correction` {cam: ...}}, `resume` {session_id, last_ack} or null, `auth` (HMAC), `takeover` |
 | SPEC | s -> c | `session_id`, `resumed`, `input_spec` (bound `InputSpec.to_json()`), `limits`, `last_seq_received`, `redeliver` [seq] |
 | STEP | c -> s | `session_id`, `seq`, `frames` [NEW frames only: `camera_id`, `frame_id` (camera acquisition counter), `capture_ns` (client monotonic), `pose7`, `gripper_register` (measured at that frame), `metadata` (`native_hw` [H, W] of the native colour frame, `K` at the training grid for calibrated conditions; depth: `depth_source`, `native_correction`), `arrays` {rgb, depth, valid}], `sets` [multi-view: `frame_ids` {cam: id}, `surface_disp_m` (M5; null = no valid robot state)], `request` {`end_ids` {cam: id}, `reference_id`, `pose7` + `pose_time_ns`, `gripper_register` + `gripper_time_ns` (the measured samples bound to the observation, client monotonic), `ttl_ms`, `pad_run_start`, validation `noise` (array, float32 (1, 7)) or `noise_seed`} |
@@ -57,6 +59,28 @@ either the server's FQL noise stream is used (production).
 
 ## Semantics
 
+* **Policy registry (catalog).** The server offers the config's static `policies` plus every entry of the staged
+  catalog (`--catalog`, default `server.catalog` under the checkpoint root; schema `s4d-policy-catalog/1`, validated
+  by `config.load_catalog`). WELCOME advertises each offered id and alias with its unbound input spec WITHOUT loading
+  it (the catalog's `input_spec`, else `server.describe_entry`: checkpoint meta + training contract). A policy is
+  loaded on the first HELLO that selects it (sha256, training-contract checks, warm-up; the loaded spec must equal the
+  advertised one, else `bad_request`), logged as a JSON `policy_loaded` line (load_s, warmup_ms, footprint), and stays
+  resident afterwards. `--preload` loads + warms ids before READY. **Selection latency:** the first HELLO of a
+  non-resident policy waits for its load (seconds): select before the control loop starts (or use a client
+  `connect_timeout_s` that covers it, or preload).
+* **GPU memory budget.** `gpu_memory_budget_mb` (resident footprint = parameters + buffers + optimizer state, estimate
+  before a first load = staged file sizes) and optional `max_resident_policies`: a load evicts least-recently-used
+  IDLE policies (`policy_evicted` line); a policy with a live session (or a HELLO in progress) is never evicted - the
+  HELLO is then refused `overloaded` naming the policies in use. Pre-loaded constructor policies are pinned.
+* **Catalog reload without restart.** SIGHUP, every new connection (WELCOME) and a HELLO naming an unknown id re-read
+  the catalog when its file changed (`catalog_reloaded` line: added / removed / changed). An invalid catalog keeps the
+  current registry. A removed or changed entry is no longer offered in its old form; its resident object keeps serving
+  its live sessions and is unloaded when the last one ends; a HELLO for a changed id meanwhile gets `session_busy`
+  (or evicts them with `takeover`), then loads the new entry.
+* **Aliases and quarantine.** Aliases (e.g. the earlier `<condition>-<task>` ids -> `-s0`) select the same resident
+  policy. Entries with status `quarantined` (and entries that cannot be described) are listed in `unavailable` and
+  refused at HELLO (`bad_request`, with the reasons); `--allow-quarantined` serves them for pipeline checks only,
+  labelled `status: quarantined` + reasons in every info.
 * **Sessions.** HELLO binds the session once (`DeployPolicy.reset_session(concurrent=True)`: cameras, native grids,
   static calibration, native depth correction); sessions share the loaded model, at most `max_sessions_per_policy`
   (default 1 = one controller); another HELLO gets `session_busy` or, with `takeover: true`, evicts the least recently
@@ -127,13 +151,17 @@ deployment decides code path, checkpoint root and port):
 docker exec -d -w /opt/src/splatter4d-serve -e CUDA_VISIBLE_DEVICES=GPU-9bcf38b6-8240-e910-6548-ca715643dc11 \
   -e S4D_HOST_CONFIG=/opt/src/splatter4d-serve/configs/hosts/inference.yaml shkim_rw sh -c 'exec /opt/envs/s4d/bin/python -I -B \
   ops/policy_serving/server.py serve --config configs/realworld/policy_serving.yaml \
-  --policies dynamo-drawer-open,mvp3d_single-drawer-open --bind 0.0.0.0 --port 47100 \
+  --catalog catalog.json --preload dynamo-drawer-open-s0 --bind 0.0.0.0 --port 47100 \
   --checkpoint-root /ram/serving/checkpoints --token-file /ram/serving/token > /ram/serving/server.log 2>&1'
+# a newly staged catalog: picked up by the next connection, or explicitly (graceful, sessions keep running):
+docker exec shkim_rw pkill -HUP -f '^/opt/envs/s4d/bin/python -I -B ops/policy_serving/server.py serve'
 ```
 
-The server loads every listed policy once (sha256 + training-contract checks), warms up (`warmup_iterations`,
-synthetic labelled input), prints one JSON `ready` line (address, port, policies, load and warm-up timings) and serves
-until SIGINT/SIGTERM (graceful: queued requests answered `shutting_down`, the running one finished). Entry points are
+The server advertises every offered catalog entry (`--policies ID,...` restricts the offer), loads `--preload` ids
+(sha256 + training-contract checks, warm-up with synthetic labelled input), prints one JSON `ready` line (address,
+port, offered ids, aliases, resident policies with load / warm-up timings and footprints, unavailable ids, catalog
+path + sha256, budget) and serves until SIGINT/SIGTERM (graceful: queued requests answered `shutting_down`, the running
+one finished). Other policies load on their first HELLO. Entry points are
 run by path (`-I` drops the working directory from `sys.path`; each script adds its repository root itself).
 
 Route: `shkim_rw` is bridge-only. Least invasive: an SSH local forward on the existing master to the container IP
@@ -156,11 +184,40 @@ ok, why = check_action(r, reference_id=ref, now_ns=time.monotonic_ns(), max_age_
 pass native depth aligned to colour (`RealSenseCapture(..., depth=True)` = `rs.align` + the shared crop/resize).
 Live multi-view needs the M5 robot-surface motion per set (`add_sync_set`): see the open items.
 
+## Deployable policies: inventory, criteria, staging
+
+`ops/policy_serving/staging.py` (read-only on runs, datasets, recordings, registry and queue; no `ops.campaign`):
+
+```bash
+# inventory (A) pretraining completion, (B) FQL completion, (C) classes; --evaluate runs criteria c-f on CPU
+.venv/bin/python -I ops/policy_serving/staging.py inventory --evaluate --out-json INV.json --out-md INV.md
+# stage deployable runs (dry run by default): checkpoint + encoder export + deploy-contract sidecar (+ config /
+# completion / provenance; never datasets) -> irsl ~/shkim/serving/checkpoints (sha256, atomic, never overwriting a
+# differing file) -> shkim_rw /ram/serving/checkpoints -> catalog.json (merged, atomic) -> SIGHUP (only a server
+# whose process catches SIGHUP; older servers are never signalled)
+.venv/bin/python -I ops/policy_serving/staging.py stage RUN... [--inventory INV.json] [--execute]
+# monitoring hook for ONE newly completed FQL run (re-evaluates every criterion; stages only if deployable;
+# exit 0 staged / 3 not deployable / 2 error)
+.venv/bin/python -I ops/policy_serving/staging.py hook RUN [--execute]
+```
+
+Criteria (`criteria.py`, fixed in POL-CRITERIA.md before any result was read): (a) encoder pretraining completed at
+its configured budget, (b) FQL completed at `train.offline_steps` and finally synced, (c) export sha256 chain
+pretraining == FQL dataset == policy meta and the policy loads through `DeployPolicy`, (d) deploy-contract sidecar
+(`scripts/check_realworld_deploy.py contracts`) accepted at load, (e1) frozen-feature conditioning of the FQL dataset
+(offset/signal <= 10, LayerNorm unit std >= 0.5; LN-only failure + e2 pass = flag `attenuated_visual_input`), (e2)
+held-out visual sensitivity through the deploy path (action change under visual-input replacement >= 0.2 x action
+spread and >= 0.25 x the FQL-noise-only change; e2e_cnn: image replacement), (f) finite metrics, no q_mean > 100,
+late-phase q_mean <= +1. Explicit decisions (rwcal-20261109 3D-MVP: quarantined) and supersessions are recorded in
+`staging.QUARANTINE` / `staging.SUPERSEDED`. Policy ids are `<condition>-<task>-s<seed>`; the pre-catalog ids
+`<condition>-<task>` are aliases of a deployable `-s0`.
+
 ## Dry-run demo and benchmark
 
 ```bash
-# server on this machine (CPU, loopback) for a local check; any config with local paths works
-.venv/bin/python -I ops/policy_serving/server.py serve --config CFG --policies dynamo-drawer-open --device cpu --port 0
+# server on this machine (CPU, loopback) for a local check; any config / catalog with local paths works
+.venv/bin/python -I ops/policy_serving/server.py serve --config CFG --catalog CATALOG --checkpoint-root ROOT \
+    --policies dynamo-drawer-open-s0 --device cpu --port 0
 .venv/bin/python -I scripts/policy_replay_demo.py --episode /home/ws/data/real_world/drawer-open/episode_000000.h5 \
     --policy dynamo-drawer-open --port P --steps 60 --noise-seed 0 --out actions.jsonl \
     --direct-checkpoint runs/rwng-20261107b-fql-dynamo-drawer-open-s0/policy.pt \
@@ -191,6 +248,8 @@ cd <worktree> && mkdir -p outputs && source scripts/gpu_env.sh && \
 ## Limits and open items
 
 * `max_sessions_per_policy` (default 1) sessions share one loaded policy; inference is serialised per policy.
+* A lazy load runs on the selecting connection's thread while the worker keeps serving other sessions (shared GPU:
+  their latency can rise briefly during a load); eviction frees device memory once nothing references the object.
 * The deploy history applies the 1 % timing tolerance to every interval of a window; training only splits runs above
   1.5 periods, so intervals of 1.01-1.5 periods are refused for two steps where training would have used them (safe,
   stricter than training; science decision, `s4d.rwlearn.deploy`).

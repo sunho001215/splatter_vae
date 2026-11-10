@@ -22,10 +22,15 @@ server:
   history_capacity: null        # frames kept per camera (null: deploy default 2 x history span + 2)
   max_sessions_per_policy: 1    # live sessions sharing one loaded policy (1 = one controller; HELLO takeover evicts)
   max_connections: 16           # open connections (2 threads each); more are answered "overloaded" and closed
-  warmup_iterations: 3          # synthetic, labelled warm-up per policy at start (DeployPolicy.warm_up)
+  warmup_iterations: 3          # synthetic, labelled warm-up per policy at load (DeployPolicy.warm_up)
   warmup_native_hw: [480, 640]
-  default_policies: []          # ids served when --policies is not given
+  default_policies: []          # ids OFFERED when --policies is not given (empty: every registry entry)
   torch_threads: null           # CPU inference only (OMP/MKL threads)
+  catalog: catalog.json         # staged catalog (relative: under checkpoint_root); re-read on SIGHUP / unknown-id HELLO
+  preload: []                   # ids loaded + warmed before READY; others load on the first HELLO selecting them
+  gpu_memory_budget_mb: 8192    # resident policies (parameters + buffers + optimizer state); LRU-evicts idle ones,
+                                # never a policy with a live session (HELLO refused "overloaded" instead)
+  max_resident_policies: null   # optional cap on resident policies (null: budget only)
 client:
   host: 127.0.0.1               # robot PC: the local end of the tunnel (or the server address on a direct route)
   port: 47100
@@ -35,56 +40,8 @@ client:
   reconnect_backoff_s: [0.05, 0.1, 0.25, 0.5, 1.0]
   ttl_ms: 100.0                 # a request not started on the GPU within ttl (from its arrival) is answered "stale"
   max_action_age_ms: 200.0      # check_action: observation age bound for executing an action (robot-side decision)
-# One seed (s0) per staged condition/task (realworld-ops/serving/checkpoints_manifest.json). training_contract: the
-# deploy-contract sidecar written from the local FQL dataset (scripts/check_realworld_deploy.py contracts); the deploy API
-# checks it against the checkpoint (condition, export sha256, action contract, image size). sha256: policy.pt.
-# SinCro / SNeRL policies are still pretraining and ours is deferred (no checkpoint): add entries when they exist.
-policies:
-  dynamo-drawer-open:
-    {condition: dynamo, task: drawer-open, checkpoint: runs/rwng-20261107b-fql-dynamo-drawer-open-s0/policy.pt,
-     export: runs/rwng-20261107-dynamo-drawer-open-pre/encoder.pt,
-     training_contract: contracts/rwng-20261107b-fql-dynamo-drawer-open-s0.deploy_contract.json,
-     sha256: a5544d62f3e697142d3240e2d7373804fc659dc6140aca79bda54f844a565772}
-  dynamo-mug-hanging:
-    {condition: dynamo, task: mug-hanging, checkpoint: runs/rwng-20261107b-fql-dynamo-mug-hanging-s0/policy.pt,
-     export: runs/rwng-20261107-dynamo-mug-hanging-pre/encoder.pt,
-     training_contract: contracts/rwng-20261107b-fql-dynamo-mug-hanging-s0.deploy_contract.json,
-     sha256: 77fa723c323e732bce4775b11f9e597c6bf0b69468c74a1340a1e970c4b32017}
-  reviwo-drawer-open:
-    {condition: reviwo, task: drawer-open, checkpoint: runs/rwng-20261107b-fql-reviwo-drawer-open-s0/policy.pt,
-     export: runs/rwng-20261107-reviwo-drawer-open-pre/encoder.pt,
-     training_contract: contracts/rwng-20261107b-fql-reviwo-drawer-open-s0.deploy_contract.json,
-     sha256: 6fbac7f9cee429d051fccb5b93c9e8a4da6eeea1a1ed72b7a8f7cdcda392ddb0}
-  reviwo-mug-hanging:
-    {condition: reviwo, task: mug-hanging, checkpoint: runs/rwcal-20261109-fql-reviwo-mug-hanging-s0/policy.pt,
-     export: runs/rwcal-20261109-reviwo-mug-hanging-pre/encoder.pt,
-     training_contract: contracts/rwcal-20261109-fql-reviwo-mug-hanging-s0.deploy_contract.json,
-     sha256: f834568864ee50ac8a0783089eb9ede81f46d3f20aeb2fd899cb9137624f3088}
-  e2e_cnn-drawer-open:
-    {condition: e2e_cnn, task: drawer-open, checkpoint: runs/rwng-20261107b-fql-e2e_cnn-drawer-open-s0/policy.pt,
-     training_contract: contracts/rwng-20261107b-fql-e2e_cnn-drawer-open-s0.deploy_contract.json,
-     sha256: 5c85db1cd89575a88b7d97b9049554cd6e8c1d16bf6b76969aabb276d1f98253}
-  mvp3d_single-drawer-open:
-    {condition: mvp3d_single, task: drawer-open,
-     checkpoint: runs/rwcal-20261109-fql-mvp3d_single-drawer-open-s0/policy.pt,
-     export: runs/rwcal-20261109-mvp3d-drawer-open-pre/encoder.pt,
-     training_contract: contracts/rwcal-20261109-fql-mvp3d_single-drawer-open-s0.deploy_contract.json,
-     sha256: 376b4416599b72ffb4cda03e3a94623da004ba23effdff9e4efeb2c5c0c4d31b}
-  mvp3d_single-mug-hanging:
-    {condition: mvp3d_single, task: mug-hanging,
-     checkpoint: runs/rwcal-20261109-fql-mvp3d_single-mug-hanging-s0/policy.pt,
-     export: runs/rwcal-20261109-mvp3d-mug-hanging-pre/encoder.pt,
-     training_contract: contracts/rwcal-20261109-fql-mvp3d_single-mug-hanging-s0.deploy_contract.json,
-     sha256: f7c8dd2584dcc7aefb20f63420fd82ca538636db5a7593b10dcce999aee156d4}
-  mvp3d_multiview-drawer-open:
-    {condition: mvp3d_multiview, task: drawer-open,
-     checkpoint: runs/rwcal-20261109-fql-mvp3d_multiview-drawer-open-s0/policy.pt,
-     export: runs/rwcal-20261109-mvp3d-drawer-open-pre/encoder.pt,
-     training_contract: contracts/rwcal-20261109-fql-mvp3d_multiview-drawer-open-s0.deploy_contract.json,
-     sha256: 1b7601393c80c27f40805e541aee349627241131016031b42b48f4528490a389}
-  mvp3d_multiview-mug-hanging:
-    {condition: mvp3d_multiview, task: mug-hanging,
-     checkpoint: runs/rwcal-20261109-fql-mvp3d_multiview-mug-hanging-s0/policy.pt,
-     export: runs/rwcal-20261109-mvp3d-mug-hanging-pre/encoder.pt,
-     training_contract: contracts/rwcal-20261109-fql-mvp3d_multiview-mug-hanging-s0.deploy_contract.json,
-     sha256: dc6fc5707e979356409ef9ae6537a62ad0c4be5b687a4c545a2f5db30fbfb48a}
+# Served policies: the staged CATALOG (server.catalog, written by ops/policy_serving/staging.py next to the staged files:
+# ids <condition>-<task>-s<seed>, aliases, status deployable / quarantined, advertised input spec) is the single source on
+# the inference host; static entries may still be given here (keys: checkpoint, export, training_contract | dataset,
+# sha256, condition, task, note; paths relative to checkpoint_root). docs/realworld_policy_serving.md.
+policies: {}

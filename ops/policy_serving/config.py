@@ -1,4 +1,5 @@
-"""``configs/realworld/policy_serving.yaml`` reader: defaults, key validation, path resolution. No model imports.
+"""``configs/realworld/policy_serving.yaml`` reader + the staged policy CATALOG (``<checkpoint_root>/catalog.json``):
+defaults, key validation, path resolution. No model imports (torch-free).
 
 PyYAML is imported only when a YAML file is actually read, so the robot-side client works without it (pass host/port
 on the command line, or a JSON file with the same structure).
@@ -33,6 +34,10 @@ SERVER_DEFAULTS = {
     "warmup_native_hw": [480, 640],
     "default_policies": [],
     "torch_threads": None,
+    "catalog": None,
+    "preload": [],
+    "gpu_memory_budget_mb": None,
+    "max_resident_policies": None,
 }
 CLIENT_DEFAULTS = {
     "host": "127.0.0.1",
@@ -45,6 +50,14 @@ CLIENT_DEFAULTS = {
     "max_action_age_ms": 200.0,
 }
 POLICY_KEYS = {"checkpoint", "export", "dataset", "training_contract", "sha256", "condition", "task", "note"}
+
+# Staged policy catalog (written by the staging tool next to the staged files, read by the server at start, on SIGHUP
+# and when a HELLO names an unknown id). Paths are relative to the checkpoint root unless absolute.
+CATALOG_SCHEMA = "s4d-policy-catalog/1"
+CATALOG_TOP_KEYS = frozenset({"schema", "generated_utc", "criteria_sha256", "policies", "aliases", "note"})
+CATALOG_ENTRY_KEYS = frozenset(POLICY_KEYS | {"seed", "run", "status", "flags", "reasons", "input_spec"})
+CATALOG_REQUIRED_KEYS = frozenset({"checkpoint", "sha256", "condition", "task", "status"})
+CATALOG_STATUSES = ("deployable", "quarantined")
 
 
 def _load_file(path: Path) -> dict:
@@ -80,6 +93,54 @@ def load_config(path: str | Path | None = None) -> dict:
             raise ValueError(f"policy {pid}: give dataset OR training_contract, not both")
         cfg["policies"][str(pid)] = dict(entry)
     return cfg
+
+
+def validate_catalog(raw: dict, source="catalog") -> dict:
+    """Checked catalog dict (see ``CATALOG_*``): unknown keys refused, status values checked, aliases point at existing
+    ids and never shadow one. Returns ``{"schema", ..., "policies": {id: entry}, "aliases": {alias: id}}``."""
+    if not isinstance(raw, dict):
+        raise ValueError(f"{source}: a catalog is a JSON object")
+    bad = set(raw) - CATALOG_TOP_KEYS
+    if bad:
+        raise ValueError(f"{source}: unknown catalog keys {sorted(bad)}")
+    if raw.get("schema") != CATALOG_SCHEMA:
+        raise ValueError(f"{source}: schema {raw.get('schema')!r} != {CATALOG_SCHEMA!r}")
+    policies = raw.get("policies") or {}
+    if not isinstance(policies, dict):
+        raise ValueError(f"{source}: policies must be an object")
+    out = {k: copy.deepcopy(v) for k, v in raw.items() if k not in ("policies", "aliases")}
+    out["policies"], out["aliases"] = {}, {}
+    for pid, entry in policies.items():
+        if not isinstance(entry, dict):
+            raise ValueError(f"{source}: policy {pid}: entry must be an object")
+        unknown, missing = set(entry) - CATALOG_ENTRY_KEYS, CATALOG_REQUIRED_KEYS - set(entry)
+        if unknown or missing:
+            raise ValueError(f"{source}: policy {pid}: unknown keys {sorted(unknown)}, missing keys {sorted(missing)}")
+        if entry["status"] not in CATALOG_STATUSES:
+            raise ValueError(f"{source}: policy {pid}: status {entry['status']!r} not in {CATALOG_STATUSES}")
+        if entry.get("dataset") is not None and entry.get("training_contract") is not None:
+            raise ValueError(f"{source}: policy {pid}: give dataset OR training_contract, not both")
+        for key in ("flags", "reasons"):
+            if not isinstance(entry.get(key, []), list) or not all(isinstance(x, str) for x in entry.get(key, [])):
+                raise ValueError(f"{source}: policy {pid}: {key} must be a list of strings")
+        if entry["status"] == "quarantined" and not entry.get("reasons"):
+            raise ValueError(f"{source}: policy {pid}: a quarantined entry states its reasons")
+        out["policies"][str(pid)] = copy.deepcopy(entry)
+    aliases = raw.get("aliases") or {}
+    if not isinstance(aliases, dict):
+        raise ValueError(f"{source}: aliases must be an object")
+    for alias, pid in aliases.items():
+        if alias in out["policies"]:
+            raise ValueError(f"{source}: alias {alias!r} shadows a policy id")
+        if pid not in out["policies"]:
+            raise ValueError(f"{source}: alias {alias!r} points at unknown policy {pid!r}")
+        out["aliases"][str(alias)] = str(pid)
+    return out
+
+
+def load_catalog(path: str | Path) -> dict:
+    """``validate_catalog`` of a catalog JSON file."""
+    return validate_catalog(json.loads(Path(path).read_text()), source=str(path))
 
 
 def resolve(root: str | Path | None, value: str | None) -> Path | None:
