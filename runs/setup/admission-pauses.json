@@ -197,6 +197,18 @@
       "since": "2026-11-10T11:40:25.376064+00:00",
       "by": "register_mvp3d_native_20261110",
       "reason": "held until the cell's native fqldata passes the standardised A1 feature check"
+    },
+    {
+      "name": "nativedepth-guard-20261110",
+      "active": false,
+      "prefixes": [
+        "rwcal-20261110-nativedepth-mvp3d-"
+      ],
+      "since": "2026-11-10T21:47:00+0900",
+      "reason": "coordinator 2026-11-10 21:47: scripts/realworld_native_depth.py does not call the GPU guard -> scheduler check_guarded raised in every remote tick since ~20:41 (22 ticks, no remote admissions). Pause the 2 native-depth stage rows until a released fix adds the guard call; then lift.",
+      "by": "coordinator (Claude), protective, reversible",
+      "lifted": "2026-11-10T22:45:00+0900",
+      "lift_reason": "ed0c5a3 released (2660/0/0) and adopted: scripts/realworld_native_depth.py calls the GPU guard; check_guarded passes"
     }
   ]
 }
