@@ -189,14 +189,12 @@
       "name": "mvp3d-native-fql-feature-check-20261110",
       "active": true,
       "prefixes": [
-        "rwcal-20261110-fql-mvp3d_single-drawer-open-",
         "rwcal-20261110-fql-mvp3d_single-mug-hanging-",
-        "rwcal-20261110-fql-mvp3d_multiview-drawer-open-",
         "rwcal-20261110-fql-mvp3d_multiview-mug-hanging-"
       ],
       "since": "2026-11-10T11:40:25.376064+00:00",
       "by": "register_mvp3d_native_20261110",
-      "reason": "held until the cell's native fqldata passes the standardised A1 feature check"
+      "reason": "held until the cell's native fqldata passes the standardised A1 feature check | A1 / MVP-STATUS V1 a-c PASS: mvp3d_single/drawer-open native_realsense; train offset_to_signal=5.24522877e-06 <= 0.01, LN unit std=0.994712399 >= 0.5; validation offset_to_signal=0.0850495229 <= 1.0, LN unit std=0.988863476 >= 0.5; train-split trainer standardisation, seed 0, 20 rows/timeline | A1 / MVP-STATUS V1 a-c PASS: mvp3d_multiview/drawer-open native_realsense; train offset_to_signal=6.06112524e-06 <= 0.01, LN unit std=0.996488343 >= 0.5; validation offset_to_signal=0.129882949 <= 1.0, LN unit std=0.985192404 >= 0.5; train-split trainer standardisation, seed 0, 20 rows/timeline"
     },
     {
       "name": "nativedepth-guard-20261110",
