@@ -104,6 +104,11 @@ def verify(session: Path, *, max_setpoints: int = 2000) -> dict:
             # start-up starving the reader) are reported separately
             ex_t = h["executed/t_ns"][()]
             stale_ms = 1e3 * float(meta.get("config", {}).get("executor", {}).get("state_timeout_s", 0.05))
+            if not len(ex_t):  # no setpoints (gripper test): the window starts at the test's "start" event
+                ev_t = h["events/t_ns"][()]
+                ev = [x.decode() if isinstance(x, bytes) else x for x in h["events/text"][()]]
+                starts = [t for t, e in zip(ev_t, ev) if e.startswith("start ")]
+                ex_t = np.array([starts[0], rt[-1]], np.int64) if starts else ex_t
             if len(ex_t):
                 w = (rt[:-1] >= ex_t[0]) & (rt[1:] <= ex_t[-1])
                 dts = np.diff(rt)[w] / 1e6
