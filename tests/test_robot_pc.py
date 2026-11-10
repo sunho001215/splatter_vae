@@ -477,12 +477,17 @@ def test_executor_holds_on_expiry_and_latches_a_stop_on_stale_or_frozen_state():
     again = ex.tick(10_000_000, POSE, state_t_ns=10_000_000, signature=b"a")
     assert again.pose7 == a.pose7 and ex.counts["resent"] == 1  # repeated timestamp: no motion
     moved = [POSE[0] + 0.001, *POSE[1:]]
-    held = ex.tick(150_000_000, moved, state_t_ns=150_000_000, signature=b"b")
-    assert held.kind == "hold" and held.pose7 == tuple(moved) and held.gripper_closure == 0.3
+    n_sent = len(sink.items)
+    assert ex.tick(150_000_000, moved, state_t_ns=150_000_000, signature=b"b") is None  # expired: nothing sent
+    assert ex.tick(150_000_000, moved, state_t_ns=150_000_000, signature=b"b") is None  # not even a re-send
+    assert len(sink.items) == n_sent and ex.counts["expired"] == 1
     assert not ex.accept(_cmd([POSE[0] + 0.01, *POSE[1:]], t_obs=-1, closure=1.0))  # older observation refused
+    assert ex.accept(_cmd([POSE[0] + 0.01, *POSE[1:]], t_obs=140_000_000, age_ms=100))  # re-engage from measured
+    sp = ex.tick(152_000_000, moved, state_t_ns=152_000_000, signature=b"c")
+    assert sp.kind == "track" and abs(sp.pose7[0] - moved[0]) <= 0.3 * 0.002 + 1e-12
     late = executor.HighRateExecutor(sinks.MockSink())
     late.accept(_cmd(POSE, t_obs=0, age_ms=10, closure=1.0))  # first tick after expiry: nothing of it applied
-    assert late.tick(20_000_000, POSE, state_t_ns=20_000_000, signature=b"x").gripper_closure is None
+    assert late.tick(20_000_000, POSE, state_t_ns=20_000_000, signature=b"x") is None
     stale = executor.HighRateExecutor(sinks.MockSink())
     stale.accept(_cmd(POSE, age_ms=1e6))
     assert stale.tick(100_000_000, POSE, state_t_ns=40_000_000, signature=b"s") is None
@@ -1217,3 +1222,27 @@ def test_direct_tunnel_helper_command_and_fail_closed_checks(tmp_path):
         tunnel.stop(tmp_path, 47100)
     st = tunnel.status(tmp_path, 1)
     assert st["ok"] is False and st["pid_alive_ssh_tunnel"] is False
+
+
+def test_a_refused_session_renewal_is_an_error_result_not_an_exception(policies, monkeypatch):
+    import time
+
+    pol = policies["reviwo"]
+    srv = PolicyServer({"reviwo-x": pol}, warmup_iterations=0, session_idle_timeout_s=0.3)
+    srv.start()
+    try:
+        client = PolicyClient("127.0.0.1", srv.port, policy_id="reviwo-x", step_timeout_s=2.0,
+                              choices={"native_hw": {"cam_a": [48, 64]}, "camera_id": "cam_a"})
+        client.connect()
+        time.sleep(1.0)  # the session expires on the server
+        monkeypatch.setattr(pol, "reset_session", lambda *a, **k: (_ for _ in ()).throw(ValueError("withdrawn")))
+        t0 = time.monotonic_ns()
+        for k in range(3):
+            client.add_frame_native("cam_a", k, t0 + k * PERIOD_NS, np.zeros((48, 64, 3), np.uint8), pose7=POSE,
+                                    gripper_register=3.0)
+        r = client.step({"cam_a": 2}, "r", list(POSE), 3.0, pose_time_ns=t0 + 2 * PERIOD_NS - 1_000_000,
+                        gripper_time_ns=t0 + 2 * PERIOD_NS - 1_000_000, pad_run_start=True)
+        assert not r.ok and r.code not in (None, "session_taken_over") and client.stats["renew_failed"] == 1
+        client.close()
+    finally:
+        srv.shutdown()

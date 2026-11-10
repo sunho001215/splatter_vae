@@ -30,9 +30,9 @@ def main(argv=None) -> int:
         if args.action == "start":
             out = tunnel.start(args.root, port=args.port, container=args.container)
         elif args.action == "stop":
-            out = tunnel.stop(args.root, args.port)
+            out = tunnel.stop(args.root, args.port, args.container)
         else:
-            out = tunnel.status(args.root, args.port)
+            out = tunnel.status(args.root, args.port, args.container)
     except (tunnel.TunnelError, tunnel.ExecutionRefused) as exc:
         print(f"tunnel {args.action} REFUSED: {exc}", file=sys.stderr)
         return 3

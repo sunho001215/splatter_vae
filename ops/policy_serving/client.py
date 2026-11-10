@@ -284,16 +284,14 @@ class PolicyClient:
         except ServingError as exc:
             if exc.code == "session_busy":
                 self._taken(f"policy held by another client after this session was lost: {exc.detail}")
-            elif isinstance(exc, ConnectionLost):
-                self._renew_failed(exc)
-            else:
-                raise
+            else:  # disconnect, refusal (e.g. policy withdrawn), auth: an error result, never an exception
+                self._renew_failed(exc, "session_unknown" if isinstance(exc, ConnectionLost) else exc.code)
         except (TimeoutError, OSError, ConnectionError, P.ProtocolError) as exc:
             self._renew_failed(exc)
         finally:
             self._renewing = False
 
-    def _renew_failed(self, exc) -> None:
+    def _renew_failed(self, exc, code: str = "session_unknown") -> None:
         """Renewal not done (deadline, disconnect): drop the connection (a late SPEC must never be mistaken for an
         answer) and answer the in-flight requests; the next step reconnects (a still-held policy -> takeover)."""
         self.stats["renew_failed"] += 1
@@ -301,7 +299,7 @@ class PolicyClient:
             self.wire.close()
             self.wire = None
         for seq in list(self._inflight):
-            self._results[seq] = StepResult("error", seq, self.session_id, "session_unknown",
+            self._results[seq] = StepResult("error", seq, self.session_id, code,
                                             f"session renewal did not complete ({exc})")
         self._inflight.clear()
 

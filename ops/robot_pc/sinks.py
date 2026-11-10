@@ -103,8 +103,8 @@ class LiveSink(CommandSink):
 
         if not safety.EXECUTION_PERMITTED:  # re-checked on every send, not only at construction
             raise ExecutionRefused("execution is not permitted in this revision")
-        if getattr(item, "kind", None) not in ("track", "hold"):
-            raise ExecutionRefused("LiveSink sends only executor setpoints (track / hold), never raw policy commands")
+        if getattr(item, "kind", None) != "track":
+            raise ExecutionRefused("LiveSink sends only executor setpoints, never raw policy commands")
         self.publisher.send(self.robot_msg.encode(sc.robot_action(self.robot_msg, item.pose7, self.target_dt)))
         self.sent += 1
 

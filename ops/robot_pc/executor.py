@@ -20,8 +20,9 @@ docs/robot_pc.md):
   app.py:54; switch_controller republishes its last state when stopped) STOPS the loop; so do (fail closed) a missing
   time or signature, a state stamped in the future, a state time going backwards and an invalid measured pose. Nothing
   more is sent and the stop is LATCHED until ``rearm()`` (the collector requires a new pedal press);
-* a command is replaced only by one of a NEWER observation; after ``expires_ns`` the loop HOLDS at the measured pose
-  and applies nothing of the expired command (the gripper keeps the last closure actually emitted);
+* a command is replaced only by one of a NEWER observation; after ``expires_ns`` NOTHING is sent (no component of the
+  expired command, no setpoint jump): switch_controller then holds the measured pose by itself after ``target_dt``
+  (0.05 s; robot.py docstring); a newer command re-engages from the measured pose with zero velocity;
 * nothing is sent before the first command; the step uses the ELAPSED time since the previous tick (capped at 2
   periods); a repeated / earlier timestamp re-sends the previous setpoint without moving (only while it is still
   inside the lead envelope of the current measurement).
@@ -42,9 +43,9 @@ from ops.robot_pc.validation import Command
 @dataclass(frozen=True)
 class Setpoint:
     t_ns: int
-    kind: str  # "track" (toward the bound goal) | "hold" (command expired: stay at the measured pose)
+    kind: str  # "track": toward the bound goal (an expired command produces no setpoint at all)
     pose7: tuple
-    gripper_closure: float | None  # None: no gripper target (hold before any tracked command)
+    gripper_closure: float | None
     reference_id: str
 
     def to_json(self) -> dict:
@@ -120,8 +121,8 @@ class HighRateExecutor:
         self._t_last: int | None = None
         self._gripper: float | None = None  # last gripper closure actually emitted in a "track" setpoint
         self._sig, self._sig_t, self._state_t = None, None, None
-        self._kind, self._v_emit, self._w_emit = "track", np.zeros(3), np.zeros(3)
-        self.counts = {"accepted": 0, "refused_older": 0, "track": 0, "hold": 0, "stopped": 0, "resent": 0}
+        self._v_emit, self._w_emit = np.zeros(3), np.zeros(3)
+        self.counts = {"accepted": 0, "refused_older": 0, "track": 0, "expired": 0, "stopped": 0, "resent": 0}
 
     def accept(self, cmd: Command) -> bool:
         """Adopt a validated command only if it belongs to a NEWER observation than the current one."""
@@ -193,19 +194,17 @@ class HighRateExecutor:
             if self._setpoint is None or poses_far(self._setpoint, measured, self.lead_m, self.lead_rad):
                 return None
             self.counts["resent"] += 1
-            sp = Setpoint(now, self._kind, tuple(self._setpoint.tolist()), self._gripper, cmd.reference_id)
+            sp = Setpoint(now, "track", tuple(self._setpoint.tolist()), self._gripper, cmd.reference_id)
             self.sink.send(sp)
             return sp
         dt = min(now - self._t_last, 2 * self.period_ns) / 1e9 if self._t_last is not None else self.period_ns / 1e9
         self._t_last = now
-        if now > cmd.expires_ns:  # the collector's "final hold at the measured pose": a stop, exempt from rates
-            self._setpoint, self._kind = measured, "hold"
-            self._v_emit, self._w_emit = np.zeros(3), np.zeros(3)
-            self.limiter.reset(measured)
-            sp = Setpoint(now, "hold", tuple(measured.tolist()), self._gripper, cmd.reference_id)
-            self.counts["hold"] += 1
+        if now > cmd.expires_ns:  # nothing of an expired command, and no setpoint jump: send nothing at all; the
+            self._setpoint = None  # controller holds the measured pose itself after target_dt (0.05 s); a newer
+            self.counts["expired"] += 1  # command re-engages from the measured pose with zero velocity
+            return None
         else:
-            if self._setpoint is None or self._kind == "hold":
+            if self._setpoint is None:
                 self.limiter.reset(measured)  # (re)engage at the measured pose with zero velocity
                 self._setpoint, self._v_emit, self._w_emit = measured, np.zeros(3), np.zeros(3)
             goal = toward(measured, cmd.goal_pose7, self.lead_m, self.lead_rad)  # brake INTO the lead envelope
@@ -218,7 +217,7 @@ class HighRateExecutor:
                 return None
             self._v_emit = (nxt[:3] - self._setpoint[:3]) / dt
             self._w_emit = rotvec_between(self._setpoint[3:], nxt[3:]) / dt
-            self._setpoint, self._kind = nxt, "track"
+            self._setpoint = nxt
             self._gripper = cmd.gripper_closure
             sp = Setpoint(now, "track", tuple(nxt.tolist()), cmd.gripper_closure, cmd.reference_id)
             self.counts["track"] += 1

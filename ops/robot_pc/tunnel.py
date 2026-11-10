@@ -8,7 +8,9 @@ exactly ``permitopen="<container IP>:47100"`` and no shell. Standard library onl
   channel or already bound, or if a tunnel pid file is live; starts ssh in its own session, waits for the listener and
   the server's WELCOME, else stops it again (fail closed).
 * ``status``: pid alive (and its command line is this tunnel's ssh), listener accepts, WELCOME received.
-* ``stop``: SIGTERM to the pid from the pid file after checking that pid's command line (never ``pkill -f``).
+* ``stop``: SIGTERM (SIGKILL after 5 s) through a pidfd to the pid from the pid file, only if that process's full argv
+  is exactly this tunnel's command, its working directory is the root and (when recorded) its start time matches
+  (never ``pkill -f``).
 """
 
 from __future__ import annotations
@@ -57,26 +59,46 @@ def _listening(port: int, timeout: float = 0.5) -> bool:
         return False
 
 
-def _cmdline(pid: int) -> str:
+def _argv(pid: int) -> list:
     try:
-        return Path(f"/proc/{int(pid)}/cmdline").read_bytes().replace(b"\0", b" ").decode(errors="replace")
+        raw = Path(f"/proc/{int(pid)}/cmdline").read_bytes()
     except OSError:
-        return ""
+        return []
+    return [a.decode(errors="replace") for a in raw.split(b"\0") if a]
 
 
-def _is_our_tunnel(pid: int, port: int) -> bool:
-    cmd = _cmdline(pid)
-    return cmd.startswith("ssh ") and f"-L 127.0.0.1:{int(port)}:" in cmd and " -N " in f" {cmd} "
-
-
-def _pid(p: dict) -> int | None:
+def _start_ticks(pid: int) -> str | None:
+    """Process start time (clock ticks since boot, /proc/<pid>/stat field 22): guards against pid reuse."""
     try:
-        return int(p["pid"].read_text().strip())
-    except (OSError, ValueError):
+        stat_line = Path(f"/proc/{int(pid)}/stat").read_text()
+    except OSError:
         return None
+    return stat_line[stat_line.rindex(")") + 2:].split()[19]
 
 
-def preflight(root, port: int) -> dict:
+def _is_our_tunnel(pid: int, root, port: int, container: str = CONTAINER, start_ticks: str | None = None) -> bool:
+    """Exactly this tunnel: the full argv equals ``command(...)``, the working directory is ``root`` (the key paths are
+    relative to it) and, when recorded, the process start time matches (no pid reuse)."""
+    if _argv(pid) != command(root, port=port, container=container):
+        return False
+    try:
+        if Path(os.readlink(f"/proc/{int(pid)}/cwd")) != Path(root).expanduser().resolve():
+            return False
+    except OSError:
+        return False
+    return start_ticks is None or _start_ticks(pid) == start_ticks
+
+
+def _pid(p: dict) -> tuple[int | None, str | None]:
+    """(pid, recorded start ticks or None) from the pid file ("<pid>" or "<pid> <start ticks>")."""
+    try:
+        parts = p["pid"].read_text().split()
+        return int(parts[0]), (parts[1] if len(parts) > 1 else None)
+    except (OSError, ValueError, IndexError):
+        return None, None
+
+
+def preflight(root, port: int, container: str = CONTAINER) -> dict:
     admit_endpoint("127.0.0.1", port)
     p = paths(root, port)
     for k in ("key", "known_hosts"):
@@ -84,8 +106,8 @@ def preflight(root, port: int) -> dict:
             raise TunnelError(f"{p[k]} missing (placed by the user / coordinator; never by this tool)")
     if stat.S_IMODE(p["key"].stat().st_mode) & 0o077:
         raise TunnelError(f"{p['key']} must be mode 0600")
-    pid = _pid(p)
-    if pid is not None and _is_our_tunnel(pid, port):
+    pid, ticks = _pid(p)
+    if pid is not None and _is_our_tunnel(pid, root, port, container, ticks):
         raise TunnelError(f"a tunnel is already running (pid {pid}, {p['pid']})")
     if _listening(port):
         raise TunnelError(f"127.0.0.1:{port} is already bound (another tunnel / relay)")
@@ -110,10 +132,10 @@ def welcome(port: int, timeout: float = 3.0) -> dict | None:
         wire.close()
 
 
-def status(root, port: int = 47100) -> dict:
+def status(root, port: int = 47100, container: str = CONTAINER) -> dict:
     p = paths(root, port)
-    pid = _pid(p)
-    alive = pid is not None and _is_our_tunnel(pid, port)
+    pid, ticks = _pid(p)
+    alive = pid is not None and _is_our_tunnel(pid, root, port, container, ticks)
     listening = _listening(port)
     w = welcome(port) if listening else None
     return {"pid": pid, "pid_alive_ssh_tunnel": alive, "listening": listening, "welcome": w,
@@ -121,33 +143,63 @@ def status(root, port: int = 47100) -> dict:
 
 
 def start(root, *, port: int = 47100, container: str = CONTAINER, wait_s: float = 10.0) -> dict:
-    p = preflight(root, port)
+    p = preflight(root, port, container)
     p["log"].parent.mkdir(parents=True, exist_ok=True)
     with open(p["log"], "ab") as log:
-        proc = subprocess.Popen(command(root, port=port, container=container), cwd=p["root"], stdin=subprocess.DEVNULL,
-                                stdout=log, stderr=log, start_new_session=True)
-    p["pid"].write_text(f"{proc.pid}\n")
-    deadline = time.monotonic() + wait_s
-    while time.monotonic() < deadline and proc.poll() is None and not _listening(port):
-        time.sleep(0.2)
-    st = status(root, port)
-    if not st["ok"]:
-        stop(root, port)
-        raise TunnelError(f"tunnel did not come up (exit {proc.poll()}, see {p['log']}): {st}")
-    return st
+        proc = subprocess.Popen(command(root, port=port, container=container), cwd=p["root"].resolve(),
+                                stdin=subprocess.DEVNULL, stdout=log, stderr=log, start_new_session=True)
+    try:
+        p["pid"].write_text(f"{proc.pid} {_start_ticks(proc.pid)}\n")
+        deadline = time.monotonic() + wait_s
+        while time.monotonic() < deadline and proc.poll() is None and not _listening(port):
+            time.sleep(0.2)
+        st = status(root, port, container)
+        if not st["ok"]:
+            raise TunnelError(f"tunnel did not come up (exit {proc.poll()}, see {p['log']}): {st}")
+        return st
+    except BaseException:  # never leave our ssh behind: terminate, kill, reap through the retained handle
+        if proc.poll() is None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait(timeout=3)
+        p["pid"].unlink(missing_ok=True)
+        raise
 
 
-def stop(root, port: int = 47100) -> dict:
+def stop(root, port: int = 47100, container: str = CONTAINER) -> dict:
+    """SIGTERM (then SIGKILL after 5 s) through a pidfd opened only after the identity check (no pid-reuse race)."""
     p = paths(root, port)
-    pid = _pid(p)
+    pid, ticks = _pid(p)
     if pid is None:
         return {"stopped": False, "reason": "no pid file"}
-    if not _is_our_tunnel(pid, port):
-        raise ExecutionRefused(f"pid {pid} is not this tunnel's ssh ({_cmdline(pid)[:80]!r}); not signalled")
-    os.kill(pid, signal.SIGTERM)
-    for _ in range(25):
-        if not _is_our_tunnel(pid, port):
-            break
-        time.sleep(0.2)
+    pidfd = getattr(os, "pidfd_open", None)  # Linux >= 5.3 / CPython >= 3.9 (the robot PC: 3.12); else os.kill
+    try:
+        fd = pidfd(pid) if pidfd else None
+    except OSError:
+        p["pid"].unlink(missing_ok=True)
+        return {"stopped": False, "reason": f"pid {pid} is not running (stale pid file removed)"}
+
+    def send(sig):
+        signal.pidfd_send_signal(fd, sig) if fd is not None else os.kill(pid, sig)
+
+    try:
+        if not _is_our_tunnel(pid, root, port, container, ticks):
+            raise ExecutionRefused(f"pid {pid} is not this tunnel's ssh ({' '.join(_argv(pid))[:80]!r}); not signalled")
+        send(signal.SIGTERM)
+        for _ in range(25):
+            if not _is_our_tunnel(pid, root, port, container, ticks):
+                break
+            time.sleep(0.2)
+        else:
+            send(signal.SIGKILL)
+            time.sleep(0.2)
+        if _is_our_tunnel(pid, root, port, container, ticks):
+            raise TunnelError(f"pid {pid} survived SIGKILL")
+    finally:
+        if fd is not None:
+            os.close(fd)
     p["pid"].unlink(missing_ok=True)
     return {"stopped": True, "pid": pid}
