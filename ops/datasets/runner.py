@@ -73,10 +73,11 @@ def resolve_selection(value, plan: dict, root: Path) -> dict | None | str:
         return value if value == "pending" else None
     path = Path(value) if Path(value).is_absolute() else root / value
     wanted = {line.strip() for line in path.read_text().splitlines() if line.strip()}
-    per_shard = {shard: len(wanted.intersection(members)) for shard, members in plan["flow_members"].items()}
-    total = sum(len(archives.split_members(m)[0]) for m in plan["flow_members"].values())
-    return {"episodes": wanted, "per_shard": per_shard, "fraction": sum(per_shard.values()) / max(1, total),
-            "source": str(path)}
+    episodes = {shard: archives.split_members(members)[0] for shard, members in plan["flow_members"].items()}
+    per_shard = {shard: len(wanted.intersection(names)) for shard, names in episodes.items()}
+    totals = {shard: len(names) for shard, names in episodes.items()}
+    return {"episodes": wanted, "per_shard": per_shard, "per_shard_total": totals,
+            "fraction": sum(per_shard.values()) / max(1, sum(totals.values())), "source": str(path)}
 
 
 def selection_fingerprint(selection) -> str | None:
@@ -506,9 +507,10 @@ class Runner:
                 self.state.save(force=True)
             for kind in item["archive"]["kinds"]:
                 archives.publish(staging, kind, self.pointworld_root())
-            if item["group"] == "pw_flows":
+            if item["group"] == "pw_flows":  # against the verified staging report (non-episode members excluded)
                 report = archives.verify_published(self.pointworld_root(), "flows-fs-optimized",
-                                                   [f"{m}_flows.h5" for m in members], expected)
+                                                   [f"{m}_flows.h5" for m in members],
+                                                   self.state.items[item_id].get("extracted", {}).get("bytes"))
             else:
                 report = self.state.items[item_id].get("extracted", {})
             archives.clear_staging(staging)

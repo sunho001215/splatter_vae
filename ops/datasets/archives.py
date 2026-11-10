@@ -151,7 +151,7 @@ def verify_flow_shard(staging: Path, members: list[str], expected_bytes: int | N
     """``members``: the shard's (selected) episode names; ``expected_bytes``: ``raw_member_bytes`` (None with a
     selection, whose per-member sizes are not published); ``non_episode``: manifest members that are not episodes
     (ignored by the extractor): the staged bytes must then fall short of ``raw_member_bytes`` by at least one byte and
-    at most ``NON_EPISODE_MEMBER_MAX`` per such member, instead of matching exactly."""
+    at most ``NON_EPISODE_MEMBER_MAX`` per such member (at least one byte each), instead of matching exactly."""
     files = staged_files(staging, "flows-fs-optimized")
     names = {episode_of(n) for n in files}
     if names != set(members):
@@ -162,7 +162,7 @@ def verify_flow_shard(staging: Path, members: list[str], expected_bytes: int | N
         short = expected_bytes - total
         if non_episode == 0 and short != 0:
             raise ExtractionError(f"flow member bytes {total} != raw_member_bytes {expected_bytes}")
-        if non_episode and not 0 < short <= non_episode * NON_EPISODE_MEMBER_MAX:
+        if non_episode and not non_episode <= short <= non_episode * NON_EPISODE_MEMBER_MAX:
             raise ExtractionError(f"flow member bytes {total} vs raw_member_bytes {expected_bytes}: {short} bytes "
                                   f"cannot be {non_episode} non-episode member(s)")
     bad = verify_hdf5(staging, "flows-fs-optimized", files)

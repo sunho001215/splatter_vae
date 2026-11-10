@@ -53,14 +53,36 @@ def pool_bounds(cfg: dict) -> tuple[int, int]:
     return low, max(low, int(cfg["pool_max"]))
 
 
-def own_cgroup_dir(cgroup_file: Path = Path("/proc/self/cgroup"), mount: Path = Path("/sys/fs/cgroup")) -> Path | None:
-    """The cgroup v2 directory of this process (the remote owner runs in a user session scope)."""
+def cgroup2_mount(mountinfo: Path = Path("/proc/self/mountinfo")) -> tuple[str, str] | None:
+    """(root inside the hierarchy, mount point) of the cgroup v2 mount: /sys/fs/cgroup (unified) or
+    /sys/fs/cgroup/unified (hybrid)."""
     try:
-        for line in cgroup_file.read_text().splitlines():
-            if line.startswith("0::"):
-                return mount / line[3:].lstrip("/")
-    except OSError:
+        for line in mountinfo.read_text().splitlines():
+            left, _, right = line.partition(" - ")
+            if right.split()[:1] == ["cgroup2"]:
+                fields = left.split()
+                return _unescape(fields[3]), _unescape(fields[4])
+    except (OSError, IndexError):
         pass
+    return None
+
+
+def own_cgroup_dir(cgroup_file: Path = Path("/proc/self/cgroup"),
+                   mountinfo: Path = Path("/proc/self/mountinfo")) -> Path | None:
+    """The cgroup v2 directory of this process (the remote owner runs in a user session scope); None without a
+    cgroup v2 membership or mount (the controller then relies on the host MemAvailable floor)."""
+    mount = cgroup2_mount(mountinfo)
+    try:
+        lines = cgroup_file.read_text().splitlines()
+    except OSError:
+        return None
+    for line in lines:
+        if line.startswith("0::") and mount:
+            root, point = mount
+            path = line[3:]
+            if root != "/" and (path == root or path.startswith(root.rstrip("/") + "/")):
+                path = path[len(root.rstrip("/")):]
+            return Path(point) / path.lstrip("/")
     return None
 
 
