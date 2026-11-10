@@ -86,12 +86,13 @@ def local_pings(policy: str, task: str, n: int) -> dict:
 
 
 def default_policies(offered: dict) -> list:
-    """One deployable seed-0 (else lowest seed) policy per condition x task with a robot-PC recording."""
+    """One seed-0 (else lowest seed) policy per condition x task with a robot-PC recording, deployable or restricted
+    (restricted = dry-run / replay only, e.g. DynaMo; benchmarking is replay)."""
     best = {}
     for pid, e in sorted(offered.items()):
         info = e.get("info") or {}
         key = (info.get("condition"), info.get("task"))
-        if info.get("status") != "deployable" or info.get("alias_of") or key[1] not in EPISODES:
+        if info.get("status") not in ("deployable", "restricted") or info.get("alias_of") or key[1] not in EPISODES:
             continue
         if key not in best or (info.get("seed") or 0) < best[key][1]:
             best[key] = (pid, info.get("seed") or 0)

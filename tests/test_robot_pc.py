@@ -941,3 +941,30 @@ def test_live_sets_fall_back_to_exact_finality_after_an_irregular_interval():
     assert sets.irregular_intervals == 2 and not sets.early  # the inserted frame shortens two intervals
     after = [k for k in got if stamps[0][k] > stamps[1][11]]  # decided after the irregular frame arrived
     assert after and all([got[k]["frame_ids"].get(c, -1) for c in CAMS] == ref[k].tolist() for k in after)
+
+
+def test_realtime_replay_steps_on_the_newest_observation_when_behind(policies, recording):
+    """A path slower than the frame period lowers the step rate (newest observation) instead of a backlog."""
+    import time
+
+    rec = RecordedEpisode(recording)
+    with serve({"reviwo-x": policies["reviwo"]}) as srv:
+        client = PolicyClient("127.0.0.1", srv.port, policy_id="reviwo-x", step_timeout_s=60,
+                              choices={"native_hw": {"cam_a": list(rec.native_hw("cam_a"))}, "camera_id": "cam_a"})
+        client.connect()
+        cameras = RecordedCameras(rec, ["cam_a"], depth=False)
+        clock = replay.ReplayClock(int(cameras.timestamps_ns("cam_a")[0]), "realtime")
+        state = robot_state.RecordedRobotState(rec, clock.offset_ns)
+        lp = _loop(client, state, sinks.MockSink(), clock.now)
+        real_step = lp.step
+
+        def slow_step(*a, **k):
+            time.sleep(0.12)  # ~2 frame periods
+            return real_step(*a, **k)
+
+        lp.step = slow_step
+        rows = replay.run(client, lp, cameras, state, clock, cams=["cam_a"])
+        client.close()
+    assert lp.counts["skipped_behind"] >= 4 and len(rows) + lp.counts["skipped_behind"] == 14
+    ages = [r["client_ms"]["capture_to_command_ms"] for r in rows if r["status"] == "ok"]
+    assert max(ages) < 400  # no backlog: every step is on a fresh observation

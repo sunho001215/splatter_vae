@@ -12,10 +12,11 @@ switches controllers of any robot, arm or gripper. Science (preprocessing, histo
 
 | guarantee | mechanism | test |
 |---|---|---|
-| no live command path exists | `sinks.LiveSink` refuses without an `ExecutionAuthorization` and then ALWAYS raises `Unbound` (controller binding UNBOUND until the robot PC's teleop / switch_controller code is inspected read-only) | `test_execution_mode_needs_all_three_explicit_conditions` |
-| manual execution needs 3 explicit conditions | `safety.authorize_execution`: `--execute` flag + typed `CONFIRMATION` + config `execution.armed: true`; the authorization object cannot be built otherwise | same test; `test_execute_script_refuses_even_fully_authorized` (exit 3, no socket) |
-| replay / dry run / bench never build a live sink or a live state source, and talk only to the policy server | MockSink / DryRunSink only; `LiveRobotState` is an UNBOUND skeleton (raises) | runtime spies in `test_single_view_replay_end_to_end`, `test_multiview_rgbd_replay_with_the_live_m5_helper`, `test_replay_episode_composition_and_cli_with_a_config`, `test_live_dry_run_logs_only_and_refuses_busy_devices` (0 constructions, every TCP connect = the server) |
-| no robot transport in the code | no zmq / serial / ROS / Franka / Modbus import anywhere in `ops/robot_pc`, `scripts/robot_pc`; only `sinks.py` / `execute.py` mention the live sink | `test_no_robot_io_in_the_robot_pc_sources` (AST scan) |
+| no live command path exists | `safety.EXECUTION_PERMITTED = False` (Directive I): `LiveSink` refuses at construction AND on every send, `execute.py` refuses before any network activity; the package creates no command socket (the controller binding is the RobotAction MESSAGE FORMAT only) | `test_execution_mode_needs_all_three_explicit_conditions`, `test_live_sink_is_bound_to_the_action_format_but_refused_in_this_revision`, `test_execute_script_refuses_even_fully_authorized` (exit 3, no socket) |
+| manual execution needs 4 explicit conditions (for a later directive) | `safety.authorize_execution`: `--execute` + typed `CONFIRMATION` + config `execution.armed: true` + the policy's catalog entry `execution_eligible: true` (missing = NOT eligible; DynaMo is dry-run/replay only by user decision); the authorization object is only issued by that function | same tests |
+| replay / dry run / bench never build a live sink or connect to the controller | MockSink / DryRunSink only; `--state live` is refused before anything connects (no read-only gripper source); `safety.admit_endpoint` refuses every connection to ports 28400-28404 (switch_controller channels) | runtime spies in the replay / dry-run tests (0 LiveSink / LiveStateReader constructions, every TCP connect = the policy server) |
+| no robot transport in the code | no serial / ROS / Franka / Modbus import; zmq only in `switch_controller.py`, which never binds, never creates a PUB and never sends (read-only SUB, approval-gated, unused here) | `test_no_robot_io_in_the_robot_pc_sources` (AST + text scan), `test_live_state_reader_is_a_read_only_subscriber` |
+| no output can open a device | `safety.safe_output`: logs / rows / summaries only to regular files outside /dev, /proc, /sys, never through a symlink | used by DryRunSink, JsonlRows, write_json, selfcheck |
 | live acquisition cannot interfere with a recording | `devices.require_free` before any camera opens: refuses on a recorder / teleop process, a `/dev/video*` / USB holder, or the collector IPC `/tmp/teleop_collector_requests.ipc`; librealsense refuses a streaming device as last check | `test_device_busy_guard`, dry-run test |
 | torch-free robot side | the whole client stack, `ops/robot_pc`, `m5_live` import with `torch` blocked | `test_robot_pc_stack_imports_with_torch_blocked` |
 | actions bound to their observation | validation refuses another reference id / session / frame ids / sample times / echoed measured pose; executor only adopts newer observations, never re-derives the goal from a newer pose | `test_action_validation_accepts_bound_actions_and_names_every_refusal`, `test_pose_limits_and_high_rate_executor` |
@@ -34,8 +35,15 @@ switches controllers of any robot, arm or gripper. Science (preprocessing, histo
 ```
 
 Packages (pinned to the training lock): numpy 1.26.4, Pillow 11.3.0 (bit-exact RGB resize), PyYAML 6.0.3, scipy
-1.15.3 and h5py 3.16.0 (the authoritative rig loader, recorded replay and the M5 rule import them), optional
-pyrealsense2 2.59.1.11053 (= the recorder's librealsense 2.59.1). No torch.
+1.15.3 and h5py 3.16.0 (the authoritative rig loader, recorded replay and the M5 rule import them), pyrealsense2
+2.59.1.11053 (= the recorder's librealsense 2.59.1), pyzmq 27.2.0 + robot-msg-irsl 0.4.0 (the collector's exact pins;
+only for the approval-gated state reader). No torch.
+
+**Installed 2026-11-10** on robotpc at `/home/irsl/workspace/s4d-robot-pc` (Ubuntu 24.04.5, python3 3.12.3): releases
+5fe4a05, 9eaa2b7, 7cba254 (active); venv via `python3 -m venv --without-pip` + the bundled pip wheel (no
+python3-venv / apt needed), wheels offline with `--require-hashes`; selfcheck all OK (packages, no torch, 315 bundle
+files, active release, M5 helper, both rig documents, not armed / not permitted, token 0600). The token was copied by
+the USER (an agent copy was refused by the permission policy).
 
 ## Install (user actions marked USER)
 
@@ -72,8 +80,21 @@ venv/bin/python -I src/scripts/robot_pc/dry_run.py --policy reviwo-drawer-open-s
 venv/bin/python -I src/scripts/robot_pc/execute.py --execute             # future mode: REFUSED (exit 3)
 ```
 
-Development host only: `scripts/robot_pc/m5_asset.py export|validate` (M5 surface asset, validation) and
-`scripts/robot_pc/make_bundle.py` (the tarball).
+Development host only: `scripts/robot_pc/m5_asset.py export|validate` (M5 surface asset, validation),
+`scripts/robot_pc/make_bundle.py` (the tarball) and the ONE-command robot-PC benchmark over the `robotpc` ssh master
+(GPU snapshot of the 5090 before/after, LOCAL and robot-PC PING, one policy per condition x task, 15 Hz paced + max,
+warm-up discarded; contended / uncontended results in separate directories):
+
+```bash
+cd /home/ws/ws/splatter4d/.worktrees/rwdeploy3   # or the merged main checkout
+.venv/bin/python -I scripts/robot_pc/route_bench.py --label uncontended   # --label contended while the GPU is shared
+#   -> /home/ws/ws/realworld-ops/serving/rob-bench/<label>-<YYYYmmdd-HHMMSS>/{summary.json,table.md,<policy>.json}
+```
+
+Direct route for later (needs a robot-PC credential for irsl@143.248.142.98, a user decision; TCP connect robot PC
+-> 143.248.142.98:22 measured 1.45 ms by the coordinator): on robotpc
+`ssh -N -L 127.0.0.1:47100:<shkim_rw container IP>:47100 irsl@143.248.142.98` (container IP from
+`docker inspect -f '{{.NetworkSettings.IPAddress}}' shkim_rw` on the 5090; 172.17.0.2 so far), then the same commands.
 
 ## Modules
 
@@ -114,9 +135,33 @@ configs: software 2.0.0, host irsl-MS-7C79) and `s4d/realworld/adapters/panda_te
   global-time stamp on the host monotonic clock; frames reach the host **~65 ms** after that stamp (`t_recv - t` p50
   64.9-65.2 ms on all three cameras).
 
-**Controller binding: UNBOUND.** The live robot-state source and the live sink stay unbound until the teleop /
-switch_controller code on robotpc has been read (read-only, never modified) to fix message formats, ownership of the
-command endpoints and the safe hand-over (the collector owns the controller switch and the gripper port).
+**Read-only inspection of the robot PC's code (2026-11-10, cat/grep only; nothing built, run or modified)**:
+`panda-teleop/teleop_collector/{README.md, config/default.yaml, config/site.yaml, teleop_collector/robot.py,
+teleop.py, app.py, requirements.txt}`, `panda-teleop/switch_controller/docs/communication.md`:
+
+* protocol: `robot-msg-irsl==0.4.0` (robot_msg protocol 2) over ZeroMQ (pyzmq 27.2.0).
+* RobotState: switch_controller **binds a PUB** on `tcp://*:28400`, ~1 kHz (state publishing "requested at 1,000 Hz"),
+  per-peer HWM 1; consumers connect a SUB with `ZMQ_CONFLATE=1`. Fields `sequence`, `q`, `dq`, `tau_ext`,
+  `base_wrench_ext`, `joint_frames`, `ee_frames` (normalized xyzw), `metadata.send_time` (unix, serialization time).
+  A SUB cannot send application messages to a PUB: reading it cannot change the controller.
+* Commands: the COMMANDER (the collector) binds PUBs on :28401 (ControllerCommand `ctrl_mode`; 3 = task impedance,
+  requested on the first pedal press, IDLE on exit) and :28402 (RobotAction `frame_id="world"`,
+  `real_time_action.ee_pose_rt=[ee pose]`, `target_dt` = `command_timeout_s` 0.05); the controller's SUBs connect to
+  them. The controller holds the measured pose when no fresh action arrives within `target_dt` and rejects targets
+  > 0.2 m / 0.5 rad from the measured pose.
+* Frames: switch_controller's ee = flange (panda_link8) rotated -90 deg about z (`T_FLANGE_EE = make_T(rot_z(-90), 0)`);
+  `flange = ee @ inv(T_FLANGE_EE)`, `ee_cmd = flange_cmd @ T_FLANGE_EE` (tcp_offset null). Quaternions w >= 0.
+* Gripper: Robotiq 2F-85 over Modbus RTU (`/dev/ttyUSB0`, 115200 8N1, slave 9) driven AND read by the collector's
+  gripper thread; closure 0..1 -> position 3..230, speed 146, force 0. **No gripper state is published**: a live
+  register needs the collector (or Modbus requests to the gripper) -> no read-only source exists.
+* Safety behaviour of the collector: dead-man pedal, re-anchoring, speed (0.3 m/s site, 1.5 rad/s) AND acceleration
+  (4 m/s^2, 15 rad/s^2) smoothing, lead limits 0.04 m / 20 deg, stale-state stop (`state_timeout_s` 0.05).
+
+**Controller adapter** (`ops/robot_pc/switch_controller.py`): the frame conversion and `robot_action` (bytes identical
+to the collector's construction, checked with the real robot-msg-irsl 0.4.0; RobotState decode -> flange pose exact
+up to input rounding), and `LiveStateReader` (read-only SUB, `approved=True` required, drops non-increasing sequences;
+cannot detect a frozen publisher). Not connected in this directive. `LiveSink` formats executor setpoints as these
+RobotActions for a caller-supplied publisher, but is refused (`EXECUTION_PERMITTED = False`) and no publisher exists.
 
 ## Control path design (no actuation)
 
@@ -126,9 +171,10 @@ command endpoints and the safe hand-over (the collector owns the controller swit
 2. **Validation** (`configs/robot_pc/robot_pc.yaml` limits): finite, |action_norm| <= 1, unit quaternion,
    |goal - measured| <= 0.04 m / 20 deg, goal inside the task's workspace box (recorded flange range +- 5 cm), closure in
    [0, 1] and register = round(3 + 227 c), observation age <= 200 ms.
-3. **Local high-rate loop** (`executor.py`): 500 Hz setpoints moving toward the bound goal at <= 0.3 m/s, 1.5 rad/s and
-   clamped to the lead envelope around the CURRENT measured pose (the recorder's own limits); a command is replaced only
-   by one of a newer observation; after its expiry the loop holds at the measured pose.
+3. **Local high-rate loop** (`executor.py`): 500 Hz setpoints; the goal is clamped to the lead envelope around the
+   CURRENT measured pose and the setpoint moves toward it at <= 0.3 m/s, 1.5 rad/s x the ELAPSED tick time (never a
+   jump); a command is replaced only by one of a newer observation; after its expiry the loop holds at the measured
+   pose and applies nothing of the expired command. Missing vs the collector: its acceleration limits (future work).
 4. **Stale / timeout / disconnect / reset**: `PolicyClient` (reconnect + resume, re-send with the original seq,
    `session_unknown` renewal, terminal `session_taken_over`); a step without a valid action produces no command.
 
@@ -146,7 +192,12 @@ decisions and `sync/frames`): release store drawer-open-000000 (179 sets) and mu
 incomplete), both the store-trajectory path and the LIVE path (raw recording replayed in arrival order): **max |diff|
 0.0 m (bitwise), frames / decisions / inf identical**; sets are emitted with no wait beyond the frames' own arrival.
 Only those two release episodes are available locally; neither contains a rejected (> 5 mm) or invalid set (the unit
-test covers both cases against the authoritative functions). Evidence: `realworld-ops/serving/evidence/
+test covers both cases against the authoritative functions). The early-finality shortcuts assume every frame interval
+>= 0.99 periods; the first shorter interval switches them off (exact waiting) and is counted. The live gripper
+interpolation uses nanosecond times (the adapter used the recorder's float seconds): bitwise on both episodes, not
+guaranteed bitwise in general (relative weight differences ~1e-9). Through the client path on the real multi-view
+3D-MVP checkpoint (local CPU server): 179/179 sets, displacements == store (max diff 0.0)
+(`evidence/rob-mv-local-replay-m5-20261110.json`). Evidence: `realworld-ops/serving/evidence/
 m5-live-validation-20261110.json`.
 
 ## Latency
