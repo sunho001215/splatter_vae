@@ -1,6 +1,15 @@
-"""Persistent real-world policy server: ONE process, policies loaded once, one GPU worker, per-session history.
+"""Persistent real-world policy server: ONE process, one GPU worker, per-session history, selectable policies.
 
-    .venv/bin/python -I ops/policy_serving/server.py serve --config configs/realworld/policy_serving.yaml --policies ID,...
+    .venv/bin/python -I ops/policy_serving/server.py serve --config configs/realworld/policy_serving.yaml \
+        [--catalog catalog.json] [--preload ID,...] [--policies ID,...]
+
+Policy registry: the config's static ``policies`` + the staged CATALOG (``config.load_catalog``: ids, aliases, status
+deployable / quarantined, advertised unbound input spec). Every offered id is advertised in WELCOME without loading;
+a policy is loaded on the first HELLO that selects it (sha256 + training-contract checks, warm-up, advertised spec ==
+loaded spec), stays resident afterwards and is evicted least-recently-used only under the GPU memory budget
+(``gpu_memory_budget_mb`` / ``max_resident_policies``) and never while it has a live session. The catalog is re-read
+on SIGHUP and when a HELLO names an unknown id (file changed); live sessions keep the object they were bound to.
+Quarantined entries are refused unless ``--allow-quarantined`` (then labelled in every info).
 
 Science stays in ``s4d.rwlearn.deploy``: ``DeployPolicy.reset_session`` binds a session (cameras, native grids,
 static calibration, native depth correction), ``HistoryWindow`` holds the frames and assembles the trained history,
@@ -25,6 +34,7 @@ from __future__ import annotations
 
 import argparse
 import collections
+import gc
 import hashlib
 import hmac
 import ipaddress
@@ -49,6 +59,7 @@ if __package__ in (None, ""):  # ``python ops/policy_serving/server.py``: make t
 import numpy as np  # noqa: E402
 
 from ops.policy_serving import protocol as P  # noqa: E402
+from ops.policy_serving.config import SERVABLE_STATUSES  # noqa: E402
 
 LOG = logging.getLogger("ops.policy_serving.server")
 HELLO_CHOICES = frozenset({"camera_id", "native_hw", "calibration", "native_depth_correction"})
@@ -108,6 +119,43 @@ def warmup_choices(spec, native_hw=(480, 640)) -> dict:
     return out
 
 
+IDENTITY_KEYS = ("checkpoint", "sha256", "export", "training_contract", "dataset", "input_spec")
+
+
+class BudgetExceeded(Exception):
+    """No room for one more resident policy (GPU memory budget / resident cap; in-use policies are never evicted)."""
+
+
+@dataclass(eq=False)
+class CatalogEntry:
+    """One selectable policy of the registry (config ``policies`` / catalog entry / a pre-loaded constructor policy)."""
+    policy_id: str
+    entry: dict  # checkpoint / export / training_contract | dataset / sha256 (+ catalog labels)
+    status: str = "deployable"  # deployable | quarantined | error (could not be described)
+    reasons: tuple = ()
+    spec: dict | None = None  # advertised unbound InputSpec JSON (normalised)
+    source: str = "config"  # config | catalog | preloaded
+
+    def identity(self) -> str:
+        """What the loaded object depends on: the staged artefacts and whether the entry may be served at all. Labels
+        (deployable <-> restricted, reasons, criteria, usage) refresh without reloading the model."""
+        servable = self.status in SERVABLE_STATUSES
+        return json.dumps([servable if self.status != "error" else "error",
+                           {k: self.entry.get(k) for k in IDENTITY_KEYS}], sort_keys=True, default=str)
+
+    def info(self) -> dict:
+        """Published labels. FAIL CLOSED: ``execution_eligible`` is true only if the entry says exactly true;
+        ``usage`` defaults to dry_run_replay_only."""
+        e = self.entry
+        out = {"condition": e.get("condition") or (self.spec or {}).get("condition"), "task": e.get("task"),
+               "seed": e.get("seed"), "run": e.get("run"), "status": self.status, "flags": list(e.get("flags", [])),
+               "checkpoint_sha256": e.get("sha256"), "usage": e.get("usage", "dry_run_replay_only"),
+               "execution_eligible": e.get("execution_eligible") is True,
+               "usage_reasons": list(e.get("usage_reasons", [])), "criteria": e.get("criteria", {}),
+               "reasons": list(self.reasons)}
+        return out
+
+
 @dataclass(eq=False)
 class ServedPolicy:
     policy_id: str
@@ -116,6 +164,13 @@ class ServedPolicy:
     lock: threading.Lock = field(default_factory=threading.Lock)  # held during infer and reset_session
     sessions: dict = field(default_factory=dict)  # live sessions of this policy (id -> Session)
     warmup_ms: dict | None = None
+    entry: CatalogEntry | None = None  # the registry entry this object was loaded from
+    pinned: bool = False  # given pre-loaded to the constructor: never evicted (cannot be re-loaded)
+    footprint: int = 0  # bytes of parameters, buffers and optimizer state on the device
+    last_used: float = 0.0  # time.monotonic() of the last HELLO / inference
+    claims: int = 0  # HELLOs between acquiring and binding (never evicted meanwhile)
+    retired: bool = False  # its catalog entry was removed / changed: unloaded once its last session ends
+    withdrawn: dict | None = None  # labels published for a retired object's remaining sessions (never eligible)
 
 
 @dataclass(eq=False)
@@ -232,9 +287,10 @@ class Connection:
     def run(self) -> None:
         srv = self.server
         try:
+            srv.reload_catalog(only_if_changed=True)  # a newly staged policy is offered without a restart
             self.send(P.encode({"type": P.WELCOME, "protocol": P.PROTOCOL, "server": srv.name, "nonce": self.nonce,
                                 "auth_required": srv.token is not None, "policies": srv.policy_specs(),
-                                "t_server_ns": time.monotonic_ns()}))
+                                "unavailable": srv.unavailable(), "t_server_ns": time.monotonic_ns()}))
             while not srv.stop_event.is_set():
                 try:
                     msg = self.wire.recv(None, srv.stop_event.is_set)
@@ -261,15 +317,20 @@ class Connection:
 
 
 class PolicyServer:
-    """Serve ``{policy_id: DeployPolicy}`` (loaded once by the caller) on one TCP port."""
+    """Serve a registry of policies on one TCP port: ``policies`` = ``{policy_id: DeployPolicy}`` loaded by the caller
+    (pinned: resident for the server's lifetime) and/or ``entries`` (config ``policies`` entries) + ``catalog`` (path
+    of a staged catalog JSON), loaded lazily on the first HELLO that selects them."""
 
-    def __init__(self, policies: dict, *, host: str = "127.0.0.1", port: int = 0, token: bytes | None = None,
-                 max_queue: int = 4, session_idle_timeout_s: float = 30.0, response_cache: int = 32,
-                 io_timeout_s: float = 5.0, max_header_bytes: int = 1 << 20, max_payload_bytes: int = 32 << 20,
-                 max_frames_per_step: int = 64, history_capacity: int | None = None, warmup_iterations: int = 0,
-                 max_sessions_per_policy: int = 1, max_connections: int = 16,
+    def __init__(self, policies: dict | None = None, *, entries: dict | None = None, catalog=None,
+                 checkpoint_root=None, device: str = "cpu", allow_fixture: bool = False,
+                 allow_quarantined: bool = False, offered=None, preload=(), gpu_memory_budget_bytes: int | None = None,
+                 max_resident_policies: int | None = None, host: str = "127.0.0.1", port: int = 0,
+                 token: bytes | None = None, max_queue: int = 4, session_idle_timeout_s: float = 30.0,
+                 response_cache: int = 32, io_timeout_s: float = 5.0, max_header_bytes: int = 1 << 20,
+                 max_payload_bytes: int = 32 << 20, max_frames_per_step: int = 64, history_capacity: int | None = None,
+                 warmup_iterations: int = 0, max_sessions_per_policy: int = 1, max_connections: int = 16,
                  warmup_native_hw=(480, 640), info: dict | None = None, name: str = "s4d-policy-server"):
-        if not policies:
+        if not policies and not entries and catalog is None:
             raise ValueError("no policies to serve")
         if token is not None and not token:
             raise ValueError("empty shared token")
@@ -278,7 +339,6 @@ class PolicyServer:
         self.max_connections = int(max_connections)
         if self.max_connections < 1:
             raise ValueError("max_connections must be positive")
-        self.policies = {pid: ServedPolicy(pid, p, dict((info or {}).get(pid, {}))) for pid, p in policies.items()}
         self.host, self.port, self.token, self.name = host, int(port), token, name
         self.max_queue, self.idle_timeout_s = int(max_queue), float(session_idle_timeout_s)
         self.response_cache, self.io_timeout_s = int(response_cache), float(io_timeout_s)
@@ -288,6 +348,12 @@ class PolicyServer:
         self.max_sessions_per_policy = int(max_sessions_per_policy)
         if self.max_queue < 1 or self.response_cache < 1 or self.max_sessions_per_policy < 1:
             raise ValueError("max_queue, response_cache and max_sessions_per_policy must be positive")
+        if max_resident_policies is not None and int(max_resident_policies) < 1:
+            raise ValueError("max_resident_policies must be positive (or None)")
+        self.checkpoint_root, self.device = checkpoint_root, str(device)
+        self.allow_fixture, self.allow_quarantined = bool(allow_fixture), bool(allow_quarantined)
+        self.budget_bytes = None if gpu_memory_budget_bytes is None else int(gpu_memory_budget_bytes)
+        self.max_resident = None if max_resident_policies is None else int(max_resident_policies)
         self.stop_event = threading.Event()
         self.stopping = False
         self.lock = threading.RLock()
@@ -299,20 +365,340 @@ class PolicyServer:
         self.listener: socket.socket | None = None
         self.threads: list[threading.Thread] = []
         self._worker_exit = False
+        # registry: entries (selectable ids), aliases, resident served objects, in-flight load reservations
+        self.static_entries = {str(k): dict(v) for k, v in (entries or {}).items()}
+        self.catalog_path = None if catalog is None else Path(catalog)
+        self.catalog_stamp, self.catalog_sha256 = None, None
+        self.policies: dict[str, ServedPolicy] = {}
+        self.reserved: dict[str, int] = {}
+        self.known_footprint: dict[str, int] = {}  # entry identity -> measured footprint (budget estimate)
+        self._load_locks: dict[str, threading.Lock] = collections.defaultdict(threading.Lock)
+        self._reload_lock = threading.Lock()
+        self.pinned_entries: dict[str, CatalogEntry] = {}
+        now = time.monotonic()
+        for pid, p in (policies or {}).items():
+            e = CatalogEntry(pid, {}, spec=spec_json(p.input_spec), source="preloaded")
+            self.pinned_entries[pid] = e
+            self.policies[pid] = ServedPolicy(pid, p, dict((info or {}).get(pid, {})), entry=e, pinned=True,
+                                              footprint=policy_footprint_bytes(p), last_used=now)
+        self.entries, self.aliases = self._build_table({})
+        if self.catalog_path is not None:
+            self.catalog_stamp, self.catalog_sha256 = _stamp(self.catalog_path), sha256_file(self.catalog_path)
+        self.offered = None
+        if offered:
+            unknown = [x for x in offered if self._resolve(x) is None]
+            if unknown:
+                raise ValueError(f"unknown policy ids {unknown}; registry: {sorted(self.entries)}")
+            self.offered = {self._resolve(x) for x in offered}
+        self.preload = [self._resolve(x) or x for x in preload]
+        unknown = [x for x in self.preload if x not in self.entries]
+        if unknown:
+            raise ValueError(f"unknown preload ids {unknown}")
+
+    # ------------------------------------------------------------------------------------------------ registry
+    def _build_table(self, previous: dict) -> tuple[dict, dict]:
+        """Entries + aliases from the pinned policies, the static config entries and the catalog file (raises on an
+        invalid catalog or an id collision). Unchanged entries keep their previous object (and described spec)."""
+        from ops.policy_serving.config import load_catalog
+
+        table: dict[str, CatalogEntry] = dict(self.pinned_entries)
+        raw = [(pid, e, "config") for pid, e in self.static_entries.items()]
+        aliases = {}
+        if self.catalog_path is not None:
+            cat = load_catalog(self.catalog_path)
+            raw += [(pid, e, "catalog") for pid, e in cat["policies"].items()]
+            aliases = dict(cat["aliases"])
+        for pid, e, source in raw:
+            if pid in table:
+                raise ValueError(f"policy id {pid!r} defined twice (pre-loaded / config / catalog)")
+            spec = e.get("input_spec")
+            entry = CatalogEntry(pid, dict(e), e.get("status", "deployable"), tuple(e.get("reasons", ())),
+                                 None if spec is None else spec_json(spec), source)
+            old = previous.get(pid)
+            if old is not None and old.source == source and old.identity() == entry.identity():
+                entry.spec = old.spec  # same artefacts: keep the described spec; labels come from the new entry
+                if old.status == "error":
+                    entry.status, entry.reasons = old.status, old.reasons
+            elif entry.spec is None:
+                try:
+                    entry.spec = describe_entry(entry.entry, self.checkpoint_root)
+                except Exception as exc:  # noqa: BLE001 - one broken entry must not take the registry down
+                    LOG.error("policy %s cannot be described (%s: %s); not offered", pid, type(exc).__name__, exc)
+                    entry.status, entry.reasons = "error", (f"cannot be described: {type(exc).__name__}: {exc}",)
+            table[pid] = entry
+        for alias in aliases:
+            if alias in table:
+                raise ValueError(f"alias {alias!r} shadows a policy id")
+        return table, aliases
+
+    def _resolve(self, requested) -> str | None:
+        """Policy id of a requested id or alias (None: unknown)."""
+        if not isinstance(requested, str):
+            return None
+        with self.lock:
+            pid = self.aliases.get(requested, requested)
+            return pid if pid in self.entries else None
+
+    def _is_offered(self, pid: str) -> bool:
+        return self.offered is None or pid in self.offered
+
+    def _refusal(self, entry: CatalogEntry) -> str | None:
+        """Why an offered entry cannot be served (None: servable)."""
+        if entry.status == "error":
+            return f"policy {entry.policy_id} is unavailable: {'; '.join(entry.reasons)}"
+        if entry.status == "quarantined" and not self.allow_quarantined:
+            return f"policy {entry.policy_id} is quarantined: {'; '.join(entry.reasons)}"
+        return None
+
+    def policy_specs(self) -> dict:
+        """WELCOME ``policies``: every offered servable id and alias with its advertised (unbound) input spec."""
+        with self.lock:
+            out = {}
+            for pid, e in self.entries.items():
+                if self._is_offered(pid) and self._refusal(e) is None:
+                    sp = self.policies.get(pid)
+                    resident = sp is not None and sp.entry is not None and sp.entry.identity() == e.identity()
+                    out[pid] = {"input_spec": e.spec, "info": {**P.jsonable(sp.info if resident else {}),
+                                                               **e.info(), "resident": resident}}
+            for alias, pid in self.aliases.items():
+                if pid in out:
+                    out[alias] = {"input_spec": out[pid]["input_spec"], "info": {**out[pid]["info"], "alias_of": pid}}
+            return out
+
+    def unavailable(self) -> dict:
+        """WELCOME ``unavailable``: offered ids that are refused (quarantined without --allow-quarantined, errors)."""
+        with self.lock:
+            return {pid: {"status": e.status, "reasons": list(e.reasons)} for pid, e in self.entries.items()
+                    if self._is_offered(pid) and self._refusal(e) is not None}
+
+    def reload_catalog(self, *, only_if_changed: bool = False) -> dict | None:
+        """Re-read the catalog (SIGHUP / unknown-id HELLO). Invalid catalog: the old table stays (logged). Removed or
+        changed entries are no longer offered in their old form; their resident objects are unloaded once they have
+        no live session. Returns the change summary (None: no catalog, unchanged file or invalid)."""
+        if self.catalog_path is None:
+            return None
+        with self._reload_lock:
+            try:
+                stamp = _stamp(self.catalog_path)
+            except OSError as exc:
+                LOG.error("catalog %s unreadable (%s); keeping the current registry", self.catalog_path, exc)
+                return None
+            if only_if_changed and stamp == self.catalog_stamp:
+                return None
+            with self.lock:
+                previous = dict(self.entries)
+            try:
+                digest = sha256_file(self.catalog_path)
+                entries, aliases = self._build_table(previous)
+            except Exception as exc:  # noqa: BLE001
+                LOG.error("catalog %s invalid (%s: %s); keeping the current registry", self.catalog_path,
+                          type(exc).__name__, exc)
+                return None
+            with self.lock:
+                added = sorted(set(entries) - set(previous))
+                removed = sorted(set(previous) - set(entries))
+                changed = sorted(p for p in set(entries) & set(previous)
+                                 if entries[p].identity() != previous[p].identity())
+                self.entries, self.aliases = entries, aliases
+                self.catalog_stamp, self.catalog_sha256 = stamp, digest
+                for pid, sp in list(self.policies.items()):
+                    e = entries.get(pid)
+                    if sp.pinned:
+                        continue
+                    if e is not None and e.identity() == sp.entry.identity():
+                        sp.entry = e  # same artefacts: refreshed labels (status, criteria, usage) are published
+                        sp.retired, sp.withdrawn = False, None  # servable again (e.g. quarantine lifted)
+                        continue
+                    sp.retired = True
+                    sp.withdrawn = {"status": "withdrawn", "usage": "none", "execution_eligible": False,
+                                    "usage_reasons": ["withdrawn from the catalog: finish or end this session"],
+                                    "reasons": ["removed from the catalog"] if e is None else
+                                    [f"catalog entry changed ({e.status})", *e.reasons]}
+                    if not sp.sessions and not sp.claims:
+                        self._unload(sp, "catalog entry removed" if e is None else "catalog entry changed")
+                self.counts["catalog_reloads"] += 1
+            summary = {"added": added, "removed": removed, "changed": changed, "catalog_sha256": digest}
+            log_event("catalog_reloaded", **summary)
+            return summary
+
+    # ------------------------------------------------------------------------------------------------ residency
+    def _acquire(self, pid: str, *, takeover: bool) -> tuple[ServedPolicy | None, tuple | None]:
+        """The resident object of ``pid`` (loaded now if needed) with one claim held, or ``(None, (code, detail))``.
+        Called WITHOUT the server lock; one load per id at a time."""
+        with self._load_locks[pid]:
+            with self.lock:
+                entry = self.entries.get(pid)
+                if entry is None:
+                    return None, ("bad_request", f"policy {pid} left the catalog")
+                refusal = self._refusal(entry)  # re-checked here: a reload may have quarantined it since HELLO
+                if refusal is not None:
+                    return None, ("bad_request", refusal)
+                sp = self.policies.get(pid)
+                if sp is not None and not sp.pinned and sp.entry.identity() != entry.identity():
+                    if sp.claims:  # another HELLO is binding to the previous version right now
+                        return None, ("session_busy", f"policy {pid} changed in the catalog while another HELLO "
+                                                      "binds its previous version; retry")
+                    if sp.sessions and not takeover:
+                        return None, ("session_busy", f"policy {pid} changed in the catalog; its previous version "
+                                                      f"still serves {len(sp.sessions)} session(s); HELLO "
+                                                      "takeover=true evicts them")
+                    for s in list(sp.sessions.values()):
+                        self._end_session(s, "evicted by takeover: catalog entry changed", taken_over=True)
+                    self._unload(sp, "catalog entry changed")
+                    sp = None
+                if sp is not None:
+                    sp.claims += 1
+                    sp.last_used = time.monotonic()
+                    return sp, None
+            try:
+                return self._load(pid, entry), None
+            except BudgetExceeded as exc:
+                with self.lock:
+                    self.counts["budget_refusals"] += 1
+                return None, ("overloaded", str(exc))
+            except Exception as exc:  # noqa: BLE001 - a broken checkpoint is refused, never served
+                LOG.exception("policy %s could not be loaded", pid)
+                return None, ("bad_request", f"policy {pid} could not be loaded: {type(exc).__name__}: {exc}")
+
+    @staticmethod
+    def _current_info(sp: ServedPolicy) -> dict:
+        """Load-time info + the CURRENT catalog labels of the entry it was loaded from (refreshed on reload)."""
+        return {**sp.info, **(sp.entry.info() if sp.entry is not None and sp.entry.source != "preloaded" else {}),
+                **(sp.withdrawn or {})}
+
+    def _release(self, sp: ServedPolicy) -> None:
+        with self.lock:
+            sp.claims -= 1
+            if sp.retired and not sp.sessions and not sp.claims:
+                self._unload(sp, "retired catalog entry, last claim released")
+
+    def _estimate(self, entry: CatalogEntry) -> int:
+        known = self.known_footprint.get(entry.identity())
+        if known is not None:
+            return known
+        from ops.policy_serving.config import resolve
+
+        total = 0
+        for key in ("checkpoint", "export"):
+            if entry.entry.get(key):
+                try:
+                    total += resolve(self.checkpoint_root, entry.entry[key]).stat().st_size
+                except OSError:
+                    pass
+        return total
+
+    def _make_room(self, pid: str, estimate: int) -> None:
+        """Caller holds ``self.lock``. Evict least-recently-used idle policies until ``estimate`` more bytes and one
+        more resident policy fit; raise ``BudgetExceeded`` otherwise (policies in use are never evicted)."""
+        def fits() -> bool:
+            used = sum(sp.footprint for sp in self.policies.values()) + sum(self.reserved.values())
+            count = len(self.policies) + len(self.reserved)
+            return (self.budget_bytes is None or used + estimate <= self.budget_bytes) and \
+                (self.max_resident is None or count + 1 <= self.max_resident)
+
+        victims = sorted((sp for sp in self.policies.values()
+                          if not sp.pinned and not sp.sessions and not sp.claims and sp.policy_id not in self.reserved),
+                         key=lambda sp: sp.last_used)
+        while not fits() and victims:
+            self._unload(victims.pop(0), f"least recently used; room for {pid}")
+        if not fits():
+            busy = sorted(p for p, sp in self.policies.items() if sp.sessions or sp.claims or sp.pinned)
+            used = sum(sp.footprint for sp in self.policies.values()) + sum(self.reserved.values())
+            raise BudgetExceeded(
+                f"cannot load {pid}: GPU memory budget {_mb(self.budget_bytes)} MB, resident {_mb(used)} MB + "
+                f"{_mb(estimate)} MB needed, max_resident_policies {self.max_resident}; resident policies in use "
+                f"(live sessions / pinned): {busy}")
+
+    def _unload(self, sp: ServedPolicy, reason: str) -> None:
+        """Caller holds ``self.lock``. Drop the resident object (memory returns once nothing references it)."""
+        if self.policies.get(sp.policy_id) is not sp:
+            return
+        del self.policies[sp.policy_id]
+        sp.retired = True
+        self.counts["policies_evicted"] += 1
+        if self.device.startswith("cuda"):
+            gc.collect()
+            import torch
+
+            torch.cuda.empty_cache()
+        log_event("policy_evicted", policy_id=sp.policy_id, reason=reason, footprint_bytes=sp.footprint)
+
+    def _load(self, pid: str, entry: CatalogEntry) -> ServedPolicy:
+        """Load + check + warm one entry (outside the server lock; the caller holds its load lock) and make it
+        resident with one claim held."""
+        estimate = self._estimate(entry)
+        with self.lock:
+            self._make_room(pid, estimate)
+            self.reserved[pid] = estimate
+        try:
+            cuda = self.device.startswith("cuda")
+            if cuda:
+                import torch
+
+                before = torch.cuda.memory_allocated()
+            t0 = time.monotonic()
+            policy, info = load_policy(entry.entry, root=self.checkpoint_root, device=self.device,
+                                       allow_fixture=self.allow_fixture)
+            load_s = time.monotonic() - t0
+            if spec_json(policy.input_spec) != entry.spec:
+                LOG.error("policy %s: catalog input_spec differs from the checkpoint's; refused", pid)
+                raise ValueError("catalog input_spec differs from the checkpoint")
+            warmup_ms = self._warm(pid, policy)
+            footprint = policy_footprint_bytes(policy)
+            delta = (torch.cuda.memory_allocated() - before) if cuda else None
+        except BaseException:
+            with self.lock:
+                self.reserved.pop(pid, None)
+            raise
+        info.update(entry.info(), load_s=round(load_s, 3))
+        sp = ServedPolicy(pid, policy, info, warmup_ms=warmup_ms, entry=entry, footprint=footprint,
+                          last_used=time.monotonic(), claims=1)
+        with self.lock:  # reservation -> resident in ONE step (no window for another load to take the slot)
+            self.reserved.pop(pid, None)
+            self.known_footprint[entry.identity()] = footprint
+            current = self.entries.get(pid)
+            stale = current is None or current.identity() != entry.identity() or self._refusal(current) is not None
+            try:
+                if not stale:
+                    self._make_room(pid, footprint)  # the MEASURED footprint must fit, not only the estimate
+            except BudgetExceeded:
+                self.counts["budget_refusals_measured"] += 1
+                raise
+            if stale:
+                raise ValueError(f"catalog entry of {pid} changed or became unservable during the load; retry")
+            sp.entry = current  # same artefacts; labels refreshed during the load are the ones published
+            self.policies[pid] = sp
+            self.counts["policies_loaded"] += 1
+            resident = sorted(self.policies)
+        log_event("policy_loaded", policy_id=pid, load_s=round(load_s, 3), warmup_ms=warmup_ms,
+                  footprint_bytes=footprint, cuda_allocated_delta_bytes=delta, resident=resident)
+        return sp
+
+    def _warm(self, pid: str, policy) -> dict | None:
+        if self.warmup_iterations <= 0:
+            return None
+        spec = policy.input_spec
+        wid = f"warmup-{uuid.uuid4().hex}"
+        policy.reset_session(session_id=wid, concurrent=True, **warmup_choices(spec, self.warmup_native_hw))
+        try:
+            timings = policy.warm_up(iterations=self.warmup_iterations)
+        finally:
+            policy.end_session(wid)
+        LOG.info("warm-up %s (%s): %s", pid, spec.condition, timings)
+        return timings
 
     # ------------------------------------------------------------------------------------------------ lifecycle
     def warm_up(self) -> None:
-        for sp in self.policies.values():
-            if self.warmup_iterations <= 0:
-                continue
-            spec = sp.policy.input_spec
-            wid = f"warmup-{uuid.uuid4().hex}"
-            sp.policy.reset_session(session_id=wid, concurrent=True, **warmup_choices(spec, self.warmup_native_hw))
-            try:
-                sp.warmup_ms = sp.policy.warm_up(iterations=self.warmup_iterations)
-            finally:
-                sp.policy.end_session(wid)
-            LOG.info("warm-up %s (%s): %s", sp.policy_id, spec.condition, sp.warmup_ms)
+        """Warm the pinned (constructor-given) policies, then load + warm the ``preload`` ids."""
+        for sp in list(self.policies.values()):
+            if sp.pinned and sp.warmup_ms is None:
+                sp.warmup_ms = self._warm(sp.policy_id, sp.policy)
+        for pid in self.preload:
+            sp, refusal = self._acquire(pid, takeover=False) if self._refusal(self.entries[pid]) is None \
+                else (None, ("bad_request", self._refusal(self.entries[pid])))
+            if refusal is not None:
+                raise ValueError(f"preload {pid}: {refusal[0]}: {refusal[1]}")
+            self._release(sp)
 
     def start(self) -> tuple[str, int]:
         self.warm_up()
@@ -324,7 +710,7 @@ class PolicyServer:
             t = threading.Thread(target=target, name=name, daemon=True)
             t.start()
             self.threads.append(t)
-        LOG.info("serving %s on %s:%d", sorted(self.policies), self.host, self.port)
+        LOG.info("serving %s on %s:%d", sorted(self.policy_specs()), self.host, self.port)
         return self.host, self.port
 
     def __enter__(self):
@@ -368,14 +754,22 @@ class PolicyServer:
             c.thread.join(timeout_s)
         LOG.info("stopped; counts %s", dict(self.counts))
 
-    def policy_specs(self) -> dict:
-        return {pid: {"input_spec": sp.policy.input_spec.to_json(), "info": P.jsonable(sp.info)}
-                for pid, sp in self.policies.items()}
+    def ready_info(self) -> dict:
+        """The registry part of the READY line: offered ids, aliases, resident policies, unavailable ids, catalog."""
+        offered = self.policy_specs()
+        with self.lock:
+            resident = {pid: {**P.jsonable(self._current_info(sp)), "warmup_ms": P.jsonable(sp.warmup_ms),
+                              "footprint_bytes": sp.footprint} for pid, sp in self.policies.items()}
+            aliases = {a: p for a, p in self.aliases.items() if a in offered}
+        return {"offered": sorted(p for p in offered if p not in aliases), "aliases": aliases, "resident": resident,
+                "unavailable": self.unavailable(), "catalog": None if self.catalog_path is None else
+                str(self.catalog_path), "catalog_sha256": self.catalog_sha256,
+                "gpu_memory_budget_mb": _mb(self.budget_bytes), "max_resident_policies": self.max_resident}
 
     def stats(self) -> dict:
         with self.lock:
             return {"counts": dict(self.counts), "sessions": len(self.sessions), "queue": len(self.queue),
-                    "connections": len(self.connections)}
+                    "connections": len(self.connections), "resident": sorted(self.policies)}
 
     # ------------------------------------------------------------------------------------------------ threads
     def _accept_loop(self) -> None:
@@ -413,6 +807,7 @@ class PolicyServer:
         with self.lock:
             self.connections.discard(conn)
             s = conn.session
+            conn.session = None  # a finished connection must not keep its session (and the model) reachable
             if s is not None and s.conn is conn:
                 s.conn = None  # the session survives for a resume until it idles out
                 s.last_activity = time.monotonic()
@@ -424,6 +819,7 @@ class PolicyServer:
                 for s in list(self.sessions.values()):
                     if s.pending is None and s.running is None and now - s.last_activity > self.idle_timeout_s:
                         self._end_session(s, f"idle > {self.idle_timeout_s} s")
+                s = None  # noqa: F841 - no session (and its model) kept alive between passes
 
     def _end_session(self, s: Session, reason: str, *, taken_over: bool = False) -> None:
         """Caller holds ``self.lock``. ``taken_over``: tell the evicted client at once (its stop signal)."""
@@ -446,6 +842,8 @@ class PolicyServer:
         s.conn = None
         self.counts["sessions_ended"] += 1
         LOG.info("session %s (%s) ended: %s; counts %s", s.id, s.served.policy_id, reason, dict(s.counts))
+        if s.served.retired and not s.served.sessions and not s.served.claims:
+            self._unload(s.served, "retired catalog entry, last session ended")
 
     def _worker(self) -> None:
         while True:
@@ -459,6 +857,7 @@ class PolicyServer:
                 if s.pending is job:
                     s.pending = None
                 if s.closed:
+                    job = s = None
                     continue
                 s.running = job
             try:
@@ -472,6 +871,9 @@ class PolicyServer:
                         s.running = None
                     s.last_activity = time.monotonic()
             self._respond(s, job.seq, data)
+            # drop the finished request before waiting: the job / session / window reference the policy, which must
+            # be freeable once evicted (otherwise its tensors stay allocated while the next policy loads)
+            job = s = data = None  # noqa: F841
 
     def _execute(self, job: Job) -> bytes:
         s = job.session
@@ -486,6 +888,7 @@ class PolicyServer:
         with sp.lock:
             if s.closed or s.id not in sp.policy.live_sessions:
                 return self._error(s, job.seq, "session_unknown", "session ended before execution")
+            sp.last_used = time.monotonic()
             try:
                 out = sp.policy.infer(job.window, job.pose7, job.gripper, job.obs_ids, noise=job.noise)
             except ValueError as exc:
@@ -601,27 +1004,64 @@ class PolicyServer:
                 conn.send(P.error_message("auth", "shared-token handshake failed", fatal=True))
                 return False
         conn.authenticated = True
-        sp = self.policies.get(h.get("policy_id"))
-        if sp is None:
-            raise P.ProtocolError("bad_request", f"unknown policy_id {h.get('policy_id')!r}; "
-                                                 f"served: {sorted(self.policies)}")
+        requested = h.get("policy_id")
         resume = h.get("resume")
-        if resume is not None:
+        if resume is not None:  # a live session may run on a resident object whose entry left the catalog meanwhile
+            with self.lock:
+                pid = self._resolve(requested) or (requested if isinstance(requested, str) and
+                                                   requested in self.policies else None)
+                sp = None if pid is None else self.policies.get(pid)
+            if pid is None:
+                raise P.ProtocolError("bad_request", f"unknown policy_id {requested!r}")
+            if sp is None:
+                conn.send(self._error(None, None, "session_unknown", f"cannot resume: policy {pid} is not resident "
+                                                                     "(evicted, retired or the server restarted)"))
+                return True
             return self._resume(conn, sp, resume)
+        pid = self._resolve(requested)
+        if pid is None and self.reload_catalog(only_if_changed=True) is not None:
+            pid = self._resolve(requested)  # the staged catalog gained the id since the last read
+        if pid is None or not self._is_offered(pid):
+            raise P.ProtocolError("bad_request", f"unknown policy_id {requested!r}; served: "
+                                                 f"{sorted(self.policy_specs())}")
         choices = h.get("choices")
         if not isinstance(choices, dict) or not set(choices) <= HELLO_CHOICES:
             raise P.ProtocolError("bad_request", f"choices must be an object with keys from {sorted(HELLO_CHOICES)}")
         choices = dict(choices)
         if isinstance(choices.get("native_hw"), dict):
             choices["native_hw"] = {c: tuple(v) if isinstance(v, list) else v for c, v in choices["native_hw"].items()}
+        with self.lock:
+            entry = self.entries.get(pid)
+            unavailable = f"policy {pid} left the catalog" if entry is None else self._refusal(entry)
+        if unavailable is not None:
+            conn.send(self._error(None, None, "bad_request", unavailable))
+            return True
+        sp, refusal = self._acquire(pid, takeover=h.get("takeover") is True)  # lazy load (never under self.lock)
+        if refusal is not None:
+            conn.send(self._error(None, None, *refusal))
+            return True
+        try:
+            return self._bind(conn, sp, choices, takeover=h.get("takeover") is True)
+        finally:
+            self._release(sp)
+
+    def _bind(self, conn: Connection, sp: ServedPolicy, choices: dict, *, takeover: bool) -> bool:
         from s4d.rwlearn.deploy import HistoryWindow
 
         refusal = None
         with sp.lock:  # serialises session binding with this policy's inference
             with self.lock:
-                if len(sp.sessions) >= self.max_sessions_per_policy:
+                current = self.entries.get(sp.policy_id)
+                if self.policies.get(sp.policy_id) is not sp or sp.retired:
+                    refusal = ("session_busy", f"policy {sp.policy_id} was replaced or unloaded during this HELLO; "
+                                               "retry")
+                elif not sp.pinned and (current is None or self._refusal(current) is not None
+                                        or current.identity() != sp.entry.identity()):
+                    refusal = ("bad_request", f"policy {sp.policy_id} is no longer servable in this form: "
+                                              f"{'left the catalog' if current is None else self._refusal(current)}")
+                elif len(sp.sessions) >= self.max_sessions_per_policy:
                     oldest = min(sp.sessions.values(), key=lambda x: x.last_activity)
-                    if h.get("takeover") is not True:
+                    if not takeover:
                         idle = time.monotonic() - oldest.last_activity
                         refusal = ("session_busy", f"policy {sp.policy_id} serves {len(sp.sessions)} session(s) "
                                                    f"(max {self.max_sessions_per_policy}; least active {oldest.id} "
@@ -638,17 +1078,26 @@ class PolicyServer:
                     refusal = ("bad_request", f"session choices refused: {exc}")
             if refusal is None:
                 s = Session(sid, sp, spec, history, history.capacity)
-                try:  # the SPEC is built BEFORE the session is registered: a failure leaves nothing live behind
-                    spec_msg = self._spec_message(s, resumed=False, redeliver=[])
-                except (ValueError, TypeError) as exc:
+                with self.lock:  # final check: a reload may have withdrawn the policy while the session was bound
+                    current = self.entries.get(sp.policy_id)
+                    if self.policies.get(sp.policy_id) is not sp or sp.retired or (
+                            not sp.pinned and (current is None or self._refusal(current) is not None
+                                               or current.identity() != sp.entry.identity())):
+                        refusal = ("bad_request", f"policy {sp.policy_id} was withdrawn while this session was being "
+                                                  "bound")
+                    else:
+                        try:  # SPEC encoded under the lock with the CURRENT labels, before registration
+                            spec_msg = self._spec_message(s, resumed=False, redeliver=[])
+                        except (ValueError, TypeError) as exc:
+                            refusal = ("bad_request", f"session spec not serialisable: {exc}")
+                    if refusal is None:
+                        self.sessions[sid] = s
+                        sp.sessions[sid] = s
+                        s.conn, conn.session = conn, s
+                        sp.last_used = time.monotonic()
+                        self.counts["sessions_opened"] += 1
+                if refusal is not None:
                     sp.policy.end_session(sid)
-                    refusal = ("bad_request", f"session spec not serialisable: {exc}")
-            if refusal is None:
-                with self.lock:
-                    self.sessions[sid] = s
-                    sp.sessions[sid] = s
-                    s.conn, conn.session = conn, s
-                    self.counts["sessions_opened"] += 1
         if refusal is not None:
             conn.send(self._error(None, None, *refusal))
             return True
@@ -684,7 +1133,7 @@ class PolicyServer:
 
     def _spec_message(self, s: Session, *, resumed: bool, redeliver: list) -> bytes:
         return P.encode({"type": P.SPEC, "session_id": s.id, "policy_id": s.served.policy_id, "resumed": resumed,
-                         "input_spec": s.spec.to_json(), "info": P.jsonable(s.served.info),
+                         "input_spec": s.spec.to_json(), "info": P.jsonable(self._current_info(s.served)),
                          "last_seq_received": s.last_seq, "redeliver": redeliver,
                          "limits": {"max_queue": self.max_queue, "max_payload_bytes": self.max_payload_bytes,
                                     "max_header_bytes": self.max_header_bytes,
@@ -924,6 +1373,63 @@ def sha256_file(path: Path) -> str:
     return h.hexdigest()
 
 
+def _stamp(path) -> tuple[int, int]:
+    st = Path(path).stat()
+    return st.st_mtime_ns, st.st_size
+
+
+def _mb(n: int | None) -> float | None:
+    return None if n is None else round(n / (1 << 20), 1)
+
+
+def log_event(event: str, **fields) -> None:
+    """One JSON line per registry event (load, eviction, catalog reload) in the server log."""
+    LOG.info("%s", json.dumps({"event": event, **P.jsonable(fields)}))
+
+
+def spec_json(spec) -> dict:
+    """Normalised JSON of an (unbound) InputSpec or its ``to_json()`` dict, comparable across a JSON round trip."""
+    return json.loads(json.dumps(P.jsonable(spec.to_json() if hasattr(spec, "to_json") else spec), sort_keys=True))
+
+
+def describe_entry(entry: dict, root=None) -> dict:
+    """Advertised unbound input spec of a policy entry WITHOUT building the model: the checkpoint's meta + its
+    training contract (deploy-contract sidecar or FQL dataset; the deploy API's own reader and checks) ->
+    ``spec_json(InputSpec.from_meta(...))``, identical to the loaded ``DeployPolicy.input_spec`` (checked at load)."""
+    import torch
+
+    from ops.policy_serving.config import resolve
+    from s4d.rwlearn.deploy.contracts import InputSpec, read_training_contract
+
+    meta = torch.load(resolve(root, entry["checkpoint"]), map_location="cpu", weights_only=False, mmap=True)["meta"]
+    contract = entry.get("training_contract") or entry.get("dataset")
+    training = read_training_contract(meta, None if contract is None else str(resolve(root, contract)))
+    return spec_json(InputSpec.from_meta(meta, training))
+
+
+def policy_footprint_bytes(policy) -> int:
+    """Bytes of every parameter, buffer and optimizer-state tensor of a loaded DeployPolicy (agent networks + frozen
+    encoder adapter): the device memory the resident policy holds (deterministic on CPU and CUDA)."""
+    import torch
+
+    off = policy.offline
+    modules = list(off.agent.modules().values())
+    adapter = getattr(off, "adapter", None)
+    for m in (adapter, getattr(adapter, "backbone", None)):
+        if isinstance(m, torch.nn.Module):
+            modules.append(m)
+    tensors = [t for m in modules for t in (*m.parameters(), *m.buffers())]
+    optimizer = getattr(off.agent, "optimizer", None)
+    if optimizer is not None:
+        tensors += [v for state in optimizer.state.values() for v in state.values() if torch.is_tensor(v)]
+    seen, total = set(), 0
+    for t in tensors:
+        if id(t) not in seen:
+            seen.add(id(t))
+            total += t.numel() * t.element_size()
+    return total
+
+
 def enforce_gpu(device: str, gpu_uuid: str | None):
     """CUDA serving only on the ONE configured GPU, checked by the repository's GPU guard (``ops.resources.gpu_guard``:
     host config from ``S4D_HOST_CONFIG``, ``CUDA_VISIBLE_DEVICES`` by UUID, torch's device UUID) instead of trusting the
@@ -975,13 +1481,19 @@ def read_token(path) -> bytes:
 
 
 def main(argv=None) -> int:
-    from ops.policy_serving.config import load_config
+    from ops.policy_serving.config import load_config, resolve
 
     ap = argparse.ArgumentParser(prog="ops/policy_serving/server.py", description=__doc__.split("\n")[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
-    s = sub.add_parser("serve", help="load policies once, warm up, serve until SIGINT/SIGTERM")
+    s = sub.add_parser("serve", help="advertise the registry, load selected policies lazily, serve until SIGINT/SIGTERM "
+                                     "(SIGHUP re-reads the catalog)")
     s.add_argument("--config", type=Path, default=None, help="default configs/realworld/policy_serving.yaml")
-    s.add_argument("--policies", default=None, help="comma-separated policy ids (default server.default_policies)")
+    s.add_argument("--catalog", default=None, help="staged catalog JSON (relative: under the checkpoint root; "
+                                                   "default server.catalog; 'none' = config policies only)")
+    s.add_argument("--policies", default=None, help="comma-separated ids/aliases to OFFER (default "
+                                                    "server.default_policies, else every registry entry)")
+    s.add_argument("--preload", default=None, help="comma-separated ids loaded + warmed before READY "
+                                                   "(default server.preload)")
     s.add_argument("--bind", default=None)
     s.add_argument("--port", type=int, default=None, help="0 = ephemeral (reported in the READY line)")
     s.add_argument("--device", default=None)
@@ -991,6 +1503,8 @@ def main(argv=None) -> int:
     s.add_argument("--threads", type=int, default=None, help="CPU threads (OMP/MKL) for CPU inference")
     s.add_argument("--gpu-uuid", default=None, help="the one GPU (UUID) for --device cuda (default server.gpu_uuid)")
     s.add_argument("--allow-fixture", action="store_true", help="serve FIXTURE checkpoints (tests only)")
+    s.add_argument("--allow-quarantined", action="store_true",
+                   help="serve catalog entries marked quarantined (pipeline checks only; labelled in every info)")
     s.add_argument("--log-level", default="INFO")
     args = ap.parse_args(argv)
     logging.basicConfig(level=getattr(args, "log_level", "INFO"), stream=sys.stderr,
@@ -1003,44 +1517,53 @@ def main(argv=None) -> int:
     if threads:
         for var in ("OMP_NUM_THREADS", "MKL_NUM_THREADS"):
             os.environ[var] = str(int(threads))
-    ids = args.policies.split(",") if args.policies else list(sc["default_policies"])
-    if not ids:
-        raise SystemExit("no policies selected (--policies or server.default_policies)")
-    unknown = [i for i in ids if i not in cfg["policies"]]
-    if unknown:
-        raise SystemExit(f"unknown policy ids {unknown}; configured: {sorted(cfg['policies'])}")
     device = args.device or sc["device"]
     bind = args.bind or sc["bind_host"]
     if not args.token_file and not is_loopback(bind):  # refused before anything is loaded
         raise SystemExit(f"binding {bind!r} beyond loopback requires --token-file")
-    gpus = enforce_gpu(device, args.gpu_uuid or sc["gpu_uuid"])  # before any torch import
     root = args.checkpoint_root or sc["checkpoint_root"]
-    loaded, info = {}, {}
-    for pid in ids:
-        t0 = time.monotonic()
-        loaded[pid], info[pid] = load_policy(cfg["policies"][pid], root=root, device=device,
-                                             allow_fixture=args.allow_fixture)
-        info[pid]["load_s"] = round(time.monotonic() - t0, 3)
-    server = PolicyServer(loaded, host=bind, port=sc["port"] if args.port is None else args.port,
-                          token=read_token(args.token_file) if args.token_file else None,
-                          max_queue=sc["max_queue"], session_idle_timeout_s=sc["session_idle_timeout_s"],
-                          response_cache=sc["response_cache"], io_timeout_s=sc["io_timeout_s"],
-                          max_header_bytes=sc["max_header_bytes"], max_payload_bytes=sc["max_payload_bytes"],
-                          max_frames_per_step=sc["max_frames_per_step"], history_capacity=sc["history_capacity"],
-                          max_sessions_per_policy=sc["max_sessions_per_policy"],
-                          max_connections=sc["max_connections"],
-                          warmup_iterations=sc["warmup_iterations"] if args.warmup_iterations is None
-                          else args.warmup_iterations, warmup_native_hw=sc["warmup_native_hw"], info=info)
-    stop = threading.Event()
+    catalog = args.catalog if args.catalog is not None else sc["catalog"]
+    catalog = None if catalog in (None, "", "none") else resolve(root, catalog)
+    if catalog is not None and not catalog.is_file():
+        raise SystemExit(f"catalog {catalog} not found (stage it, or --catalog none for config policies only)")
+    if not cfg["policies"] and catalog is None:
+        raise SystemExit("no policies: neither config policies nor a catalog")
+    offered = args.policies.split(",") if args.policies else list(sc["default_policies"]) or None
+    preload = args.preload.split(",") if args.preload else list(sc["preload"])
+    gpus = enforce_gpu(device, args.gpu_uuid or sc["gpu_uuid"])  # before any torch import
+    budget = sc["gpu_memory_budget_mb"]
+    try:
+        server = PolicyServer(entries=cfg["policies"], catalog=catalog, checkpoint_root=root, device=device,
+                              allow_fixture=args.allow_fixture, allow_quarantined=args.allow_quarantined,
+                              offered=offered, preload=preload,
+                              gpu_memory_budget_bytes=None if budget is None else int(budget * (1 << 20)),
+                              max_resident_policies=sc["max_resident_policies"], host=bind,
+                              port=sc["port"] if args.port is None else args.port,
+                              token=read_token(args.token_file) if args.token_file else None,
+                              max_queue=sc["max_queue"], session_idle_timeout_s=sc["session_idle_timeout_s"],
+                              response_cache=sc["response_cache"], io_timeout_s=sc["io_timeout_s"],
+                              max_header_bytes=sc["max_header_bytes"], max_payload_bytes=sc["max_payload_bytes"],
+                              max_frames_per_step=sc["max_frames_per_step"], history_capacity=sc["history_capacity"],
+                              max_sessions_per_policy=sc["max_sessions_per_policy"],
+                              max_connections=sc["max_connections"],
+                              warmup_iterations=sc["warmup_iterations"] if args.warmup_iterations is None
+                              else args.warmup_iterations, warmup_native_hw=sc["warmup_native_hw"])
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
+    stop, reload = threading.Event(), threading.Event()
     for sig in (signal.SIGINT, signal.SIGTERM):
         signal.signal(sig, lambda *_: stop.set())
+    signal.signal(signal.SIGHUP, lambda *_: reload.set())
     host, port = server.start()
     print(json.dumps({"event": "ready", "host": host, "port": port, "protocol": P.VERSION, "pid": os.getpid(),
-                      "auth": server.token is not None, "gpus": gpus,
-                      "policies": {pid: {**P.jsonable(info[pid]), "warmup_ms": P.jsonable(sp.warmup_ms)}
-                                   for pid, sp in server.policies.items()}}), flush=True)
-    while not stop.wait(1.0):
-        pass
+                      "auth": server.token is not None, "gpus": gpus, "device": device, **server.ready_info()}),
+          flush=True)
+    while not stop.wait(0.5):
+        if reload.is_set():
+            reload.clear()
+            summary = server.reload_catalog()
+            print(json.dumps({"event": "catalog_reloaded", "ok": summary is not None, **(summary or {})}),
+                  flush=True)
     server.shutdown()
     print(json.dumps({"event": "stopped", **server.stats()}), flush=True)
     return 0

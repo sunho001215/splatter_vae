@@ -1,0 +1,151 @@
+"""Robot-side action validation: a policy result becomes an executable ``Command`` only if it is finite, inside the
+contract ranges and the configured limits, bound to the measured pose of ITS observation, and not expired. numpy only.
+
+Checks (``validate_action``), each failure an ``ActionRejected`` with a code:
+* ``no_action``: the step returned no action (error / timeout / takeover);
+* ``binding``: reference id, session, frame ids, observation time, pose / gripper sample times or the echoed measured
+  pose differ from the request this client sent (an action is never re-applied to another pose);
+* ``non_finite`` / ``range``: non-finite outputs, |action_norm| > 1 (the FQL actor's tanh range), malformed quaternion;
+* ``translation`` / ``rotation``: the executed goal (``execution_flange_pose``, the recorder's lead envelope around the
+  measured pose) farther than the configured per-step limit from the measured pose;
+* ``workspace``: goal position outside the configured base-frame box;
+* ``gripper``: closure outside the configured range, or register != round(3 + 227 c) (recorder convention);
+* ``expired`` / ``future``: observation older than ``max_action_age_ms`` (or stamped in the future) at validation time.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+import numpy as np
+
+from ops.robot_pc.poses import as_pose7, quat_angle
+
+GRIPPER_OPEN_REGISTER, GRIPPER_SPAN = 3.0, 227.0  # conventions_json: "Robotiq position 3 + 227 * closure (DROID)"
+CONTROLLER_REJECT_M, CONTROLLER_REJECT_RAD = 0.2, 0.5  # switch_controller rejects targets this far (robot.py docstring)
+
+
+class ActionRejected(ValueError):
+    def __init__(self, code: str, detail: str):
+        super().__init__(f"{code}: {detail}")
+        self.code, self.detail = code, detail
+
+
+@dataclass(frozen=True)
+class ActionLimits:
+    max_translation_m: float = 0.04  # recorder teleop.max_position_lead (every recorded command lies inside)
+    max_rotation_deg: float = 20.0  # recorder teleop.max_rotation_lead_deg
+    workspace_min_m: tuple = (0.2, -0.45, 0.35)  # base frame; per task in configs/robot_pc/robot_pc.yaml
+    workspace_max_m: tuple = (0.75, 0.3, 0.85)
+    gripper_closure_min: float = 0.0
+    gripper_closure_max: float = 1.0
+    max_action_age_ms: float = 200.0  # observation (capture) age bound at validation and until execution
+    quaternion_tolerance: float = 1e-6
+
+    @classmethod
+    def from_config(cls, d: dict) -> ActionLimits:
+        unknown = set(d) - set(cls.__dataclass_fields__)
+        if unknown:
+            raise ValueError(f"unknown action limit keys {sorted(unknown)}")
+        kw = {k: tuple(float(x) for x in v) if isinstance(v, (list, tuple)) else float(v) for k, v in d.items()}
+        out = cls(**kw)
+        values = [*out.workspace_min_m, *out.workspace_max_m, out.max_translation_m, out.max_rotation_deg,
+                  out.gripper_closure_min, out.gripper_closure_max, out.max_action_age_ms, out.quaternion_tolerance]
+        if not all(np.isfinite(values)) or min(out.max_translation_m, out.max_rotation_deg, out.max_action_age_ms) <= 0:
+            raise ValueError("action limits must be finite and positive")
+        if out.max_translation_m >= CONTROLLER_REJECT_M or np.deg2rad(out.max_rotation_deg) >= CONTROLLER_REJECT_RAD:
+            raise ValueError("per-step limits must stay below switch_controller's rejection (0.2 m / 0.5 rad)")
+        if len(out.workspace_min_m) != 3 or len(out.workspace_max_m) != 3 or \
+                any(a >= b for a, b in zip(out.workspace_min_m, out.workspace_max_m)):
+            raise ValueError("workspace box must be 3 increasing (min, max) pairs")
+        if not 0 <= out.gripper_closure_min <= out.gripper_closure_max <= 1:
+            raise ValueError("gripper closure range must lie in [0, 1]")
+        return out
+
+
+@dataclass(frozen=True)
+class BoundRequest:
+    """What this client sent: the observation and the measured samples the action must be bound to."""
+    reference_id: str
+    end_ids: dict
+    observation_time_ns: int
+    pose7: tuple
+    pose_time_ns: int
+    gripper_register: float
+    gripper_time_ns: int
+
+
+@dataclass(frozen=True)
+class Command:
+    """An executable command: ABSOLUTE flange goal in the base frame + gripper, bound to its observation."""
+    reference_id: str
+    session_id: str
+    observation_time_ns: int
+    expires_ns: int  # observation_time_ns + max_action_age_ms: never executed after this (client clock)
+    measured_pose7: tuple
+    goal_pose7: tuple  # execution_flange_pose (lead envelope around the measured pose); else flange_pose
+    gripper_closure: float
+    gripper_register: int
+    translation_m: float
+    rotation_deg: float
+
+    def to_json(self) -> dict:
+        return {k: (list(v) if isinstance(v, tuple) else v) for k, v in self.__dict__.items()}
+
+
+def validate_action(result, request: BoundRequest, limits: ActionLimits, *, session_id: str, now_ns: int) -> Command:
+    if not getattr(result, "ok", False):
+        raise ActionRejected("no_action", f"{getattr(result, 'status', '?')}: {getattr(result, 'code', None)} "
+                                          f"{getattr(result, 'detail', None)}")
+    o = result.outputs
+    ids = o.get("obs_ids") or {}
+    if result.reference_id != request.reference_id or ids.get("reference_id") != request.reference_id:
+        raise ActionRejected("binding", f"action of {result.reference_id!r}, request {request.reference_id!r}")
+    if result.session_id != session_id or ids.get("session_id") != session_id:
+        raise ActionRejected("binding", "action of another session")
+    if any(ids.get("frame_ids", {}).get(c, [None])[-1] != int(f) for c, f in request.end_ids.items()):
+        raise ActionRejected("binding", f"frame ids {ids.get('frame_ids')} do not end at {request.end_ids}")
+    for key, want in (("observation_time_ns", request.observation_time_ns), ("pose_time_ns", request.pose_time_ns),
+                      ("gripper_time_ns", request.gripper_time_ns)):
+        if ids.get(key) != want:
+            raise ActionRejected("binding", f"{key} {ids.get(key)} != requested {want}")
+    measured = np.asarray(o.get("measured_pose7"), np.float64)
+    if measured.shape != (7,) or not np.array_equal(measured, np.asarray(request.pose7, np.float64)):
+        raise ActionRejected("binding", "the action is not bound to the measured pose sent with its observation")
+    if not np.isfinite(measured).all() or abs(float(np.linalg.norm(measured[3:])) - 1.0) > 1e-3:
+        raise ActionRejected("range", "measured pose is not finite with a unit quaternion")
+    if float(o.get("measured_gripper_register", request.gripper_register)) != float(request.gripper_register):
+        raise ActionRejected("binding", "the action is not bound to the gripper register sent with its observation")
+    a = np.asarray(o.get("action_norm"), np.float64)
+    goal = np.asarray(o.get("execution_flange_pose", o.get("flange_pose")), np.float64)
+    c = float(o.get("gripper_closure", np.nan))
+    if a.shape != (7,) or goal.shape != (7,) or not (np.isfinite(a).all() and np.isfinite(goal).all() and np.isfinite(c)):
+        raise ActionRejected("non_finite", "action, goal or gripper not finite (or malformed)")
+    if np.abs(a).max() > 1.0:
+        raise ActionRejected("range", f"|action_norm| {np.abs(a).max():.6f} > 1 (contract range)")
+    if abs(float(np.linalg.norm(goal[3:])) - 1.0) > limits.quaternion_tolerance:
+        raise ActionRejected("range", "goal quaternion is not unit norm")
+    goal = as_pose7(goal)
+    t_m = float(np.linalg.norm(goal[:3] - measured[:3]))
+    r_deg = float(np.degrees(quat_angle(goal[3:], measured[3:])))
+    if t_m > limits.max_translation_m + 1e-9:
+        raise ActionRejected("translation", f"{t_m * 1e3:.2f} mm > {limits.max_translation_m * 1e3:.1f} mm per step")
+    if r_deg > limits.max_rotation_deg + 1e-6:
+        raise ActionRejected("rotation", f"{r_deg:.2f} deg > {limits.max_rotation_deg} deg per step")
+    lo, hi = np.asarray(limits.workspace_min_m), np.asarray(limits.workspace_max_m)
+    if (goal[:3] < lo).any() or (goal[:3] > hi).any():
+        raise ActionRejected("workspace", f"goal {np.round(goal[:3], 4).tolist()} outside {lo.tolist()}..{hi.tolist()}")
+    if not limits.gripper_closure_min <= c <= limits.gripper_closure_max:
+        raise ActionRejected("gripper", f"closure {c:.4f} outside [{limits.gripper_closure_min}, "
+                                        f"{limits.gripper_closure_max}]")
+    register = int(o.get("gripper_register"))
+    if register != int(np.rint(GRIPPER_OPEN_REGISTER + GRIPPER_SPAN * c)):
+        raise ActionRejected("gripper", f"register {register} != round(3 + 227 * {c:.4f})")
+    age_ms = (int(now_ns) - int(request.observation_time_ns)) / 1e6
+    if age_ms < 0:
+        raise ActionRejected("future", f"observation {-age_ms:.1f} ms in the future: frames not on this clock")
+    if age_ms > limits.max_action_age_ms:
+        raise ActionRejected("expired", f"observation {age_ms:.1f} ms old > {limits.max_action_age_ms} ms")
+    return Command(str(request.reference_id), session_id, int(request.observation_time_ns),
+                   int(request.observation_time_ns + limits.max_action_age_ms * 1e6), tuple(measured.tolist()),
+                   tuple(goal.tolist()), c, register, t_m, r_deg)

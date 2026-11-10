@@ -149,11 +149,14 @@ class PolicyClient:
                  connect_timeout_s: float = 3.0, io_timeout_s: float = 5.0, step_timeout_s: float = 0.5,
                  reconnect_backoff_s=(0.05, 0.1, 0.25, 0.5, 1.0), ttl_ms: float = 100.0, takeover: bool = False,
                  frame_buffer: int | None = None, max_inflight: int = 4, max_payload_bytes: int = 32 << 20,
-                 name: str = "policy-client"):
+                 name: str = "policy-client", hello_timeout_s: float = 20.0):
         self.host, self.port, self.policy_id = host, int(port), policy_id
         self.choices = choices if callable(choices) else P.jsonable(choices)  # callable(unbound spec) -> dict
         self.token, self.takeover, self.name = token, bool(takeover), name
         self.connect_timeout_s, self.io_timeout_s = float(connect_timeout_s), float(io_timeout_s)
+        # HELLO -> SPEC wait: the server loads a policy lazily on its first selection (load + warm-up, seconds under
+        # GPU contention), so it is longer than the TCP connect / WELCOME wait
+        self.hello_timeout_s = max(float(hello_timeout_s), self.connect_timeout_s)
         self.step_timeout_s, self.ttl_ms = float(step_timeout_s), float(ttl_ms)
         self.backoff = tuple(float(x) for x in reconnect_backoff_s) or (0.1,)
         self.frame_buffer, self.max_inflight, self.max_payload_bytes = frame_buffer, int(max_inflight), max_payload_bytes
@@ -175,6 +178,7 @@ class PolicyClient:
         self._results: dict[int, StepResult] = {}
         self._pongs: collections.deque = collections.deque(maxlen=16)
         self._capacity = 1
+        self._deadline: float | None = None  # absolute deadline of the step being waited for (monotonic s)
         self.stats = collections.Counter()
 
     # ------------------------------------------------------------------------------------------------ connection
@@ -189,12 +193,18 @@ class PolicyClient:
         self._hello(None)
         return self.spec
 
+    def _budget(self, limit: float) -> float:
+        """``limit`` bounded by the deadline of the step being waited for (reconnects/renewals never outlast it)."""
+        if self._deadline is None:
+            return limit
+        return max(0.05, min(limit, self._deadline - time.monotonic()))
+
     def _open(self) -> None:
         if self.wire is not None:
             self.wire.close()
-        sock = socket.create_connection((self.host, self.port), timeout=self.connect_timeout_s)
+        sock = socket.create_connection((self.host, self.port), timeout=self._budget(self.connect_timeout_s))
         self.wire = P.Wire(sock, io_timeout_s=self.io_timeout_s, max_payload_bytes=self.max_payload_bytes)
-        msg = self.wire.recv(self.connect_timeout_s)
+        msg = self.wire.recv(self._budget(self.connect_timeout_s))
         if msg is not None and msg.type == P.ERROR:
             raise ServingError(msg.header["code"], msg.header["detail"])
         if msg is None or msg.type != P.WELCOME:
@@ -203,7 +213,7 @@ class PolicyClient:
             raise ServingError("version", f"server protocol {msg.header['v']} != client {P.VERSION}")
         self.welcome = msg.header
 
-    def _hello(self, resume: dict | None) -> dict:
+    def _hello(self, resume: dict | None, timeout_s: float | None = None) -> dict:
         offered = self.welcome.get("policies", {})
         if self.policy_id not in offered:
             raise ServingError("bad_request", f"server does not serve {self.policy_id!r}; serves {sorted(offered)}")
@@ -216,7 +226,7 @@ class PolicyClient:
                 raise ServingError("auth", "server requires the shared token")
             header["auth"] = hmac.new(self.token, self.welcome["nonce"].encode(), hashlib.sha256).hexdigest()
         self.wire.send(P.encode(header))
-        deadline = time.monotonic() + self.connect_timeout_s
+        deadline = time.monotonic() + (self.hello_timeout_s if timeout_s is None else timeout_s)
         while True:
             msg = self.wire.recv(max(0.0, deadline - time.monotonic()))
             if msg is None:
@@ -270,13 +280,28 @@ class PolicyClient:
             return
         self._renewing = True
         try:
-            self._hello(None)
+            self._hello(None, timeout_s=self._budget(self.hello_timeout_s))
         except ServingError as exc:
-            if exc.code != "session_busy":
-                raise
-            self._taken(f"policy held by another client after this session was lost: {exc.detail}")
+            if exc.code == "session_busy":
+                self._taken(f"policy held by another client after this session was lost: {exc.detail}")
+            else:  # disconnect, refusal (e.g. policy withdrawn), auth: an error result, never an exception
+                self._renew_failed(exc, "session_unknown" if isinstance(exc, ConnectionLost) else exc.code)
+        except (TimeoutError, OSError, ConnectionError, P.ProtocolError) as exc:
+            self._renew_failed(exc)
         finally:
             self._renewing = False
+
+    def _renew_failed(self, exc, code: str = "session_unknown") -> None:
+        """Renewal not done (deadline, disconnect): drop the connection (a late SPEC must never be mistaken for an
+        answer) and answer the in-flight requests; the next step reconnects (a still-held policy -> takeover)."""
+        self.stats["renew_failed"] += 1
+        if self.wire is not None:
+            self.wire.close()
+            self.wire = None
+        for seq in list(self._inflight):
+            self._results[seq] = StepResult("error", seq, self.session_id, code,
+                                            f"session renewal did not complete ({exc})")
+        self._inflight.clear()
 
     def _recover(self, deadline: float) -> None:
         """Reconnect with backoff and resume (or renew) the session; re-send unacknowledged requests."""
@@ -294,7 +319,8 @@ class PolicyClient:
             try:
                 self._open()
                 try:
-                    h = self._hello({"session_id": self.session_id, "last_ack": self.last_ack})
+                    h = self._hello({"session_id": self.session_id, "last_ack": self.last_ack},  # bounded by the
+                                    timeout_s=max(0.05, deadline - time.monotonic()))  # caller's step deadline
                 except ServingError as exc:
                     if exc.code != "session_unknown":
                         raise
@@ -530,12 +556,15 @@ class PolicyClient:
         return seq
 
     def _send(self, data: bytes, deadline: float) -> None:
+        self._deadline = deadline
         try:
             if self.wire is None:
                 raise ConnectionError("not connected")
             self.wire.send(data)
         except (OSError, ConnectionError):
             self._recover(deadline)  # re-sends every unacknowledged request, including this one
+        finally:
+            self._deadline = None
 
     def step(self, end_ids: dict, reference_id, pose7, gripper_register, *, pose_time_ns: int, gripper_time_ns: int,
              ttl_ms: float | None = None, pad_run_start: bool = False, noise: np.ndarray | None = None,
@@ -559,6 +588,13 @@ class PolicyClient:
         no longer awaited are dropped as stale. Every read is bounded by this call's deadline; a message cut by the
         deadline or the network makes the connection unusable: it is dropped and resumed."""
         deadline = time.monotonic() + (self.step_timeout_s if timeout_s is None else timeout_s)
+        self._deadline = deadline
+        try:
+            return self._wait(seq, deadline)
+        finally:
+            self._deadline = None
+
+    def _wait(self, seq: int, deadline: float) -> StepResult:
         while seq not in self._results:
             if seq not in self._inflight:
                 return StepResult("error", seq, self.session_id, "unknown_seq", "not in flight")

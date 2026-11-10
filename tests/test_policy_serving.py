@@ -19,6 +19,7 @@ import subprocess
 import sys
 import threading
 import time
+from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
@@ -37,8 +38,18 @@ from ops.policy_serving.client import (
     bound_command,
     check_action,
 )
-from ops.policy_serving.config import DEFAULT_PATH, load_config
-from ops.policy_serving.server import PolicyServer, classify, enforce_gpu, load_policy, main
+from ops.policy_serving.config import CATALOG_SCHEMA, DEFAULT_PATH, load_catalog, load_config, validate_catalog
+from ops.policy_serving.server import (
+    PolicyServer,
+    classify,
+    describe_entry,
+    enforce_gpu,
+    load_policy,
+    main,
+    policy_footprint_bytes,
+    sha256_file,
+    spec_json,
+)
 from s4d.rwlearn.deploy import Frame, HistoryWindow, preprocess_frame
 from s4d.rwlearn.deploy.fixtures import FIXTURE_CONDITIONS, make_fixture_policy, session_choices
 
@@ -244,12 +255,35 @@ def test_error_codes_follow_the_deploy_refusal_classes():
 
 def test_config_file_loads_and_refuses_unknown_keys(tmp_path):
     cfg = load_config(DEFAULT_PATH)
-    assert cfg["protocol_version"] == P.VERSION and cfg["policies"]
-    assert all("checkpoint" in e and "sha256" in e for e in cfg["policies"].values())
+    assert cfg["protocol_version"] == P.VERSION and cfg["policies"] == {}  # the staged catalog is the single source
+    assert cfg["server"]["catalog"] == "catalog.json" and cfg["server"]["gpu_memory_budget_mb"] > 0
     bad = tmp_path / "bad.json"
     bad.write_text(json.dumps({"server": {"prot": 1}}))
     with pytest.raises(ValueError, match="unknown server keys"):
         load_config(bad)
+
+
+def test_catalog_validation_refuses_malformed_catalogs(tmp_path):
+    good = {"checkpoint": "a/policy.pt", "sha256": "0" * 64, "condition": "reviwo", "task": "t", "status": "deployable"}
+    q = {**good, "status": "quarantined", "reasons": ["vision-blind"]}
+    ok = validate_catalog({"schema": CATALOG_SCHEMA, "policies": {"a-s0": good, "q-s0": q}, "aliases": {"a": "a-s0"}})
+    assert set(ok["policies"]) == {"a-s0", "q-s0"} and ok["aliases"] == {"a": "a-s0"}
+    path = tmp_path / "catalog.json"
+    path.write_text(json.dumps({"schema": CATALOG_SCHEMA, "policies": {"a-s0": good}}))
+    assert load_catalog(path)["aliases"] == {}
+    cases = (({"schema": "other/1"}, "schema"), ({"schema": CATALOG_SCHEMA, "extra": 1}, "unknown catalog keys"),
+             ({"schema": CATALOG_SCHEMA, "policies": {"a": {**good, "typo": 1}}}, "unknown keys"),
+             ({"schema": CATALOG_SCHEMA, "policies": {"a": {**good, "status": "maybe"}}}, "status"),
+             ({"schema": CATALOG_SCHEMA, "policies": {"a": {**good, "status": "quarantined"}}}, "reasons"),
+             ({"schema": CATALOG_SCHEMA, "policies": {"a": {k: v for k, v in good.items() if k != "sha256"}}},
+              "missing keys"),
+             ({"schema": CATALOG_SCHEMA, "policies": {"a": {**good, "dataset": "d.h5", "training_contract": "c"}}},
+              "OR"),
+             ({"schema": CATALOG_SCHEMA, "policies": {"a": good}, "aliases": {"b": "nope"}}, "unknown policy"),
+             ({"schema": CATALOG_SCHEMA, "policies": {"a": good, "b": good}, "aliases": {"b": "a"}}, "shadows"))
+    for raw, match in cases:
+        with pytest.raises(ValueError, match=match):
+            validate_catalog(raw)
 
 
 # ------------------------------------------------------------------------------------------------ equality
@@ -1059,10 +1093,460 @@ def test_gpu_is_enforced_by_the_guard_not_the_container(monkeypatch):
     with pytest.raises(ValueError, match="cuda:0"):
         enforce_gpu("cuda:1", "GPU-x")
     visible = os.environ["CUDA_VISIBLE_DEVICES"]
+    other = next(u for u in ("GPU-9bcf38b6-8240-e910-6548-ca715643dc11", "GPU-00000000-0000-0000-0000-000000000000")
+                 if u != visible)  # host-independent: never this process's device (also inside shkim_rw)
     with pytest.raises(GPUIsolationError):
-        enforce_gpu("cuda", "GPU-9bcf38b6-8240-e910-6548-ca715643dc11")  # not this process's device
+        enforce_gpu("cuda", other)
     mapping = enforce_gpu("cuda", visible)
     assert len(mapping) == 1 and mapping[0]["uuid"] == visible
     monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "0")
     with pytest.raises(GPUIsolationError):
         enforce_gpu("cuda", visible)  # bare indices are refused by the guard
+
+
+# ------------------------------------------------------------------------------------------------ catalog registry
+def stage_fixture(root: Path, name: str, condition: str = "reviwo", **extra):
+    """A FIXTURE checkpoint (+ export) written under ``root/name`` and its catalog entry (paths relative to root)."""
+    policy = make_fixture_policy(root / name, condition)
+    entry = {"checkpoint": f"{name}/policy.pt", "sha256": sha256_file(root / name / "policy.pt"),
+             "condition": condition, "task": "fixture-task", "seed": 0, "run": f"fixture-{name}",
+             "status": "deployable", "flags": ["fixture"], "reasons": [], **extra}
+    if (root / name / "encoder.pt").exists():
+        entry["export"] = f"{name}/encoder.pt"
+    return policy, entry
+
+
+def write_catalog(path: Path, policies: dict, aliases: dict | None = None) -> Path:
+    path.write_text(json.dumps({"schema": CATALOG_SCHEMA, "generated_utc": "fixture", "criteria_sha256": None,
+                                "policies": policies, "aliases": aliases or {}}, indent=1))
+    return path
+
+
+@contextlib.contextmanager
+def serve_catalog(root: Path, catalog: Path, **kw):
+    kw.setdefault("warmup_iterations", 0)
+    srv = PolicyServer(catalog=catalog, checkpoint_root=root, device="cpu", allow_fixture=True, **kw)
+    srv.start()
+    try:
+        yield srv
+    finally:
+        srv.shutdown()
+
+
+def welcome(srv) -> dict:
+    w = P.Wire(socket.create_connection(("127.0.0.1", srv.port), timeout=5))
+    try:
+        msg = w.recv(5)
+        assert msg.type == P.WELCOME
+        return msg.header
+    finally:
+        w.close()
+
+
+def raw_hello(srv, pid: str, choices: dict) -> P.Message:
+    """HELLO without the client's own offered-id check (the server's refusal is what is tested)."""
+    w = P.Wire(socket.create_connection(("127.0.0.1", srv.port), timeout=5))
+    try:
+        assert w.recv(5).type == P.WELCOME
+        w.send(P.encode({"type": P.HELLO, "policy_id": pid, "choices": P.jsonable(choices)}))
+        return w.recv(30)
+    finally:
+        w.close()
+
+
+@pytest.fixture(scope="module")
+def staged(tmp_path_factory):
+    old = torch.get_num_threads()
+    torch.set_num_threads(4)
+    root = tmp_path_factory.mktemp("serving-catalog")
+    out = {name: stage_fixture(root, name, cond) for name, cond in
+           (("r1", "reviwo"), ("r2", "reviwo"), ("r3", "reviwo"), ("r1b", "reviwo"), ("s1", "sincro"),
+            ("e1", "e2e_cnn"))}
+    yield root, out
+    torch.set_num_threads(old)
+
+
+def test_lazy_load_on_first_hello_alias_and_advertised_spec(staged, tmp_path):
+    root, fx = staged
+    (pol, e), (spol, se) = fx["r1"], fx["s1"]
+    cat = write_catalog(tmp_path / "catalog.json", {"reviwo-x-s0": e, "sincro-x-s0": se},
+                        {"reviwo-x": "reviwo-x-s0"})
+    with serve_catalog(root, cat, warmup_iterations=1) as srv:
+        assert srv.policies == {} and srv.counts["policies_loaded"] == 0  # nothing loaded before a selection
+        hello = welcome(srv)
+        offered = hello["policies"]
+        assert set(offered) == {"reviwo-x-s0", "sincro-x-s0", "reviwo-x"} and hello["unavailable"] == {}
+        assert offered["reviwo-x"]["info"]["alias_of"] == "reviwo-x-s0" and not offered["reviwo-x-s0"]["info"]["resident"]
+        assert offered["reviwo-x-s0"]["input_spec"] == spec_json(pol.input_spec) == describe_entry(e, root)
+        assert offered["sincro-x-s0"]["input_spec"] == spec_json(spol.input_spec)
+        assert srv.policies == {}  # advertising never loads
+        c, feed = client_for(srv, "reviwo-x", pol)  # the alias selects (and loads) the canonical policy
+        assert srv.counts["policies_loaded"] == 1 and set(srv.policies) == {"reviwo-x-s0"}
+        sp = srv.policies["reviwo-x-s0"]
+        assert sp.warmup_ms is not None and sp.footprint == policy_footprint_bytes(pol) > 0
+        for k in range(3):
+            feed.add(k)
+        r = feed.step(2, noise_seed=11)
+        c.close()
+        assert r.ok, (r.code, r.detail)
+        c2, feed2 = client_for(srv, "reviwo-x-s0", pol)  # resident: reused, not reloaded
+        assert srv.counts["policies_loaded"] == 1 and srv.policies["reviwo-x-s0"] is sp
+        assert welcome(srv)["policies"]["reviwo-x-s0"]["info"]["resident"] is True
+        c2.close()
+    assert_same(r.outputs, direct(pol, feed, 2, noise=P.validation_noise(11)))  # lazily loaded == direct, bitwise
+
+
+def test_spec_mismatch_and_quarantine_are_refused(staged, tmp_path):
+    root, fx = staged
+    (pol, e), spol = fx["r1"], fx["s1"][0]
+    lying = {**e, "input_spec": spec_json(spol.input_spec)}  # advertises sincro's contract for a reviwo checkpoint
+    q = {**fx["r2"][1], "status": "quarantined", "reasons": ["vision-blind adapter input (fixture label)"]}
+    cat = write_catalog(tmp_path / "catalog.json", {"lying-s0": lying, "q-s0": q})
+    with serve_catalog(root, cat) as srv:
+        hello = welcome(srv)
+        assert set(hello["policies"]) == {"lying-s0"}
+        assert hello["unavailable"] == {"q-s0": {"status": "quarantined", "reasons": q["reasons"]}}
+        err = raw_hello(srv, "lying-s0", choices_of(spol))
+        assert err.header["code"] == "bad_request" and "input_spec differs" in err.header["detail"]
+        assert srv.policies == {}  # refused, never served
+        err = raw_hello(srv, "q-s0", choices_of(pol))
+        assert err.header["code"] == "bad_request" and "quarantined" in err.header["detail"]
+        assert srv.policies == {}
+    with serve_catalog(root, cat, allow_quarantined=True) as srv:
+        info = welcome(srv)["policies"]["q-s0"]["info"]
+        assert info["status"] == "quarantined" and info["reasons"] == q["reasons"]
+        c, feed = client_for(srv, "q-s0", fx["r2"][0])
+        for k in range(3):
+            feed.add(k)
+        assert feed.step(2).ok and srv.policies["q-s0"].info["status"] == "quarantined"
+        c.close()
+
+
+def test_budget_lru_eviction_never_evicts_a_live_session(staged, tmp_path):
+    root, fx = staged
+    pol = fx["r1"][0]
+    cat = write_catalog(tmp_path / "catalog.json", {n: fx[n][1] for n in ("r1", "r2", "r3")})
+    fp = policy_footprint_bytes(pol)
+    probe = PolicyServer(catalog=cat, checkpoint_root=root, device="cpu", allow_fixture=True)
+    est = probe._estimate(probe.entries["r2"])
+    budget = 2 * max(fp, est) + 1
+    assert fp + est <= budget < 2 * fp + est  # two fit, a third forces an eviction
+    with serve_catalog(root, cat, gpu_memory_budget_bytes=budget) as srv:
+        a, _ = client_for(srv, "r1", pol)
+        a.close()  # BYE: r1 stays resident, idle
+        wait_until(lambda: not srv.policies["r1"].sessions)
+        b, fb = client_for(srv, "r2", pol)
+        assert set(srv.policies) == {"r1", "r2"}
+        c, fc = client_for(srv, "r3", pol)  # r1 is the least recently used idle policy -> evicted
+        assert set(srv.policies) == {"r2", "r3"} and srv.counts["policies_evicted"] == 1
+        with pytest.raises(ServingError, match="overloaded") as exc:  # r2 and r3 have live sessions
+            client_for(srv, "r1", pol)
+        assert "live sessions" in str(exc.value) and set(srv.policies) == {"r2", "r3"}
+        for k in range(3):
+            fb.add(k)
+        assert fb.step(2).ok  # the live session was never disturbed
+        b.close()
+        wait_until(lambda: not srv.policies["r2"].sessions)
+        a2, _ = client_for(srv, "r1", pol)  # r2 idle now -> evicted for r1
+        assert set(srv.policies) == {"r1", "r3"} and srv.counts["policies_loaded"] == 4
+        for cl in (a2, c):
+            cl.close()
+
+
+def test_max_resident_policies_cap(staged, tmp_path):
+    root, fx = staged
+    pol = fx["r1"][0]
+    cat = write_catalog(tmp_path / "catalog.json", {n: fx[n][1] for n in ("r1", "r2")})
+    with serve_catalog(root, cat, max_resident_policies=1) as srv:
+        a, _ = client_for(srv, "r1", pol)
+        with pytest.raises(ServingError, match="overloaded"):
+            client_for(srv, "r2", pol)
+        a.close()
+        wait_until(lambda: not srv.policies["r1"].sessions)
+        b, _ = client_for(srv, "r2", pol)
+        assert set(srv.policies) == {"r2"}
+        b.close()
+
+
+def test_catalog_reload_offers_new_entries_and_swaps_changed_ones_after_their_session(staged, tmp_path):
+    root, fx = staged
+    pol = fx["r1"][0]
+    path = tmp_path / "catalog.json"
+    write_catalog(path, {"r1": fx["r1"][1]})
+    with serve_catalog(root, path) as srv:
+        a, fa = client_for(srv, "r1", pol)
+        old = srv.policies["r1"]
+        write_catalog(path, {"r1": fx["r1"][1], "r2": fx["r2"][1]})
+        b, _ = client_for(srv, "r2", pol)  # the WELCOME of a new connection re-reads the changed catalog
+        assert srv.counts["catalog_reloads"] == 1
+        b.close()
+        w = P.Wire(socket.create_connection(("127.0.0.1", srv.port), timeout=5))
+        assert "r3" not in w.recv(5).header["policies"]
+        write_catalog(path, {"r1": fx["r1"][1], "r2": fx["r2"][1], "r3": fx["r3"][1]})
+        w.send(P.encode({"type": P.HELLO, "policy_id": "r3", "choices": P.jsonable(choices_of(pol))}))
+        assert w.recv(30).type == P.SPEC  # an unknown id in a HELLO re-reads the catalog
+        w.close()
+        assert srv.counts["catalog_reloads"] == 2
+        write_catalog(path, {"r1": fx["r1b"][1], "r3": fx["r3"][1]})  # r1 changed (new files), r2 removed
+        summary = srv.reload_catalog()
+        assert summary["changed"] == ["r1"] and summary["removed"] == ["r2"]
+        assert "r2" not in srv.policies  # idle: unloaded at once
+        assert srv.policies["r1"] is old and old.retired  # still serves its live session
+        for k in range(3):
+            fa.add(k)
+        assert fa.step(2).ok
+        a.wire.close()  # a dropped connection resumes onto the retired object
+        assert fa.step(2).ok and srv.counts["resumes"] == 1 and srv.policies["r1"] is old
+        with pytest.raises(ServingError, match="session_busy"):
+            client_for(srv, "r1", pol)
+        a.close()
+        wait_until(lambda: "r1" not in srv.policies)  # unloaded when its last session ended
+        c, fc = client_for(srv, "r1", pol)
+        assert srv.policies["r1"] is not old and srv.policies["r1"].info["checkpoint"].endswith("r1b/policy.pt")
+        for k in range(3):
+            fc.add(k)
+        assert fc.step(2).ok
+        c.close()
+        path.write_text("{not json")
+        assert srv.reload_catalog() is None and set(srv.entries) == {"r1", "r3"}  # invalid: old table kept
+
+
+def test_preload_and_ready_info(staged, tmp_path):
+    root, fx = staged
+    cat = write_catalog(tmp_path / "catalog.json", {"e1": fx["e1"][1], "r1": fx["r1"][1]}, {"legacy": "r1"})
+    with pytest.raises(ValueError, match="unknown preload"):
+        PolicyServer(catalog=cat, checkpoint_root=root, device="cpu", allow_fixture=True, preload=["nope"])
+    with pytest.raises(ValueError, match="unknown policy ids"):
+        PolicyServer(catalog=cat, checkpoint_root=root, device="cpu", allow_fixture=True, offered=["nope"])
+    with serve_catalog(root, cat, preload=["legacy"], warmup_iterations=1, offered=["r1"]) as srv:
+        assert set(srv.policies) == {"r1"} and srv.policies["r1"].warmup_ms is not None
+        info = srv.ready_info()
+        assert info["offered"] == ["r1"] and info["aliases"] == {"legacy": "r1"}
+        assert set(info["resident"]) == {"r1"} and info["catalog_sha256"] == sha256_file(cat)
+        assert set(welcome(srv)["policies"]) == {"r1", "legacy"}  # e1 is not offered (--policies restriction)
+        c, feed = client_for(srv, "r1", fx["r1"][0])
+        assert srv.counts["policies_loaded"] == 1  # preloaded, not loaded again
+        c.close()
+    with pytest.raises(SystemExit, match="catalog"):
+        main(["serve", "--config", str(DEFAULT_PATH), "--catalog", str(tmp_path / "missing.json"), "--device", "cpu"])
+
+
+def test_cli_serves_the_catalog_lazily_and_reloads_on_sighup(staged, tmp_path):
+    """The entry point: READY lists offered / aliases / preloaded ids, SIGHUP re-reads the catalog, SIGTERM stops."""
+    import signal
+
+    from ops.policy_serving.config import REPO
+
+    root, fx = staged
+    cat = write_catalog(tmp_path / "catalog.json", {"r1": fx["r1"][1]}, {"legacy": "r1"})
+    cfg = tmp_path / "cfg.json"
+    cfg.write_text(json.dumps({"server": {"warmup_iterations": 1, "gpu_memory_budget_mb": 64}}))
+    proc = subprocess.Popen([sys.executable, "-I", str(REPO / "ops/policy_serving/server.py"), "serve", "--config",
+                             str(cfg), "--catalog", str(cat), "--checkpoint-root", str(root), "--device", "cpu",
+                             "--port", "0", "--allow-fixture", "--preload", "legacy", "--threads", "2"],
+                            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, cwd=REPO)
+    try:
+        ready = json.loads(proc.stdout.readline())
+        assert ready["event"] == "ready" and ready["offered"] == ["r1"] and ready["aliases"] == {"legacy": "r1"}
+        assert set(ready["resident"]) == {"r1"} and ready["resident"]["r1"]["warmup_ms"] is not None
+        assert ready["gpu_memory_budget_mb"] == 64 and ready["catalog_sha256"] == sha256_file(cat)
+        write_catalog(cat, {"r1": fx["r1"][1], "r2": fx["r2"][1]}, {"legacy": "r1"})
+        proc.send_signal(signal.SIGHUP)
+        reloaded = json.loads(proc.stdout.readline())
+        assert reloaded["event"] == "catalog_reloaded" and reloaded["ok"] and reloaded["added"] == ["r2"]
+        proc.send_signal(signal.SIGTERM)
+        assert json.loads(proc.stdout.readline())["event"] == "stopped" and proc.wait(30) == 0
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait(10)
+
+
+# ------------------------------------------------------------------------------------------------ labels, races (POL)
+def test_label_refresh_keeps_the_resident_model_and_execution_eligibility_fails_closed(staged, tmp_path):
+    root, fx = staged
+    pol, e = fx["r1"]
+    cat = write_catalog(tmp_path / "catalog.json", {"r1": e})
+    with serve_catalog(root, cat) as srv:
+        info = welcome(srv)["policies"]["r1"]["info"]
+        assert info["execution_eligible"] is False and info["usage"] == "dry_run_replay_only"  # field absent: closed
+        c, _ = client_for(srv, "r1", pol)
+        c.close()
+        sp = srv.policies["r1"]
+        restricted = {**e, "status": "restricted", "reasons": ["e1 LayerNorm-spread FAIL (fixture label)"],
+                      "usage": "dry_run_replay_only", "execution_eligible": False, "usage_reasons": ["decision"],
+                      "criteria": {"e1_layernorm_spread": {"pass": False, "value": 0.35, "threshold": ">= 0.5"}}}
+        write_catalog(cat, {"r1": restricted})
+        summary = srv.reload_catalog()
+        assert summary["changed"] == [] and srv.policies["r1"] is sp and srv.counts["policies_loaded"] == 1
+        info = welcome(srv)["policies"]["r1"]["info"]
+        assert info["status"] == "restricted" and info["criteria"]["e1_layernorm_spread"]["pass"] is False
+        assert info["resident"] is True and info["execution_eligible"] is False
+        spec_msg = raw_hello(srv, "r1", choices_of(pol))
+        assert spec_msg.type == P.SPEC and spec_msg.header["info"]["status"] == "restricted"
+        assert spec_msg.header["info"]["usage_reasons"] == ["decision"]
+
+
+def _blocking_loads(monkeypatch, gate: threading.Event, started: threading.Event):
+    import ops.policy_serving.server as server_mod
+
+    real = server_mod.load_policy
+
+    def slow(*a, **k):
+        started.set()
+        assert gate.wait(30)
+        return real(*a, **k)
+
+    monkeypatch.setattr(server_mod, "load_policy", slow)
+
+
+def _hello_in_thread(srv, pid, pol, out: dict):
+    def run():
+        try:
+            out["client"] = client_for(srv, pid, pol)[0]
+        except ServingError as exc:
+            out["error"] = exc
+
+    t = threading.Thread(target=run, daemon=True)
+    t.start()
+    return t
+
+
+def test_entry_quarantined_while_loading_is_never_published_or_bound(staged, tmp_path, monkeypatch):
+    root, fx = staged
+    pol, e = fx["r1"]
+    cat = write_catalog(tmp_path / "catalog.json", {"r1": e})
+    gate, started, out = threading.Event(), threading.Event(), {}
+    with serve_catalog(root, cat) as srv:
+        _blocking_loads(monkeypatch, gate, started)
+        t = _hello_in_thread(srv, "r1", pol, out)
+        assert started.wait(20)
+        write_catalog(cat, {"r1": {**e, "status": "quarantined", "reasons": ["decided while loading"]}})
+        assert srv.reload_catalog() is not None
+        gate.set()
+        t.join(30)
+        assert "client" not in out and "unservable" in str(out["error"]) and srv.policies == {}
+
+
+def test_concurrent_loads_respect_the_resident_cap(staged, tmp_path, monkeypatch):
+    """Blocks load A AFTER the model is built and warmed, at the reservation -> resident boundary (the former gap)."""
+    import ops.policy_serving.server as server_mod
+
+    root, fx = staged
+    pol = fx["r1"][0]
+    cat = write_catalog(tmp_path / "catalog.json", {n: fx[n][1] for n in ("r1", "r2")})
+    gate, started, a, b = threading.Event(), threading.Event(), {}, {}
+    real = server_mod.ServedPolicy
+
+    def at_boundary(pid, *args, **kw):
+        if pid == "r1":
+            started.set()
+            assert gate.wait(30)
+        return real(pid, *args, **kw)
+
+    with serve_catalog(root, cat, max_resident_policies=1) as srv:
+        monkeypatch.setattr(server_mod, "ServedPolicy", at_boundary)
+        ta = _hello_in_thread(srv, "r1", pol, a)
+        assert started.wait(20)
+        tb = _hello_in_thread(srv, "r2", pol, b)
+        tb.join(30)  # the reservation of the running load counts: refused at once
+        assert "overloaded" in str(b.get("error"))
+        gate.set()
+        ta.join(30)
+        assert "client" in a and set(srv.policies) == {"r1"}
+        a["client"].close()
+
+
+def test_measured_footprint_is_enforced_against_the_budget(staged, tmp_path, monkeypatch):
+    root, fx = staged
+    pol, e = fx["r1"]
+    cat = write_catalog(tmp_path / "catalog.json", {"r1": e})
+    fp = policy_footprint_bytes(pol)
+    with serve_catalog(root, cat, gpu_memory_budget_bytes=fp - 1) as srv:
+        monkeypatch.setattr(srv, "_estimate", lambda entry: 1)  # an estimate that fits, a model that does not
+        with pytest.raises(ServingError, match="overloaded"):
+            client_for(srv, "r1", pol)
+        assert srv.policies == {} and srv.counts["budget_refusals_measured"] == 1
+
+
+def test_an_evicted_policy_is_not_kept_alive_by_the_worker(staged, tmp_path):
+    import gc
+    import weakref
+
+    root, fx = staged
+    pol, e = fx["r3"]
+    cat = write_catalog(tmp_path / "catalog.json", {"r3": e})
+    with serve_catalog(root, cat) as srv:
+        c, feed = client_for(srv, "r3", pol)
+        for k in range(3):
+            feed.add(k)
+        assert feed.step(2).ok
+        ref = weakref.ref(srv.policies["r3"].policy)
+        c.close()
+        wait_until(lambda: not srv.policies["r3"].sessions)
+        write_catalog(cat, {})
+        srv.reload_catalog()
+        assert "r3" not in srv.policies
+
+        def freed():
+            gc.collect()
+            return ref() is None
+
+        wait_until(freed, 10)
+
+
+def test_reaper_and_withdrawal_release_models_and_labels(staged, tmp_path):
+    """A session ended by the idle reaper does not keep its model alive; a withdrawn policy's live session sees
+    withdrawn, never-eligible labels; restoring the entry re-enables it; cleared reasons are published as []."""
+    import gc
+    import weakref
+
+    root, fx = staged
+    pol, e = fx["r2"]
+    restricted = {**e, "status": "restricted", "reasons": ["LN FAIL (fixture)"], "usage": "dry_run_replay_only",
+                  "execution_eligible": False}
+    cat = write_catalog(tmp_path / "catalog.json", {"r2": restricted})
+    with serve_catalog(root, cat, session_idle_timeout_s=0.5) as srv:
+        c, _ = client_for(srv, "r2", pol)
+        sp = srv.policies["r2"]
+        write_catalog(cat, {"r2": {**e, "status": "quarantined", "reasons": ["withdrawn (fixture)"]}})
+        srv.reload_catalog()
+        assert sp.retired and sp.sessions  # live session kept on the retired object
+        info = srv._current_info(sp)
+        assert info["status"] == "withdrawn" and info["execution_eligible"] is False and info["usage"] == "none"
+        write_catalog(cat, {"r2": e})  # entry restored (deployable, no reasons): re-enabled, labels refreshed
+        srv.reload_catalog()
+        assert not sp.retired and srv._current_info(sp)["reasons"] == [] and srv._current_info(sp)["status"] == \
+            "deployable"
+        c.wire.close()  # disconnect without BYE: the idle reaper ends the session
+        wait_until(lambda: not sp.sessions)
+        ref = weakref.ref(sp.policy)
+        sp = None  # the test must not keep the model alive
+        write_catalog(cat, {})
+        srv.reload_catalog()
+
+        def freed():
+            gc.collect()
+            return ref() is None
+
+        wait_until(freed, 10)
+
+
+def test_withdrawal_during_session_binding_is_refused(staged, tmp_path, monkeypatch):
+    root, fx = staged
+    pol, e = fx["r1b"]
+    cat = write_catalog(tmp_path / "catalog.json", {"r1b": e})
+    with serve_catalog(root, cat, preload=["r1b"]) as srv:
+        sp = srv.policies["r1b"]
+        real = sp.policy.reset_session
+
+        def reload_meanwhile(**kw):
+            out = real(**kw)
+            write_catalog(cat, {"r1b": {**e, "status": "quarantined", "reasons": ["during bind (fixture)"]}})
+            srv.reload_catalog()
+            return out
+
+        monkeypatch.setattr(sp.policy, "reset_session", reload_meanwhile)
+        with pytest.raises(ServingError, match="withdrawn while this session was being bound"):
+            client_for(srv, "r1b", pol)
+        assert not sp.sessions and srv.sessions == {} and sp.policy.live_sessions == ()

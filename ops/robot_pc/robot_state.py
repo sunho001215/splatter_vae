@@ -1,0 +1,124 @@
+"""Robot-state acquisition of the robot PC, READ-ONLY by construction (no source here can send anything).
+
+The training binding (``s4d.rwlearn.actions.step_table``; enforced again by the client and the server): the measured
+flange pose bound to an observation is the latest robot sample at or before the observation time (<= 15 ms old), the
+gripper register the latest register sample at or before it (<= 100 ms old). Units and frames exactly as recorded:
+pose7 = ``robot/flange_pose`` = panda_link8 (flange; T_flange_tcp = identity, the TCP IS the flange) in panda_link0,
+[x y z qx qy qz qw] metres; gripper = ``gripper/position``, the raw Robotiq 2F-85 position register 0..255 (open 3,
+command convention 3 + 227 x closure); joints = ``robot/q`` (rad, panda_joint1..7) for the M5 helper; all times on the
+robot PC's CLOCK_MONOTONIC.
+
+* ``RecordedRobotState``: a recording (replay), optionally shifted onto the current monotonic clock;
+* ``StaticLatencyState``: a fixed, labelled state for LATENCY measurements with live cameras while the live source is
+  unbound (its actions are meaningless and only ever reach the DryRunSink);
+* the live read-only source is ``ops.robot_pc.switch_controller.LiveStateReader`` (SUB to switch_controller's
+  RobotState PUB; only with explicit approval; no gripper source exists: docs/robot_pc.md).
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+import numpy as np
+
+
+
+class StateUnavailable(ValueError):
+    """No robot or gripper sample at or before the observation time."""
+
+
+@dataclass(frozen=True)
+class BoundState:
+    pose7: tuple
+    pose_time_ns: int
+    gripper_register: float
+    gripper_time_ns: int
+    gripper_origin: str  # where the register came from: "measured: ..." or "static latency-only ..."; never a command
+
+
+MEASURED_GRIPPER = "measured: Robotiq position register (gripper/position semantics)"
+COMMANDED_PREFIXES = ("command", "action")  # a commanded / sent gripper value is never a measurement
+
+
+def require_measured_gripper(state: BoundState) -> None:
+    """Guard: the register fed to the policy is the MEASURED gripper (training proprio: gripper/position), never the
+    commanded one (action/gripper), and never an unlabelled value; the labelled static latency-only state is the one
+    explicit exception (its actions are meaningless and only logged)."""
+    origin = str(state.gripper_origin or "")
+    if origin.startswith(COMMANDED_PREFIXES) or not (origin.startswith("measured") or origin.startswith("static")):
+        raise StateUnavailable(f"gripper register of origin {origin!r} is not a measured gripper state")
+
+
+class RobotStateSource:
+    kind = "abstract"
+    label = ""
+
+    def bound_state(self, t_obs_ns: int) -> BoundState:
+        """Latest robot / gripper samples at or before the observation time (the client checks the training ages)."""
+        raise NotImplementedError
+
+    def rows(self, after_ns: int, up_to_ns: int) -> tuple[list, list]:
+        """Robot rows [(t_ns, q7)] and gripper samples [(t_ns, register)] with after < t <= up_to (M5 helper input)."""
+        raise NotImplementedError
+
+    def close(self) -> None:
+        pass
+
+
+def _latest(times: np.ndarray, t: int) -> int:
+    return int(np.searchsorted(times, t, side="right")) - 1  # actions.latest_at_or_before
+
+
+class RecordedRobotState(RobotStateSource):
+    kind = "recorded"
+
+    def __init__(self, recording, offset_ns: int = 0):
+        """``recording``: ``s4d.rwlearn.deploy.replay.RecordedEpisode``; ``offset_ns`` moves every sample time onto the
+        replay clock (frame times get the same offset, so ages and the binding are unchanged)."""
+        import h5py
+
+        raw = recording.raw
+        self.offset_ns = int(offset_ns)
+        self.t = np.asarray(raw.robot_t, np.int64) + self.offset_ns
+        self.pose = np.asarray(raw.measured, np.float64)
+        self.gt = np.asarray(raw.gripper_t, np.int64) + self.offset_ns
+        self.gp = np.asarray(raw.gripper_position, np.float64)
+        with h5py.File(recording.path, "r") as f:
+            self.q = np.asarray(f["robot/q"][()], np.float64)
+        self.label = f"recorded {recording.path}"
+
+    def bound_state(self, t_obs_ns: int) -> BoundState:
+        i, j = _latest(self.t, t_obs_ns), _latest(self.gt, t_obs_ns)
+        if i < 0 or j < 0:
+            raise StateUnavailable("no robot or gripper sample at or before the observation time")
+        return BoundState(tuple(self.pose[i].tolist()), int(self.t[i]), float(self.gp[j]), int(self.gt[j]),
+                          f"{MEASURED_GRIPPER}, recorded")
+
+    def rows(self, after_ns: int, up_to_ns: int) -> tuple[list, list]:
+        r = slice(_latest(self.t, after_ns) + 1, _latest(self.t, up_to_ns) + 1)
+        g = slice(_latest(self.gt, after_ns) + 1, _latest(self.gt, up_to_ns) + 1)
+        return (list(zip(self.t[r].tolist(), self.q[r])), list(zip(self.gt[g].tolist(), self.gp[g].tolist())))
+
+
+class StaticLatencyState(RobotStateSource):
+    """LATENCY ONLY: a fixed pose / joint vector / register, sampled 1 ms (robot, 1 kHz) and 10 ms (gripper) before
+    every observation. Its actions are meaningless; the dry run labels every row with it."""
+
+    kind = "static_latency_only"
+    label = "STATIC LATENCY-ONLY STATE: fixed pose, actions meaningless (no live robot state in this run)"
+
+    def __init__(self, pose7, q7, gripper_register: float):
+        self.pose7 = tuple(float(x) for x in np.asarray(pose7, np.float64).reshape(7))
+        self.q7 = np.asarray(q7, np.float64).reshape(7)
+        self.register = float(gripper_register)
+
+    def bound_state(self, t_obs_ns: int) -> BoundState:
+        return BoundState(self.pose7, int(t_obs_ns) - 1_000_000, self.register, int(t_obs_ns) - 10_000_000,
+                          "static latency-only (fixed config value, not measured)")
+
+    def rows(self, after_ns: int, up_to_ns: int) -> tuple[list, list]:
+        robot = [(t, self.q7) for t in range((int(after_ns) // 1_000_000 + 1) * 1_000_000, int(up_to_ns) + 1,
+                                             1_000_000)]
+        grip = [(t, self.register) for t in range((int(after_ns) // 10_000_000 + 1) * 10_000_000, int(up_to_ns) + 1,
+                                                  10_000_000)]
+        return robot, grip
