@@ -110,8 +110,13 @@ checking its command line (never `pkill -f`). If the shkim_rw IP changes, the pe
 
 | module | role |
 |---|---|
-| `ops/robot_pc/safety.py` | execution modes, `authorize_execution`, `CONTROLLER_BINDING = "UNBOUND"` |
-| `ops/robot_pc/sinks.py` | MockSink, DryRunSink (JSONL, never sends), LiveSink (refuses, then Unbound) |
+| `ops/robot_pc/safety.py` | execution modes, `authorize_execution` (--execute + operator ENTER + catalog `execution_eligible`), `authorize_hardware_test` (policy-free gripper / hold tests only) |
+| `ops/robot_pc/sinks.py`, `live.py` | MockSink, DryRunSink (never sends), LiveSink (ControllerLink + expiring gripper target); `LiveSession` (live cameras + state -> policy -> 500 Hz executor -> sink, recorded), `MotionShutdown` (executor join -> gripper clear -> controller release before any I/O close) |
+| `ops/robot_pc/controller.py` | commander side of switch_controller (execution only): binds :28401/:28402, re-sent mode 3, RobotAction, release = fresh measured-ee hold + bounded still wait + IDLE |
+| `ops/robot_pc/gripper.py` | Robotiq 2F-85 Modbus RTU single owner (flock + TIOCEXCL + holder recheck), 50 Hz measured gPO, expiring targets, fault inhibit |
+| `ops/robot_pc/recorder.py` | session recorder: inference_outputs/inference_YYYYMMDD_HHMMSS/{inference.h5, camera_<serial>.mp4, summary.json}; batched, zero-drop |
+| `ops/robot_pc/conservative.py`, `hwtests.py` | tighten-only `slow` profile + start box; policy-free P3 tests (gripper open/close, zero-motion hold) |
+| `scripts/robot_pc/run.py`, `hwtest.py`, `verify_session.py` | live launcher (dry run default; `--execute`), hardware tests (`--rehearse` = read-only), read-back verification of a recorded session |
 | `ops/robot_pc/validation.py`, `poses.py` | action validation -> `Command` (absolute goal bound to its observation, expiry) |
 | `ops/robot_pc/executor.py` | local high-rate loop design (500 Hz setpoints, speed + lead limits, hold on expiry) |
 | `ops/robot_pc/robot_state.py` | read-only state: recorded, static latency-only, live UNBOUND skeleton |
