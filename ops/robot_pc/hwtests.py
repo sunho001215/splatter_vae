@@ -103,7 +103,7 @@ class HardwareTest:
         """Measured preconditions, before the operator is offered START."""
         self.checkpoint()
         # a RealSense start stalls the status stream once (~0.3 s measured on the robot PC): wait <= 1 s for health
-        deadline = time.monotonic() + 1.0
+        deadline = time.monotonic() + 2.5  # covers one reconnect of the worker (1 s back-off) after an I/O error
         while not self.state.gripper.healthy() and time.monotonic() < deadline:
             self.checkpoint()
             self.stop_event.wait(0.02)

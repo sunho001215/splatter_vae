@@ -203,7 +203,7 @@ class LiveSession:
         self._rec_robot_t = self._rec_grip_t = self._rec_write_t = self._rec_hold_t = 0
         self.tick_periods_ns: list = []  # measured executor loop periods (local control rate evidence)
         self._gripper_health = None
-        self._not_following_since_ns = None
+        self._follow = None  # FollowMonitor, created at the first sent setpoint
 
     def accept(self, cmd) -> bool:
         with self._command_lock:
@@ -284,8 +284,8 @@ class LiveSession:
                         self.stop(f"command send failed: {exc}")
                     if self.recorder is not None:
                         self.recorder.executed(sp.t_ns, sp.kind, sp.pose7, sp.gripper_closure, sent, detail)
-                else:
-                    self._not_following_since_ns = None
+                elif self._follow is not None:
+                    self._follow.pause()
                 if self.executor.stopped and not self.stop_event.is_set():
                     self.stop(f"executor stop: {self.executor.stopped}")
             next_t += period
@@ -295,13 +295,17 @@ class LiveSession:
             self.stop_event.wait(max(0.0, delay))
 
     def _check_following(self, sp, measured) -> None:
-        if np.linalg.norm(np.asarray(sp.pose7[:3]) - measured[:3]) >= 0.5 * self.executor.lead_m:
-            if self._not_following_since_ns is None:
-                self._not_following_since_ns = sp.t_ns
-            elif sp.t_ns - self._not_following_since_ns > 1_000_000_000:
-                self.stop("robot not following the command (controller mode not accepted?)")
-        else:
-            self._not_following_since_ns = None
+        """ops/robot_pc/following.py: no motion at all since engagement (mode not accepted) or no progress toward
+        the command (position / rotation) for 1 s; an error at the lead while the robot moves is normal tracking."""
+        if self._follow is None:
+            from ops.robot_pc.following import FollowMonitor
+
+            lim = self.executor.limiter
+            self._follow = FollowMonitor(lead_m=self.executor.lead_m, lead_rad=self.executor.lead_rad,
+                                         max_speed=lim.v_max, max_ang_speed=lim.w_max)
+        reason = self._follow.update(sp.t_ns, sp.pose7, measured)
+        if reason is not None:
+            self.stop(reason)
 
     def loop_stats(self) -> dict:
         """Executor (local control loop) and policy-step rates of this session, measured."""

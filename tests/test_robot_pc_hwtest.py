@@ -469,7 +469,8 @@ def test_cancel_before_start_sends_nothing(hw_env, test, problem):
     hw_env.problem = problem
     assert hw_env.invoke(test, "--camera", "scene") == 130
     assert not hw_env.authorizations and not hw_env.links and not hw_env.serial_writes and not hw_env.targets
-    assert hw_env.recorders[0].status == "stopped"
+    # the scene camera starts before the gripper owner and the recorder: a cancel at its bind precedes the recording
+    assert (problem == "before_enter" and not hw_env.recorders) or hw_env.recorders[0].status == "stopped"
 
 
 def test_hold_rehearsal_never_builds_a_commander(hw_env, monkeypatch):

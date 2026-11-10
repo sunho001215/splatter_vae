@@ -2565,8 +2565,10 @@ def test_policy_following_detection_continuous_threshold_in_executor_path(follow
 
     def tick(*a, **kw):
         pose = list(POSE)
-        # One recovery below threshold must reset the entire continuous interval.
-        pose[0] += threshold if following != "recovers" or stop.t < 900_000_000 or stop.t > 1_000_000_000 else 0
+        # The command ramps away (1 mm / 100 ms, up to the lead) from a robot that never moves; "recovers": the command
+        # returns to the start between 0.9 and 1.0 s, which must restart the continuous interval.
+        back = following == "recovers" and 900_000_000 <= stop.t <= 1_000_000_000
+        pose[0] += 0.0 if back else min(threshold * 2, 0.001 * stop.t / 100_000_000)
         return executor.Setpoint(stop.t, "track", tuple(pose), None, "r")
 
     session.executor.tick = tick
@@ -2574,8 +2576,10 @@ def test_policy_following_detection_continuous_threshold_in_executor_path(follow
     if following == "dry_run":
         assert session.stop_reason is None and not sent_poses
     else:
-        assert session.stop_reason == "robot not following the command (controller mode not accepted?)"
-        assert stop.t == (2_300_000_000 if following == "recovers" else 1_200_000_000)
+        assert session.stop_reason.startswith("robot has not moved since engagement")
+        assert session.stop_reason.endswith("controller mode not accepted?")
+        # first setpoint (sp0) at 0.1 s; cmd >= 5 mm from it at 0.6 s -> stop 1 s later; recovery restarts it at 1.2 s
+        assert stop.t == (2_200_000_000 if following == "recovers" else 1_600_000_000), stop.t
 
 
 def test_gripper_expiry_hold_skipped_when_stationary_or_in_contact():

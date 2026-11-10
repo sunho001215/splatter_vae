@@ -140,6 +140,18 @@ def main(argv=None, *, operator_input=input) -> int:
         say(f"robot state: {len(reader.samples)} samples in 0.5 s, blockers {blockers or 'none'}")
         if blockers:
             raise ExecutionRefused("; ".join(blockers))
+        cams, cameras, K = ([args.camera] if args.camera else []), None, {}
+        cc = cfg.get("cameras") or {}
+        hw = tuple(cc.get("native_hw", (480, 640)))
+        check_cancel()  # camera first: a RealSense start stalls the USB bus ~0.3 s (measured), never while the
+        # gripper owner is polling (2026-11-10 21:02: a status request hit the 0.05 s serial write timeout)
+        if cams:
+            cameras = LiveCameras(cams, native_hw=hw, fps=int(cc.get("fps", 15)), depth=False,
+                                  keep_native=True, allow_controller=True)
+            opened.append(cameras.close)
+            K = cameras.start()
+            cameras.bind(K)
+            say(f"scene camera: {args.camera} (native RGB only)")
         gripper = GripperWorker(RobotiqRTU, read_only=args.rehearse or args.test != "gripper",
                                 speed=conservative.GRIPPER_TEST["speed"], force=conservative.GRIPPER_TEST["force"])
         shutdown.gripper = gripper
@@ -157,17 +169,6 @@ def main(argv=None, *, operator_input=input) -> int:
             f"{'status reads only' if gripper.read_only else 'small targets enabled after ENTER'}")
         state = live.LiveState(reader, gripper)
         shutdown.state = state
-        cams, cameras, K = ([args.camera] if args.camera else []), None, {}
-        cc = cfg.get("cameras") or {}
-        hw = tuple(cc.get("native_hw", (480, 640)))
-        check_cancel()
-        if cams:
-            cameras = LiveCameras(cams, native_hw=hw, fps=int(cc.get("fps", 15)), depth=False,
-                                  keep_native=True, allow_controller=True)
-            opened.append(cameras.close)
-            K = cameras.start()
-            cameras.bind(K)
-            say(f"scene camera: {args.camera} (native RGB only)")
         recorder = None
         if not args.no_record:
             from ops.robot_pc.recorder import SessionRecorder
