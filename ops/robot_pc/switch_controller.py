@@ -111,7 +111,10 @@ def robot_action(robot_msg, flange_goal7, target_dt: float = TARGET_DT_S):
 class LiveStateReader(RobotStateSource):
     """Read-only live robot state: a CONFLATE SUB connected to switch_controller's RobotState PUB (never binds, never
     publishes). Constructing it requires ``approved=True`` (the coordinator's explicit go-ahead in this directive).
-    Gripper: no read-only source exists -> ``bound_state`` refuses until one is given (``gripper_source``)."""
+    Gripper: no read-only source exists -> ``bound_state`` refuses until one is given (``gripper_source``).
+    Sample time = receipt on this host (the recorder's ``robot/t`` convention); a non-increasing ``sequence`` is
+    dropped. A frozen publisher (switch_controller STOP republishes one state with new sequence numbers) is NOT
+    detectable from the stream: a future execute mode must also check that q/dq evolve."""
 
     kind = "live_state_reader"
     label = "live switch_controller RobotState (read-only SUB)"
@@ -133,7 +136,7 @@ class LiveStateReader(RobotStateSource):
         self.sock.setsockopt(zmq_module.SUBSCRIBE, b"")
         self.sock.connect(endpoint)
         self.samples = collections.deque(maxlen=int(capacity))
-        self.decode_errors = 0
+        self.decode_errors = self.stale = 0
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._read, name="robot-state", daemon=True)
         self._thread.start()
@@ -148,7 +151,11 @@ class LiveStateReader(RobotStateSource):
                 msg = self.robot_msg.decode(buf)
                 if not isinstance(msg, self.robot_msg.RobotState) or not msg.ee_frames:
                     raise ValueError("not a RobotState with an end effector")
-                self.samples.append(state_sample(msg, t))
+                row = state_sample(msg, t)
+                if self.samples and row["seq"] <= self.samples[-1]["seq"]:
+                    self.stale += 1  # repeated / reordered publication: never re-stamped as fresh
+                    continue
+                self.samples.append(row)
             except Exception:  # noqa: BLE001 - counted (malformed state is never used)
                 self.decode_errors += 1
 

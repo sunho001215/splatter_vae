@@ -11,6 +11,7 @@ from pathlib import Path
 
 from ops.robot_pc import config as C
 from ops.robot_pc import selection
+from ops.robot_pc.safety import admit_endpoint, safe_output
 
 SAFETY = {"robot_commands_sent": 0, "controller_binding": "message-format-only", "execution_permitted": False,
           "note": "dry run / replay only: no robot, arm, gripper or controller was contacted"}
@@ -48,6 +49,7 @@ def welcome(cfg: dict, args) -> dict:
 
     s = cfg.get("server") or {}
     host, port = args.host or s.get("host", "127.0.0.1"), int(args.port or s.get("port", 47100))
+    admit_endpoint(host, port)
     sock = socket.create_connection((host, port), timeout=float(s.get("connect_timeout_s", 3.0)))
     wire = P.Wire(sock)
     try:
@@ -100,7 +102,7 @@ def write_json(path: Path | None, obj) -> None:
     text = json.dumps(obj, indent=1, allow_nan=False, default=str)
     if path is not None:
         Path(path).parent.mkdir(parents=True, exist_ok=True)
-        Path(path).write_text(text + "\n")
+        safe_output(path).write_text(text + "\n")
     print(text)
 
 
@@ -109,7 +111,7 @@ class JsonlRows:
         self.f = None
         if path is not None:
             Path(path).parent.mkdir(parents=True, exist_ok=True)
-            self.f = open(path, "w")
+            self.f = open(safe_output(path), "w")
 
     def __call__(self, row: dict) -> None:
         if self.f is not None:

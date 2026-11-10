@@ -27,8 +27,16 @@ done
 "$PY" -c 'import sys; assert sys.version_info[:2] == (3, 12), sys.version' || { echo "need python 3.12 (Ubuntu 24.04 python3)" >&2; exit 2; }
 
 echo "[setup] root $ROOT, release $BUNDLE"
-mkdir -p "$ROOT/config" "$ROOT/logs" "$ROOT/runs" "$ROOT/secrets"
+for d in config logs runs secrets venv tmp; do   # nothing may redirect a write outside ROOT
+  [ -L "$ROOT/$d" ] && { echo "refusing: $ROOT/$d is a symlink" >&2; exit 2; }
+done
+export PIP_CONFIG_FILE=/dev/null PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1 TMPDIR="$ROOT/tmp"
+unset PIP_TARGET PIP_PREFIX PIP_USER PYTHONUSERBASE
+mkdir -p "$ROOT/config" "$ROOT/logs" "$ROOT/runs" "$ROOT/secrets" "$ROOT/tmp"
 chmod 700 "$ROOT/secrets"
+if [ -e "$ROOT/venv" ] && [ "$(readlink -f "$ROOT/venv/bin/python" | cut -c1-4)" = "" ]; then
+  echo "refusing: $ROOT/venv exists but is not a venv" >&2; exit 2
+fi
 if [ ! -x "$ROOT/venv/bin/python" ]; then
   "$PY" -m venv --without-pip "$ROOT/venv"   # Ubuntu's python3 lacks ensurepip without python3-venv: no apt needed
 fi

@@ -291,14 +291,21 @@ def test_execute_script_refuses_even_fully_authorized(tmp_path, spies, capsys, m
     monkeypatch.setattr(socket.socket, "connect", lambda *a: (_ for _ in ()).throw(AssertionError("socket used")))
     catalog = {"policies": {"reviwo-drawer-open-s0": {"info": {"execution_eligible": True}},
                             "dynamo-drawer-open-s0": {"info": {"execution_eligible": False}}}}
-    monkeypatch.setattr(cli, "welcome", lambda cfg, args: catalog)
+    asked = []
+    monkeypatch.setattr(cli, "welcome", lambda cfg, args: asked.append(1) or catalog)
+    # this revision: refused before any network activity, even fully authorized and eligible
+    assert mod.main(["--config", str(cfg), "--execute", "--policy", "reviwo-drawer-open-s0"],
+                    typed=safety.CONFIRMATION) == 3
+    err = capsys.readouterr().err
+    assert "REFUSED" in err and "never operated" in err and not asked and spies["live_sink"] == 0
+    # a later directive's switch (test only): eligibility is then enforced, and still no transport exists
+    monkeypatch.setattr(safety, "EXECUTION_PERMITTED", True)
     assert mod.main(["--config", str(cfg), "--execute", "--policy", "dynamo-drawer-open-s0"],
                     typed=safety.CONFIRMATION) == 3
     assert "execution_eligible" in capsys.readouterr().err and spies["live_sink"] == 0
     assert mod.main(["--config", str(cfg), "--execute", "--policy", "reviwo-drawer-open-s0"],
                     typed=safety.CONFIRMATION) == 3
-    err = capsys.readouterr().err
-    assert "REFUSED" in err and "never operated" in err and spies["live_sink"] == 1 and not spies["connect"]
+    assert "no" in capsys.readouterr().err and spies["live_sink"] == 1 and not spies["connect"]
     assert mod.main(["--config", str(C.DEFAULT_PATH)], typed=None) == 3 and spies["live_sink"] == 1
     assert "missing: the --execute flag" in capsys.readouterr().err
 
@@ -719,7 +726,9 @@ def test_bundle_is_reproducible_and_lists_every_file(tmp_path, monkeypatch):
     asset = tmp_path / "x.m5.npz"
     asset.write_bytes(b"asset")
     validation = tmp_path / "v.json"
-    validation.write_text(json.dumps({"pass": True, "header": {"format": "x"}, "episodes": [{"episode": "e", "pass": True}]}))
+    validation.write_text(json.dumps({"pass": True, "asset_sha256": mod.sha256(asset),
+                                      "header": {"format": "x", "urdf_sha256": mod.sha256(urdf)},
+                                      "episodes": [{"episode": "e", "pass": True}]}))
     monkeypatch.setattr(mod, "SRC", ["ops/__init__.py", "scripts/_bootstrap.py"])
     monkeypatch.setattr(mod, "SETUP", "scripts/_bootstrap.py")
     monkeypatch.setattr(mod, "URDF", urdf)
@@ -913,3 +922,22 @@ def test_missing_token_fails_closed_with_the_path(policies, tmp_path):
         args = SimpleNamespace(token_file=None, host=None, port=None, step_timeout_s=None)
         with pytest.raises(SystemExit, match=r"secrets/token is MISSING"):
             cli.connect(cfg, args, "reviwo-x", {"native_hw": {"cam_a": [48, 64]}, "camera_id": "cam_a"}, "t")
+
+
+def test_live_sets_fall_back_to_exact_finality_after_an_irregular_interval():
+    from s4d.realworld.train_store import mutual_sync
+
+    rng = np.random.default_rng(9)
+    stamps = _timelines(rng, (0, 20, -25), frames=30)
+    stamps[1] = np.sort(np.append(stamps[1], stamps[1][10] + 15_000_000))  # an early (irregular) cam_b frame
+    ref, _ = mutual_sync(stamps)
+    sets = m5_live.LiveSets(CAMS, 1 / 15)
+    events = sorted((int(t) + 65_000_000, v, k, int(t)) for v, s in enumerate(stamps) for k, t in enumerate(s))
+    got = {}
+    for _, v, k, t in events:
+        sets.add(CAMS[v], k, t)
+        got.update({s["frame_ids"]["cam_a"]: s for s in sets.pop_final()})
+    got.update({s["frame_ids"]["cam_a"]: s for s in sets.pop_final(end_of_stream=True)})
+    assert sets.irregular_intervals == 2 and not sets.early  # the inserted frame shortens two intervals
+    after = [k for k in got if stamps[0][k] > stamps[1][11]]  # decided after the irregular frame arrived
+    assert after and all([got[k]["frame_ids"].get(c, -1) for c in CAMS] == ref[k].tolist() for k in after)

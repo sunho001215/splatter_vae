@@ -55,7 +55,10 @@ def client(cfg: dict, policy_id: str, choices, *, name: str, token_file: str | P
     """The persistent link to the policy server (``ops.policy_serving.client.PolicyClient``)."""
     from ops.policy_serving.client import PolicyClient
 
+    from ops.robot_pc.safety import admit_endpoint
+
     s = {**(cfg.get("server") or {}), **{k: v for k, v in overrides.items() if v is not None}}
+    admit_endpoint(s.get("host", "127.0.0.1"), int(s.get("port", 47100)))
     tok_path = path(cfg, str(token_file)) if token_file else path(cfg, s.get("token_file"))
     token = tok_path.read_bytes().strip() if tok_path is not None and tok_path.is_file() else None
     return PolicyClient(s.get("host", "127.0.0.1"), int(s.get("port", 47100)), policy_id=policy_id, choices=choices,

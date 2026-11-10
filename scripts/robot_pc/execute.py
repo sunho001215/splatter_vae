@@ -17,6 +17,7 @@ sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from ops.robot_pc import cli  # noqa: E402
+from ops.robot_pc import safety  # noqa: E402
 from ops.robot_pc.safety import CONFIRMATION, ExecutionRefused, Unbound, authorize_execution  # noqa: E402
 from ops.robot_pc.sinks import LiveSink  # noqa: E402
 
@@ -32,6 +33,8 @@ def main(argv=None, typed: str | None = None) -> int:
     args = ap.parse_args(argv)
     cfg = cli.load_config(args)
     try:
+        if not safety.EXECUTION_PERMITTED:  # refused before any network activity in this revision
+            raise ExecutionRefused("Directive I (2026-11-10): the robot is never operated (EXECUTION_PERMITTED False)")
         info = None
         if args.execute and args.policy:  # the catalog entry of the policy (WELCOME; no session, no robot)
             info = (cli.welcome(cfg, args)["policies"].get(args.policy) or {}).get("info")

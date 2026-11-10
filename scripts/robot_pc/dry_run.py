@@ -5,11 +5,10 @@ robot-side validation -> DryRunSink (JSONL log, nothing is sent).
         --log runs/dryrun-dynamo.jsonl --summary runs/dryrun-dynamo.json
 
 Refuses (before opening any camera) when a recorder / teleop process, a device holder or the teleop collector's IPC
-socket exists, i.e. whenever live acquisition could interfere with a recording. ``--state live`` is the read-only
-switch_controller RobotState reader (``switch_controller.LiveStateReader``: a SUB, never a publisher) and needs
-``--live-state-approved`` (explicit go-ahead); no read-only gripper register source exists, so its steps are refused
-(no_state) until one does. ``--state static`` binds a FIXED labelled state for latency measurements only (its actions
-are meaningless and only logged).
+socket exists, i.e. whenever live acquisition could interfere with a recording. ``--state live`` is refused before
+anything connects: the read-only switch_controller RobotState reader exists (``switch_controller.LiveStateReader``) but
+no read-only gripper register source does, so no observation could be bound. ``--state static`` binds a FIXED
+labelled state for latency measurements only (its actions are meaningless and only logged).
 """
 
 from __future__ import annotations
@@ -31,15 +30,12 @@ def main(argv=None) -> int:
     from ops.robot_pc.cameras import LiveCameras
     from ops.robot_pc.loop import PolicyLoop, summarize
     from ops.robot_pc.robot_state import StaticLatencyState
-    from ops.robot_pc.safety import Unbound, execution_eligible
-    from ops.robot_pc.switch_controller import LiveStateReader
+    from ops.robot_pc.safety import execution_eligible
     from ops.robot_pc.sinks import DryRunSink
 
     ap = argparse.ArgumentParser(prog="dry_run.py", description=__doc__.split("\n")[0])
     cli.add_common(ap)
     ap.add_argument("--state", choices=("live", "static"), required=True)
-    ap.add_argument("--live-state-approved", action="store_true",
-                    help="explicit go-ahead to connect the read-only RobotState SUB (coordinator decision)")
     ap.add_argument("--steps", type=int, default=None)
     ap.add_argument("--duration-s", type=float, default=None)
     ap.add_argument("--route", default="", help="label of the network route")
@@ -51,12 +47,11 @@ def main(argv=None) -> int:
         ap.error("give --steps or --duration-s")
     cfg = cli.load_config(args)
     st = cfg.get("static_latency_state") or {}
-    try:
-        state = LiveStateReader(approved=args.live_state_approved) if args.state == "live" else \
-            StaticLatencyState(st["pose7"], st["q7"], st["gripper_register"])
-    except Unbound as exc:
-        print(f"dry run REFUSED: {exc}", file=sys.stderr)
+    if args.state == "live":  # refused BEFORE any connection: no read-only gripper source exists in this revision
+        print("dry run REFUSED: --state live has no read-only gripper register source (the teleop collector owns the "
+              "Robotiq port); its observations could never be bound. Nothing was connected.", file=sys.stderr)
         return 3
+    state = StaticLatencyState(st["pose7"], st["q7"], st["gripper_register"])
     pid, task, spec, info = cli.choose_policy(cfg, args)
     cams = selection.session_cameras(spec, args.camera)
     rig = cli.rig_document(cfg, task)

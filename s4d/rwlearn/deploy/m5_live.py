@@ -166,6 +166,10 @@ class LiveSets:
     * back-check decided: a member after the reference frame is either followed by a buffered reference frame, or
       lies less than h after it (same argument on the reference timeline). Ties go to the earlier frame as in
       training (``nearest_timestamps``). Validated against stored ``sync/frames`` (scripts/robot_pc/m5_asset.py).
+    Both shortcuts rely on every camera's frame interval being >= (1 - tolerance) periods (the trained timing, which
+    the deploy history enforces per window); the first shorter interval switches them off for good (``early`` False:
+    exact waiting for bracketing frames from then on) and is counted in ``irregular_intervals``. Buffers keep the
+    last ``capacity`` frames per camera (about one second), far more than a pending decision needs.
     """
 
     def __init__(self, cameras, period_s: float, tolerance: float = 0.01, capacity: int = 16):
@@ -173,11 +177,16 @@ class LiveSets:
         self._half_ns = (1.0 - float(tolerance)) * float(period_s) * 1e9 / 2.0
         self._frames = {c: collections.deque(maxlen=int(capacity)) for c in self.cameras}  # (seq, t_ns)
         self._done = -1  # newest reference seq already emitted (or given up)
+        self._min_interval_ns = (1.0 - float(tolerance)) * float(period_s) * 1e9
+        self.early, self.irregular_intervals = True, 0
 
     def add(self, camera_id: str, seq: int, t_ns: int) -> None:
         buf = self._frames[str(camera_id)]
         if buf and (seq <= buf[-1][0] or t_ns <= buf[-1][1]):
             raise ValueError(f"{camera_id}: frames must arrive in increasing seq and time")
+        if buf and t_ns - buf[-1][1] < self._min_interval_ns:
+            self.irregular_intervals += 1
+            self.early = False  # the regular-timeline shortcuts no longer hold
         buf.append((int(seq), int(t_ns)))
 
     def pop_final(self, *, end_of_stream: bool = False) -> list[dict]:
@@ -195,12 +204,13 @@ class LiveSets:
         for k, (seq, t_ref) in enumerate(ref):
             if seq <= self._done:
                 continue
-            if not end_of_stream and any(o[-1][1] < t_ref and t_ref - o[-1][1] >= self._half_ns for o in others):
+            if not end_of_stream and any(o[-1][1] < t_ref and (not self.early or t_ref - o[-1][1] >= self._half_ns)
+                                         for o in others):
                 break  # nearest not decided yet for this and every later reference frame
             row = frames[k]
             members = [others[v][int(j)][1] for v, j in enumerate(row[1:]) if j >= 0]
-            if not end_of_stream and any(tm > t_ref and tm - t_ref >= self._half_ns and ref[-1][1] <= tm
-                                         for tm in members):
+            if not end_of_stream and any(tm > t_ref and (not self.early or tm - t_ref >= self._half_ns)
+                                         and ref[-1][1] <= tm for tm in members):
                 break  # back-check needs the next reference frame
             self._done = seq
             ids = {self.cameras[0]: seq}

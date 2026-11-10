@@ -16,12 +16,13 @@ def run(client, loop, cameras, state, *, cams: list, steps: int | None = None, d
         live_m5=None, on_row=None, idle_timeout_s: float = 2.0) -> list:
     rows, fed_to = [], None
     t_end = None if duration_s is None else time.monotonic() + float(duration_s)
-    last_frame = time.monotonic()
+    last_frame = dict.fromkeys(cams, time.monotonic())  # per required camera
+    last_step = time.monotonic()
     while (steps is None or len(rows) < steps) and (t_end is None or time.monotonic() < t_end):
         newest, acquire = None, 0.0
         for cam in cams:
             for cap in cameras.drain(cam):
-                last_frame = time.monotonic()
+                last_frame[cam] = time.monotonic()
                 t = cap["capture_ns"]
                 try:
                     fs = state.bound_state(t)
@@ -47,11 +48,15 @@ def run(client, loop, cameras, state, *, cams: list, steps: int | None = None, d
                 disp = s["surface_disp_m"]
                 client.add_sync_set(s["frame_ids"], disp if disp != float("inf") else None)  # None: no valid state
                 newest = (s["frame_ids"], s["observation_time_ns"], f"set:{s['frame_ids'][cams[0]]}")
+        now_s = time.monotonic()
+        stale = [c for c in cams if now_s - last_frame[c] > idle_timeout_s]
+        if stale or now_s - last_step > 3 * idle_timeout_s:
+            raise RuntimeError(f"stopped: cameras {stale} sent no frame for {idle_timeout_s} s / no step for "
+                               f"{3 * idle_timeout_s} s ({dict(cameras.errors)})")
         if newest is None:
-            if time.monotonic() - last_frame > idle_timeout_s:
-                raise RuntimeError(f"no camera frame for {idle_timeout_s} s: {dict(cameras.errors)}")
             time.sleep(0.001)
             continue
+        last_step = now_s
         row = loop.step(*newest, acquire_ms=acquire)
         row["state_label"] = getattr(state, "label", "")
         rows.append(row)

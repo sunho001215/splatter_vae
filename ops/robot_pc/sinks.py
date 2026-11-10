@@ -15,9 +15,8 @@ from __future__ import annotations
 
 import json
 import time
-from pathlib import Path
 
-from ops.robot_pc.safety import CONTROLLER_BINDING, ExecutionAuthorization, ExecutionRefused, Mode, Unbound
+from ops.robot_pc.safety import CONTROLLER_BINDING, ExecutionAuthorization, ExecutionRefused, Mode, Unbound, safe_output
 
 
 class CommandSink:
@@ -50,7 +49,7 @@ class DryRunSink(CommandSink):
 
     def __init__(self, log_path: str | Path | None = None):
         self.items: list = []
-        self.log_path = None if log_path is None else Path(log_path)
+        self.log_path = None if log_path is None else safe_output(log_path)
         self._f = None if self.log_path is None else self.log_path.open("a")
         self.count = 0
 
@@ -100,6 +99,10 @@ class LiveSink(CommandSink):
     def send(self, item) -> None:
         from ops.robot_pc import switch_controller as sc
 
+        from ops.robot_pc import safety
+
+        if not safety.EXECUTION_PERMITTED:  # re-checked on every send, not only at construction
+            raise ExecutionRefused("execution is not permitted in this revision")
         if getattr(item, "kind", None) not in ("track", "hold"):
             raise ExecutionRefused("LiveSink sends only executor setpoints (track / hold), never raw policy commands")
         self.publisher.send(self.robot_msg.encode(sc.robot_action(self.robot_msg, item.pose7, self.target_dt)))

@@ -15,6 +15,7 @@ Standard library only.
 from __future__ import annotations
 
 import enum
+import os
 import time
 from dataclasses import dataclass, field
 
@@ -48,6 +49,29 @@ class ExecutionAuthorization:
     def __post_init__(self):
         if self._token is not _TOKEN or self.mode is not Mode.EXECUTE:
             raise ExecutionRefused("an ExecutionAuthorization is only issued by authorize_execution()")
+
+
+FORBIDDEN_PORTS = frozenset(range(28400, 28405))  # switch_controller state/command/action/contact/hand channels
+DEVICE_PREFIXES = ("/dev/", "/proc/", "/sys/")
+
+
+def admit_endpoint(host: str, port: int) -> None:
+    """Every connection of this package goes to the POLICY SERVER only: never to a controller channel."""
+    if int(port) in FORBIDDEN_PORTS:
+        raise ExecutionRefused(f"refusing to connect to {host}:{port}: a switch_controller channel, not the policy "
+                               "server")
+
+
+def safe_output(path) -> "Path":
+    """An output file this package may write: a regular file (or a new one) outside /dev, /proc, /sys, never through a
+    symlink, so no log/row/summary path can open a device (e.g. the gripper's serial port)."""
+    from pathlib import Path
+
+    p = Path(path).expanduser()
+    absolute = Path(os.path.abspath(p))
+    if str(absolute).startswith(DEVICE_PREFIXES) or p.is_symlink() or (p.exists() and not p.is_file()):
+        raise ExecutionRefused(f"refusing to write {path}: not a regular file outside /dev, /proc, /sys")
+    return p
 
 
 def execution_eligible(policy_info: dict | None) -> bool:

@@ -48,6 +48,7 @@ class PolicyLoop:
         except ValueError as exc:  # client-side training binding refusal: nothing was sent
             self.counts["binding_refused"] += 1
             return {**row, "status": "skipped", "code": "binding_refused", "detail": str(exc)}
+        t_result = self.clock()
         row.update(status=r.status, code=r.code, detail=r.detail, frames_sent=r.frames_sent,
                    request_bytes=r.request_bytes, response_bytes=r.response_bytes, server_ms=dict(r.server_ms),
                    client_ms=dict(r.timings_ms), terminal=r.terminal)
@@ -64,7 +65,9 @@ class PolicyLoop:
         if r.ok:
             c = row["client_ms"]
             c["validation_ms"] = (t1 - t0) / 1e6
-            c["capture_to_command_ms"] = c["capture_to_action_ms"] + c["validation_ms"]
+            # on the loop clock (= validation clock: wall clock live / realtime replay, frame clock at max pace)
+            c["capture_to_action_ms"] = (t_result - int(observation_time_ns)) / 1e6
+            c["capture_to_command_ms"] = (t1 - int(observation_time_ns)) / 1e6
             c["capture_age_at_send_ms"] = c["capture_to_action_ms"] - c["rtt_ms"] - c["decode_ms"]
             o = r.outputs
             row.update(action_norm=np.asarray(o["action_norm"]).tolist(), padded=o["metadata"].get("padded"),

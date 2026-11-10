@@ -15,14 +15,19 @@ def as_pose7(p) -> np.ndarray:
 
 
 def quat_angle(qa, qb) -> float:
-    """Geodesic angle (rad) between two unit quaternions (sign-invariant)."""
-    d = abs(float(np.dot(np.asarray(qa, np.float64), np.asarray(qb, np.float64))))
+    """Geodesic angle (rad) between two rotations given as quaternions (normalised here; sign-invariant)."""
+    qa, qb = np.asarray(qa, np.float64), np.asarray(qb, np.float64)
+    na, nb = float(np.linalg.norm(qa)), float(np.linalg.norm(qb))
+    if not (np.isfinite(na) and np.isfinite(nb)) or na < 1e-9 or nb < 1e-9:
+        raise ValueError("degenerate quaternion")
+    d = abs(float(np.dot(qa / na, qb / nb)))
     return float(2.0 * np.arccos(min(1.0, d)))
 
 
 def slerp(qa, qb, t: float) -> np.ndarray:
     """Unit quaternion a fraction ``t`` of the way along the short arc from qa to qb."""
     qa, qb = np.asarray(qa, np.float64), np.asarray(qb, np.float64)
+    qa, qb = qa / np.linalg.norm(qa), qb / np.linalg.norm(qb)
     d = float(np.dot(qa, qb))
     if d < 0:
         qb, d = -qb, -d

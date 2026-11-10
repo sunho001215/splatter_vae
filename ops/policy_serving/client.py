@@ -178,6 +178,7 @@ class PolicyClient:
         self._results: dict[int, StepResult] = {}
         self._pongs: collections.deque = collections.deque(maxlen=16)
         self._capacity = 1
+        self._deadline: float | None = None  # absolute deadline of the step being waited for (monotonic s)
         self.stats = collections.Counter()
 
     # ------------------------------------------------------------------------------------------------ connection
@@ -192,12 +193,18 @@ class PolicyClient:
         self._hello(None)
         return self.spec
 
+    def _budget(self, limit: float) -> float:
+        """``limit`` bounded by the deadline of the step being waited for (reconnects/renewals never outlast it)."""
+        if self._deadline is None:
+            return limit
+        return max(0.05, min(limit, self._deadline - time.monotonic()))
+
     def _open(self) -> None:
         if self.wire is not None:
             self.wire.close()
-        sock = socket.create_connection((self.host, self.port), timeout=self.connect_timeout_s)
+        sock = socket.create_connection((self.host, self.port), timeout=self._budget(self.connect_timeout_s))
         self.wire = P.Wire(sock, io_timeout_s=self.io_timeout_s, max_payload_bytes=self.max_payload_bytes)
-        msg = self.wire.recv(self.connect_timeout_s)
+        msg = self.wire.recv(self._budget(self.connect_timeout_s))
         if msg is not None and msg.type == P.ERROR:
             raise ServingError(msg.header["code"], msg.header["detail"])
         if msg is None or msg.type != P.WELCOME:
@@ -273,7 +280,7 @@ class PolicyClient:
             return
         self._renewing = True
         try:
-            self._hello(None)
+            self._hello(None, timeout_s=self._budget(self.hello_timeout_s))
         except ServingError as exc:
             if exc.code != "session_busy":
                 raise
@@ -534,12 +541,15 @@ class PolicyClient:
         return seq
 
     def _send(self, data: bytes, deadline: float) -> None:
+        self._deadline = deadline
         try:
             if self.wire is None:
                 raise ConnectionError("not connected")
             self.wire.send(data)
         except (OSError, ConnectionError):
             self._recover(deadline)  # re-sends every unacknowledged request, including this one
+        finally:
+            self._deadline = None
 
     def step(self, end_ids: dict, reference_id, pose7, gripper_register, *, pose_time_ns: int, gripper_time_ns: int,
              ttl_ms: float | None = None, pad_run_start: bool = False, noise: np.ndarray | None = None,
@@ -563,6 +573,13 @@ class PolicyClient:
         no longer awaited are dropped as stale. Every read is bounded by this call's deadline; a message cut by the
         deadline or the network makes the connection unusable: it is dropped and resumed."""
         deadline = time.monotonic() + (self.step_timeout_s if timeout_s is None else timeout_s)
+        self._deadline = deadline
+        try:
+            return self._wait(seq, deadline)
+        finally:
+            self._deadline = None
+
+    def _wait(self, seq: int, deadline: float) -> StepResult:
         while seq not in self._results:
             if seq not in self._inflight:
                 return StepResult("error", seq, self.session_id, "unknown_seq", "not in flight")

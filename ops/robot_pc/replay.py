@@ -21,6 +21,10 @@ FRAME_ARRIVAL_NS = 65_000_000  # recorded t_recv - t of every camera (p50 64.9-6
 
 
 class ReplayClock:
+    """Validation / age clock of a replay. realtime: the wall clock (frames are released at their shifted times).
+    max: the frame clock, i.e. ages = wall time since the newest frame's release + its recorded offset from the
+    observation, so action ages and capture->action stay processing latencies (no negative ages, no backlog)."""
+
     def __init__(self, first_recorded_ns: int, pace: str):
         if pace not in ("realtime", "max"):
             raise ValueError("pace must be realtime or max")
@@ -35,8 +39,8 @@ class ReplayClock:
             delay = (t - time.monotonic_ns()) / 1e9
             if delay > 0:
                 time.sleep(delay)
-        else:
-            self._skew = max(0, t - time.monotonic_ns())
+        else:  # frame clock = wall clock + (newest shifted frame time - its wall release time)
+            self._skew = t - time.monotonic_ns()
         return t
 
     def now(self) -> int:
@@ -76,6 +80,13 @@ def run(client, loop, cameras, state, clock: ReplayClock, *, cams: list, start: 
         if on_row is not None:
             on_row(row)
 
+    def step_sets(sets):
+        for s in sets:
+            disp = s["surface_disp_m"] if np.isfinite(s["surface_disp_m"]) else None  # None: no valid robot state
+            client.add_sync_set(s["frame_ids"], disp)
+            emit(s["frame_ids"], s["observation_time_ns"], f"set:{s['frame_ids'][cams[0]]}", surface_disp_m=disp)
+
+    end_of_recording = count is None or start + count >= len(cameras.timestamps_ns(cams[0]))
     for t_rec, _, cam, idx in frame_events(cameras, cams, start, count):
         n = cameras.native(cam, idx)
         t = clock.release(t_rec)
@@ -101,10 +112,14 @@ def run(client, loop, cameras, state, clock: ReplayClock, *, cams: list, start: 
         for g in grip_rows:
             live_m5.add_gripper(*g)
         fed_to = t + FRAME_ARRIVAL_NS
-        for s in live_m5.poll():
-            disp = s["surface_disp_m"] if np.isfinite(s["surface_disp_m"]) else None  # None: no valid robot state
-            client.add_sync_set(s["frame_ids"], disp)
-            emit(s["frame_ids"], s["observation_time_ns"], f"set:{s['frame_ids'][cams[0]]}", surface_disp_m=disp)
+        step_sets(live_m5.poll())
+    if live_m5 is not None and end_of_recording:  # the recording ends: flush what the stream end decides
+        robot, grip_rows = state.rows(fed_to if fed_to is not None else 0, 2**62)
+        for r in robot:
+            live_m5.add_robot(*r)
+        for g in grip_rows:
+            live_m5.add_gripper(*g)
+        step_sets(live_m5.poll(end_of_stream=True))
     return rows
 
 

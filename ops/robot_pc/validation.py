@@ -48,6 +48,10 @@ class ActionLimits:
             raise ValueError(f"unknown action limit keys {sorted(unknown)}")
         kw = {k: tuple(float(x) for x in v) if isinstance(v, (list, tuple)) else float(v) for k, v in d.items()}
         out = cls(**kw)
+        values = [*out.workspace_min_m, *out.workspace_max_m, out.max_translation_m, out.max_rotation_deg,
+                  out.gripper_closure_min, out.gripper_closure_max, out.max_action_age_ms, out.quaternion_tolerance]
+        if not all(np.isfinite(values)) or min(out.max_translation_m, out.max_rotation_deg, out.max_action_age_ms) <= 0:
+            raise ValueError("action limits must be finite and positive")
         if len(out.workspace_min_m) != 3 or len(out.workspace_max_m) != 3 or \
                 any(a >= b for a, b in zip(out.workspace_min_m, out.workspace_max_m)):
             raise ValueError("workspace box must be 3 increasing (min, max) pairs")
@@ -105,6 +109,8 @@ def validate_action(result, request: BoundRequest, limits: ActionLimits, *, sess
     measured = np.asarray(o.get("measured_pose7"), np.float64)
     if measured.shape != (7,) or not np.array_equal(measured, np.asarray(request.pose7, np.float64)):
         raise ActionRejected("binding", "the action is not bound to the measured pose sent with its observation")
+    if not np.isfinite(measured).all() or abs(float(np.linalg.norm(measured[3:])) - 1.0) > 1e-3:
+        raise ActionRejected("range", "measured pose is not finite with a unit quaternion")
     if float(o.get("measured_gripper_register", request.gripper_register)) != float(request.gripper_register):
         raise ActionRejected("binding", "the action is not bound to the gripper register sent with its observation")
     a = np.asarray(o.get("action_norm"), np.float64)

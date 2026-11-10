@@ -72,7 +72,9 @@ def main(argv=None) -> int:
             versions[mod] = None
     for mod, want in PINS.items():
         check(f"pin_{mod}", versions[mod] == want, versions[mod])
-    checks["pyrealsense2"] = {"ok": True, "detail": versions["pyrealsense2"] or "not installed (live acquisition off)"}
+    rs = versions["pyrealsense2"]
+    check("pyrealsense2", rs is None or str(rs).startswith(OPTIONAL["pyrealsense2"]),
+          rs or "not installed (live acquisition off)")
     checks["live_state_reader_deps"] = {"ok": True, "detail": {k: versions[k] for k in ("zmq", "robot_msg")}}
 
     from ops.robot_pc import cli
@@ -88,6 +90,9 @@ def main(argv=None) -> int:
         missing = [p for p in manifest["files"] if not (root / "releases" / rel / p).is_file()]
         check("bundle_files_sha256", not bad and not missing, {"mismatch": bad[:5], "missing": missing[:5],
                                                               "files": len(manifest["files"])})
+        active = {k: (root / k).resolve() == (root / "releases" / rel / k).resolve() for k in ("src", "assets")}
+        check("active_release", all(active.values()) and Path(__file__).resolve().is_relative_to(
+            (root / "releases" / rel).resolve()), {"release": str(rel), **active})
     else:
         checks["bundle_files_sha256"] = {"ok": True, "detail": "no BUNDLE.json (git checkout): skipped"}
     a = cfg.get("assets") or {}
@@ -112,13 +117,9 @@ def main(argv=None) -> int:
             check(f"rig_{task}", False, f"{type(exc).__name__}: {exc}")
     ex = cfg.get("execution") or {}
     check("execution_not_armed", ex.get("armed") is False, ex)
-    from ops.robot_pc.safety import ExecutionRefused, authorize_execution
+    from ops.robot_pc import safety
 
-    try:
-        authorize_execution(cli_execute=False, typed_confirmation=None, config_armed=ex.get("armed") is True)
-        check("execution_refused", False, "authorization granted unexpectedly")
-    except ExecutionRefused as exc:
-        check("execution_refused", True, str(exc)[:120])
+    check("execution_not_permitted", safety.EXECUTION_PERMITTED is False, "safety.EXECUTION_PERMITTED")
     tok = C.path(cfg, (cfg.get("server") or {}).get("token_file"))
     if tok is not None and tok.is_file():
         mode = stat.S_IMODE(tok.stat().st_mode)
@@ -134,7 +135,9 @@ def main(argv=None) -> int:
     out = {"ok": not fail, "failed": fail, "root": str(root), "versions": versions, "checks": checks}
     text = json.dumps(out, indent=1, default=str)
     if args.out:
-        args.out.write_text(text + "\n")
+        from ops.robot_pc.safety import safe_output
+
+        safe_output(args.out).write_text(text + "\n")
     print(text)
     return 0 if not fail else 1
 
