@@ -819,7 +819,9 @@ def _period_fixture(step_cam=CAMS[2], **over):
           "cameras": {c: {"K": K_COLOR, "within": {"event": False, "reasons": []},
                           "period_steps": {"S1": {"class": "step" if c == step_cam else "no_step", "rigid": rigid,
                                                   "omega_deg": np.degrees(rotation_from_rigid(rigid, K_COLOR)).tolist(),
-                                                  "scale_flag": False}}} for c in CAMS}}
+                                                  "scale_flag": False}}} for c in CAMS},
+          "decision": {"split_periods": True, "user_decision_needed": [],
+                       "period_pose_cameras": [step_cam] if step_cam else []}}
     for path, value in over.items():
         node = ev
         *head, last = path.split(".")
@@ -869,6 +871,10 @@ def test_split_periods_writes_one_document_per_period(tmp_path):
     ({f"cameras.{CAMS[1]}.within": {}}, [CAMS[2]], "within-period movement"),
     ({f"cameras.{CAMS[2]}.period_steps.S1.class": "inconclusive"}, [CAMS[2]], "user decision"),
     ({f"cameras.{CAMS[0]}.period_steps.S1.scale_flag": True}, [CAMS[2]], "scale flag"),
+    ({f"cameras.{CAMS[2]}.period_steps.S1.scale_flag": None}, [CAMS[2]], "camera-specific scale flag"),
+    ({"decision": None}, [CAMS[2]], "no decision table"),
+    ({"decision.user_decision_needed": [CAMS[1]]}, [CAMS[2]], "user decision needed"),
+    ({"decision.period_pose_cameras": [CAMS[0]]}, [CAMS[2]], "period_pose_cameras"),
     ({f"cameras.{CAMS[2]}.period_steps.S1.rigid": [0.5, 0.0, 0.0],
       f"cameras.{CAMS[2]}.period_steps.S1.omega_deg": [0.0, float(np.degrees(0.5 / 605.6)), 0.0]}, [CAMS[2]],
      "does not reproduce"),
@@ -882,6 +888,20 @@ def test_split_periods_refuses_whatever_the_analysis_does_not_support(over, came
     with pytest.raises(SystemExit, match=reason):
         split_periods(doc, ev, cameras=cameras, evidence=[("e", "b" * 64)], decided_by="c", reference="r",
                       source_sha256="c" * 64)
+
+
+def test_split_periods_records_a_user_override_of_open_problems():
+    from s4d.realworld.calib.loma.publish import split_periods
+
+    doc, ev, _ = _period_fixture(**{f"cameras.{CAMS[1]}.within": {"event": True, "reasons": ["W2 drift"]},
+                                    "decision.split_periods": False, "decision.user_decision_needed": [CAMS[1]]})
+    docs = split_periods(doc, ev, cameras=[CAMS[2]], evidence=[("e", "b" * 64)], decided_by="user + coordinator",
+                         reference="r", source_sha256="c" * 64, user_override="user 2026-11-10: accept the drift")
+    over = docs["S1"]["period"]["user_override"]
+    assert over["decision"].startswith("user") and any("within-period movement" in x for x in over["problems"])
+    doc, ev, _ = _period_fixture()
+    assert split_periods(doc, ev, cameras=[CAMS[2]], evidence=[("e", "b" * 64)], decided_by="c", reference="r",
+                         source_sha256="c" * 64)["S2"]["period"]["user_override"] is None
 
 
 def test_split_periods_bounds_the_period_rotation():
@@ -954,9 +974,32 @@ def test_period_documents_give_each_episode_the_record_of_its_period(tmp_path):
     other["period"]["derived_from"] = {"name": "x", "sha256": "d" * 64}
     publish_rig(tmp_path / "other.json", other, arrays)
     bad = plan(manifest, {"covering": [str(paths["S1"]), str(tmp_path / "other.json")]}, code_commit="c")
-    assert any("different published documents" in x for x in bad["tasks"]["covering"]["problems"])
+    assert any("one split-periods run" in x for x in bad["tasks"]["covering"]["problems"])
     over = json.loads(json.dumps(docs["S2"]))
     over["period"]["episodes"] = eps
     publish_rig(tmp_path / "over.json", over, arrays)
     bad = plan(manifest, {"covering": [str(paths["S1"]), str(tmp_path / "over.json")]}, code_commit="c")
     assert any("two period documents" in x for x in bad["tasks"]["covering"]["problems"])
+
+
+def test_period_records_reverify_the_period_poses_and_one_split_run(tmp_path):
+    from s4d.realworld.calib.loma.publish import split_periods
+    from s4d.realworld.calib.release import period_problems
+
+    doc, ev, _ = _period_fixture()
+    docs = split_periods(doc, ev, cameras=[CAMS[2]], evidence=[("e", "b" * 64)], decided_by="c", reference="r",
+                         source_sha256="c" * 64, decided_at="t0")
+    pair = [(docs["S1"], "a" * 64), (docs["S2"], "b" * 64)]
+    assert period_problems(pair, "t") == []
+    moved = json.loads(json.dumps(docs["S1"]))
+    moved["cameras"][CAMS[2]]["T_cam_base"][0][3] += 1e-3
+    assert any("does not re-verify" in x for x in period_problems([(moved, "a" * 64), pair[1]], "t"))
+    other = json.loads(json.dumps(docs["S2"]))
+    other["cameras"][CAMS[2]]["T_cam_base"][1][3] += 1e-3
+    assert any("not the base pose" in x for x in period_problems([pair[0], (other, "b" * 64)], "t"))
+    rerun = split_periods(doc, ev, cameras=[CAMS[2]], evidence=[("e", "b" * 64)], decided_by="c", reference="r",
+                          source_sha256="c" * 64, decided_at="t1")  # a second run of the same source
+    assert any("one split-periods run" in x for x in period_problems([pair[0], (rerun["S2"], "d" * 64)], "t"))
+    nop = json.loads(json.dumps(docs["S2"]))
+    nop["period"].pop("periods")
+    assert period_problems([pair[0], (nop, "e" * 64)], "t")  # no TypeError on a malformed block

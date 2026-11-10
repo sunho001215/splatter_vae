@@ -328,12 +328,14 @@ def rotation_from_rigid(rigid, K, grid=PERIOD_GRID) -> np.ndarray:
     return np.linalg.lstsq(J.reshape(-1, 3), field.reshape(-1), rcond=None)[0]
 
 
-def period_steps(doc: dict, ev: dict) -> tuple[dict, str, dict]:
-    """(periods {name: sorted episodes}, base period, {camera: {period: omega rad}}) of a pre-registered period
-    analysis (``rwx-period-steps/1``) for ``doc``. Refuses (SystemExit, nothing is written) whenever the analysis does
-    not support period poses: periods not partitioning the document's episodes, credible within-period movement, an
-    inconclusive step, a camera-specific scale flag, a step larger than ``MAX_PERIOD_ROT_DEG`` or an omega that does
-    not reproduce from the recorded step."""
+def period_steps(doc: dict, ev: dict) -> tuple[dict, str, dict, list]:
+    """(periods {name: sorted episodes}, base period, {camera: {period: omega rad}}, problems) of a pre-registered
+    period analysis (``rwx-period-steps/1``) for ``doc``. Always refused (SystemExit, nothing is written): another
+    format / task, periods not partitioning the document's episodes, a step camera whose omega does not reproduce from
+    the recorded step, exceeds ``MAX_PERIOD_ROT_DEG`` or has a camera-specific scale flag. ``problems`` (USER
+    territory of the pre-registered rule, refused unless a user override is recorded): within-period movement or an
+    unverifiable candidate of any camera, an inconclusive step or an unresolved scale flag of any camera, and a
+    decision table that is missing or does not allow the split."""
     from s4d.realworld.calib.rig import FORMAT
 
     if ev.get("format") != PERIOD_FORMAT or ev.get("task") != doc.get("task") or doc.get("format") != FORMAT:
@@ -343,21 +345,19 @@ def period_steps(doc: dict, ev: dict) -> tuple[dict, str, dict]:
     flat = [e for v in periods.values() for e in v]
     if len(periods) < 2 or base not in periods or len(flat) != len(set(flat)) or sorted(flat) != sorted(doc["episodes"]):
         raise SystemExit("the periods must partition the document's episodes exactly (>= 2 periods incl. the base)")
-    steps = {}
+    steps, problems = {}, []
     for cam in doc["cameras"]:
         c = (ev.get("cameras") or {}).get(cam) or {}
         within = c.get("within") or {}
         if within.get("event") is not False:
-            raise SystemExit(f"{cam}: within-period movement {within.get('event')!r} {within.get('reasons')} -> user "
-                             "decision")
+            problems.append(f"{cam}: within-period movement {within.get('event')!r} {within.get('reasons')}")
         for p in periods:
             if p == base:
                 continue
             s = (c.get("period_steps") or {}).get(p) or {}
-            if s.get("class") not in ("step", "no_step") or s.get("scale_flag") is not False:
-                raise SystemExit(f"{cam} {p}: period step {s.get('class')!r}, scale flag {s.get('scale_flag')!r} -> "
-                                 "user decision")
-            if s["class"] == "no_step":
+            if s.get("class") != "step":
+                if s.get("class") != "no_step" or s.get("scale_flag") is not False:
+                    problems.append(f"{cam} {p}: period step {s.get('class')!r}, scale flag {s.get('scale_flag')!r}")
                 continue
             omega = rotation_from_rigid(s["rigid"], c["K"])
             if not np.allclose(np.degrees(omega), s.get("omega_deg"), rtol=0, atol=1e-9):
@@ -365,15 +365,30 @@ def period_steps(doc: dict, ev: dict) -> tuple[dict, str, dict]:
             if np.degrees(np.linalg.norm(omega)) > MAX_PERIOD_ROT_DEG:
                 raise SystemExit(f"{cam} {p}: period step {np.degrees(np.linalg.norm(omega)):.4f} deg > "
                                  f"{MAX_PERIOD_ROT_DEG} deg -> user decision")
+            if s.get("scale_flag") is not False:
+                raise SystemExit(f"{cam} {p}: camera-specific scale flag {s.get('scale_flag')!r} -> user decision")
             steps.setdefault(cam, {})[p] = omega
-    return periods, base, steps
+    dec = ev.get("decision")
+    if not isinstance(dec, dict):
+        problems.append("the analysis carries no decision table (run with the release verdict)")
+    else:
+        if dec.get("split_periods") is not True or dec.get("user_decision_needed"):
+            problems.append(f"decision table: split_periods {dec.get('split_periods')!r}, user decision needed for "
+                            f"{dec.get('user_decision_needed')}")
+        if sorted(dec.get("period_pose_cameras") or []) != sorted(steps):
+            problems.append(f"decision period_pose_cameras {dec.get('period_pose_cameras')} != {sorted(steps)}")
+    return periods, base, steps, problems
 
 
 def split_periods(doc: dict, ev: dict, *, cameras, evidence, decided_by, reference, source_sha256,
-                  decided_at=None) -> dict:
+                  decided_at=None, user_override=None) -> dict:
     """{period: NEW document} (see the module docstring). ``cameras`` must be exactly the cameras with a credible
-    period step (the pre-registered rule applies to all of them); ``evidence``: [(path, sha256)]."""
-    periods, base, steps = period_steps(doc, ev)
+    period step (the pre-registered rule applies to all of them); ``evidence``: [(path, sha256)]. ``user_override``:
+    the text of a USER decision that resolves the analysis' open problems (recorded with them in every document);
+    without it any open problem refuses."""
+    periods, base, steps, problems = period_steps(doc, ev)
+    if problems and not user_override:
+        raise SystemExit(f"user decision needed (pass the user's decision as override): {problems}")
     if not steps:
         raise SystemExit("no camera has a credible period step: the published document applies to every period")
     if sorted(cameras) != sorted(steps):
@@ -385,9 +400,11 @@ def split_periods(doc: dict, ev: dict, *, cameras, evidence, decided_by, referen
               "derived_from": {"name": doc["name"], "sha256": source_sha256}, "cameras_with_period_pose": sorted(steps),
               "evidence": [{"path": str(p), "sha256": h} for p, h in evidence], "decided_by": decided_by,
               "decided_at": decided_at or time.strftime("%Y-%m-%dT%H:%M:%S%z"), "reference": reference,
+              "user_override": {"decision": user_override, "problems": problems} if problems else None,
               "rule": f"{PERIOD_FORMAT}: T_period = exp([omega]x) @ T_cam_base for cameras with a credible rigid step "
                       f"vs the base period (|omega| <= {MAX_PERIOD_ROT_DEG} deg); every other field is the published "
-                      "document's; within-period movement, an inconclusive step or a camera-specific scale refuses"}
+                      "document's; within-period movement, an inconclusive step, a scale flag or a decision table that does "
+                      "not allow the split refuses unless a user decision is recorded (user_override)"}
     out = {}
     for p, eps in periods.items():
         keep = set(eps)
@@ -447,6 +464,7 @@ def main(argv=None):
     s.add_argument("--evidence", nargs="*", default=[], help="further evidence files (sha256 computed now)")
     s.add_argument("--decided-by", required=True)
     s.add_argument("--reference", required=True)
+    s.add_argument("--user-override", help="the user's decision text resolving open problems of the analysis")
     s.add_argument("--out-dir", required=True)
     a = ap.parse_args(argv)
     if a.cmd == "publish":
@@ -458,10 +476,13 @@ def main(argv=None):
     from s4d.realworld.calib.rig import load_rig, publish_rig
 
     if a.cmd == "split-periods":
-        doc, ref, _ = load_rig(a.rig)
-        docs = split_periods(doc, json.loads(Path(a.periods).read_text()), cameras=a.cameras,
-                             evidence=[(p, sha256_file(p)) for p in (a.periods, *a.evidence)],
-                             decided_by=a.decided_by, reference=a.reference, source_sha256=sha256_file(a.rig))
+        doc, ref, fp = load_rig(a.rig)
+        raw = Path(a.periods).read_bytes()  # parsed and hashed from the same bytes
+        docs = split_periods(doc, json.loads(raw), cameras=a.cameras,
+                             evidence=[(a.periods, hashlib.sha256(raw).hexdigest())]
+                             + [(p, sha256_file(p)) for p in a.evidence],
+                             decided_by=a.decided_by, reference=a.reference, source_sha256=fp["rig_calibration"],
+                             user_override=a.user_override)
         paths = {p: Path(a.out_dir) / f"{Path(a.rig).stem}.{p}.json" for p in docs}
         if any(x.exists() or x.with_suffix(".reference.npz").exists() for x in paths.values()):
             raise SystemExit(f"{a.out_dir}: a period document exists already (published documents are never replaced)")

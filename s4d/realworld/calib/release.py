@@ -172,19 +172,46 @@ def check_episode(key: str, entry: dict, rig_doc: dict, rig_sha: str, path_map=(
 
 
 def period_problems(docs: list, task: str) -> list:
-    """Problems of several documents given for one task: they must be the period documents (``period``) of one
-    published document with disjoint episode sets."""
+    """Problems of several documents given for one task: they must be the recording-period documents of ONE
+    ``split-periods`` run (identical ``period`` blocks apart from name / episodes, exactly its periods, disjoint
+    episodes), and every period pose must re-verify (``exp([omega]x) @ base pose``, within ``MAX_PERIOD_ROT_DEG``;
+    cameras without a period pose carry the base pose)."""
+    from s4d.realworld.calib.dw.geom import so3_exp
+    from s4d.realworld.calib.loma.publish import MAX_PERIOD_ROT_DEG
+
     periods = [d.get("period") for d, _ in docs]
     if not all(isinstance(p, dict) and p.get("name") and p.get("episodes") for p in periods):
         return [f"{task}: several documents but not all are recording-period documents"]
     problems = []
-    if len({json.dumps(p.get("derived_from"), sort_keys=True) for p in periods}) != 1:
-        problems.append(f"{task}: the period documents derive from different published documents")
+    common = {json.dumps({k: v for k, v in p.items() if k not in ("name", "episodes")}, sort_keys=True)
+              for p in periods}
+    if len(common) != 1:
+        problems.append(f"{task}: the period documents are not of one split-periods run")
     if sorted(p["name"] for p in periods) != sorted(periods[0].get("periods") or {}):
-        problems.append(f"{task}: the period documents are not exactly the periods {sorted(periods[0].get('periods'))}")
+        problems.append(f"{task}: the period documents are not exactly the periods "
+                        f"{sorted(periods[0].get('periods') or {})}")
     eps = [e for p in periods for e in p["episodes"]]
     if len(eps) != len(set(eps)):
         problems.append(f"{task}: an episode belongs to two period documents")
+    base = {}
+    for doc, _ in docs:
+        for cam, c in doc["cameras"].items():
+            pp = c.get("period_pose")
+            if pp is None:
+                continue
+            base.setdefault(cam, []).append(np.asarray(pp["base_T_cam_base"], float))
+            want = np.eye(4)
+            want[:3, :3] = so3_exp(np.radians(np.asarray(pp["omega_deg"], float)))
+            want = want @ np.asarray(pp["base_T_cam_base"], float)
+            if (not np.allclose(np.asarray(c["T_cam_base"], float), want, rtol=0, atol=1e-12)
+                    or np.linalg.norm(pp["omega_deg"]) > MAX_PERIOD_ROT_DEG):
+                problems.append(f"{task}: {doc.get('name')} {cam} period pose does not re-verify")
+    for doc, _ in docs:
+        for cam, Ts in base.items():
+            c = doc["cameras"][cam]
+            if c.get("period_pose") is None and not all(np.array_equal(np.asarray(c["T_cam_base"], float), T)
+                                                        for T in Ts):
+                problems.append(f"{task}: {doc.get('name')} {cam} is not the base pose of the period poses")
     return problems
 
 

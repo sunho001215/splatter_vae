@@ -33,15 +33,37 @@ IMAGE_COUNTS = {'image-pretrain': 2, 'image-dataset': 3, 'image-fql': 9}
 GEOMETRY_COUNTS = {'geometry-pretrain': 3, 'geometry-dataset': 4, 'geometry-fql': 12}
 
 
+@pytest.fixture(autouse=True)
+def no_amendments(monkeypatch):
+    """Synthetic manifests: the default 100-episode rule unless a test installs an amendment (the versioned covering
+    record would otherwise apply to the synthetic covering episodes)."""
+    monkeypatch.setattr(gate, 'load_amendments', lambda *a, **k: {})
+
+
+def amendment(task, excluded):
+    rec = {'format': gate.AMENDMENT_FORMAT, 'task': task, 'version': 1, 'target': 100 - len(excluded),
+           'base_target': 100, 'decision': 'permit the valid episodes', 'decided_by': 'user',
+           'decided_at': '2026-11-10T13:00:00+09:00', 'document': {'path': 'AMEND.md', 'sha256': 'd' * 64},
+           'episodes': {f'{task}/episode_{i:06d}.h5': R.sha(f'{task}-{i}'.encode()) for i in range(100)
+                        if i not in excluded},
+           'excluded': {f'{task}/episode_{i:06d}.h5': {'reason': 'timestamps'} for i in excluded}}
+    return {task: {'record': rec, 'path': f'/cfg/{task}.json', 'sha256': 'e' * 64}}
+
+
 def measured_scenes(monkeypatch, task):
     """A release whose scene geometry for ``task`` was measured (stand-in values: the existing tasks')."""
     monkeypatch.setitem(configs.SCENE_PARAMETERS, task, dict(configs.SCENE_PARAMETERS['drawer-open']))
 
 
-def staged_inputs(directory, task='covering', *, geometry=True):
-    """100 compact episodes with a live gate, bound provenance, exact seed-0 split and successful outcomes."""
+def staged_inputs(directory, task='covering', *, geometry=True, excluded=()):
+    """100 compact episodes (or 100 minus ``excluded``, invalid recordings, with the task's gate amendment installed)
+    with a live gate, bound provenance, exact seed-0 split and successful outcomes."""
     entries = {}
     for i in range(100):
+        if i in excluded:
+            entries[f'{task}/episode_{i:06d}.h5'] = {'task': task, 'episode_index': None, 'sha256': None,
+                                                     'validation': {'status': 'invalid'}, 'transfer': {'status': 'pending'}}
+            continue
         digest = R.sha(f'{task}-{i}'.encode())
         stages = {s: {'status': 'done', 'input_sha256': digest} for s in gate.REQUIRED_STAGES}
         stages['calibrate']['metrics'] = {'build_id': 'cal-1'}
@@ -57,9 +79,9 @@ def staged_inputs(directory, task='covering', *, geometry=True):
             'validation': {'status': 'valid'}, 'transfer': {'status': 'verified', 'remote_sha256': digest},
             'preprocessing': {'schema': gate.STAGE_SCHEMA, 'schema_version': 1, 'status': 'done', 'stages': stages}}
     manifest = {'schema': gate.SCHEMA, 'schema_version': gate.SCHEMA_VERSION, 'episodes': entries,
-                'counts': {task: {'complete': True, 'target': 100}}}
+                'counts': {task: {'complete': not excluded, 'target': 100}}}
     raw = json.dumps(manifest).encode()
-    report = gate.evaluate(manifest, [task])
+    report = gate.evaluate(manifest, [task], amendments=amendment(task, excluded) if excluded else {})
     report['manifest'] = {'path': '/synthetic/manifest.json', 'sha256': R.sha(raw)}
     identities = {f'{task}/compact_{i:06d}': rec
                   for i, rec in enumerate(report['tasks'][task]['episode_identities'].values())}
@@ -73,7 +95,7 @@ def staged_inputs(directory, task='covering', *, geometry=True):
         rec.update(ending_decision='no_reversal', ending_flags=[])
     labels['episodes'][eps[0]].update(ending_decision='needs_image_review', ending_flags=['multiple_grasps'])
     files = {'store.yaml': yaml.safe_dump({'kind': 'compact', 'paths': [
-        r['preprocessing']['stages']['train_data']['outputs'] for r in entries.values()]}),
+        r['preprocessing']['stages']['train_data']['outputs'] for r in entries.values() if 'preprocessing' in r]}),
         'gate_report.json': json.dumps(bound), 'split_seed0.json': json.dumps(split_episodes(store)),
         'outcomes.json': json.dumps(labels)}
     directory.mkdir(parents=True, exist_ok=True)
@@ -130,6 +152,24 @@ def test_proposal_respects_each_consumer_gate_and_old_tasks_cannot_be_registered
     report['tasks']['covering']['passed'] = False
     with pytest.raises(R.Refused, match='100-episode'):
         R.plan_task('covering', report, PIN, '/remote/covering')
+
+
+def test_an_amended_task_registers_on_exactly_its_amendment_episodes(tmp_path, monkeypatch):
+    """covering's 98-episode amendment (user decision 2026-11-10): the same rows, inputs checked against 98 episodes and
+    the seed-0 split of those 98 (10 / 88); a report whose target does not match its amendment is refused."""
+    measured_scenes(monkeypatch, 'covering')
+    manifest, report = staged_inputs(tmp_path, excluded=(57, 61))
+    assert report['tasks']['covering']['passed'] and report['tasks']['covering']['target'] == 98
+    assert R.plan_task('covering', report, PIN, '/remote/covering')['counts'] == {**IMAGE_COUNTS, **GEOMETRY_COUNTS}
+    assert set(R.verify_inputs('covering', manifest, report, tmp_path)) == set(R.INPUT_NAMES)
+    split = json.loads((tmp_path / 'split_seed0.json').read_text())
+    assert len(split['validation']) == 10 and len(split['train']) == 88
+    report['tasks']['covering']['target'] = 100
+    with pytest.raises(R.Refused, match='gate target'):
+        R.plan_task('covering', report, PIN, '/remote/covering')
+    # the same 98 episodes without the amendment never pass the gate
+    plain = gate.evaluate(manifest, ['covering'], amendments={})
+    assert not plain['tasks']['covering']['passed']
 
 
 @pytest.mark.parametrize('task', ['covering', 'pick-and-place'])

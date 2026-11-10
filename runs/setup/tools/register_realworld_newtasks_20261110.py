@@ -17,8 +17,9 @@ and geometry rows need the calibration hold; a family with any refused row is re
 
 Learning inputs come from scripts/realworld_learning.py inputs --task T --ending-report R (store.yaml,
 gate_report.json, split_seed0.json, outcomes.json), staged on the remote under --remote-inputs and mirrored locally in
---inputs-copy; all four are verified against the live gate (100 train_data outputs, bound raw identities, calibration
-builds, QA families, seed-0 90/10 split, all-success labels carrying ending-check decisions) and hashed.
+--inputs-copy; all four are verified against the live gate (the task's target number of train_data outputs - 100, or
+its versioned gate amendment's target, e.g. covering 98 - bound raw identities, calibration builds, QA families, the
+seed-0 split_episodes partition, all-success labels carrying ending-check decisions) and hashed.
 --publish is a FUTURE locked/journalled queue append; --recover repairs only its proof after an interrupted append.
 """
 from __future__ import annotations
@@ -127,21 +128,30 @@ def release_evidence(repo, task, release):
             'source_sha256': sources}
 
 
+def task_target(report, task):
+    """The gate's episode count for ``task``: 100, or the target of the task's versioned gate amendment."""
+    rec = report['tasks'][task]
+    want = rec['amendment']['target'] if rec.get('amendment') else gate.TARGET
+    require(rec.get('target') == want, f"{task}: gate target {rec.get('target')!r} != {want}")
+    return want
+
+
 def verify_inputs(task, manifest, report, directory):
     """Pure local reads; compare the staged descriptor and bound report to live gate identities/builds."""
+    n = task_target(report, task)
     files = {name: Path(directory) / name for name in INPUT_NAMES}
     require(all(p.is_file() for p in files.values()), 'learning-inputs copy needs all four files')
     store = yaml.safe_load(files['store.yaml'].read_bytes())
     live = report['tasks'][task]
     want = sorted(manifest['episodes'][ep]['preprocessing']['stages']['train_data']['outputs']
                   for ep in live['episodes'])
-    require(len(want) == gate.TARGET and len(set(want)) == gate.TARGET, 'need 100 unique train_data outputs')
+    require(len(want) == n and len(set(want)) == n, f'need {n} unique train_data outputs')
     require(store.get('kind') == 'compact' and sorted(store.get('paths') or []) == want,
-            'store.yaml differs from the live 100 train_data outputs')
+            f'store.yaml differs from the live {n} train_data outputs')
     saved = json.loads(files['gate_report.json'].read_bytes())
     rec = saved['tasks'][task]
     eps = rec.get('store_episodes') or []
-    require(len(eps) == gate.TARGET and len(set(eps)) == gate.TARGET, 'gate report must bind 100 store episodes')
+    require(len(eps) == n and len(set(eps)) == n, f'gate report must bind {n} store episodes')
     identities = {v['store_episode']: v for v in rec['episode_identities'].values()}
     bound = gate.bind_store_episodes(report, {task: eps}, identities)
     # This task's sections must equal the live gate bound to the same store episodes. The manifest bytes may differ
@@ -151,8 +161,8 @@ def verify_inputs(task, manifest, report, directory):
     require(isinstance(saved.get('manifest', {}).get('sha256'), str), 'staged gate report names no manifest')
     split = json.loads(files['split_seed0.json'].read_bytes())
     train, val = split.get('train') or [], split.get('validation') or []
-    require(len(train) == 90 and len(val) == 10 and len(set(train + val)) == 100
-            and set(train + val) == set(eps), 'split must be a disjoint 90/10 partition of this task')
+    require(len(set(train + val)) == len(train) + len(val) == n and set(train + val) == set(eps),
+            'split must be a disjoint train/validation partition of this task')
     identity_store = SimpleNamespace(episodes=lambda: eps, task=lambda ep: task,
                                      raw_recording=lambda ep: identities[ep]['raw_recording'],
                                      raw_sha256=lambda ep: identities[ep].get('raw_sha256'))
@@ -160,7 +170,7 @@ def verify_inputs(task, manifest, report, directory):
     labels = json.loads(files['outcomes.json'].read_bytes())
     require(labels.get('schema') == outcomes.OUTCOME_SCHEMA and labels.get('flags_change_labels') is False,
             'need recorded success labels with flags preserved')
-    require(outcomes.load_outcomes(labels) == dict.fromkeys(eps, True), 'outcomes differ from the 100 successful demos')
+    require(outcomes.load_outcomes(labels) == dict.fromkeys(eps, True), f'outcomes differ from the {n} successful demos')
     require(all(r.get('ending_decision') in outcomes.DECISIONS and isinstance(r.get('ending_flags'), list)
                 for r in labels['episodes'].values()), 'new tasks need ending-check evidence (flags never exclude demos)')
     return {name: sha(path.read_bytes()) for name, path in files.items()}
@@ -220,7 +230,8 @@ def adapt_rows(templates, report, release, remote_inputs):
 def plan_task(task, report, release, remote_inputs, *, family='all'):
     require(task in TASKS, 'exactly one new real-world task is required')
     require(family in ('all', 'image', 'geometry'), 'unknown consumer family')
-    require(report.get('target') == gate.TARGET and report['tasks'][task]['passed'], '100-episode gate refused')
+    require(report['tasks'][task]['passed'], 'full-data (100-episode or amended) gate refused')
+    task_target(report, task)
     result = launch.plan(report, [task], release['commit'])
     templates = [r for r in result['rows'] if family == 'all' or
                  r['calibration_dependent'] == (family == 'geometry')]
