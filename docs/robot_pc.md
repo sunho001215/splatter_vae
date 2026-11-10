@@ -84,7 +84,7 @@ venv/bin/python -I src/scripts/robot_pc/execute.py --execute             # futur
 as is: it is not small and its direct-equality path does not belong on the robot PC; `scripts/robot_pc/replay.py` is
 the robot-PC replay.
 
-Development host only: `scripts/robot_pc/m5_asset.py export|validate` (M5 surface asset, validation),
+Development host only: `scripts/realworld_m5_asset.py export|validate` (M5 surface asset, validation),
 `scripts/robot_pc/make_bundle.py` (the tarball) and the ONE-command robot-PC benchmark over the `robotpc` ssh master
 (REPLAY ONLY, no camera opened; GPU snapshot of the 5090 before/after, LOCAL and robot-PC PING, one policy per
 condition x task (6 today), 150 frames 15 Hz paced + max, 10 warm-up steps discarded, about 3-5 min; refuses before
@@ -241,7 +241,7 @@ guaranteed bitwise in general (relative weight differences ~1e-9). Through the c
 3D-MVP checkpoint (local CPU server): 179/179 sets, displacements == store (max diff 0.0)
 (`evidence/rob-mv-local-replay-m5-20261110.json`).
 
-Negative cases (`scripts/robot_pc/m5_asset.py negative`, evidence `evidence/m5-live-negative-20261110.json`): the two
+Negative cases (`scripts/realworld_m5_asset.py negative`, evidence `evidence/m5-live-negative-20261110.json`): the two
 release episodes perturbed IN MEMORY (files untouched) - fast joint motion (143 / 203 sets rejected > 5 mm), a camera
 shifted by 0.45 / 0.55 periods, every 5th frame of a camera dropped (36 / 42 non-mutual incomplete sets), a 0.5 s robot
 state gap (8 sets without valid state), the state stream ending at 70 % (53 / 62) or starting at 20 % (36 / 41), joints

@@ -19,7 +19,7 @@ cameras:                                  # the recorder's D435I rig (recordings
   fps: 15
   check_devices: true                     # refuse live acquisition if a recorder/teleop process or device holder exists
 assets:                                   # shipped by the bundle (BUNDLE.json lists their sha256)
-  m5_surface: assets/m5/panda_robotiq_2f85_droid_iso50.m5.npz   # training-store M5 surface (scripts/robot_pc/m5_asset.py)
+  m5_surface: assets/m5/panda_robotiq_2f85_droid_iso50.m5.npz   # training-store M5 surface (scripts/realworld_m5_asset.py)
   urdf: assets/urdf/panda_robotiq_2f85_droid_iso50.urdf         # unmodified composed URDF (sha256 ca60bab9...)
 tasks:
   # rig_document: the published per-task rig release (calib-loma/rel/rig; c2w + validated sensor_depth scale);

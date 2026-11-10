@@ -2,7 +2,7 @@
 PC; staging it on the 5090 (``~/shkim/robot-pc/``) is a separate copy (docs/robot_pc.md).
 
     .venv/bin/python -I scripts/robot_pc/make_bundle.py --commit <sha> --wheels <wheelhouse> \
-        --m5-asset <exported .m5.npz> --m5-validation <m5_asset.py validate JSON> --out-dir outputs/robot_pc/bundle
+        --m5-asset <exported .m5.npz> --m5-validation <realworld_m5_asset.py validate JSON> --out-dir outputs/robot_pc/bundle
 
 Contents (prefix ``s4d-robot-pc-<short>/``): ``src/`` = ``git archive <commit>`` of the client-side code (ops/__init__,
 ops/policy_serving/{__init__,protocol,client,bench,config}.py, ops/robot_pc/, s4d/, scripts/robot_pc/,

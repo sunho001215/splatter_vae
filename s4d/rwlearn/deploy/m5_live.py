@@ -165,7 +165,7 @@ class LiveSets:
       regular timeline is at least (1 - tolerance) periods later, so it cannot be nearer);
     * back-check decided: a member after the reference frame is either followed by a buffered reference frame, or
       lies less than h after it (same argument on the reference timeline). Ties go to the earlier frame as in
-      training (``nearest_timestamps``). Validated against stored ``sync/frames`` (scripts/robot_pc/m5_asset.py).
+      training (``nearest_timestamps``). Validated against stored ``sync/frames`` (scripts/realworld_m5_asset.py).
     Both shortcuts rely on every camera's frame interval being >= (1 - tolerance) periods (the trained timing, which
     the deploy history enforces per window); the first shorter interval switches them off for good (``early`` False:
     exact waiting for bracketing frames from then on) and is counted in ``irregular_intervals``. Buffers keep the

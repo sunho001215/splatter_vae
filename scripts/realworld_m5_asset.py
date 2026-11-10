@@ -2,10 +2,10 @@
 to a robot.
 
     # sample the training store's M5 surface once (needs the URDF meshes) -> asset shipped to the robot PC
-    .venv/bin/python -I scripts/robot_pc/m5_asset.py export --recording /home/ws/data/real_world/mug-hanging/episode_000001.h5 \
+    .venv/bin/python -I scripts/realworld_m5_asset.py export --recording /home/ws/data/real_world/mug-hanging/episode_000001.h5 \
         --out outputs/robot_pc/m5/panda_robotiq_2f85_droid_iso50.m5.npz
     # validate the helper against released training-store episodes (pre-registered criterion, ROB-STATUS.md)
-    .venv/bin/python -I scripts/robot_pc/m5_asset.py validate --asset <npz> --urdf <urdf> \
+    .venv/bin/python -I scripts/realworld_m5_asset.py validate --asset <npz> --urdf <urdf> \
         --pair <store episode.h5> <raw recording.h5> [--pair ...] --json m5-validation.json
 
 ``validate`` checks, per episode, (a) the store-trajectory path: the helper's surface + ``pipeline.robot_state_at`` +
@@ -24,7 +24,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 sys.dont_write_bytecode = True
-REPO = Path(__file__).resolve().parents[2]
+REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
 import numpy as np  # noqa: E402
@@ -274,7 +274,7 @@ def cmd_validate(args) -> dict:
 
 
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(prog="m5_asset.py", description=__doc__.split("\n")[0])
+    ap = argparse.ArgumentParser(prog="realworld_m5_asset.py", description=__doc__.split("\n")[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
     e = sub.add_parser("export")
     e.add_argument("--recording", type=Path, required=True, help="any raw recording of the rig (robot metadata)")
