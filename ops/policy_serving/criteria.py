@@ -135,11 +135,22 @@ def raw_episode_path(raw_root, store_episode: str) -> Path:
     return Path(raw_root) / task / f"episode_{name.rsplit('-', 1)[1]}.h5"
 
 
+def _regular(stamps, numbers, idx, period_s: float, tolerance: float) -> bool:
+    gaps = np.diff(stamps[idx]) / 1e9
+    return bool(np.all(np.diff(numbers[idx]) == 1) and np.all(np.abs(gaps - period_s) <= tolerance * period_s))
+
+
 def probe_samples(episodes: list[str], raw_root, cameras: list[str], *, n: int = E2_SAMPLES, seed: int = 0,
-                  history: int = 3, period_s: float = 1 / 15, tolerance: float = 0.01) -> list[dict]:
-    """n held-out samples: a uniformly drawn episode, trained camera and colour frame index whose ``history``
-    consecutive frames follow the trained spacing (device frame numbers consecutive, intervals within 1 %), the
-    measured state bound by the training rule. Frames are the client's preprocessed ``Frame`` objects."""
+                  history: int = 3, period_s: float = 1 / 15, tolerance: float = 0.01, views: list[str] | None = None,
+                  depth: bool = False, rig_document=None, alignment: str = "rs_align") -> list[dict]:
+    """n held-out samples, each a complete trained history: a uniformly drawn episode and colour frame index whose
+    ``history`` consecutive frames follow the trained spacing (device frame numbers consecutive, intervals within
+    1 %), with the measured state bound by the training rule. Single-view (``views`` None): a uniformly drawn trained
+    camera. Multi-view (``views`` = the trained camera order): every step is a mutual-nearest set within half a
+    period around the reference (first) camera's frame. ``depth``: native depth aligned like the live client
+    (``alignment``) with the rig's validated native correction; ``rig_document``: the task's released rig (session
+    calibration). Frames are the client's preprocessed ``Frame`` objects."""
+    from s4d.rwlearn.deploy.realsense import load_rig_session
     from s4d.rwlearn.deploy.replay import RecordedEpisode
 
     rng = np.random.default_rng(seed)
@@ -152,47 +163,78 @@ def probe_samples(episodes: list[str], raw_root, cameras: list[str], *, n: int =
         if ep not in recs:
             recs[ep] = RecordedEpisode(raw_episode_path(raw_root, ep))
         rec = recs[ep]
-        cams = [c for c in cameras if c in rec.cameras()]
-        if not cams:
-            raise ValueError(f"{ep}: none of the trained cameras {cameras} recorded")
-        cam = cams[int(rng.integers(len(cams)))]
-        stamps, numbers = rec.timestamps_ns(cam), rec.frame_numbers(cam)
-        end = int(rng.integers(history - 1, len(stamps)))
-        idx = list(range(end - history + 1, end + 1))
-        gaps = np.diff(stamps[idx]) / 1e9
-        if not (np.all(np.diff(numbers[idx]) == 1) and np.all(np.abs(gaps - period_s) <= tolerance * period_s)):
+        if views:
+            cams = list(views)
+            if any(c not in rec.cameras() for c in cams):
+                raise ValueError(f"{ep}: trained cameras {cams} not all recorded ({rec.cameras()})")
+        else:
+            avail = [c for c in cameras if c in rec.cameras()]
+            if not avail:
+                raise ValueError(f"{ep}: none of the trained cameras {cameras} recorded")
+            cams = [avail[int(rng.integers(len(avail)))]]
+        ref = cams[0]
+        stamps = {c: rec.timestamps_ns(c) for c in cams}
+        numbers = {c: rec.frame_numbers(c) for c in cams}
+        end = int(rng.integers(history - 1, len(stamps[ref])))
+        idx = {ref: list(range(end - history + 1, end + 1))}
+        ok = _regular(stamps[ref], numbers[ref], idx[ref], period_s, tolerance)
+        for c in cams[1:]:
+            if not ok:
+                break
+            near = [int(np.argmin(np.abs(stamps[c] - stamps[ref][i]))) for i in idx[ref]]
+            back = [int(np.argmin(np.abs(stamps[ref] - stamps[c][j]))) for j in near]
+            ok = back == idx[ref] and all(abs(int(stamps[c][j]) - int(stamps[ref][i])) <= period_s * 5e8
+                                          for i, j in zip(idx[ref], near)) \
+                and _regular(stamps[c], numbers[c], near, period_s, tolerance)
+            idx[c] = near
+        if not ok:
             continue
-        frames = [rec.frame(cam, i, depth=False) for i in idx]
+        rig = load_rig_session(rig_document, cams, {c: rec.K_native(c) for c in cams}) if rig_document else None
+        corr = (rig or {}).get("native_depth_correction", {})
+        frames = {c: [rec.frame(c, i, depth=depth, correction=corr.get(c), alignment=alignment) for i in idx[c]]
+                  for c in cams}
+        t = max(f[-1].timestamp_ns for f in frames.values())
         try:
-            state = rec.state_at(frames[-1].timestamp_ns)
+            state = rec.state_at(t)
         except ValueError:
             continue
-        t = frames[-1].timestamp_ns
         if t - state["pose_time_ns"] > 15_000_000 or t - state["gripper_time_ns"] > 100_000_000:
             continue  # the training binding would not accept this observation
-        out.append({"episode": ep, "camera": cam, "index": end, "native_hw": rec.native_hw(cam), "frames": frames,
-                    **state})
+        out.append({"episode": ep, "cameras": cams, "index": end, "native_hw": {c: rec.native_hw(c) for c in cams},
+                    "frames": frames, "session": rig, **state})
     return out
 
 
 def _observations(policy, samples: list[dict]) -> list[dict]:
-    """Each sample's observation through a bound session + ``HistoryWindow`` (the deploy assembly path)."""
+    """Each sample's observation through a bound session + ``HistoryWindow`` (the deploy assembly path). Multi-view
+    sets get M5 evidence 0.0: the probe measures sensitivity on recorded sets, it does not certify their sync (the
+    observation tensor does not depend on the M5 value)."""
     import uuid
 
     from s4d.rwlearn.deploy import HistoryWindow
 
+    spec0 = policy.input_spec
     obs, sessions = [], {}
     for s in samples:
-        key = (s["camera"], tuple(s["native_hw"]))
+        cams = tuple(s["cameras"])
+        key = (cams, tuple(tuple(s["native_hw"][c]) for c in cams))
         if key not in sessions:
-            sessions[key] = policy.reset_session(session_id=f"probe-{uuid.uuid4().hex}", concurrent=True,
-                                                 native_hw={s["camera"]: tuple(s["native_hw"])},
-                                                 camera_id=s["camera"])
+            choices = {"native_hw": {c: tuple(s["native_hw"][c]) for c in cams}}
+            if spec0.views == 1:
+                choices["camera_id"] = cams[0]
+            if spec0.needs_calibration:
+                choices["calibration"] = {c: s["session"]["calibration"][c] for c in cams}
+            if "depth" in spec0.modalities:
+                choices["native_depth_correction"] = {c: s["session"]["native_depth_correction"][c] for c in cams}
+            sessions[key] = policy.reset_session(session_id=f"probe-{uuid.uuid4().hex}", concurrent=True, **choices)
         spec = sessions[key]
         h = HistoryWindow(spec)
-        for f in s["frames"]:
-            h.push(s["camera"], f)
-        obs.append(h.assemble({s["camera"]: s["frames"][-1].seq}).observation())
+        for c in cams:
+            for f in s["frames"][c]:
+                h.push(c, f)
+        end = {c: s["frames"][c][-1].seq for c in cams}
+        disp = [0.0] * spec.history_length if spec.views > 1 else None
+        obs.append(h.assemble(end, surface_disp_m=disp).observation())
     for spec in sessions.values():
         policy.end_session(spec.session_id)
     return obs
@@ -207,8 +249,6 @@ def visual_probe(policy, samples: list[dict], *, seed: int = 0) -> dict:
 
     from s4d.rwlearn import actions as A
 
-    if policy.input_spec.views != 1:
-        return check(None, reason="multi-view probe not implemented (no multi-view policy is a candidate)")
     rng = np.random.default_rng(seed)
     n = len(samples)
     noise = rng.standard_normal((n, 1, A.ACTION_DIM)).astype(np.float32)
@@ -244,7 +284,10 @@ def visual_probe(policy, samples: list[dict], *, seed: int = 0) -> dict:
     return check(bool(ok), samples=n, action_spread=spread, d_vis=d_vis, d_noise=d_noise,
                  d_vis_over_spread=d_vis / spread if spread else math.inf,
                  d_vis_over_noise=d_vis / d_noise if d_noise else math.inf,
-                 episodes=sorted({s["episode"] for s in samples}), cameras=sorted({s["camera"] for s in samples}))
+                 episodes=sorted({s["episode"] for s in samples}),
+                 cameras=sorted({c for s in samples for c in s["cameras"]}),
+                 **({"m5_note": "multi-view probe sets: recorded mutual-nearest sets, M5 not certified"}
+                    if policy.input_spec.views > 1 else {}))
 
 
 # ------------------------------------------------------------------------------------------------ f

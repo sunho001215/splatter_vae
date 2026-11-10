@@ -52,6 +52,8 @@ SUPERSEDED = {
                                                "bookkeeping cfc4b21: 'old fqldata/fql rows superseded, paused')",
 }
 CATALOG_NAME = "catalog.json"
+# released rig documents per task (realworld-ops/serving/API.md; DEP's validated replays)
+RIG_DOCUMENTS = {"drawer-open": "rig-loma-drawer-open.json", "mug-hanging": "rig-loma-mug-hanging-fx.json"}
 
 
 def sha256_file(path) -> str:
@@ -159,10 +161,21 @@ class Sources:
     queue: Path
     splits: Path                 # <task>/split_seed0.json
     raw_root: Path               # raw recordings (read-only)
+    rig_dir: Path | None = None  # released task rig documents (rig-loma-<task>*.json)
 
     @property
     def runs(self) -> Path:
         return self.data_root / "runs"
+
+    def rig(self, task: str) -> Path:
+        """The task's released rig document (calibration of the deploy session): RIG_DOCUMENTS, else the unique
+        ``rig-loma-<task>.json``."""
+        if self.rig_dir is None:
+            raise ValueError("no rig directory configured (--rig-dir)")
+        p = self.rig_dir / RIG_DOCUMENTS.get(task, f"rig-loma-{task}.json")
+        if not p.is_file():
+            raise ValueError(f"no released rig document {p}")
+        return p
 
     def split(self, task: str) -> dict:
         return json.loads((self.splits / task / "split_seed0.json").read_text())
@@ -328,12 +341,20 @@ def evaluate(src: Sources, rows: list[dict], pre_rows: dict[str, dict], *, sidec
                 checks["c"] = {**checks["c"], "pass": False, "reason": f"DeployPolicy load failed: {exc}"}
             else:
                 checks["c"]["deploy_load_cpu"] = True
-                cams = sorted({c for o in pol.input_spec.trained_camera_orders for c in o})
-                key = (r["task"], tuple(cams))
-                if pol.input_spec.views == 1 and key not in samples:
-                    log(f"[probe] sampling {C.E2_SAMPLES} held-out frames for {key}")
-                    samples[key] = C.probe_samples(src.split(r["task"])["validation"], src.raw_root, cams)
-                checks["e2"] = C.visual_probe(pol, samples.get(key, []))
+                spec = pol.input_spec
+                cams = sorted({c for o in spec.trained_camera_orders for c in o})
+                views = list(spec.trained_camera_orders[0]) if spec.views > 1 else None
+                depth = "depth" in spec.modalities
+                rig = src.rig(r["task"]) if spec.needs_calibration or depth else None
+                key = (r["task"], tuple(views or cams), depth, None if rig is None else str(rig))
+                try:
+                    if key not in samples:
+                        log(f"[probe] sampling {C.E2_SAMPLES} held-out frames for {key}")
+                        samples[key] = C.probe_samples(src.split(r["task"])["validation"], src.raw_root, cams,
+                                                       views=views, depth=depth, rig_document=rig)
+                    checks["e2"] = C.visual_probe(pol, samples[key])
+                except Exception as exc:  # noqa: BLE001 - an unevaluable probe never passes
+                    checks["e2"] = C.check(None, reason=f"probe failed: {type(exc).__name__}: {exc}")
                 del pol
         else:
             checks["e2"] = C.check(None, reason="not run (c/d failed or --no-probe)")
@@ -575,7 +596,7 @@ def _fmt(x) -> str:
 # ------------------------------------------------------------------------------------------------ CLI
 def _sources(a) -> Sources:
     return Sources(a.data_root, a.data_root / "experiments/registry.jsonl", a.data_root / "experiments/queue.yaml",
-                   a.splits, a.raw_root)
+                   a.splits, a.raw_root, a.rig_dir)
 
 
 def _evaluated(a, runs: list[str] | None = None) -> dict:
@@ -642,9 +663,12 @@ def cmd_stage(a, *, hook: bool = False) -> int:
         crit = sha256_file(a.criteria) if a.criteria.is_file() else None
         aliases = {k: v for k, v in {**(catalog.get("aliases") or {}), **legacy_aliases(entries)}.items()
                    if v in entries}
-        write_host_catalog(host, build_catalog(entries, aliases=aliases, criteria_sha256=crit), execute=a.execute,
-                           log=lambda m: print(m, file=sys.stderr, flush=True))
-        signal_reload(host, execute=a.execute, log=lambda m: print(m, file=sys.stderr, flush=True))
+        if entries == (catalog.get("policies") or {}) and aliases == (catalog.get("aliases") or {}):
+            print("[catalog] unchanged: nothing written, no reload (idempotent re-run)", file=sys.stderr, flush=True)
+        else:
+            write_host_catalog(host, build_catalog(entries, aliases=aliases, criteria_sha256=crit),
+                               execute=a.execute, log=lambda m: print(m, file=sys.stderr, flush=True))
+            signal_reload(host, execute=a.execute, log=lambda m: print(m, file=sys.stderr, flush=True))
     print(json.dumps({"execute": bool(a.execute), "runs": report}, indent=1, default=str))
     return 0 if all(r["status"] == "deployable" for r in report.values()) or not hook else 3
 
@@ -656,6 +680,7 @@ def main(argv=None) -> int:
     ap.add_argument("--splits", type=Path,
                     default=Path("/home/ws/ws/realworld-ops/calib-loma/ops/results/learning_inputs"))
     ap.add_argument("--raw-root", type=Path, default=Path("/home/ws/data/real_world"))
+    ap.add_argument("--rig-dir", type=Path, default=Path("/home/ws/ws/realworld-ops/calib-loma/rel/rig"))
     ap.add_argument("--sidecar-dir", type=Path, default=Path("/home/ws/ws/realworld-ops/serving/pol-contracts"))
     ap.add_argument("--criteria", type=Path, default=Path("/home/ws/ws/realworld-ops/serving/POL-CRITERIA.md"))
     ap.add_argument("--no-probe", action="store_true", help="skip e2 (rows then cannot be deployable)")

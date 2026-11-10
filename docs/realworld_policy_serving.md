@@ -207,7 +207,9 @@ pretraining == FQL dataset == policy meta and the policy loads through `DeployPo
 (`scripts/check_realworld_deploy.py contracts`) accepted at load, (e1) frozen-feature conditioning of the FQL dataset
 (offset/signal <= 10, LayerNorm unit std >= 0.5; LN-only failure + e2 pass = flag `attenuated_visual_input`), (e2)
 held-out visual sensitivity through the deploy path (action change under visual-input replacement >= 0.2 x action
-spread and >= 0.25 x the FQL-noise-only change; e2e_cnn: image replacement), (f) finite metrics, no q_mean > 100,
+spread and >= 0.25 x the FQL-noise-only change; e2e_cnn: image replacement; depth conditions: native depth aligned as
+the live client + the task's released rig; multi-view: recorded mutual-nearest sets, M5 not certified by the probe),
+(f) finite metrics, no q_mean > 100,
 late-phase q_mean <= +1. Explicit decisions (rwcal-20261109 3D-MVP: quarantined) and supersessions are recorded in
 `staging.QUARANTINE` / `staging.SUPERSEDED`. Policy ids are `<condition>-<task>-s<seed>`; the pre-catalog ids
 `<condition>-<task>` are aliases of a deployable `-s0`.

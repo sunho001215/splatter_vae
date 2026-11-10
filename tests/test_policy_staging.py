@@ -15,7 +15,7 @@ import yaml
 from ops.policy_serving import criteria as C
 from ops.policy_serving import staging as S
 from ops.policy_serving.config import validate_catalog
-from s4d.rwlearn.deploy.fixtures import FIXTURE_NATIVE_HW, make_fixture_policy, synthetic_frames
+from s4d.rwlearn.deploy.fixtures import FIXTURE_NATIVE_HW, make_fixture_policy, session_choices, synthetic_frames
 
 
 # ------------------------------------------------------------------------------------------------ a, b
@@ -76,18 +76,22 @@ def test_feature_conditioning_separates_an_offset_dominated_readout(tmp_path):
 
 # ------------------------------------------------------------------------------------------------ e2
 def _samples(policy, n=12):
-    spec = policy.input_spec.bind(session_id="s", native_hw={"cam_a": FIXTURE_NATIVE_HW}, camera_id="cam_a")
+    choices = session_choices(policy, "s")
+    spec = policy.input_spec.bind(**choices)
+    cams = list(spec.camera_ids)
+    session = {k: choices[k] for k in ("calibration", "native_depth_correction") if k in choices}
     out = []
     for i in range(n):
-        frames = synthetic_frames(spec, 3, seed=100 + i, start_seq=10 * i, start_ns=10 ** 9 * i)["cam_a"]
-        t = frames[-1].timestamp_ns
-        out.append({"episode": f"t/t-{i:06d}", "camera": "cam_a", "index": 2, "native_hw": FIXTURE_NATIVE_HW,
-                    "frames": frames, "pose7": np.array([0.4, 0.0, 0.3, 0, 0, 0, 1.0]) + 0.01 * i * np.eye(7)[0],
+        frames = synthetic_frames(spec, 3, seed=100 + i, start_seq=10 * i, start_ns=10 ** 9 * i)
+        t = max(f[-1].timestamp_ns for f in frames.values())
+        out.append({"episode": f"t/t-{i:06d}", "cameras": cams, "index": 2,
+                    "native_hw": dict.fromkeys(cams, FIXTURE_NATIVE_HW), "frames": frames, "session": session,
+                    "pose7": np.array([0.4, 0.0, 0.3, 0, 0, 0, 1.0]) + 0.01 * i * np.eye(7)[0],
                     "pose_time_ns": t - 1000, "gripper_register": 3.0 * i, "gripper_time_ns": t - 2000})
     return out
 
 
-@pytest.mark.parametrize("condition", ["reviwo", "e2e_cnn"])
+@pytest.mark.parametrize("condition", ["reviwo", "e2e_cnn", "sincro", "mvp3d_single", "mvp3d_multiview"])
 def test_visual_probe_uses_the_deploy_path_and_measures_vision(tmp_path, condition):
     policy = make_fixture_policy(tmp_path / condition, condition)
     r = C.visual_probe(policy, _samples(policy))  # asserts its cached path == DeployPolicy.act bitwise
