@@ -22,6 +22,7 @@ import numpy as np
 from ops.robot_pc.poses import as_pose7, quat_angle
 
 GRIPPER_OPEN_REGISTER, GRIPPER_SPAN = 3.0, 227.0  # conventions_json: "Robotiq position 3 + 227 * closure (DROID)"
+CONTROLLER_REJECT_M, CONTROLLER_REJECT_RAD = 0.2, 0.5  # switch_controller rejects targets this far (robot.py docstring)
 
 
 class ActionRejected(ValueError):
@@ -52,6 +53,8 @@ class ActionLimits:
                   out.gripper_closure_min, out.gripper_closure_max, out.max_action_age_ms, out.quaternion_tolerance]
         if not all(np.isfinite(values)) or min(out.max_translation_m, out.max_rotation_deg, out.max_action_age_ms) <= 0:
             raise ValueError("action limits must be finite and positive")
+        if out.max_translation_m >= CONTROLLER_REJECT_M or np.deg2rad(out.max_rotation_deg) >= CONTROLLER_REJECT_RAD:
+            raise ValueError("per-step limits must stay below switch_controller's rejection (0.2 m / 0.5 rad)")
         if len(out.workspace_min_m) != 3 or len(out.workspace_max_m) != 3 or \
                 any(a >= b for a, b in zip(out.workspace_min_m, out.workspace_max_m)):
             raise ValueError("workspace box must be 3 increasing (min, max) pairs")

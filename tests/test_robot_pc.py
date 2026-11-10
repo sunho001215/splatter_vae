@@ -400,28 +400,87 @@ def Rquat(angle: float):
             w * a[2] + x * a[1] - y * a[0] + z * a[3], w * a[3] - x * a[0] - y * a[1] - z * a[2]]
 
 
-def test_pose_limits_and_high_rate_executor():
+def test_pose_limits_and_quaternion_helpers():
     start = np.array(POSE)
     goal = np.array([POSE[0] + 0.1, *POSE[1:3], *Rquat(np.deg2rad(40))])
     out = poses.toward(start, goal, 0.01, np.deg2rad(5))
     assert abs(np.linalg.norm(out[:3] - start[:3]) - 0.01) < 1e-12
     assert abs(poses.quat_angle(out[3:], start[3:]) - np.deg2rad(5)) < 1e-9
     np.testing.assert_allclose(poses.toward(start, start, 0.01, 0.1), start)
-    sink = sinks.MockSink()
-    ex = executor.HighRateExecutor(sink, rate_hz=500, max_linear_speed=0.3, max_angular_speed=1.5)
-    assert ex.tick(0, POSE) is None and not sink.items  # nothing before the first command
+    r = poses.rotvec_between(start[3:], goal[3:])
+    assert abs(np.linalg.norm(r) - np.deg2rad(40)) < 1e-9
+    assert poses.quat_angle(poses.rotate_left(start[3:], r), goal[3:]) < 1e-9
+    with pytest.raises(ValueError, match="degenerate"):
+        poses.quat_angle([0, 0, 0, 0], [0, 0, 0, 1])
+
+
+def _cmd(goal, t_obs=0, age_ms=200.0, closure=0.5):
     from ops.robot_pc.validation import Command
 
-    cmd = Command("r1", "s1", 1_000, 1_000 + 200_000_000, POSE, tuple(goal.tolist()), 0.5, 117, 0.1, 40.0)
-    assert ex.accept(cmd) and not ex.accept(dataclasses.replace(cmd, reference_id="r0", observation_time_ns=999))
-    sp = ex.tick(2_000, POSE)
-    assert sp.kind == "track" and abs(np.linalg.norm(np.array(sp.pose7[:3]) - start[:3]) - 0.3 / 500) < 1e-12
-    for k in range(200):  # the setpoint never leaves the lead envelope around the (fixed) measured pose
-        sp = ex.tick(3_000 + k, POSE)
-    assert np.linalg.norm(np.array(sp.pose7[:3]) - start[:3]) <= 0.04 + 1e-12
-    assert poses.quat_angle(sp.pose7[3:], start[3:]) <= np.deg2rad(20) + 1e-9
-    held = ex.tick(cmd.expires_ns + 1, [POSE[0] + 0.001, *POSE[1:]])
-    assert held.kind == "hold" and held.pose7[0] == POSE[0] + 0.001 and ex.counts["refused_older"] == 1
+    return Command("r1", "s1", int(t_obs), int(t_obs + age_ms * 1e6), POSE, tuple(np.asarray(goal, float).tolist()),
+                   closure, int(round(3 + 227 * closure)), 0.0, 0.0)
+
+
+def test_executor_enforces_the_collector_speed_acceleration_and_lead_limits():
+    """RateLimiter port (teleop.py:154-190): |v| <= 0.3 m/s, |dv| <= 4 m/s^2 dt, |w| <= 1.5 rad/s, |dw| <= 15 rad/s^2 dt;
+    the command stays within the lead envelope of the measured pose; no overshoot at the goal."""
+    sink = sinks.MockSink()
+    ex = executor.HighRateExecutor(sink)
+    goal = [POSE[0] + 0.03, POSE[1] - 0.01, POSE[2], *Rquat(np.deg2rad(15))]
+    assert ex.tick(0, POSE, state_t_ns=0) is None and not sink.items  # nothing before the first command
+    assert ex.accept(_cmd(goal, age_ms=1e6))
+    dt_ns, t, prev_p, prev_v, prev_q, prev_w = 2_000_000, 1_000_000, np.array(POSE[:3]), np.zeros(3), \
+        np.array(POSE[3:]), 0.0
+    for k in range(600):
+        t += dt_ns
+        sp = ex.tick(t, POSE, state_t_ns=t - 500_000, signature=bytes([k % 256, k // 256]))
+        p, q = np.array(sp.pose7[:3]), np.array(sp.pose7[3:])
+        v = (p - prev_p) / (dt_ns / 1e9)
+        w = poses.quat_angle(prev_q, q) / (dt_ns / 1e9)
+        assert np.linalg.norm(v) <= 0.3 + 1e-9 and np.linalg.norm(v - prev_v) <= 4.0 * dt_ns / 1e9 + 1e-9, k
+        assert w <= 1.5 + 1e-6 and abs(w - prev_w) <= 15.0 * dt_ns / 1e9 + 1e-6, k
+        assert np.linalg.norm(p - np.array(POSE[:3])) <= 0.04 + 1e-12
+        assert poses.quat_angle(q, POSE[3:]) <= np.deg2rad(20) + 1e-9
+        prev_p, prev_v, prev_q, prev_w = p, v, q, w
+    np.testing.assert_allclose(prev_p, goal[:3], atol=1e-6)  # reached, braking without overshoot
+    assert poses.quat_angle(prev_q, goal[3:]) < 1e-5
+    far = executor.HighRateExecutor(sinks.MockSink())
+    far.accept(_cmd([POSE[0] + 0.15, *POSE[1:]], age_ms=1e6))
+    t = 0
+    for k in range(500):
+        t += dt_ns
+        sp = far.tick(t, POSE, state_t_ns=t, signature=bytes([k % 256, k // 256]))
+    assert abs(np.linalg.norm(np.array(sp.pose7[:3]) - np.array(POSE[:3])) - 0.04) < 1e-9  # leashed at the lead
+
+
+def test_executor_holds_on_expiry_and_latches_a_stop_on_stale_or_frozen_state():
+    sink = sinks.MockSink()
+    ex = executor.HighRateExecutor(sink)
+    ex.accept(_cmd([POSE[0] + 0.02, *POSE[1:]], t_obs=0, age_ms=100, closure=0.3))
+    a = ex.tick(10_000_000, POSE, state_t_ns=10_000_000, signature=b"a")
+    assert a.kind == "track" and a.gripper_closure == 0.3
+    again = ex.tick(10_000_000, POSE, state_t_ns=10_000_000, signature=b"a")
+    assert again.pose7 == a.pose7 and ex.counts["resent"] == 1  # repeated timestamp: no motion
+    moved = [POSE[0] + 0.001, *POSE[1:]]
+    held = ex.tick(150_000_000, moved, state_t_ns=150_000_000, signature=b"b")
+    assert held.kind == "hold" and held.pose7 == tuple(moved) and held.gripper_closure == 0.3
+    assert not ex.accept(_cmd([POSE[0] + 0.01, *POSE[1:]], t_obs=-1, closure=1.0))  # older observation refused
+    late = executor.HighRateExecutor(sinks.MockSink())
+    late.accept(_cmd(POSE, t_obs=0, age_ms=10, closure=1.0))  # first tick after expiry: nothing of it applied
+    assert late.tick(20_000_000, POSE, state_t_ns=20_000_000, signature=b"x").gripper_closure is None
+    stale = executor.HighRateExecutor(sinks.MockSink())
+    stale.accept(_cmd(POSE, age_ms=1e6))
+    assert stale.tick(100_000_000, POSE, state_t_ns=40_000_000) is None and stale.stopped == "stale robot state"
+    assert stale.tick(101_000_000, POSE, state_t_ns=101_000_000, signature=b"z") is None  # latched
+    stale.rearm()
+    assert stale.tick(102_000_000, POSE, state_t_ns=102_000_000) is None and stale.command is None
+    frozen = executor.HighRateExecutor(sinks.MockSink())
+    frozen.accept(_cmd(POSE, age_ms=1e6))
+    t = 0
+    for _ in range(140):  # the publisher keeps sending (fresh times) a bit-identical state
+        t += 2_000_000
+        out = frozen.tick(t, POSE, state_t_ns=t, signature=b"same")
+    assert out is None and frozen.stopped.startswith("robot state frozen")
 
 
 # ------------------------------------------------------------------------------------------------ devices
@@ -907,9 +966,12 @@ def test_live_state_reader_is_a_read_only_subscriber(monkeypatch):
         assert not any(c[0] in ("bind", "send") for c in calls)
         with pytest.raises(robot_state.StateUnavailable, match="no robot state"):
             reader.bound_state(10**18)
-        reader.samples.append({"t_ns": 5, "seq": 1, "q": np.zeros(7), "flange_pose7": np.array(POSE)})
+        reader.samples.append({"t_ns": 5, "seq": 1, "q": np.ones(7), "flange_pose7": np.array(POSE),
+                               "ee_pose7": sc.ee_from_flange(POSE), "signature": b"s"})
         with pytest.raises(robot_state.StateUnavailable, match="gripper register"):
             reader.bound_state(10)
+        with pytest.raises(robot_state.StateUnavailable, match="no fresh robot state"):
+            reader.bound_state(10 + sc.STATE_TIMEOUT_NS)
     finally:
         reader.close()
 
@@ -968,3 +1030,77 @@ def test_realtime_replay_steps_on_the_newest_observation_when_behind(policies, r
     assert lp.counts["skipped_behind"] >= 4 and len(rows) + lp.counts["skipped_behind"] == 14
     ages = [r["client_ms"]["capture_to_command_ms"] for r in rows if r["status"] == "ok"]
     assert max(ages) < 400  # no backlog: every step is on a fresh observation
+
+
+def test_live_state_health_follows_the_collector_rules():
+    ee = sc.ee_from_flange(POSE)
+
+    def sample(t, sig=b"s", q=0.1):
+        return {"t_ns": t, "seq": t, "q": np.full(7, q), "ee_pose7": ee, "flange_pose7": np.array(POSE),
+                "signature": sig}
+
+    assert sc.state_blockers([], 0) == ["no fresh robot state"]
+    assert sc.state_blockers([sample(0)], 60_000_000) == ["no fresh robot state"]  # older than 50 ms
+    assert sc.state_blockers([sample(0, q=0.0)], 1) == ["robot state not initialized (all joints zero)"]
+    frozen = [sample(t) for t in range(0, 300_000_001, 10_000_000)]
+    assert sc.state_blockers(frozen, 300_000_000)[0].startswith("robot state frozen")
+    live = [sample(t, sig=bytes([t // 10_000_000])) for t in range(0, 300_000_001, 10_000_000)]
+    assert sc.state_blockers(live, 300_000_000) == []
+    bad = dict(sample(0), ee_pose7=np.array([0, 0, 0, 0, 0, 0, 2.0]))
+    assert "invalid" in sc.state_blockers([bad], 1)[0]
+
+
+def test_step_deadline_bounds_a_session_renewal(policies, monkeypatch):
+    """A session lost on the server during a step renews with a HELLO bounded by the STEP deadline, never by the
+    20 s first-selection wait (the step returns in time; the robot loop keeps control)."""
+    import time
+
+    pol = policies["reviwo"]
+    srv = PolicyServer({"reviwo-x": pol}, warmup_iterations=0, session_idle_timeout_s=0.3)
+    srv.start()
+    try:
+        client = PolicyClient("127.0.0.1", srv.port, policy_id="reviwo-x", hello_timeout_s=20.0, step_timeout_s=0.6,
+                              choices={"native_hw": {"cam_a": [48, 64]}, "camera_id": "cam_a"})
+        client.connect()
+        time.sleep(1.0)  # the server expires the idle session
+        real = pol.reset_session
+        monkeypatch.setattr(pol, "reset_session", lambda *a, **k: (time.sleep(3.0), real(*a, **k))[1])
+        rgb = np.zeros((48, 64, 3), np.uint8)
+        t0 = time.monotonic_ns()
+        for k in range(3):
+            client.add_frame_native("cam_a", k, t0 + k * PERIOD_NS, rgb, pose7=POSE, gripper_register=3.0)
+        start = time.monotonic()
+        r = client.step({"cam_a": 2}, "r", list(POSE), 3.0, pose_time_ns=t0 + 2 * PERIOD_NS - 1_000_000,
+                        gripper_time_ns=t0 + 2 * PERIOD_NS - 1_000_000, pad_run_start=True)
+        elapsed = time.monotonic() - start
+        assert not r.ok and r.code == "session_unknown" and elapsed < 1.5, (r.status, r.code, elapsed)
+        assert client.stats["renew_failed"] == 1
+        client.close()
+    finally:
+        srv.shutdown()
+
+
+def test_outputs_never_open_devices_or_follow_symlinks(tmp_path):
+    for bad in ("/dev/null", "/dev/ttyUSB0", "/proc/self/status", "/sys/kernel/x"):
+        with pytest.raises(safety.ExecutionRefused, match="not a regular file"):
+            safety.safe_output(bad)
+    link = tmp_path / "log.jsonl"
+    link.symlink_to("/dev/null")
+    with pytest.raises(safety.ExecutionRefused):
+        sinks.DryRunSink(link)
+    with pytest.raises(safety.ExecutionRefused):
+        cli.JsonlRows(link)
+    with pytest.raises(safety.ExecutionRefused):
+        cli.write_json(link, {"x": 1})
+    (tmp_path / "dir").mkdir()
+    with pytest.raises(safety.ExecutionRefused):
+        safety.safe_output(tmp_path / "dir")
+    ok = sinks.DryRunSink(tmp_path / "fine.jsonl")
+    ok.send({"a": 1})
+    ok.close()
+    assert json.loads((tmp_path / "fine.jsonl").read_text())["sent_to_robot"] is False
+    for port in (28400, 28401, 28402):
+        with pytest.raises(safety.ExecutionRefused, match="switch_controller channel"):
+            cli.welcome({"server": {"port": port}}, SimpleNamespace(host=None, port=None))
+        with pytest.raises(safety.ExecutionRefused):
+            C.client({"root": str(tmp_path), "server": {"port": port}}, "p", {}, name="t")

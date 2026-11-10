@@ -285,6 +285,17 @@ class PolicyClient:
             if exc.code != "session_busy":
                 raise
             self._taken(f"policy held by another client after this session was lost: {exc.detail}")
+        except (TimeoutError, OSError, ConnectionError, P.ProtocolError) as exc:
+            # renewal not done within the step deadline: drop the connection (a late SPEC must never be mistaken for
+            # an answer) and answer the in-flight requests; the next step reconnects (a still-held policy -> takeover)
+            self.stats["renew_failed"] += 1
+            if self.wire is not None:
+                self.wire.close()
+                self.wire = None
+            for seq in list(self._inflight):
+                self._results[seq] = StepResult("error", seq, self.session_id, "session_unknown",
+                                                f"session renewal did not complete in time ({exc})")
+            self._inflight.clear()
         finally:
             self._renewing = False
 

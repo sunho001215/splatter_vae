@@ -95,8 +95,34 @@ def state_sample(msg, t_recv_ns: int) -> dict:
     ee = [p.position.x, p.position.y, p.position.z, p.orientation.x, p.orientation.y, p.orientation.z,
           p.orientation.w]
     send = getattr(getattr(msg.metadata, "send_time", None), "seconds", None)
-    return {"t_ns": int(t_recv_ns), "seq": int(msg.sequence), "q": np.asarray(msg.q, np.float64),
-            "flange_pose7": flange_from_ee(ee), "t_send_unix": send}
+    q, dq, tau = (np.asarray(getattr(msg, k, ()), np.float64) for k in ("q", "dq", "tau_ext"))
+    return {"t_ns": int(t_recv_ns), "seq": int(msg.sequence), "q": q, "flange_pose7": flange_from_ee(ee),
+            "ee_pose7": np.asarray(ee, np.float64), "t_send_unix": send,
+            "signature": q.tobytes() + dq.tobytes() + tau.tobytes()}  # the collector's frozen-state signature
+
+
+STATE_TIMEOUT_NS = 50_000_000  # teleop_collector robot.state_timeout_s: motion stops on an older state
+FROZEN_STATE_NS = 250_000_000  # teleop_collector app.FROZEN_STATE_S: bit-identical q/dq/tau this long = stopped
+
+
+def state_blockers(samples: list, now_ns: int) -> list:
+    """The collector's ``_state_blockers`` (app.py): no fresh state, invalid state, frozen state."""
+    if not samples or int(now_ns) - samples[-1]["t_ns"] > STATE_TIMEOUT_NS:
+        return ["no fresh robot state"]
+    last = samples[-1]
+    if not (np.isfinite(last["ee_pose7"]).all() and np.isfinite(last["q"]).all()) or \
+            abs(float(np.linalg.norm(last["ee_pose7"][3:])) - 1.0) > 1e-3:
+        return ["invalid robot state (non-finite or bad quaternion)"]
+    if not np.any(last["q"]):
+        return ["robot state not initialized (all joints zero)"]
+    changed = last["t_ns"]
+    for s in reversed(samples[:-1]):
+        if s["signature"] != last["signature"]:
+            break
+        changed = s["t_ns"]
+    if last["t_ns"] - changed > FROZEN_STATE_NS:
+        return [f"robot state frozen for {(last['t_ns'] - changed) / 1e9:.2f} s (switch_controller stopped?)"]
+    return []
 
 
 def robot_action(robot_msg, flange_goal7, target_dt: float = TARGET_DT_S):
@@ -113,8 +139,8 @@ class LiveStateReader(RobotStateSource):
     publishes). Constructing it requires ``approved=True`` (the coordinator's explicit go-ahead in this directive).
     Gripper: no read-only source exists -> ``bound_state`` refuses until one is given (``gripper_source``).
     Sample time = receipt on this host (the recorder's ``robot/t`` convention); a non-increasing ``sequence`` is
-    dropped. A frozen publisher (switch_controller STOP republishes one state with new sequence numbers) is NOT
-    detectable from the stream: a future execute mode must also check that q/dq evolve."""
+    dropped; the collector's health rules refuse a binding (``state_blockers``): state older than 50 ms, invalid, or
+    frozen (q/dq/tau bit-identical > 0.25 s: switch_controller republishes its last state when stopped)."""
 
     kind = "live_state_reader"
     label = "live switch_controller RobotState (read-only SUB)"
@@ -163,6 +189,9 @@ class LiveStateReader(RobotStateSource):
         rows = [s for s in list(self.samples) if s["t_ns"] <= t_obs_ns]
         if not rows:
             raise StateUnavailable("no robot state at or before the observation time")
+        blockers = state_blockers(rows, t_obs_ns)
+        if blockers:
+            raise StateUnavailable("; ".join(blockers))
         if self.gripper is None:
             raise StateUnavailable("gripper register: no read-only source (the teleop collector owns the Robotiq "
                                    "serial port and publishes no gripper state)")

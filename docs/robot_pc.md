@@ -80,6 +80,10 @@ venv/bin/python -I src/scripts/robot_pc/dry_run.py --policy reviwo-drawer-open-s
 venv/bin/python -I src/scripts/robot_pc/execute.py --execute             # future mode: REFUSED (exit 3)
 ```
 
+`scripts/policy_replay_demo.py` (the network demo with the torch DeployPolicy direct-equality check, 306 lines) stays
+as is: it is not small and its direct-equality path does not belong on the robot PC; `scripts/robot_pc/replay.py` is
+the robot-PC replay.
+
 Development host only: `scripts/robot_pc/m5_asset.py export|validate` (M5 surface asset, validation),
 `scripts/robot_pc/make_bundle.py` (the tarball) and the ONE-command robot-PC benchmark over the `robotpc` ssh master
 (GPU snapshot of the 5090 before/after, LOCAL and robot-PC PING, one policy per condition x task, 15 Hz paced + max,
@@ -171,10 +175,19 @@ RobotActions for a caller-supplied publisher, but is refused (`EXECUTION_PERMITT
 2. **Validation** (`configs/robot_pc/robot_pc.yaml` limits): finite, |action_norm| <= 1, unit quaternion,
    |goal - measured| <= 0.04 m / 20 deg, goal inside the task's workspace box (recorded flange range +- 5 cm), closure in
    [0, 1] and register = round(3 + 227 c), observation age <= 200 ms.
-3. **Local high-rate loop** (`executor.py`): 500 Hz setpoints; the goal is clamped to the lead envelope around the
-   CURRENT measured pose and the setpoint moves toward it at <= 0.3 m/s, 1.5 rad/s x the ELAPSED tick time (never a
-   jump); a command is replaced only by one of a newer observation; after its expiry the loop holds at the measured
-   pose and applies nothing of the expired command. Missing vs the collector: its acceleration limits (future work).
+3. **Local high-rate loop** (`executor.py`) = the collector's command shaping, ported from its code (read-only):
+   `RateLimiter` (teleop.py:154-190: speed <= max_speed and <= the braking speed sqrt(2 a d), velocity change <= a dt)
+   with 0.3 m/s (site.yaml teleop.max_linear_speed), 1.5 rad/s, 4 m/s^2 (MAX_LINEAR_ACCEL, teleop.py:39), 15 rad/s^2
+   (MAX_ANGULAR_ACCEL, teleop.py:40); goal clamped to 2 x lead around the measured pose, limiter output to 1 x lead
+   (0.04 m / 20 deg) with `constrain` (TeleopMapper.step, teleop.py:254-275; clamp_pose_lead :193-205); 500 Hz
+   (teleop.rate_hz), elapsed-time steps. Workspace: the collector has NO workspace limits (README "Safety behaviour":
+   "There are no workspace limits"); switch_controller rejects targets > 0.2 m / 0.5 rad from the measured pose
+   (robot.py docstring), so the configured per-step limits must stay below that (enforced) and the task workspace
+   boxes of section 2 are this package's own addition. State health = the collector's `state_ok` (app.py:243-275):
+   stop when the measured state is older than `state_timeout_s` 0.05 s or q/dq/tau_ext are bit-identical for
+   > 0.25 s (FROZEN_STATE_S, app.py:54: switch_controller republishes its last state when stopped); the stop is
+   latched until `rearm()` (+ a new command). Expired command: hold at the measured pose, nothing of it applied.
+   The read-only state reader refuses a binding under the same rules (`switch_controller.state_blockers`).
 4. **Stale / timeout / disconnect / reset**: `PolicyClient` (reconnect + resume, re-send with the original seq,
    `session_unknown` renewal, terminal `session_taken_over`); a step without a valid action produces no command.
 

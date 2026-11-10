@@ -41,12 +41,16 @@ limits:                                   # robot-side action validation (ops/ro
   gripper_closure_min: 0.0
   gripper_closure_max: 1.0
   max_action_age_ms: 200.0                # observation (capture) age bound for validation and execution
-executor:                                 # local high-rate loop design (ops/robot_pc/executor.py); teleop config values
-  rate_hz: 500
-  max_linear_speed: 0.3
-  max_angular_speed: 1.5
-  lead_m: 0.04
-  lead_rot_deg: 20.0
+executor:                                 # local high-rate loop (ops/robot_pc/executor.py) = the collector's shaping
+  rate_hz: 500                            # teleop.rate_hz
+  max_linear_speed: 0.3                   # site.yaml teleop.max_linear_speed
+  max_angular_speed: 1.5                  # teleop.max_angular_speed
+  max_linear_accel: 4.0                   # teleop.py MAX_LINEAR_ACCEL
+  max_angular_accel: 15.0                 # teleop.py MAX_ANGULAR_ACCEL
+  lead_m: 0.04                            # teleop.max_position_lead
+  lead_rot_deg: 20.0                      # teleop.max_rotation_lead_deg
+  state_timeout_s: 0.05                   # robot.state_timeout_s: stop on an older measured state
+  frozen_state_s: 0.25                    # app.py FROZEN_STATE_S: stop on a bit-identical q/dq/tau stream
 execution:
   armed: false                            # MUST stay false: robot operation is outside Directive I
   controller_binding: message-format-only # RobotAction format from switch_controller's code; no command transport

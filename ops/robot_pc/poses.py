@@ -51,3 +51,41 @@ def toward(start, goal, max_m: float, max_rad: float) -> np.ndarray:
     a = quat_angle(s[3:], g[3:])
     out[3:] = slerp(s[3:], g[3:], max_rad / a) if a > max_rad else g[3:] / np.linalg.norm(g[3:])
     return out
+
+
+def quat_mul(a, b) -> np.ndarray:
+    """Hamilton product of xyzw quaternions (a then b applied on the right: R(a) R(b))."""
+    ax, ay, az, aw = np.asarray(a, np.float64)
+    bx, by, bz, bw = np.asarray(b, np.float64)
+    return np.array([aw * bx + ax * bw + ay * bz - az * by, aw * by - ax * bz + ay * bw + az * bx,
+                     aw * bz + ax * by - ay * bx + az * bw, aw * bw - ax * bx - ay * by - az * bz])
+
+
+def quat_to_rotvec(q) -> np.ndarray:
+    q = np.asarray(q, np.float64) / np.linalg.norm(q)
+    if q[3] < 0:
+        q = -q
+    s = float(np.linalg.norm(q[:3]))
+    if s < 1e-15:
+        return 2.0 * q[:3]
+    return q[:3] / s * 2.0 * np.arctan2(s, q[3])
+
+
+def rotvec_to_quat(r) -> np.ndarray:
+    r = np.asarray(r, np.float64)
+    a = float(np.linalg.norm(r))
+    if a < 1e-15:
+        return np.array([*(r / 2.0), 1.0]) / np.linalg.norm([*(r / 2.0), 1.0])
+    return np.concatenate([np.sin(a / 2) * r / a, [np.cos(a / 2)]])
+
+
+def rotvec_between(q_from, q_to) -> np.ndarray:
+    """Base-frame rotation vector r with R(q_to) = exp(r) R(q_from) (the collector's mat_to_rotvec(R_goal R^T))."""
+    qf = np.asarray(q_from, np.float64) / np.linalg.norm(q_from)
+    return quat_to_rotvec(quat_mul(np.asarray(q_to, np.float64), np.array([-qf[0], -qf[1], -qf[2], qf[3]])))
+
+
+def rotate_left(q, r) -> np.ndarray:
+    """exp(r) R(q) as a unit quaternion."""
+    out = quat_mul(rotvec_to_quat(r), q)
+    return out / np.linalg.norm(out)

@@ -42,6 +42,8 @@ def main(argv=None) -> int:
     ap.add_argument("--host", default=None)
     ap.add_argument("--port", type=int, default=None)
     ap.add_argument("--out", type=Path, default=None)
+    ap.add_argument("--candidate", action="store_true",
+                    help="check the release this script runs from BEFORE switching src/assets to it (no active check)")
     args = ap.parse_args(argv)
     root = Path(args.root).expanduser()
     checks, fail = {}, []
@@ -81,7 +83,8 @@ def main(argv=None) -> int:
     from ops.robot_pc import config as C
 
     cfg = cli.load_config(argparse.Namespace(config=args.config, root=str(root)))
-    bundle = root / "BUNDLE.json"
+    here = Path(__file__).resolve().parents[3]  # releases/<name>/src/scripts/robot_pc/selfcheck.py -> releases/<name>
+    bundle = here / "BUNDLE.json" if args.candidate else root / "BUNDLE.json"
     if bundle.is_file():
         manifest = json.loads(bundle.read_text())
         rel = Path(manifest["name"])
@@ -90,16 +93,20 @@ def main(argv=None) -> int:
         missing = [p for p in manifest["files"] if not (root / "releases" / rel / p).is_file()]
         check("bundle_files_sha256", not bad and not missing, {"mismatch": bad[:5], "missing": missing[:5],
                                                               "files": len(manifest["files"])})
-        active = {k: (root / k).resolve() == (root / "releases" / rel / k).resolve() for k in ("src", "assets")}
-        check("active_release", all(active.values()) and Path(__file__).resolve().is_relative_to(
-            (root / "releases" / rel).resolve()), {"release": str(rel), **active})
+        if args.candidate:
+            check("candidate_release", here == (root / "releases" / rel).resolve(), {"release": str(rel)})
+        else:
+            active = {k: (root / k).resolve() == (root / "releases" / rel / k).resolve() for k in ("src", "assets")}
+            check("active_release", all(active.values()) and Path(__file__).resolve().is_relative_to(
+                (root / "releases" / rel).resolve()), {"release": str(rel), **active})
     else:
         checks["bundle_files_sha256"] = {"ok": True, "detail": "no BUNDLE.json (git checkout): skipped"}
     a = cfg.get("assets") or {}
+    acfg = {**cfg, "root": str(here)} if args.candidate else cfg  # assets of the release under test
     try:
         from s4d.rwlearn.deploy.m5_live import SurfaceMotion
 
-        motion = SurfaceMotion(C.path(cfg, a["m5_surface"]), C.path(cfg, a["urdf"]))
+        motion = SurfaceMotion(C.path(acfg, a["m5_surface"]), C.path(acfg, a["urdf"]))
         st = cfg["static_latency_state"]
         pts = motion.points((np.asarray(st["q7"]), st["gripper_register"]))
         check("m5_helper", pts.shape == (motion.header["points"], 3) and np.isfinite(pts).all(),
@@ -111,7 +118,7 @@ def main(argv=None) -> int:
             from s4d.rwlearn.deploy.realsense import load_rig_session
 
             cams = (cfg.get("cameras") or {}).get("serials", [])
-            out = load_rig_session(C.path(cfg, entry["rig_document"]), cams, {c: np.eye(3) for c in cams})
+            out = load_rig_session(C.path(acfg, entry["rig_document"]), cams, {c: np.eye(3) for c in cams})
             check(f"rig_{task}", True, {c: v["factor"] for c, v in out["native_depth_correction"].items()})
         except Exception as exc:  # noqa: BLE001 - reported
             check(f"rig_{task}", False, f"{type(exc).__name__}: {exc}")
