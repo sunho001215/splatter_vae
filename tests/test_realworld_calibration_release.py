@@ -806,11 +806,11 @@ def test_rotation_from_rigid_recovers_the_camera_rotation_of_a_rigid_image_step(
     assert rotation_from_rigid([0.2, 0.0, 0.0], K_COLOR)[1] > 0
 
 
-def _period_fixture(step_cam=CAMS[2], **over):
+def _period_fixture(step_cam=CAMS[2], task="synthetic", **over):
     from s4d.realworld.calib.loma.publish import PERIOD_FORMAT, rotation_from_rigid
 
-    eps = [f"t-{k:06d}" for k in range(6)]
-    doc = _release_doc(list(CAMS), eps[0])
+    eps = [f"{task}-{k:06d}" for k in range(6)]
+    doc = _release_doc(list(CAMS), eps[0], task=task)
     doc["episodes"] = eps
     doc["fixedness_evidence"] = {c: {e: {"registration": "fixed", "epipolar": "ok"} for e in eps} for c in CAMS}
     doc["fixedness_exception"]["eligible_cameras"] = [CAMS[2]]
@@ -818,6 +818,7 @@ def _period_fixture(step_cam=CAMS[2], **over):
     ev = {"format": PERIOD_FORMAT, "task": doc["task"], "base_period": "S2", "periods": {"S1": eps[:2], "S2": eps[2:]},
           "cameras": {c: {"K": K_COLOR, "within": {"event": False, "reasons": []},
                           "period_steps": {"S1": {"class": "step" if c == step_cam else "no_step", "rigid": rigid,
+                                                  "D_rigid": 0.15, "p": 0.0005, "A_agrees": True,
                                                   "omega_deg": np.degrees(rotation_from_rigid(rigid, K_COLOR)).tolist(),
                                                   "scale_flag": False}}} for c in CAMS},
           "decision": {"split_periods": True, "user_decision_needed": [],
@@ -841,6 +842,7 @@ def test_split_periods_writes_one_document_per_period(tmp_path):
                          reference="COV addendum", source_sha256="c" * 64)
     s1, s2 = docs["S1"], docs["S2"]
     assert s1["name"] == "rel-test-S1" and s1["episodes"] == eps[:2] and s2["episodes"] == eps[2:]
+    assert s1["task"] == doc["task"]
     assert all(set(s1["fixedness_evidence"][c]) == set(eps[:2]) for c in CAMS)
     rot, cen = pose_distance(np.asarray(s1["cameras"][CAMS[2]]["T_cam_base"]), np.eye(4))
     assert rot == pytest.approx(s1["cameras"][CAMS[2]]["period_pose"]["rot_deg"]) and 0.005 < rot < 0.035 and cen < 1e-9
@@ -878,8 +880,11 @@ def test_split_periods_writes_one_document_per_period(tmp_path):
     ({f"cameras.{CAMS[2]}.period_steps.S1.rigid": [0.5, 0.0, 0.0],
       f"cameras.{CAMS[2]}.period_steps.S1.omega_deg": [0.0, float(np.degrees(0.5 / 605.6)), 0.0]}, [CAMS[2]],
      "does not reproduce"),
-    ({"periods": {"S1": ["t-000000"], "S2": ["t-000002", "t-000003", "t-000004", "t-000005"]}}, [CAMS[2]], "partition"),
+    ({"periods": {"S1": ["synthetic-000000"], "S2": [f"synthetic-{k:06d}" for k in range(2, 6)]}}, [CAMS[2]],
+     "partition"),
     ({"format": "other"}, [CAMS[2]], "not a rwx-period-steps/1"),
+    ({f"cameras.{CAMS[2]}.period_steps.S1.p": 1.0}, [CAMS[2]], "without its evidence"),
+    ({f"cameras.{CAMS[2]}.period_steps.S1.A_agrees": False}, [CAMS[2]], "without its evidence"),
 ])
 def test_split_periods_refuses_whatever_the_analysis_does_not_support(over, cameras, reason):
     from s4d.realworld.calib.loma.publish import split_periods
@@ -926,9 +931,7 @@ def test_period_documents_give_each_episode_the_record_of_its_period(tmp_path):
     from s4d.realworld.calib.release import plan
     from s4d.realworld.calib.rig import load_rig, publish_rig
 
-    doc, ev, eps = _period_fixture()
-    doc["task"] = "covering"
-    ev["task"] = "covering"
+    doc, ev, eps = _period_fixture(task="covering")
     docs = split_periods(doc, ev, cameras=[CAMS[2]], evidence=[("e", "b" * 64)], decided_by="c", reference="r",
                          source_sha256="c" * 64)
     arrays = {f"{c.replace('/', '__')}__{k}": np.zeros((2, 2)) for c in CAMS for k in ("grey", "dynamic")}
@@ -980,6 +983,17 @@ def test_period_documents_give_each_episode_the_record_of_its_period(tmp_path):
     publish_rig(tmp_path / "over.json", over, arrays)
     bad = plan(manifest, {"covering": [str(paths["S1"]), str(tmp_path / "over.json")]}, code_commit="c")
     assert any("two period documents" in x for x in bad["tasks"]["covering"]["problems"])
+    # a recording whose calibrate outputs are another episode's (here: S1 recording -> an S2 episode's outputs)
+    swapped = json.loads(json.dumps(manifest))
+    swapped["episodes"]["covering/episode_000000.h5"]["preprocessing"]["stages"]["calibrate"]["outputs"] = \
+        manifest["episodes"]["covering/episode_000003.h5"]["preprocessing"]["stages"]["calibrate"]["outputs"]
+    bad = plan(swapped, {"covering": both}, code_commit="c")["tasks"]["covering"]
+    assert bad["refused"] and any("are not episode covering-000000" in x for x in bad["problems"])
+    # the periods must cover exactly the valid recordings: one recording more in the manifest refuses
+    extra = json.loads(json.dumps(manifest))
+    extra["episodes"]["covering/episode_000009.h5"] = dict(extra["episodes"]["covering/episode_000005.h5"])
+    bad = plan(extra, {"covering": both}, code_commit="c")["tasks"]["covering"]
+    assert any("do not partition the valid episodes" in x for x in bad["problems"])
 
 
 def test_period_records_reverify_the_period_poses_and_one_split_run(tmp_path):
@@ -1003,3 +1017,10 @@ def test_period_records_reverify_the_period_poses_and_one_split_run(tmp_path):
     nop = json.loads(json.dumps(docs["S2"]))
     nop["period"].pop("periods")
     assert period_problems([pair[0], (nop, "e" * 64)], "t")  # no TypeError on a malformed block
+    nosrc = [json.loads(json.dumps(d)) for d in (docs["S1"], docs["S2"])]
+    for d in nosrc:
+        d["period"]["derived_from"] = {}
+    assert any("no source document" in x for x in period_problems([(d, "f" * 64) for d in nosrc], "t"))
+    wide = json.loads(json.dumps(docs["S1"]))
+    wide["episodes"] = wide["episodes"] + ["synthetic-000005"]
+    assert any("differ from its period" in x for x in period_problems([(wide, "a" * 64), pair[1]], "t"))

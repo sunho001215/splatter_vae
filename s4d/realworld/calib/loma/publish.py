@@ -71,6 +71,7 @@ ROBOT_MODEL = {"gripper_map": GRIPPER_MAP_2F85, "surface": "visual"}
 EVIDENCE_FIELDS = ("path", "sha256")
 PERIOD_FORMAT = "rwx-period-steps/1"
 MAX_PERIOD_ROT_DEG = 0.035  # 1/10 of the 0.35 deg rig tolerance (G1 spread, G6 perturbation); larger -> user decision
+PERIOD_MIN_PX, PERIOD_P_MAX = 0.10, 0.001  # a 'step' of the analysis: D_rigid >= FIXREG's A, permutation p < 0.001
 # FIXREG's evaluation grid (calib-loma/fixreg PREREG: 10 x 7 points spanning x 32..608, y 32..448 px)
 PERIOD_GRID = np.array([(x, y) for y in np.linspace(32.0, 448.0, 7) for x in np.linspace(32.0, 608.0, 10)])
 
@@ -359,6 +360,9 @@ def period_steps(doc: dict, ev: dict) -> tuple[dict, str, dict, list]:
                 if s.get("class") != "no_step" or s.get("scale_flag") is not False:
                     problems.append(f"{cam} {p}: period step {s.get('class')!r}, scale flag {s.get('scale_flag')!r}")
                 continue
+            if not (s.get("D_rigid", 0) >= PERIOD_MIN_PX and s.get("p", 1) < PERIOD_P_MAX and s.get("A_agrees") is True):
+                raise SystemExit(f"{cam} {p}: class 'step' without its evidence (D {s.get('D_rigid')}, p {s.get('p')}, "
+                                 f"A agrees {s.get('A_agrees')})")
             omega = rotation_from_rigid(s["rigid"], c["K"])
             if not np.allclose(np.degrees(omega), s.get("omega_deg"), rtol=0, atol=1e-9):
                 raise SystemExit(f"{cam} {p}: recorded omega {s.get('omega_deg')} does not reproduce")

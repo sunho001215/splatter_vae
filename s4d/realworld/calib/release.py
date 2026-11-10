@@ -35,6 +35,7 @@ import argparse
 import hashlib
 import importlib.util
 import json
+import re
 import subprocess
 from pathlib import Path
 
@@ -183,6 +184,14 @@ def period_problems(docs: list, task: str) -> list:
     if not all(isinstance(p, dict) and p.get("name") and p.get("episodes") for p in periods):
         return [f"{task}: several documents but not all are recording-period documents"]
     problems = []
+    src = periods[0].get("derived_from") or {}
+    if not (src.get("name") and re.fullmatch(r"[0-9a-f]{64}", str(src.get("sha256", "")))):
+        problems.append(f"{task}: the period documents name no source document (derived_from name + sha256)")
+    for doc, _ in docs:
+        own = set(doc["period"]["episodes"])
+        if sorted(doc.get("episodes") or []) != sorted(own) or any(
+                not set(rows) <= own for rows in (doc.get("fixedness_evidence") or {}).values()):
+            problems.append(f"{task}: {doc.get('name')} episodes / G5b evidence differ from its period")
     common = {json.dumps({k: v for k, v in p.items() if k not in ("name", "episodes")}, sort_keys=True)
               for p in periods}
     if len(common) != 1:
@@ -215,6 +224,12 @@ def period_problems(docs: list, task: str) -> list:
     return problems
 
 
+def manifest_episode_id(task: str, key: str, entry: dict) -> str:
+    """The episode id the preprocessing dispatcher gives a manifest recording (rwprep_dispatch.episode_id)."""
+    name = Path(entry.get("filename") or key).name
+    return f"{task}-{name.removeprefix('episode_').removesuffix('.h5')}"
+
+
 def plan(manifest: dict, rigs: dict, *, path_map=(), code_commit: str | None = None) -> dict:
     """{"tasks": {task: {"refused", "problems", "records": {key: record}}}} - records only for tasks without any
     problem. ``rigs``: {task: path of the release document, or a list of a task's recording-period documents}."""
@@ -236,11 +251,20 @@ def plan(manifest: dict, rigs: dict, *, path_map=(), code_commit: str | None = N
         entries = _valid_entries(manifest, task)
         if not entries:
             problems.append("no valid manifest episodes")
+        if len(docs) > 1 and not problems:  # the periods partition exactly the task's valid recordings
+            want = {manifest_episode_id(task, k, e) for k, e in entries.items()}
+            have = {e for d, _ in docs for e in d["period"]["episodes"]}
+            if have != want:
+                problems.append(f"{task}: the periods do not partition the valid episodes (missing "
+                                f"{sorted(want - have)[:5]}, extra {sorted(have - want)[:5]})")
         for key, entry in entries.items():
             doc, sha = docs[0]
-            if len(docs) > 1:  # the episode's period document (the calibrate output dir is named by the episode id)
+            if len(docs) > 1:  # the period document of THIS recording, and its calibrate output must be its own
+                eid = manifest_episode_id(task, key, entry)
                 outputs = (((entry.get("preprocessing") or {}).get("stages") or {}).get("calibrate") or {}).get("outputs")
-                eid = Path(str(outputs)).name if outputs else None
+                if not outputs or Path(str(outputs)).name != eid:
+                    problems.append(f"{key}: calibrate outputs {outputs!r} are not episode {eid}")
+                    continue
                 mine = [(d, s) for d, s in docs if eid in d["period"]["episodes"]]
                 if len(mine) != 1:
                     problems.append(f"{key}: episode {eid!r} is in {len(mine)} period documents (need exactly 1)")

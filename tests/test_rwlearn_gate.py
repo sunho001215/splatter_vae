@@ -685,3 +685,14 @@ def test_the_versioned_covering_amendment_record():
     assert rec["document"]["path"].endswith("AMEND-covering-98.md")
     indices = sorted(int(k[-9:-3]) for k in rec["episodes"])
     assert indices[0] == 0 and indices[-1] == 106 and len(set(indices)) == 98
+
+
+def test_a_supplied_amendment_map_is_validated_like_the_versioned_records():
+    bad = amendment()
+    bad["covering"]["record"]["target"] = 0
+    rep = gate.evaluate(amended_manifest(), ["covering"], amendments=bad)
+    assert not rep["passed"] and "gate amendment" in rep["tasks"]["covering"]["problems"][0]
+    other = amendment(task="pick-and-place")
+    rep = gate.evaluate(amended_manifest(), ["covering"], amendments={"covering": other["pick-and-place"]})
+    assert not rep["passed"] and "record task" in rep["tasks"]["covering"]["problems"][0]
+    assert not gate.task_passed(rep, "covering", "e2e_cnn")

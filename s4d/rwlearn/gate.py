@@ -293,6 +293,18 @@ def evaluate(manifest: dict, tasks, *, required_stages=REQUIRED_STAGES, target: 
         counts = (manifest.get("counts") or {}).get(task) or {}
         amend = amendments.get(task)
         rec = amend["record"] if amend else None
+        why = (amendment_problem(rec) or (None if rec["task"] == task else f"record task {rec['task']!r}")) if rec \
+            else None
+        if why:  # a supplied map is validated like the versioned records: a malformed one releases nothing
+            report["tasks"][task] = {"passed": False, "target": None, "amendment": None, "valid_and_preprocessed": 0,
+                                     "excluded": [], "problems": [f"gate amendment: {why}"], "problem_count": 1,
+                                     "episodes": [], "episode_identities": {}, "store_episodes": []}
+            report["families"][task] = {f: {"passed": False, "failed_count": 0, "failed_episodes": []}
+                                        for f in QA_FAMILIES}
+            report["calibration_hold"][task] = {"passed": False, "validated": 0, "problems": [], "problem_count": 0,
+                                                "episodes": {}}
+            all_ok = geo_ok = False
+            continue
         task_target = rec["target"] if rec else target
         mine = {k: e for k, e in episodes.items() if e.get("task") == task}
         if rec is None:
