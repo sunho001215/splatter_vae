@@ -23,7 +23,7 @@ import sys
 import time
 from pathlib import Path
 
-from ops.datasets import catalog, health, storage
+from ops.datasets import archives, catalog, health, storage
 from ops.datasets.runner import (
     DEFAULT_CONFIG,
     Runner,
@@ -72,7 +72,7 @@ def storage_report(root: Path, plan: dict, config: dict, state: dict | None = No
     staged = {"pw_depth": depth_staged_credit(root, plan["items"], stream)}
     published = stream.get("status") == "published"
     pool_max = health.pool_bounds({**health.DEFAULTS, **config.get("controller", {})})[1]
-    members = sum(len(m) for m in plan["flow_members"].values())
+    members = sum(len(archives.split_members(m)[0]) for m in plan["flow_members"].values())
     tables = {name: storage.peak_table(plan["items"], names, usage, margin, state_items, on_disk, staged, published,
                                        pool_max, members, selection)
               for name, names in (("enabled", groups), ("all_groups", catalog.GROUPS))}

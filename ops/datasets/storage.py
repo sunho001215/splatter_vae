@@ -45,7 +45,8 @@ def selected_fraction(item: dict, selection: dict | None) -> float:
     shard = item["archive"].get("shard")
     if shard is not None:
         members = selection["per_shard"].get(shard, 0)
-        return members / max(1, item["archive"]["members"])
+        total = selection.get("per_shard_total", {}).get(shard, item["archive"]["members"])  # episodes only
+        return members / max(1, total)
     return selection["fraction"]
 
 
