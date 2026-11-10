@@ -86,8 +86,10 @@ the robot-PC replay.
 
 Development host only: `scripts/robot_pc/m5_asset.py export|validate` (M5 surface asset, validation),
 `scripts/robot_pc/make_bundle.py` (the tarball) and the ONE-command robot-PC benchmark over the `robotpc` ssh master
-(GPU snapshot of the 5090 before/after, LOCAL and robot-PC PING, one policy per condition x task, 15 Hz paced + max,
-warm-up discarded; contended / uncontended results in separate directories):
+(REPLAY ONLY, no camera opened; GPU snapshot of the 5090 before/after, LOCAL and robot-PC PING, one policy per
+condition x task (6 today), 150 frames 15 Hz paced + max, 10 warm-up steps discarded, about 3-5 min; refuses before
+starting and before every policy if the robot PC runs a recorder / teleop / switch_controller process, holds a camera
+or has the collector IPC; contended / uncontended results in separate directories):
 
 ```bash
 cd /home/ws/ws/splatter4d/.worktrees/rwdeploy3   # or the merged main checkout

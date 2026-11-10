@@ -6,8 +6,10 @@ validation -> MockSink).
     .venv/bin/python -I scripts/robot_pc/route_bench.py --label contended      # or: --label uncontended
     # -> /home/ws/ws/realworld-ops/serving/rob-bench/<label>-<YYYYmmdd-HHMMSS>/{summary.json,table.md,<policy>.json}
 
-Per policy (default: one per condition x task that the server offers as deployable): 15 Hz paced + max-rate replay
-of a recording ON the robot PC (warm-up steps discarded), PING round trips robot PC -> server, and once a LOCAL ->
+REPLAY ONLY (no camera is opened): per policy (default: one per condition x task, deployable or restricted; 6 today)
+15 Hz paced + max-rate replay of 150 frames of a recording ON the robot PC (10 warm-up steps discarded), about 3-5 min
+in total. Refuses before starting and before every policy when the robot PC runs a recorder / teleop /
+switch_controller process, holds a camera device or has the collector IPC (``devices.require_free`` there), PING round trips robot PC -> server, and once a LOCAL ->
 server PING set (the difference estimates the robot PC <-> LOCAL relay hop). ``--label`` must say whether the GPU was
 shared: the snapshot lists every process on the GPU (foreign = not the policy server) so the label can be checked;
 contended and uncontended results always go to separate directories.
@@ -42,6 +44,17 @@ def ssh(host: str, command: str, timeout: float) -> str:
     if r.returncode != 0:
         raise RuntimeError(f"ssh {host} failed ({r.returncode}): {r.stderr.strip()[-500:]}")
     return r.stdout
+
+
+def robot_pc_idle() -> None:
+    """Refuse (SystemExit) unless the robot PC runs no recorder / teleop / switch_controller process, holds no camera
+    device and has no collector IPC (``ops.robot_pc.devices.require_free`` on the robot PC, read-only /proc scan):
+    the benchmark must never load the robot control machine while it controls or records."""
+    cmd = (f"cd {ROBOT_ROOT} && venv/bin/python -I -c 'import sys; sys.path.insert(0, \"src\"); "
+           "from ops.robot_pc import devices; devices.require_free(); print(\"IDLE\")'")
+    r = subprocess.run([*SSH, "robotpc", cmd], capture_output=True, text=True, timeout=60)
+    if r.returncode != 0 or "IDLE" not in r.stdout:
+        raise SystemExit(f"REFUSED: the robot PC is busy (recording / teleop / devices): {r.stderr.strip()[-600:]}")
 
 
 def gpu_snapshot() -> dict:
@@ -113,6 +126,7 @@ def main(argv=None) -> int:
     out.mkdir(parents=True, exist_ok=False)
     if "OK" not in ssh("robotpc", f"test -s {ROBOT_ROOT}/secrets/token && echo OK || echo MISSING", 30):
         raise SystemExit(f"REFUSED: {ROBOT_ROOT}/secrets/token is missing on the robot PC (user action)")
+    robot_pc_idle()
     from ops.robot_pc import cli
     from ops.robot_pc import config as C
 
@@ -123,6 +137,7 @@ def main(argv=None) -> int:
     first = welcome["policies"][policies[0]]["info"]
     summary["local_ping_ms"] = local_pings(policies[0], first["task"], args.pings)
     for pid in policies:
+        robot_pc_idle()  # re-checked before every policy: stop as soon as a recording / teleop session starts
         task = (welcome["policies"][pid].get("info") or {}).get("task")
         cmd = (f"cd {ROBOT_ROOT} && nice -n 10 venv/bin/python -I src/scripts/robot_pc/bench.py "
                f"--episode {shlex.quote(EPISODES[task])} --policy {shlex.quote(pid)} --task {shlex.quote(task)} "

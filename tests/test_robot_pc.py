@@ -1104,3 +1104,22 @@ def test_outputs_never_open_devices_or_follow_symlinks(tmp_path):
             cli.welcome({"server": {"port": port}}, SimpleNamespace(host=None, port=None))
         with pytest.raises(safety.ExecutionRefused):
             C.client({"root": str(tmp_path), "server": {"port": port}}, "p", {}, name="t")
+
+
+def test_route_bench_selects_policies_and_refuses_a_busy_robot_pc(monkeypatch):
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("rob_route_bench", REPO / "scripts/robot_pc/route_bench.py")
+    rb = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(rb)
+    offered = {f"{c}-{t}-s{s}": {"info": {"condition": c, "task": t, "seed": s, "status": st}}
+               for c, st in (("reviwo", "deployable"), ("dynamo", "restricted"), ("mvp3d_single", "quarantined"))
+               for t in ("drawer-open", "mug-hanging") for s in (1, 0)}
+    offered["reviwo-drawer-open"] = {"info": {"condition": "reviwo", "task": "drawer-open", "seed": 0,
+                                              "status": "deployable", "alias_of": "reviwo-drawer-open-s0"}}
+    assert rb.default_policies(offered) == ["dynamo-drawer-open-s0", "dynamo-mug-hanging-s0", "reviwo-drawer-open-s0",
+                                            "reviwo-mug-hanging-s0"]
+    busy = SimpleNamespace(returncode=1, stdout="", stderr="DevicesBusy: pid 7 looks like a recorder/teleop process")
+    monkeypatch.setattr(rb.subprocess, "run", lambda *a, **k: busy)
+    with pytest.raises(SystemExit, match="busy"):
+        rb.robot_pc_idle()
