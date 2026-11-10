@@ -319,12 +319,14 @@ def test_usage_restrictions_fail_closed_and_validator_rules():
     validate_catalog(cat())
     with pytest.raises(ValueError, match="states its reasons"):
         validate_catalog(cat(status="restricted", reasons=[]))
-    with pytest.raises(ValueError, match="execution-eligible"):
-        validate_catalog(cat(execution_eligible=True))  # never without an explicit execution usage
-    with pytest.raises(ValueError, match="execution-eligible"):
-        validate_catalog(cat(status="restricted", reasons=["x"], usage="execution", execution_eligible=True))
-    with pytest.raises(ValueError, match="dry-run/replay only"):
-        validate_catalog(cat(status="restricted", reasons=["x"], usage="execution"))
+    for over in ({"execution_eligible": True}, {"usage": "execution", "execution_eligible": True},
+                 {"status": "restricted", "reasons": ["x"], "execution_eligible": True}):
+        with pytest.raises(ValueError):  # Directive I: never execution-eligible, whatever the labels say
+            validate_catalog(cat(**over))
+    with pytest.raises(ValueError, match="usage"):
+        validate_catalog(cat(usage="execution"))
+    with pytest.raises(ValueError, match="non-finite"):  # would break the JSON wire format for every client
+        validate_catalog(cat(criteria={"e2_visual_sensitivity": {"d_vis_over_noise": float("inf")}}))
     with pytest.raises(ValueError, match="usage"):
         validate_catalog(cat(usage="anything"))
     with pytest.raises(ValueError, match="true or false"):
@@ -407,7 +409,7 @@ def _stage_env(tmp_path, monkeypatch, runs=("r-fql-e2e_cnn-t-s0",), status="depl
     crit.write_text("criteria")
     inv = tmp_path / "inv.json"
     inv.write_text(json.dumps({"criteria_sha256": S.sha256_file(crit), "fql": rows}))
-    monkeypatch.setattr(S, "stage_files", lambda host, files, **k: {r: "0" * 64 for r in files})
+    monkeypatch.setattr(S, "stage_files", lambda host, files, **k: {r: S.sha256_file(p) for r, p in files.items()})
     monkeypatch.setattr(S, "local_input_spec", lambda *a: None)
     args = argparse.Namespace(inventory=inv, criteria=crit, runs=list(runs), sidecar_dir=sc, ssh="irsl", bwlimit="1m",
                               lock_file=tmp_path / "stage.lock", execute=True, read_host=False,
@@ -432,6 +434,7 @@ def test_stage_publishes_idempotently_repairs_partial_publication_and_withdraws(
     assert S.cmd_stage(args, hook=True) == 3
     entry = json.loads(host.copies["host"])["policies"]["e2e_cnn-t-s0"]
     assert entry["status"] == "quarantined" and entry["usage"] == "none" and "f: q_mean runaway" in entry["reasons"]
+    assert entry["criteria"] == {"d": {"pass": True}}  # the re-evaluation's results, not the stale ones
 
 
 def test_stage_refuses_inputs_changed_since_the_evaluation(tmp_path, monkeypatch):
@@ -456,3 +459,34 @@ def test_concurrent_stage_transactions_do_not_lose_updates(tmp_path, monkeypatch
     for t in ts:
         t.join(30)
     assert set(json.loads(host.copies["host"])["policies"]) == {"e2e_cnn-t-s0", "e2e_cnn-t-s1"}
+
+
+def test_withdrawal_is_published_even_if_another_runs_upload_fails(tmp_path, monkeypatch):
+    host = FakeHost()
+    monkeypatch.setattr(S, "Host", lambda **k: host)
+    args, inv = _stage_env(tmp_path, monkeypatch, runs=("r-fql-e2e_cnn-t-s0", "r-fql-e2e_cnn-t-s1"))
+    assert S.cmd_stage(args) == 0
+    data = json.loads(inv.read_text())
+    data["fql"][0]["class"] = {"status": "quarantined", "reasons": ["re-evaluated: fails"], "flags": []}
+    inv.write_text(json.dumps(data))
+
+    def broken(*a, **k):
+        raise RuntimeError("upload failed")
+
+    monkeypatch.setattr(S, "stage_files", broken)
+    assert S.cmd_stage(args) == 2
+    pol = json.loads(host.copies["host"])["policies"]
+    assert pol["e2e_cnn-t-s0"]["status"] == "quarantined" and pol["e2e_cnn-t-s1"]["status"] == "deployable"
+
+
+def test_probe_ratios_stay_json_safe_when_the_noise_change_is_zero(tmp_path, monkeypatch):
+    import torch
+
+    policy = make_fixture_policy(tmp_path / "nz", "reviwo")
+    real = policy.offline.act_from_features
+    monkeypatch.setattr(policy.offline, "act_from_features", lambda f, p, m, noise=None, **k: real(
+        f, p, m, noise=torch.zeros_like(noise) if noise is not None else None, **k))  # noise ignored
+    r = C.visual_probe(policy, _samples(policy))
+    assert r["d_noise"] == 0 and r["d_vis_over_noise"] is None and r["pass"]
+    summary = C.criteria_summary("reviwo", {"e2": r})
+    json.dumps(summary, allow_nan=False)

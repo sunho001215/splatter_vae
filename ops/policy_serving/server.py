@@ -151,9 +151,8 @@ class CatalogEntry:
                "seed": e.get("seed"), "run": e.get("run"), "status": self.status, "flags": list(e.get("flags", [])),
                "checkpoint_sha256": e.get("sha256"), "usage": e.get("usage", "dry_run_replay_only"),
                "execution_eligible": e.get("execution_eligible") is True,
-               "usage_reasons": list(e.get("usage_reasons", [])), "criteria": e.get("criteria", {})}
-        if self.reasons:
-            out["reasons"] = list(self.reasons)
+               "usage_reasons": list(e.get("usage_reasons", [])), "criteria": e.get("criteria", {}),
+               "reasons": list(self.reasons)}
         return out
 
 
@@ -171,6 +170,7 @@ class ServedPolicy:
     last_used: float = 0.0  # time.monotonic() of the last HELLO / inference
     claims: int = 0  # HELLOs between acquiring and binding (never evicted meanwhile)
     retired: bool = False  # its catalog entry was removed / changed: unloaded once its last session ends
+    withdrawn: dict | None = None  # labels published for a retired object's remaining sessions (never eligible)
 
 
 @dataclass(eq=False)
@@ -507,8 +507,13 @@ class PolicyServer:
                         continue
                     if e is not None and e.identity() == sp.entry.identity():
                         sp.entry = e  # same artefacts: refreshed labels (status, criteria, usage) are published
+                        sp.retired, sp.withdrawn = False, None  # servable again (e.g. quarantine lifted)
                         continue
                     sp.retired = True
+                    sp.withdrawn = {"status": "withdrawn", "usage": "none", "execution_eligible": False,
+                                    "usage_reasons": ["withdrawn from the catalog: finish or end this session"],
+                                    "reasons": ["removed from the catalog"] if e is None else
+                                    [f"catalog entry changed ({e.status})", *e.reasons]}
                     if not sp.sessions and not sp.claims:
                         self._unload(sp, "catalog entry removed" if e is None else "catalog entry changed")
                 self.counts["catalog_reloads"] += 1
@@ -558,7 +563,8 @@ class PolicyServer:
     @staticmethod
     def _current_info(sp: ServedPolicy) -> dict:
         """Load-time info + the CURRENT catalog labels of the entry it was loaded from (refreshed on reload)."""
-        return {**sp.info, **(sp.entry.info() if sp.entry is not None and sp.entry.source != "preloaded" else {})}
+        return {**sp.info, **(sp.entry.info() if sp.entry is not None and sp.entry.source != "preloaded" else {}),
+                **(sp.withdrawn or {})}
 
     def _release(self, sp: ServedPolicy) -> None:
         with self.lock:
@@ -660,6 +666,7 @@ class PolicyServer:
                 raise
             if stale:
                 raise ValueError(f"catalog entry of {pid} changed or became unservable during the load; retry")
+            sp.entry = current  # same artefacts; labels refreshed during the load are the ones published
             self.policies[pid] = sp
             self.counts["policies_loaded"] += 1
             resident = sorted(self.policies)
@@ -800,6 +807,7 @@ class PolicyServer:
         with self.lock:
             self.connections.discard(conn)
             s = conn.session
+            conn.session = None  # a finished connection must not keep its session (and the model) reachable
             if s is not None and s.conn is conn:
                 s.conn = None  # the session survives for a resume until it idles out
                 s.last_activity = time.monotonic()
@@ -811,6 +819,7 @@ class PolicyServer:
                 for s in list(self.sessions.values()):
                     if s.pending is None and s.running is None and now - s.last_activity > self.idle_timeout_s:
                         self._end_session(s, f"idle > {self.idle_timeout_s} s")
+                s = None  # noqa: F841 - no session (and its model) kept alive between passes
 
     def _end_session(self, s: Session, reason: str, *, taken_over: bool = False) -> None:
         """Caller holds ``self.lock``. ``taken_over``: tell the evicted client at once (its stop signal)."""
@@ -1075,12 +1084,21 @@ class PolicyServer:
                     sp.policy.end_session(sid)
                     refusal = ("bad_request", f"session spec not serialisable: {exc}")
             if refusal is None:
-                with self.lock:
-                    self.sessions[sid] = s
-                    sp.sessions[sid] = s
-                    s.conn, conn.session = conn, s
-                    sp.last_used = time.monotonic()
-                    self.counts["sessions_opened"] += 1
+                with self.lock:  # final check: a reload may have withdrawn the policy while the session was bound
+                    current = self.entries.get(sp.policy_id)
+                    if self.policies.get(sp.policy_id) is not sp or sp.retired or (
+                            not sp.pinned and (current is None or self._refusal(current) is not None
+                                               or current.identity() != sp.entry.identity())):
+                        refusal = ("bad_request", f"policy {sp.policy_id} was withdrawn while this session was being "
+                                                  "bound")
+                    else:
+                        self.sessions[sid] = s
+                        sp.sessions[sid] = s
+                        s.conn, conn.session = conn, s
+                        sp.last_used = time.monotonic()
+                        self.counts["sessions_opened"] += 1
+                if refusal is not None:
+                    sp.policy.end_session(sid)
         if refusal is not None:
             conn.send(self._error(None, None, *refusal))
             return True

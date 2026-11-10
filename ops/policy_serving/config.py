@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import copy
 import json
+import math
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
@@ -60,7 +61,7 @@ CATALOG_ENTRY_KEYS = frozenset(POLICY_KEYS | {"seed", "run", "status", "flags", 
 CATALOG_REQUIRED_KEYS = frozenset({"checkpoint", "sha256", "condition", "task", "status"})
 CATALOG_STATUSES = ("deployable", "restricted", "quarantined")  # restricted: served, a criterion FAILED (see reasons)
 SERVABLE_STATUSES = ("deployable", "restricted")
-CATALOG_USAGES = ("dry_run_replay_only", "none", "execution")  # usage restriction published to the robot-PC client
+CATALOG_USAGES = ("dry_run_replay_only", "none")  # Directive I: no execution usage exists (a later decision adds it)
 
 
 def _load_file(path: Path) -> dict:
@@ -98,6 +99,16 @@ def load_config(path: str | Path | None = None) -> dict:
     return cfg
 
 
+def _finite_json(x) -> bool:
+    if isinstance(x, float):
+        return math.isfinite(x)
+    if isinstance(x, dict):
+        return all(_finite_json(v) for v in x.values())
+    if isinstance(x, (list, tuple)):
+        return all(_finite_json(v) for v in x)
+    return True
+
+
 def validate_catalog(raw: dict, source="catalog") -> dict:
     """Checked catalog dict (see ``CATALOG_*``): unknown keys refused, status values checked, aliases point at existing
     ids and never shadow one. Returns ``{"schema", ..., "policies": {id: entry}, "aliases": {alias: id}}``."""
@@ -132,12 +143,11 @@ def validate_catalog(raw: dict, source="catalog") -> dict:
             raise ValueError(f"{source}: policy {pid}: execution_eligible must be true or false")
         if entry.get("usage", "dry_run_replay_only") not in CATALOG_USAGES:
             raise ValueError(f"{source}: policy {pid}: usage {entry.get('usage')!r} not in {CATALOG_USAGES}")
-        if entry.get("execution_eligible") is True and (entry["status"] != "deployable"
-                                                         or entry.get("usage") != "execution"):
-            raise ValueError(f"{source}: policy {pid}: only a deployable entry with usage 'execution' can be "
-                             "execution-eligible")
-        if entry["status"] == "restricted" and entry.get("usage") not in ("dry_run_replay_only", "none"):
-            raise ValueError(f"{source}: policy {pid}: a restricted entry is dry-run/replay only")
+        if entry.get("execution_eligible") is True:
+            raise ValueError(f"{source}: policy {pid}: no entry is execution-eligible under Directive I (fail closed; "
+                             "eligibility needs an explicit decision and a code change)")
+        if not _finite_json(entry):
+            raise ValueError(f"{source}: policy {pid}: non-finite number (NaN / Infinity) in the entry")
         if not isinstance(entry.get("usage_reasons", []), list) or \
                 not all(isinstance(x, str) for x in entry.get("usage_reasons", [])):
             raise ValueError(f"{source}: policy {pid}: usage_reasons must be a list of strings")

@@ -1429,12 +1429,23 @@ def test_entry_quarantined_while_loading_is_never_published_or_bound(staged, tmp
 
 
 def test_concurrent_loads_respect_the_resident_cap(staged, tmp_path, monkeypatch):
+    """Blocks load A AFTER the model is built and warmed, at the reservation -> resident boundary (the former gap)."""
+    import ops.policy_serving.server as server_mod
+
     root, fx = staged
     pol = fx["r1"][0]
     cat = write_catalog(tmp_path / "catalog.json", {n: fx[n][1] for n in ("r1", "r2")})
     gate, started, a, b = threading.Event(), threading.Event(), {}, {}
+    real = server_mod.ServedPolicy
+
+    def at_boundary(pid, *args, **kw):
+        if pid == "r1":
+            started.set()
+            assert gate.wait(30)
+        return real(pid, *args, **kw)
+
     with serve_catalog(root, cat, max_resident_policies=1) as srv:
-        _blocking_loads(monkeypatch, gate, started)
+        monkeypatch.setattr(server_mod, "ServedPolicy", at_boundary)
         ta = _hello_in_thread(srv, "r1", pol, a)
         assert started.wait(20)
         tb = _hello_in_thread(srv, "r2", pol, b)
@@ -1482,3 +1493,60 @@ def test_an_evicted_policy_is_not_kept_alive_by_the_worker(staged, tmp_path):
             return ref() is None
 
         wait_until(freed, 10)
+
+
+def test_reaper_and_withdrawal_release_models_and_labels(staged, tmp_path):
+    """A session ended by the idle reaper does not keep its model alive; a withdrawn policy's live session sees
+    withdrawn, never-eligible labels; restoring the entry re-enables it; cleared reasons are published as []."""
+    import gc
+    import weakref
+
+    root, fx = staged
+    pol, e = fx["r2"]
+    restricted = {**e, "status": "restricted", "reasons": ["LN FAIL (fixture)"], "usage": "dry_run_replay_only",
+                  "execution_eligible": False}
+    cat = write_catalog(tmp_path / "catalog.json", {"r2": restricted})
+    with serve_catalog(root, cat, session_idle_timeout_s=0.5) as srv:
+        c, _ = client_for(srv, "r2", pol)
+        sp = srv.policies["r2"]
+        write_catalog(cat, {"r2": {**e, "status": "quarantined", "reasons": ["withdrawn (fixture)"]}})
+        srv.reload_catalog()
+        assert sp.retired and sp.sessions  # live session kept on the retired object
+        info = srv._current_info(sp)
+        assert info["status"] == "withdrawn" and info["execution_eligible"] is False and info["usage"] == "none"
+        write_catalog(cat, {"r2": e})  # entry restored (deployable, no reasons): re-enabled, labels refreshed
+        srv.reload_catalog()
+        assert not sp.retired and srv._current_info(sp)["reasons"] == [] and srv._current_info(sp)["status"] == \
+            "deployable"
+        c.wire.close()  # disconnect without BYE: the idle reaper ends the session
+        wait_until(lambda: not sp.sessions)
+        ref = weakref.ref(sp.policy)
+        sp = None  # the test must not keep the model alive
+        write_catalog(cat, {})
+        srv.reload_catalog()
+
+        def freed():
+            gc.collect()
+            return ref() is None
+
+        wait_until(freed, 10)
+
+
+def test_withdrawal_during_session_binding_is_refused(staged, tmp_path, monkeypatch):
+    root, fx = staged
+    pol, e = fx["r1b"]
+    cat = write_catalog(tmp_path / "catalog.json", {"r1b": e})
+    with serve_catalog(root, cat, preload=["r1b"]) as srv:
+        sp = srv.policies["r1b"]
+        real = sp.policy.reset_session
+
+        def reload_meanwhile(**kw):
+            out = real(**kw)
+            write_catalog(cat, {"r1b": {**e, "status": "quarantined", "reasons": ["during bind (fixture)"]}})
+            srv.reload_catalog()
+            return out
+
+        monkeypatch.setattr(sp.policy, "reset_session", reload_meanwhile)
+        with pytest.raises(ServingError, match="withdrawn while this session was being bound"):
+            client_for(srv, "r1b", pol)
+        assert not sp.sessions and srv.sessions == {} and sp.policy.live_sessions == ()

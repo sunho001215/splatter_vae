@@ -628,7 +628,7 @@ def markdown(inv: dict, *, criteria_sha256: str | None) -> str:
         e1s = "-" if not e1 or e1.get("pass") is None and "offset_to_signal" not in e1 else \
             f"{e1['offset_to_signal']:.3g} / {e1['ln_unit_std_raw']:.3g}"
         e2s = e2.get("reason", "-") if e2.get("pass") is None else \
-            f"{e2['d_vis_over_spread']:.3g}, {e2['d_vis_over_noise']:.3g} ({'pass' if e2['pass'] else 'FAIL'})"
+            f"{_fmt(e2['d_vis_over_spread'])}, {_fmt(e2['d_vis_over_noise'])} ({'pass' if e2['pass'] else 'FAIL'})"
         peak = f.get("peak_q_mean") or [None, None]
         L.append(f"| {r['policy_id']} | {'pass' if k['c']['pass'] else 'FAIL'} | "
                  f"{'pass' if k['d']['pass'] else 'FAIL'} | {e1s} | {e2s} | "
@@ -694,10 +694,20 @@ def _identity_errors(src: Sources, row: dict, sidecar_dir: Path) -> list[str]:
     return errs
 
 
+def _evaluated_shas(row: dict, sidecar_dir: Path) -> dict[str, str]:
+    """Relative staged path -> the sha256 the criteria were evaluated on (policy, sidecar, export)."""
+    out = {row["policy"]["path"]: row["policy"]["sha256"],
+           f"contracts/{row['run']}.deploy_contract.json": (row.get("checks") or {}).get("d", {}).get("sha256")}
+    if row.get("export"):
+        out[row["export"]["path"]] = row["export"]["sha256"]
+    return out
+
+
 def withdrawn_entry(entry: dict, row: dict) -> dict:
     """A staged entry whose run no longer passes: quarantined with the re-evaluation's reasons (never left
     selectable); the staged files stay (immutable) but the server refuses it."""
-    return {**entry, "status": "quarantined", "usage": "none", "execution_eligible": False,
+    return {**entry, "status": "quarantined", "usage": "none", "execution_eligible": False, "flags": [],
+            "criteria": C.criteria_summary(row["condition"], row.get("checks") or {}),
             "usage_reasons": ["withdrawn by re-evaluation"],
             "reasons": [f"re-evaluation {datetime.date.today()}: {row['class']['status']}"] + row["class"]["reasons"]}
 
@@ -722,45 +732,68 @@ def cmd_stage(a, *, hook: bool = False) -> int:
         print(json.dumps({"error": f"unknown FQL runs {missing}"}))
         return 2
     src = _sources(a)
-    changed = {r: errs for r in a.runs if rows[r]["class"]["status"] in ("deployable", "restricted")
-               and (errs := _identity_errors(src, rows[r], a.sidecar_dir))}
-    if changed:
-        print(json.dumps({"error": "inputs changed since the evaluation (re-evaluate)", "runs": changed}))
-        return 2
     host = Host(ssh=a.ssh, bwlimit=a.bwlimit)
     a.lock_file.parent.mkdir(parents=True, exist_ok=True)
+    log = lambda m: print(m, file=sys.stderr, flush=True)  # noqa: E731
     with open(a.lock_file, "a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)  # one catalog read-merge-write transaction at a time (concurrent hooks)
+        changed = {r: errs for r in a.runs if rows[r]["class"]["status"] in ("deployable", "restricted")
+                   and (errs := _identity_errors(src, rows[r], a.sidecar_dir))}  # checked under the lock
+        if changed:
+            print(json.dumps({"error": "inputs changed since the evaluation (re-evaluate)", "runs": changed}))
+            return 2
         catalog = read_host_catalog(host) if a.execute or a.read_host else {"policies": {}, "aliases": {}}
         entries = dict(catalog.get("policies") or {})
-        report, files = {}, {}
-        for run in a.runs:
+        report, files, evaluated = {}, {}, {}
+        for run in a.runs:  # 1. withdrawals first: they never depend on any upload
             row = rows[run]
             status = row["class"]["status"]
             report[run] = {"policy_id": row["policy_id"], "status": status, "reasons": row["class"]["reasons"]}
             labelled = status == "quarantined" and getattr(a, "label_quarantined", False) and row["policy"]["local"] \
                 and (a.sidecar_dir / f"{run}.deploy_contract.json").is_file()
-            if status in ("deployable", "restricted") or labelled:
-                files.update(staging_files(src, row, a.sidecar_dir))
-                entries[row["policy_id"]] = catalog_entry(row, local_input_spec(src, row, a.sidecar_dir))
-                report[run]["staged"] = bool(a.execute)
-                report[run]["catalog_status"] = status
-            elif (entries.get(row["policy_id"]) or {}).get("run") == run and \
+            if status not in ("deployable", "restricted") and not labelled and \
+                    (entries.get(row["policy_id"]) or {}).get("run") == run and \
                     entries[row["policy_id"]]["status"] != "quarantined":
                 entries[row["policy_id"]] = withdrawn_entry(entries[row["policy_id"]], row)
                 report[run]["catalog_status"] = "withdrawn (quarantined)"
-        if files:
-            stage_files(host, files, execute=a.execute, log=lambda m: print(m, file=sys.stderr, flush=True))
+        withdrawals_only = dict(entries)
+        for run in a.runs:  # 2. staged entries
+            row = rows[run]
+            status = row["class"]["status"]
+            labelled = status == "quarantined" and getattr(a, "label_quarantined", False) and row["policy"]["local"] \
+                and (a.sidecar_dir / f"{run}.deploy_contract.json").is_file()
+            if status in ("deployable", "restricted") or labelled:
+                part = staging_files(src, row, a.sidecar_dir)
+                files.update(part)
+                evaluated.update(_evaluated_shas(row, a.sidecar_dir))
+                entries[row["policy_id"]] = catalog_entry(row, local_input_spec(src, row, a.sidecar_dir))
+                report[run]["staged"] = bool(a.execute)
+                report[run]["catalog_status"] = status
         crit = sha256_file(a.criteria) if a.criteria.is_file() else None
-        aliases = {k: v for k, v in {**(catalog.get("aliases") or {}), **legacy_aliases(entries)}.items()
-                   if v in entries}
-        unchanged = entries == (catalog.get("policies") or {}) and aliases == (catalog.get("aliases") or {})
-        if unchanged and (not a.execute or catalog_copies_agree(host)):
-            print("[catalog] unchanged: nothing written, no reload (idempotent re-run)", file=sys.stderr, flush=True)
-        elif entries:
-            write_host_catalog(host, build_catalog(entries, aliases=aliases, criteria_sha256=crit),
-                               execute=a.execute, log=lambda m: print(m, file=sys.stderr, flush=True))
-            signal_reload(host, execute=a.execute, log=lambda m: print(m, file=sys.stderr, flush=True))
+
+        def publish(policies: dict) -> None:
+            aliases = {k: v for k, v in {**(catalog.get("aliases") or {}), **legacy_aliases(policies)}.items()
+                       if v in policies}
+            unchanged = policies == (catalog.get("policies") or {}) and aliases == (catalog.get("aliases") or {})
+            if unchanged and (not a.execute or catalog_copies_agree(host)):
+                log("[catalog] unchanged: nothing written, no reload (idempotent re-run)")
+            elif policies:
+                write_host_catalog(host, build_catalog(policies, aliases=aliases, criteria_sha256=crit),
+                                   execute=a.execute, log=log)
+                signal_reload(host, execute=a.execute, log=log)
+
+        if files:
+            try:
+                uploaded = stage_files(host, files, execute=a.execute, log=log)
+                bad = sorted(rel for rel, h in evaluated.items() if uploaded.get(rel) != h)
+                if bad:
+                    raise RuntimeError(f"staged files differ from the evaluated inputs: {bad}")
+            except Exception as exc:  # withdrawals are still published; the new entries are not
+                publish(withdrawals_only)
+                print(json.dumps({"error": f"staging failed: {type(exc).__name__}: {exc}", "runs": report},
+                                 default=str))
+                return 2
+        publish(entries)
     print(json.dumps({"execute": bool(a.execute), "runs": report}, indent=1, default=str))
     return 0 if all(r["status"] in ("deployable", "restricted") for r in report.values()) or not hook else 3
 

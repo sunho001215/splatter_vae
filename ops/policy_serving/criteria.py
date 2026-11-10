@@ -328,8 +328,8 @@ def visual_probe(policy, samples: list[dict], *, seed: int = 0) -> dict:
     ok = finite and spread >= E2_MIN_EFFECT and d_vis >= E2_MIN_EFFECT and d_vis >= E2_SPREAD_FRACTION * spread \
         and d_vis >= E2_NOISE_FRACTION * d_noise
     return check(bool(ok), samples=n, action_spread=spread, d_vis=d_vis, d_noise=d_noise,
-                 d_vis_over_spread=d_vis / spread if spread else math.inf,
-                 d_vis_over_noise=d_vis / d_noise if d_noise else math.inf,
+                 d_vis_over_spread=d_vis / spread if spread else None,
+                 d_vis_over_noise=d_vis / d_noise if d_noise else None,  # undefined ratios stay JSON-safe
                  episodes=sorted({s["episode"] for s in samples}),
                  cameras=sorted({c for s in samples for c in s["cameras"]}),
                  **({"m5_note": "multi-view probe sets: recorded mutual-nearest sets, M5 not certified"}

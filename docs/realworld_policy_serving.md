@@ -217,8 +217,9 @@ late-phase q_mean <= +1. Explicit decisions (rwcal-20261109 3D-MVP: quarantined)
 
 **Usage restriction (fail closed).** Every catalog entry carries `usage` (`dry_run_replay_only` / `none` /
 `execution`), `usage_reasons` and `execution_eligible`; WELCOME and SPEC `info` publish them (`execution_eligible` is
-true only if the entry says exactly true; staging never writes true, and the validator accepts true only for a
-`deployable` entry with usage `execution`). The robot-PC client refuses execution mode for any other policy. A
+true only if the entry says exactly true; under Directive I the validator refuses `execution_eligible: true` and any
+`execution` usage outright: eligibility needs an explicit decision and a code change). A withdrawn policy's remaining
+sessions see `status: withdrawn`, `usage: none`; non-finite numbers are refused in catalog entries (JSON wire safety). The robot-PC client refuses execution mode for any other policy. A
 re-evaluation that no longer passes withdraws the run's catalog entry (quarantined, usage none). Label changes
 (status / criteria / usage) refresh on reload without reloading the model; the catalog transaction is serialised by a
 local lock and the container copy is verified byte-identical to the host copy.
