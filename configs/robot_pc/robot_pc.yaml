@@ -1,0 +1,56 @@
+# Robot-PC client configuration (Directive I, 2026-11-10; docs/robot_pc.md). Read by ops/robot_pc/config.py and every
+# scripts/robot_pc entry point; copied to <root>/config/robot_pc.yaml by scripts/robot_pc/setup.sh (edit THAT copy).
+# Nothing here is a credential: the token is a FILE the user places on the robot PC (0600), never in this file.
+# The robot is NEVER commanded by this revision: execution.armed must stay false and the controller binding is UNBOUND.
+root: ~/workspace/s4d-robot-pc            # robot PC (irsl-MS-7C79, 192.168.50.20): /home/irsl/workspace/s4d-robot-pc
+server:                                   # the 5090 policy server through the robot PC's own SSH -L forward:
+  host: 127.0.0.1                         #   ssh -N -L 127.0.0.1:47100:<shkim_rw container IP>:47100 irsl@143.248.142.98
+  port: 47100
+  token_file: secrets/token               # relative to root; 0600; copied there by the user (docs/robot_pc.md)
+  connect_timeout_s: 3.0                  # TCP connect + WELCOME
+  hello_timeout_s: 20.0                   # HELLO -> SPEC: a first selection loads the policy (3-6 s under contention)
+  io_timeout_s: 5.0
+  step_timeout_s: 0.5                     # one action incl. reconnect + resume, else the step returns "timeout"
+  reconnect_backoff_s: [0.05, 0.1, 0.25, 0.5, 1.0]
+  ttl_ms: 100.0                           # the server answers "stale" if inference did not start within ttl
+cameras:                                  # the recorder's D435I rig (recordings: colour 640x480 @ 15 fps, depth z16)
+  serials: ["135122070988", "135122073201", "135122076054"]
+  native_hw: [480, 640]
+  fps: 15
+  check_devices: true                     # refuse live acquisition if a recorder/teleop process or device holder exists
+assets:                                   # shipped by the bundle (BUNDLE.json lists their sha256)
+  m5_surface: assets/m5/panda_robotiq_2f85_droid_iso50.m5.npz   # training-store M5 surface (scripts/robot_pc/m5_asset.py)
+  urdf: assets/urdf/panda_robotiq_2f85_droid_iso50.urdf         # unmodified composed URDF (sha256 ca60bab9...)
+tasks:
+  # rig_document: the published per-task rig release (calib-loma/rel/rig; c2w + validated sensor_depth scale);
+  # m5_max_sync_ns: the release training store's robot_sync_max_ns of the task; workspace: the recorded flange range
+  # of all 100 episodes (robot/flange_pose and action/flange_pose) +- 0.05 m
+  drawer-open:
+    rig_document: assets/rig/rig-loma-drawer-open.json
+    m5_max_sync_ns: 20000000
+    workspace_min_m: [0.257, -0.242, 0.425]
+    workspace_max_m: [0.621, 0.321, 0.694]
+  mug-hanging:
+    rig_document: assets/rig/rig-loma-mug-hanging-fx.json
+    m5_max_sync_ns: 30000000
+    workspace_min_m: [0.317, -0.284, 0.446]
+    workspace_max_m: [0.699, 0.243, 0.831]
+limits:                                   # robot-side action validation (ops/robot_pc/validation.py)
+  max_translation_m: 0.04                 # recorder teleop.max_position_lead (all 200 drawer/mug episodes: 0.04)
+  max_rotation_deg: 20.0                  # teleop.max_rotation_lead_deg
+  gripper_closure_min: 0.0
+  gripper_closure_max: 1.0
+  max_action_age_ms: 200.0                # observation (capture) age bound for validation and execution
+executor:                                 # local high-rate loop design (ops/robot_pc/executor.py); teleop config values
+  rate_hz: 500
+  max_linear_speed: 0.3
+  max_angular_speed: 1.5
+  lead_m: 0.04
+  lead_rot_deg: 20.0
+execution:
+  armed: false                            # MUST stay false: robot operation is outside Directive I
+  controller_binding: UNBOUND             # until the robot PC's teleop / switch_controller code is inspected read-only
+static_latency_state:                     # dry-run --state static: LATENCY ONLY (drawer-open episode 0, first row)
+  pose7: [0.42189, -0.003137, 0.56567, -0.999479, 0.017173, -0.027327, 0.000996]
+  q7: [0.133341, -0.457063, -0.114188, -2.198744, -0.052212, 1.798728, 0.074186]
+  gripper_register: 3.0

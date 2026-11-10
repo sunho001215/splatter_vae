@@ -149,11 +149,14 @@ class PolicyClient:
                  connect_timeout_s: float = 3.0, io_timeout_s: float = 5.0, step_timeout_s: float = 0.5,
                  reconnect_backoff_s=(0.05, 0.1, 0.25, 0.5, 1.0), ttl_ms: float = 100.0, takeover: bool = False,
                  frame_buffer: int | None = None, max_inflight: int = 4, max_payload_bytes: int = 32 << 20,
-                 name: str = "policy-client"):
+                 name: str = "policy-client", hello_timeout_s: float = 20.0):
         self.host, self.port, self.policy_id = host, int(port), policy_id
         self.choices = choices if callable(choices) else P.jsonable(choices)  # callable(unbound spec) -> dict
         self.token, self.takeover, self.name = token, bool(takeover), name
         self.connect_timeout_s, self.io_timeout_s = float(connect_timeout_s), float(io_timeout_s)
+        # HELLO -> SPEC wait: the server loads a policy lazily on its first selection (load + warm-up, seconds under
+        # GPU contention), so it is longer than the TCP connect / WELCOME wait
+        self.hello_timeout_s = max(float(hello_timeout_s), self.connect_timeout_s)
         self.step_timeout_s, self.ttl_ms = float(step_timeout_s), float(ttl_ms)
         self.backoff = tuple(float(x) for x in reconnect_backoff_s) or (0.1,)
         self.frame_buffer, self.max_inflight, self.max_payload_bytes = frame_buffer, int(max_inflight), max_payload_bytes
@@ -203,7 +206,7 @@ class PolicyClient:
             raise ServingError("version", f"server protocol {msg.header['v']} != client {P.VERSION}")
         self.welcome = msg.header
 
-    def _hello(self, resume: dict | None) -> dict:
+    def _hello(self, resume: dict | None, timeout_s: float | None = None) -> dict:
         offered = self.welcome.get("policies", {})
         if self.policy_id not in offered:
             raise ServingError("bad_request", f"server does not serve {self.policy_id!r}; serves {sorted(offered)}")
@@ -216,7 +219,7 @@ class PolicyClient:
                 raise ServingError("auth", "server requires the shared token")
             header["auth"] = hmac.new(self.token, self.welcome["nonce"].encode(), hashlib.sha256).hexdigest()
         self.wire.send(P.encode(header))
-        deadline = time.monotonic() + self.connect_timeout_s
+        deadline = time.monotonic() + (self.hello_timeout_s if timeout_s is None else timeout_s)
         while True:
             msg = self.wire.recv(max(0.0, deadline - time.monotonic()))
             if msg is None:
@@ -294,7 +297,8 @@ class PolicyClient:
             try:
                 self._open()
                 try:
-                    h = self._hello({"session_id": self.session_id, "last_ack": self.last_ack})
+                    h = self._hello({"session_id": self.session_id, "last_ack": self.last_ack},  # bounded by the
+                                    timeout_s=max(0.05, deadline - time.monotonic()))  # caller's step deadline
                 except ServingError as exc:
                     if exc.code != "session_unknown":
                         raise
