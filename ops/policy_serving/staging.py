@@ -554,8 +554,8 @@ def markdown(inv: dict, *, criteria_sha256: str | None) -> str:
                  f"{'yes' if r['a']['pass'] else 'no'} | {(e.get('sha256') or '-')[:12]}{'' if e['local'] else ' (remote)'}"
                  f" | {r['superseded'] or r['a'].get('reason', '')} |")
     L += ["", "## (B) FQL policies", "",
-          "| policy id | run | registry | steps / budget | policy.pt sha256 | class | flags / reasons |",
-          "|---|---|---|---|---|---|---|"]
+          "| policy id | run | registry | steps / budget | policy.pt sha256 | class | 5090 catalog | flags / reasons |",
+          "|---|---|---|---|---|---|---|---|"]
     for r in inv["fql"]:
         c = r["completed"] or {}
         cls = r.get("class", {})
@@ -563,7 +563,8 @@ def markdown(inv: dict, *, criteria_sha256: str | None) -> str:
             "; ".join(cls.get("reasons", []))
         L.append(f"| {r['policy_id']} | {r['run']} | {r['registry_state']} | {c.get('steps', '-')} / "
                  f"{r['budget_steps']} | {(r['policy'].get('sha256') or '-')[:12]}"
-                 f"{'' if r['policy']['local'] else ' (remote)'} | **{cls.get('status', '?')}** | {why} |")
+                 f"{'' if r['policy']['local'] else ' (remote)'} | **{cls.get('status', '?')}** | "
+                 f"{r.get('host_catalog') or '-'} | {why} |")
     L += ["", "## (C) Classes", ""]
     for status in ("deployable", "incomplete", "quarantined", "superseded"):
         ids = [r["policy_id"] if status != "superseded" else r["run"] for r in inv["fql"]
@@ -613,6 +614,12 @@ def _evaluated(a, runs: list[str] | None = None) -> dict:
 
 def cmd_inventory(a) -> int:
     inv = _evaluated(a)
+    if a.host_catalog:  # read-only: which runs the inference host's catalog serves (id + status)
+        cat = read_host_catalog(Host(ssh=a.ssh)).get("policies") or {}
+        for r in inv["fql"]:
+            e = cat.get(r["policy_id"])
+            if e is not None and e.get("run") == r["run"]:
+                r["host_catalog"] = f"{r['policy_id']} ({e['status']})"
     crit = sha256_file(a.criteria) if a.criteria.is_file() else None
     inv["criteria_sha256"] = crit
     if a.out_json:
@@ -693,6 +700,8 @@ def main(argv=None) -> int:
     i.add_argument("--evaluate", action="store_true", help="run criteria c-f on the completed candidates")
     i.add_argument("--out-json", type=Path)
     i.add_argument("--out-md", type=Path)
+    i.add_argument("--host-catalog", action="store_true", help="annotate rows served by the inference host's catalog")
+    i.add_argument("--ssh", default="irsl")
     for name in ("stage", "hook"):
         s = sub.add_parser(name)
         s.add_argument("runs", nargs="+")
