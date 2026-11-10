@@ -40,7 +40,9 @@ def main(argv=None, *, operator_input=input) -> int:
     for name in ("gripper", "hold"):
         p = sub.add_parser(name)
         p.add_argument("--rehearse", action="store_true")
-        p.add_argument("--camera", default=None, help="optional scene camera serial (native RGB recording only)")
+        p.add_argument("--camera", default=None,
+                       help="optional scene camera: a NAME of config/camera_names.yaml (left / middle / right) or a "
+                            "serial (native RGB recording only)")
         p.add_argument("--no-record", action="store_true")
         p.add_argument("--config", type=Path, default=None)
         p.add_argument("--root", default=None)
@@ -143,7 +145,12 @@ def main(argv=None, *, operator_input=input) -> int:
         say(f"robot state: {len(reader.samples)} samples in 0.5 s, blockers {blockers or 'none'}")
         if blockers:
             raise ExecutionRefused("; ".join(blockers))
-        cams, cameras, K = ([args.camera] if args.camera else []), None, {}
+        serial = args.camera
+        if serial is not None:
+            from scripts.robot_pc.infer import camera_names
+
+            serial = camera_names(cfg).get(serial, serial)  # a camera name, else taken as a serial
+        cams, cameras, K = ([serial] if serial else []), None, {}
         cc = cfg.get("cameras") or {}
         hw = tuple(cc.get("native_hw", (480, 640)))
         check_cancel()  # camera first: a RealSense start stalls the USB bus ~0.3 s (measured), never while the
@@ -154,7 +161,7 @@ def main(argv=None, *, operator_input=input) -> int:
             opened.append(cameras.close)
             K = cameras.start()
             cameras.bind(K)
-            say(f"scene camera: {args.camera} (native RGB only)")
+            say(f"scene camera: {args.camera} = {serial} (native RGB only)")
         gripper = GripperWorker(RobotiqRTU, read_only=args.rehearse or args.test != "gripper",
                                 speed=int(gcfg.get("speed", 146)), force=int(gcfg.get("force", 255)))
         shutdown.gripper = gripper
