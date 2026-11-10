@@ -138,22 +138,72 @@ def test_only_proven_refused_launch_can_release_its_job_fingerprint(tmp_path):
         jobs.read_registry(registry)
 
 
-def test_proven_refused_launch_does_not_pin_the_next_launch_release(tmp_path):
+@pytest.mark.parametrize("attempt", [1, 2])
+def test_proven_refused_launch_does_not_pin_the_next_launch_release(tmp_path, attempt):
     """A refused launch never executed: its release must not pin the next launch (a plain reset keeps it)."""
     registry = tmp_path / "registry.jsonl"
     old = {"commit": "a" * 40, "image_digest": "sha256:" + "b" * 64}
     jobs.record({"event": "launching", "id": "a", "host": "remote", "attempt": 1, "job_sha256": "0" * 64, **old},
                 registry)
-    jobs.record({"event": "reset", "id": "a"}, registry)
-    state = jobs.read_registry(registry)["a"]
-    assert state["commit"] == old["commit"] and state["image_digest"] == old["image_digest"]
-    jobs.record({"event": "launching", "id": "a", "host": "remote", "attempt": 2, "job_sha256": "0" * 64, **old},
-                registry)
-    proof = {"conclusion": "launch refused before docker run; deterministic container never existed", "attempt": 2,
+    if attempt == 2:
+        jobs.record({"event": "reset", "id": "a"}, registry)
+        state = jobs.read_registry(registry)["a"]
+        assert state["commit"] == old["commit"] and state["image_digest"] == old["image_digest"]
+        jobs.record({"event": "launching", "id": "a", "host": "remote", "attempt": 2, "job_sha256": "0" * 64, **old},
+                    registry)
+    proof = {"conclusion": "launch refused before docker run; deterministic container never existed", "attempt": attempt,
              "checks": [{"containers_with_name": 0, "remote_output": "absent"}] * 2}
     jobs.record({"event": "reset", "id": "a", "reconciliation": proof}, registry)
     state = jobs.read_registry(registry)["a"]
     assert state["status"] == "pending" and "commit" not in state and "image_digest" not in state
+    assert "job_sha256" not in state
+
+
+@pytest.mark.parametrize("history", ["executed", "infrastructure_failure", "migrated"])
+def test_refused_retry_preserves_executed_run_pins(tmp_path, history):
+    registry = tmp_path / "registry.jsonl"
+    pins = {"commit": "a" * 40, "image_digest": "sha256:" + "b" * 64, "job_sha256": "0" * 64}
+    jobs.record({"event": "launched", "id": "a", "attempt": 1,
+                 "host": "local" if history == "migrated" else "remote", **pins}, registry)
+    if history == "migrated":
+        jobs.record({"event": "checkpoint_paused", "id": "a", "attempt": 1, "checkpoint_step": 150000,
+                     "intentional_stop": True}, registry)
+    jobs.record({"event": "exited", "id": "a", "attempt": 1, "code": 1}, registry)
+    if history == "infrastructure_failure":
+        jobs.record({"event": "infrastructure_failure", "id": "a", "attempt": 1,
+                     "reason": "cuda_init_unavailable", "incident_started": 0, "incident_ended": None}, registry)
+    elif history == "migrated":
+        pins.update(commit="c" * 40, image_digest="sha256:" + "d" * 64)
+        jobs.record({"event": "migrated", "id": "a", "from_host": "local", "host": "remote",
+                     "checkpoint_step": 150000, "sources_identical": True,
+                     "commit": pins["commit"], "image_digest": pins["image_digest"]}, registry)
+    jobs.record({"event": "launching", "id": "a", "host": "remote", "attempt": 2, **pins}, registry)
+    proof = {"conclusion": "launch refused before docker run; deterministic container never existed", "attempt": 2,
+             "checks": [{"containers_with_name": 0, "remote_output": "absent"}] * 2}
+    jobs.record({"event": "reset", "id": "a", "reconciliation": proof}, registry)
+    state = jobs.read_registry(registry)["a"]
+    assert state["status"] == "pending"
+    assert {key: state[key] for key in pins} == pins
+    assert state["failures"] == (1 if history == "executed" else 0)
+
+
+@pytest.mark.parametrize("execution", [
+    {"event": "exited", "code": 0}, {"event": "remote_exited", "code": 0},
+    {"event": "results_synced", "sync": {"final": True, "verified": True}},
+    {"event": "remote_verified"}, {"event": "remote_verification_failed"},
+])
+def test_refused_retry_preserves_pins_with_execution_evidence_without_launched(tmp_path, execution):
+    registry = tmp_path / "registry.jsonl"
+    pins = {"commit": "a" * 40, "image_digest": "sha256:" + "b" * 64, "job_sha256": "0" * 64}
+    jobs.record({"event": "launching", "id": "a", "host": "remote", "attempt": 1, **pins}, registry)
+    jobs.record({"id": "a", "attempt": 1, **execution}, registry)
+    jobs.record({"event": "launching", "id": "a", "host": "remote", "attempt": 2, **pins}, registry)
+    proof = {"conclusion": "launch refused before docker run; deterministic container never existed", "attempt": 2,
+             "checks": [{"containers_with_name": 0, "remote_output": "absent"}] * 2}
+    jobs.record({"event": "reset", "id": "a", "reconciliation": proof}, registry)
+    state = jobs.read_registry(registry)["a"]
+    assert state["status"] == "pending" and state["failures"] == 0
+    assert {key: state[key] for key in pins} == pins
 
 
 def test_audited_infrastructure_failure_replay_is_append_only_and_idempotent(tmp_path):

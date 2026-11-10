@@ -118,12 +118,16 @@ def load_queue(path: Path = QUEUE) -> dict:
 
 def read_registry(path: Path = REGISTRY) -> dict[str, dict]:
     state: dict[str, dict] = {}
+    executed = set()
     if path.is_file():
         for line in path.read_text().splitlines():
             event = json.loads(line)
             kind = event["event"]
             job = state.setdefault(event["id"], {"status": PENDING, "attempts": 0, "failures": 0,
                                                 "failed_attempts": [], "infrastructure_failures": []})
+            if kind in {"launched", "exited", "remote_exited", "results_synced", "remote_verified",
+                        "remote_verification_failed", "checkpoint_paused", "intentional_stopped", "migrated"}:
+                executed.add(event["id"])
             if kind in {"launching", "launched"}:
                 if job["status"] not in ACTIVE or event["attempt"] != job.get("attempt"):
                     job["attempt_since"] = event["time"]
@@ -225,12 +229,12 @@ def read_registry(path: Path = REGISTRY) -> dict[str, dict]:
                             or any(check.get("containers_with_name") != 0 or check.get("remote_output") != "absent"
                                    for check in checks)):
                         raise ValueError(f"invalid refused-launch reconciliation for {event['id']}")
-                    # There was no execution or checkpoint: a corrected launch specification is not a run retry, and
-                    # the refused attempt's release must not pin the next launch (2026-11-10: a stage row refused on a
-                    # release without its script kept being relaunched on that release).
-                    job.pop("job_sha256", None)
-                    job.pop("commit", None)
-                    job.pop("image_digest", None)
+                    # This proof covers only the refused attempt. Keep the run's pins if any attempt executed,
+                    # even when migration or an infrastructure exemption leaves no charged failures.
+                    if event["id"] not in executed:
+                        job.pop("job_sha256", None)
+                        job.pop("commit", None)
+                        job.pop("image_digest", None)
                 job.update(status=PENDING)
             elif kind == "migrated":
                 # an owned run stopped at a recorded checkpoint pause moves to another host and resumes there from that

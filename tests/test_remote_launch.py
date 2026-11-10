@@ -1030,3 +1030,37 @@ def test_native_depth_stage_alone_gains_the_read_only_configs_mount():
     assert (configs, configs, True) in mounts
     fql = {**stage, "script": "scripts/train_realworld_fql.py"}
     assert all(src != configs for src, _, _ in realworld_mounts(fql))
+
+
+@pytest.mark.parametrize("script", ["./scripts/realworld_native_depth.py", "scripts//realworld_native_depth.py"])
+def test_aliased_native_depth_launch_mounts_match_reconciliation(tmp_path, script):
+    from types import SimpleNamespace
+
+    from ops.jobs.remote_backend import RemoteBackend, validate_container
+
+    queued = {**job_spec(), "script": script, "role": "realworld_fql", "args": ["build"]}
+    gpu = queued["gpu"]
+    host = {**queued, "limits": {gpu: {"max_jobs": 20, "max_mem_gb": 90}}}
+    backend = RemoteBackend(Path(__file__).resolve().parents[1], tmp_path / "runs", SimpleNamespace(root=REMOTE_ROOT))
+    _, spec = backend.prepare(queued, gpu, 1, host, {})
+    assert spec["script"] == "scripts/realworld_native_depth.py"
+    command = build_remote_command(spec, DATA_ID, "e" * 40, "f" * 64, {"tests.json": "1" * 64},
+                                   [(REMOTE_ROOT + "/data/hammer.hdf5", "d" * 64)])
+    docker_line = next(line for line in command.splitlines() if line.startswith("cid=$(docker run "))
+    docker_args = shlex.split(docker_line[len("cid=$("):-1])
+    mounts = []
+    for i, arg in enumerate(docker_args):
+        if arg == "--mount":
+            fields = dict(field.split("=", 1) if "=" in field else (field, "")
+                          for field in docker_args[i + 1].split(","))
+            mounts.append({"Type": fields["type"], "Source": fields["src"], "Destination": fields["dst"],
+                           "RW": "readonly" not in fields})
+    configs = REMOTE_ROOT + "/realworld/configs"
+    assert {"Type": "bind", "Source": configs, "Destination": configs, "RW": False} in mounts
+    item = {"Name": "/" + spec["container"], "Id": "7" * 64, "Image": IMAGE, "Mounts": mounts,
+            "Config": {"Labels": spec["labels"], "Env": ["CUDA_VISIBLE_DEVICES=" + gpu,
+                       "NVIDIA_VISIBLE_DEVICES=void", "NVIDIA_DRIVER_CAPABILITIES=compute,utility,graphics"]},
+            "HostConfig": {"DeviceRequests": [{"Driver": "cdi", "Count": 0,
+                           "DeviceIDs": ["nvidia.com/gpu=" + gpu], "Capabilities": [], "Options": {}}],
+                           "Privileged": False, "ReadonlyRootfs": True, "PidMode": "host", "ShmSize": SHM_SIZE_BYTES}}
+    validate_container(item, queued["id"], {**spec, "attempts": 1, "script": queued["script"]})

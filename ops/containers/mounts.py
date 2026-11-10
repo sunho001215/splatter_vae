@@ -1,5 +1,7 @@
 """Role-specific bind mounts shared by remote launch and reconciliation."""
 
+from pathlib import Path
+
 from ops.jobs.host_roles import DOMAIN, job_class
 from ops.remote.access import REMOTE_ROOT
 from s4d.rwlearn.configs import REMOTE_REALWORLD_ROOT
@@ -22,4 +24,5 @@ def realworld_mounts(job: dict) -> list[tuple[str, str, bool]]:
         raise ValueError(f"Invalid or ambiguous remote job role: {classification.evidence}")
     if DOMAIN.get(classification.cls) != "realworld":
         return []
-    return [(path, path, True) for path in REALWORLD_READ_ROOTS + SCRIPT_READ_ROOTS.get(job.get("script"), ())]
+    script = str(Path(job.get("script", "")))  # same normalization as RemoteBackend.prepare()
+    return [(path, path, True) for path in REALWORLD_READ_ROOTS + SCRIPT_READ_ROOTS.get(script, ())]
