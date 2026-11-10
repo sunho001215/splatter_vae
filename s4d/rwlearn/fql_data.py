@@ -16,8 +16,12 @@ views and 3D-MVP fuses them, so their order is irrelevant).
 Policy input = the campaign's frozen-encoder adapter (``FrameMLPStackHead`` over the 3-frame stack, or
 ``SmallPostEncoderMLPHead`` for SinCro's fused state; 256-d, trainable) concatenated with the 10-d proprioception
 (``actions`` module docstring); one adapter instance per FQL network, as the official agent gives every network its
-own encoder. The ``e2e_cnn`` condition has no frozen encoder: its dataset holds the same transitions without features
-and ``s4d.rwlearn.pixel.OfflinePixelTransitions`` reads the store's RGB frames for a jointly trained IMPALA CNN.
+own encoder. Optional, opt-in per condition (``encoder.feature_norm``; docs/realworld_fql.md "Frozen-feature
+standardisation"): the frozen features are standardised per dimension with statistics fitted on the training split
+(``fit_feature_standardization``) before the adapter; the statistics are buffers of every network's encoder, so they
+travel inside the policy checkpoint. Default ``none``: the adapter reads the stored features unchanged. The
+``e2e_cnn`` condition has no frozen encoder: its dataset holds the same transitions without features and
+``s4d.rwlearn.pixel.OfflinePixelTransitions`` reads the store's RGB frames for a jointly trained IMPALA CNN.
 
 Action contract (audited; user decision 2026-11-06 ~11:20): the recorded ``action/flange_pose`` is the pose command
 actually SENT; the action is the command-based base-frame flange delta pose (rotation vector) + the CONTINUOUS gripper
@@ -42,6 +46,8 @@ from s4d.rwlearn.store import FrameStore
 from s4d.rwlearn.transitions import episode_transitions, history_indices, timelines
 
 FORMAT = "rwlearn_fql_dataset_v1"
+FEATURE_NORMS = ("none", "train_standardize")  # encoder.feature_norm (configs/realworld/fql/base.yaml)
+STD_FLOOR_REL = 1e-3  # sigma_d >= STD_FLOOR_REL * max_d sigma_d: no division by a (near-)constant dimension
 
 
 def sha256_file(path) -> str:
@@ -196,10 +202,46 @@ def build_fql_dataset(store: FrameStore, condition: str, export_path, out: Path,
     return {"path": str(out), **stats}
 
 
-class ObsEncoder(nn.Module):
-    """Per-network FQL observation encoder: campaign adapter head on the frozen features + raw proprioception."""
+def feature_stats_sha256(mean, std) -> str:
+    """Identity of a standardisation: sha256 over the little-endian float32 mean then std."""
+    return hashlib.sha256(np.ascontiguousarray(mean, "<f4").tobytes()
+                          + np.ascontiguousarray(std, "<f4").tobytes()).hexdigest()
 
-    def __init__(self, feat_dim: int, sequence: bool, proprio_dim: int = A.PROPRIO_DIM, proj: int = 256):
+
+def fit_feature_standardization(features: torch.Tensor, chunk: int = 65536) -> dict:
+    """Per-dimension mean / standard deviation of stored frozen features (rows = every stored observation time of the
+    given timelines; the trainer passes the TRAINING split's ``OfflineTransitions.features``). Two passes with float64
+    accumulation on CPU (device-independent), population std floored at ``STD_FLOOR_REL`` x the largest; returned as
+    float32 ``mean`` / ``std`` plus the JSON descriptor (``kind``, ``rows``, ``dim``, floor, ``sha256``) that the
+    checkpoint meta and the deploy-contract sidecar carry."""
+    x = features.reshape(-1, features.shape[-1])
+    n, d = x.shape
+    if n < 2:
+        raise ValueError("feature standardisation needs at least two stored rows")
+    total = np.zeros(d)
+    for s in range(0, n, chunk):
+        total += x[s:s + chunk].cpu().numpy().astype(np.float64).sum(0)
+    mean = total / n
+    sq = np.zeros(d)
+    for s in range(0, n, chunk):
+        sq += ((x[s:s + chunk].cpu().numpy().astype(np.float64) - mean) ** 2).sum(0)
+    std = np.sqrt(sq / n)
+    floor = STD_FLOOR_REL * float(std.max())
+    if not floor > 0:
+        raise ValueError("every feature dimension is constant")
+    mean32, std32 = mean.astype(np.float32), np.maximum(std, floor).astype(np.float32)
+    return {"kind": "train_standardize", "rows": int(n), "dim": int(d), "std_floor_rel": STD_FLOOR_REL,
+            "floored_dims": int((std < floor).sum()), "sha256": feature_stats_sha256(mean32, std32),
+            "mean": mean32, "std": std32}
+
+
+class ObsEncoder(nn.Module):
+    """Per-network FQL observation encoder: campaign adapter head on the frozen features + raw proprioception.
+    ``feature_stats`` (``fit_feature_standardization``) standardises the features first; its mean / std become the
+    buffers ``feat_mean`` / ``feat_std`` (saved and loaded with the module) and ``feature_norm`` its descriptor."""
+
+    def __init__(self, feat_dim: int, sequence: bool, proprio_dim: int = A.PROPRIO_DIM, proj: int = 256,
+                 feature_stats: dict | None = None):
         super().__init__()
         from s4d.rl.encoders import FrameMLPStackHead, SmallPostEncoderMLPHead
 
@@ -207,9 +249,28 @@ class ObsEncoder(nn.Module):
         self.head = (SmallPostEncoderMLPHead(feat_dim, proj, proj) if sequence
                      else FrameMLPStackHead(feat_dim, FRAME_STACK, proj, min(proj, 256), proj, proj))
         self.out_dim = proj + proprio_dim
+        self.feature_norm = None
+        if feature_stats is not None:
+            if feature_stats["kind"] != "train_standardize" or int(feature_stats["dim"]) != feat_dim:
+                raise ValueError("feature standardisation does not match this encoder")
+            self.feature_norm = {k: v for k, v in feature_stats.items() if k not in ("mean", "std")}
+            for name in ("mean", "std"):
+                value = torch.as_tensor(np.asarray(feature_stats[name], np.float32))
+                if value.shape != (feat_dim,):
+                    raise ValueError(f"feature {name} must have shape ({feat_dim},)")
+                self.register_buffer(f"feat_{name}", value.clone())
+
+    def stats_sha256(self) -> str | None:
+        """sha256 of the CURRENT standardisation buffers (None without standardisation)."""
+        if self.feature_norm is None:
+            return None
+        return feature_stats_sha256(self.feat_mean.cpu().numpy(), self.feat_std.cpu().numpy())
 
     def forward(self, obs: dict) -> torch.Tensor:
-        return torch.cat([self.head(obs["feat"].float()), obs["proprio"].float()], dim=-1)
+        feat = obs["feat"].float()
+        if self.feature_norm is not None:
+            feat = (feat - self.feat_mean) / self.feat_std
+        return torch.cat([self.head(feat), obs["proprio"].float()], dim=-1)
 
 
 class OfflineTransitions:
@@ -285,5 +346,5 @@ class OfflineTransitions:
         ``Dataset.sample``: uniform indices)."""
         return self.batch(torch.randint(self.size, (batch_size,), generator=generator))
 
-    def encoder_factory(self, proj: int = 256):
-        return lambda: ObsEncoder(self.feat_dim, self.sequence, A.PROPRIO_DIM, proj)
+    def encoder_factory(self, proj: int = 256, feature_stats: dict | None = None):
+        return lambda: ObsEncoder(self.feat_dim, self.sequence, A.PROPRIO_DIM, proj, feature_stats)

@@ -62,8 +62,12 @@ def training_contract(attrs: dict) -> dict:
 
 def read_training_contract(meta: dict, source=None) -> dict:
     """``source``: a training-contract dict, a sidecar JSON path, or the FQL dataset (.h5; default meta['dataset']).
-    Every source is checked against the checkpoint (condition, export, action contract, image size)."""
+    Every source is checked against the checkpoint (condition, export, action contract, image size, frozen-feature
+    standardisation: a sidecar must carry exactly the checkpoint's ``feature_norm`` record, or none for a checkpoint
+    without one; the dataset predates the fit, so with it the checkpoint's record is taken as is)."""
     if meta.get("fixture") is True and meta.get("observation_contract") is not None:
+        if meta["observation_contract"].get("feature_norm") != meta.get("feature_norm"):
+            raise ValueError("training contract feature_norm differs from the checkpoint")
         return dict(meta["observation_contract"])  # labelled FIXTURE checkpoints only
     source = source if source is not None else meta.get("dataset")
     if source is None:
@@ -77,10 +81,13 @@ def read_training_contract(meta: dict, source=None) -> dict:
 
         with h5py.File(source, "r") as f:
             training = training_contract(dict(f.attrs))
+        if meta.get("feature_norm") is not None:
+            training["feature_norm"] = dict(meta["feature_norm"])
     if training.get("format") != SIDECAR_FORMAT:
         raise ValueError(f"not a {SIDECAR_FORMAT} training contract")
     checks = {"condition": meta["condition"], "export_sha256": meta.get("export_sha256") or "",
-              "contract": meta["contract"], "image_hw": list(meta["image_hw"])}
+              "contract": meta["contract"], "image_hw": list(meta["image_hw"]),
+              "feature_norm": meta.get("feature_norm")}
     for key, expected in checks.items():
         if training.get(key) != expected:
             raise ValueError(f"training contract {key} differs from the checkpoint")

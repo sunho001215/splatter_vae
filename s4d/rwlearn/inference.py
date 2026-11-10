@@ -2,7 +2,8 @@
 NO robot I/O: nothing here opens a connection, publishes, or writes a command anywhere but the returned dict / files.
 
 ``OfflinePolicy`` = frozen baseline encoder (the export the dataset was built with, sha256-checked) + the trained FQL
-agent (one-step policy); for ``e2e_cnn`` the jointly trained CNN encoders are part of the agent. ``act`` takes an
+agent (one-step policy; with the frozen-feature standardisation the checkpoint carries, if any, sha256-checked); for
+``e2e_cnn`` the jointly trained CNN encoders are part of the agent. ``act`` takes an
 observation history exactly as the training data defines it (3 frames of
 one camera - or 3 synchronised multi-view steps - in the training store's 128 px centre-crop format, plus the measured
 flange pose and gripper register at the newest frame) and returns ``actions.to_robot_command``: the flange goal pose
@@ -34,6 +35,9 @@ class OfflinePolicy:
         if self.condition == "e2e_cnn":  # no frozen encoder: the jointly trained CNNs are part of the agent
             from s4d.rwlearn.pixel import encoder_from_config
 
+            if self.meta.get("feature_norm") is not None:
+                raise ValueError("e2e_cnn has no frozen features to standardise")
+
             state, cfg = ckpt["agent"], self.meta["encoder_config"]
             self.agent = FQLAgent.create(0, state["obs_dim"], state["action_dim"], state["config"],
                                          device=self.device, encoder=lambda: encoder_from_config(cfg))
@@ -47,11 +51,15 @@ class OfflinePolicy:
         self.adapter = encoder_adapter(self.condition, export_path, int(self.meta["image_hw"][0])).to(self.device)
         self.adapter.backbone.eval()
         feat_dim, sequence = int(self.meta["feat_dim"]), bool(self.meta["sequence_feature"])
+        norm = self.meta.get("feature_norm")  # placeholder buffers, replaced by the checkpoint's and verified below
+        stats = None if norm is None else {**norm, "mean": np.zeros(feat_dim), "std": np.ones(feat_dim)}
         state = ckpt["agent"]
         self.agent = FQLAgent.create(0, state["obs_dim"], state["action_dim"], state["config"], device=self.device,
                                      encoder=lambda: ObsEncoder(feat_dim, sequence, A.PROPRIO_DIM,
-                                                                int(self.meta["proj_dim"])))
+                                                                int(self.meta["proj_dim"]), stats))
         self.agent.load_state_dict(state)
+        if norm is not None and any(m.encoder.stats_sha256() != norm["sha256"] for m in self.agent.modules().values()):
+            raise ValueError("checkpoint feature standardisation differs from its recorded sha256")
         self.agent.train_mode(False)
         self.sequence = sequence
 
@@ -166,6 +174,8 @@ def checkpoint_payload(agent: FQLAgent, data, condition: str, step: int, **extra
         meta["encoder_config"] = dict(agent.critic.encoder.config)
     else:
         meta["proj_dim"] = int(agent.critic.encoder.out_dim - A.PROPRIO_DIM)
+        if agent.critic.encoder.feature_norm is not None:  # opt-in standardisation (fql_data.ObsEncoder buffers)
+            meta["feature_norm"] = dict(agent.critic.encoder.feature_norm)
     return {"agent": agent.state_dict(), "step": int(step), "meta": meta, **extra}
 
 

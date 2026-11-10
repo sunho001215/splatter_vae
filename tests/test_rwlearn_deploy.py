@@ -394,6 +394,61 @@ def test_colour_z_conversion_and_rs_align_emulation():
     assert valid.all()
 
 
+def test_feature_standardisation_is_applied_by_the_deploy_path(tmp_path):
+    """A checkpoint with frozen-feature standardisation (encoder buffers + meta record) served through DeployPolicy:
+    ``infer`` == ``act`` == the adapter on (float16(f) - mu) / sigma, bitwise. Deploy-contract sidecars must carry
+    exactly the checkpoint's record (a stale sidecar without it, or a record without the checkpoint's, is refused)."""
+    from s4d.rwlearn.deploy import DeployPolicy
+    from s4d.rwlearn.fql import FQLAgent
+    from s4d.rwlearn.fql_data import ObsEncoder, feature_stats_sha256
+
+    make_fixture_policy(tmp_path / "raw", "reviwo")
+    meta = torch.load(tmp_path / "raw" / "policy.pt", map_location="cpu", weights_only=False)["meta"]
+    d = int(meta["feat_dim"])
+    rng = np.random.default_rng(0)
+    mean, std = rng.normal(size=d).astype(np.float32), rng.uniform(0.5, 2.0, d).astype(np.float32)
+    record = {"kind": "train_standardize", "rows": 100, "dim": d, "std_floor_rel": 1e-3, "floored_dims": 0,
+              "sha256": feature_stats_sha256(mean, std)}
+    torch.manual_seed(4)
+
+    def enc():
+        return ObsEncoder(d, False, proj=8, feature_stats={**record, "mean": mean, "std": std})
+
+    agent = FQLAgent.create(1, enc().out_dim, 7, {"actor_hidden_dims": (8,), "value_hidden_dims": (8,)}, encoder=enc)
+    fixture_meta = {**meta, "feature_norm": record,
+                    "observation_contract": {**meta["observation_contract"], "feature_norm": record}}
+    torch.save({"meta": {**meta, "feature_norm": record}, "agent": agent.state_dict()}, tmp_path / "stale.pt")
+    with pytest.raises(ValueError, match="feature_norm"):  # embedded fixture contract without the record
+        DeployPolicy(tmp_path / "stale.pt", export_path=tmp_path / "raw" / "encoder.pt")
+    torch.save({"meta": fixture_meta, "agent": agent.state_dict()}, tmp_path / "norm.pt")
+    policy = DeployPolicy(tmp_path / "norm.pt", export_path=tmp_path / "raw" / "encoder.pt")
+    window = synthetic_window(policy.reset_session(**session_choices(policy, "norm")))
+    pose = [0.4, 0.0, 0.3, 0.0, 0.0, 0.0, 1.0]
+    out = policy.infer(window, pose, 100, binding(window), noise=torch.zeros(1, A.ACTION_DIM))
+    assert np.array_equal(out["action_norm"], policy.act(window.observation(), pose, 100,
+                                                         noise=torch.zeros(1, A.ACTION_DIM))["action_norm"])
+    actor = policy.offline.agent.actor_onestep_flow
+    twin = ObsEncoder(d, False, proj=8)
+    twin.head.load_state_dict(actor.encoder.head.state_dict())
+    feat = policy.offline.features(window.observation()).to(torch.float16).float()
+    z = (feat - torch.from_numpy(mean)) / torch.from_numpy(std)
+    proprio = torch.as_tensor(A.measured_proprio(np.array(pose), 100)).float()[None]
+    expected = actor.mlp(torch.cat([twin({"feat": z, "proprio": proprio}), torch.zeros(1, A.ACTION_DIM)], -1))
+    assert np.array_equal(out["action_norm"], expected.clamp(-1, 1).detach().numpy()[0])
+
+    plain = {k: v for k, v in meta.items() if k not in ("fixture", "observation_contract")}
+    sidecar = dict(meta["observation_contract"])
+    with_norm = {**plain, "feature_norm": record}
+    path = tmp_path / "sidecar.json"
+    path.write_text(json.dumps({**sidecar, "feature_norm": record}))
+    assert C.read_training_contract(with_norm, path)["feature_norm"] == record
+    assert "feature_norm" not in C.read_training_contract(plain, sidecar)  # no standardisation anywhere: as before
+    for ckpt_meta, source in ((with_norm, sidecar), (plain, {**sidecar, "feature_norm": record}),
+                              (with_norm, {**sidecar, "feature_norm": {**record, "sha256": "0" * 64}})):
+        with pytest.raises(ValueError, match="feature_norm"):
+            C.read_training_contract(ckpt_meta, source)
+
+
 def test_export_root_resolves_repo_relative_export(tmp_path):
     """Staged checkpoint roots mirror ``runs/``: export = export_root / meta["export_path"] (sha256-checked)."""
     from s4d.rwlearn.deploy import DeployPolicy

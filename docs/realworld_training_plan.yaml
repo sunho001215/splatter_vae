@@ -835,6 +835,7 @@ rows:
   - data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/split_seed0.json
   - data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/gate_report.json
   - train.seed=0
+  - encoder.feature_norm=train_standardize
   role: realworld_fql
   host: remote
   gpu: any
@@ -875,6 +876,7 @@ rows:
   - data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/split_seed0.json
   - data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/gate_report.json
   - train.seed=1
+  - encoder.feature_norm=train_standardize
   role: realworld_fql
   host: remote
   gpu: any
@@ -915,6 +917,7 @@ rows:
   - data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/split_seed0.json
   - data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/gate_report.json
   - train.seed=2
+  - encoder.feature_norm=train_standardize
   role: realworld_fql
   host: remote
   gpu: any
@@ -991,6 +994,7 @@ rows:
   - data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/split_seed0.json
   - data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/gate_report.json
   - train.seed=0
+  - encoder.feature_norm=train_standardize
   role: realworld_fql
   host: remote
   gpu: any
@@ -1031,6 +1035,7 @@ rows:
   - data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/split_seed0.json
   - data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/gate_report.json
   - train.seed=1
+  - encoder.feature_norm=train_standardize
   role: realworld_fql
   host: remote
   gpu: any
@@ -1071,6 +1076,7 @@ rows:
   - data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/split_seed0.json
   - data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open/gate_report.json
   - train.seed=2
+  - encoder.feature_norm=train_standardize
   role: realworld_fql
   host: remote
   gpu: any
@@ -2090,6 +2096,7 @@ rows:
   - data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/mug-hanging/split_seed0.json
   - data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/mug-hanging/gate_report.json
   - train.seed=0
+  - encoder.feature_norm=train_standardize
   role: realworld_fql
   host: remote
   gpu: any
@@ -2130,6 +2137,7 @@ rows:
   - data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/mug-hanging/split_seed0.json
   - data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/mug-hanging/gate_report.json
   - train.seed=1
+  - encoder.feature_norm=train_standardize
   role: realworld_fql
   host: remote
   gpu: any
@@ -2170,6 +2178,7 @@ rows:
   - data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/mug-hanging/split_seed0.json
   - data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/mug-hanging/gate_report.json
   - train.seed=2
+  - encoder.feature_norm=train_standardize
   role: realworld_fql
   host: remote
   gpu: any
@@ -2246,6 +2255,7 @@ rows:
   - data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/mug-hanging/split_seed0.json
   - data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/mug-hanging/gate_report.json
   - train.seed=0
+  - encoder.feature_norm=train_standardize
   role: realworld_fql
   host: remote
   gpu: any
@@ -2286,6 +2296,7 @@ rows:
   - data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/mug-hanging/split_seed0.json
   - data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/mug-hanging/gate_report.json
   - train.seed=1
+  - encoder.feature_norm=train_standardize
   role: realworld_fql
   host: remote
   gpu: any
@@ -2326,6 +2337,7 @@ rows:
   - data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/mug-hanging/split_seed0.json
   - data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/mug-hanging/gate_report.json
   - train.seed=2
+  - encoder.feature_norm=train_standardize
   role: realworld_fql
   host: remote
   gpu: any
@@ -3345,6 +3357,7 @@ rows:
   - data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/covering/split_seed0.json
   - data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/covering/gate_report.json
   - train.seed=0
+  - encoder.feature_norm=train_standardize
   role: realworld_fql
   host: remote
   gpu: any
@@ -3385,6 +3398,7 @@ rows:
   - data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/covering/split_seed0.json
   - data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/covering/gate_report.json
   - train.seed=1
+  - encoder.feature_norm=train_standardize
   role: realworld_fql
   host: remote
   gpu: any
@@ -3425,6 +3439,7 @@ rows:
   - data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/covering/split_seed0.json
   - data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/covering/gate_report.json
   - train.seed=2
+  - encoder.feature_norm=train_standardize
   role: realworld_fql
   host: remote
   gpu: any
@@ -3501,6 +3516,7 @@ rows:
   - data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/covering/split_seed0.json
   - data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/covering/gate_report.json
   - train.seed=0
+  - encoder.feature_norm=train_standardize
   role: realworld_fql
   host: remote
   gpu: any
@@ -3541,6 +3557,7 @@ rows:
   - data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/covering/split_seed0.json
   - data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/covering/gate_report.json
   - train.seed=1
+  - encoder.feature_norm=train_standardize
   role: realworld_fql
   host: remote
   gpu: any
@@ -3581,6 +3598,7 @@ rows:
   - data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/covering/split_seed0.json
   - data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/covering/gate_report.json
   - train.seed=2
+  - encoder.feature_norm=train_standardize
   role: realworld_fql
   host: remote
   gpu: any
@@ -4600,6 +4618,7 @@ rows:
   - data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/pick-and-place/split_seed0.json
   - data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/pick-and-place/gate_report.json
   - train.seed=0
+  - encoder.feature_norm=train_standardize
   role: realworld_fql
   host: remote
   gpu: any
@@ -4640,6 +4659,7 @@ rows:
   - data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/pick-and-place/split_seed0.json
   - data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/pick-and-place/gate_report.json
   - train.seed=1
+  - encoder.feature_norm=train_standardize
   role: realworld_fql
   host: remote
   gpu: any
@@ -4680,6 +4700,7 @@ rows:
   - data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/pick-and-place/split_seed0.json
   - data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/pick-and-place/gate_report.json
   - train.seed=2
+  - encoder.feature_norm=train_standardize
   role: realworld_fql
   host: remote
   gpu: any
@@ -4756,6 +4777,7 @@ rows:
   - data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/pick-and-place/split_seed0.json
   - data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/pick-and-place/gate_report.json
   - train.seed=0
+  - encoder.feature_norm=train_standardize
   role: realworld_fql
   host: remote
   gpu: any
@@ -4796,6 +4818,7 @@ rows:
   - data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/pick-and-place/split_seed0.json
   - data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/pick-and-place/gate_report.json
   - train.seed=1
+  - encoder.feature_norm=train_standardize
   role: realworld_fql
   host: remote
   gpu: any
@@ -4836,6 +4859,7 @@ rows:
   - data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/pick-and-place/split_seed0.json
   - data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/pick-and-place/gate_report.json
   - train.seed=2
+  - encoder.feature_norm=train_standardize
   role: realworld_fql
   host: remote
   gpu: any
