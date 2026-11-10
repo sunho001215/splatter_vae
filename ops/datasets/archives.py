@@ -25,6 +25,9 @@ from pathlib import Path
 from s4d.data.droid.largescale.extract import extract_members
 
 HDF5_SIGNATURE = b"\x89HDF\r\n\x1a\n"
+# The decompressor: the host's zstd, single-threaded, stdin -> stdout. Tests substitute another stdin -> stdout codec
+# where no zstd binary exists (the release image) and run the real zstd wherever it is installed.
+DECOMPRESS = ("zstd", "-dc", "-T1", "-q")
 FEED_CHUNK = 4 << 20
 
 
@@ -47,7 +50,7 @@ def extract_stream(chunks, staging: Path, kinds, episodes=None, should_stop=lamb
     """Feed byte chunks (an iterable; the compressed stream in order) through ``zstd -dc -T1`` into
     ``extract_members``; returns its report. Raises ExtractionError on a zstd failure or a stopped feed."""
     staging.mkdir(parents=True, exist_ok=True)
-    zstd = subprocess.Popen(["zstd", "-dc", "-T1", "-q"], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+    zstd = subprocess.Popen(list(DECOMPRESS), stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                             stderr=subprocess.PIPE)
     feed_error = []
     stderr_tail = bytearray()

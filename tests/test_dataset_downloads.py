@@ -8,6 +8,7 @@ import hashlib
 import io
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tarfile
@@ -74,6 +75,38 @@ class Server:
 
     def url(self, name: str) -> str:
         return f"http://127.0.0.1:{self.port}/{name}"
+
+
+# Archive codecs: the real zstd wherever the binary is installed (the remote host, LOCAL) and, always, a gzip stand-in
+# with the same stdin -> stdout contract (the release image has neither zstd nor the zstandard module). Every archive
+# test runs once per available codec; the production command stays zstd -dc -T1 (test_production_decompressor_*).
+def _zstd_compress(raw: bytes) -> bytes:
+    return subprocess.run(["zstd", "-q", "-c"], input=raw, capture_output=True, check=True).stdout
+
+
+def _gzip_compress(raw: bytes) -> bytes:
+    import gzip
+
+    return gzip.compress(raw, compresslevel=1)
+
+
+PRODUCTION_DECOMPRESS = archives.DECOMPRESS
+CODECS = {"gzip": (_gzip_compress, (sys.executable, "-I", "-m", "gzip", "-d"))}
+if shutil.which("zstd"):
+    CODECS["zstd"] = (_zstd_compress, archives.DECOMPRESS)
+COMPRESS = {"active": _gzip_compress}
+
+
+@pytest.fixture(autouse=True, params=sorted(CODECS))
+def codec(request, monkeypatch):
+    compress, command = CODECS[request.param]
+    monkeypatch.setattr(archives, "DECOMPRESS", tuple(command))
+    monkeypatch.setitem(COMPRESS, "active", compress)
+    return request.param
+
+
+def test_production_decompressor_is_single_threaded_zstd():
+    assert PRODUCTION_DECOMPRESS == ("zstd", "-dc", "-T1", "-q")  # captured before any test substitutes it
 
 
 @pytest.fixture(autouse=True)
@@ -412,7 +445,7 @@ def tar_zst(members: dict[str, bytes]) -> bytes:
             info = tarfile.TarInfo(name)
             info.size = len(data)
             tar.addfile(info, io.BytesIO(data))
-    return subprocess.run(["zstd", "-q", "-c"], input=raw.getvalue(), capture_output=True, check=True).stdout
+    return COMPRESS["active"](raw.getvalue())
 
 
 EPISODES = ["AUTOLab+0d4edc83+2023-10-21-19h-07m-04s", "ILIAD+t3d58310+2023-05-01-10h-00m-00s"]
@@ -450,7 +483,7 @@ def test_depth_stream_across_parts_and_a_stop(tmp_path):
     archives.extract_stream(archives.file_chunks(parts), staging, ["depth_320x180"])
     report = archives.verify_depth(staging, set(EPISODES) | {"LAB+x+2023-01-01-00h-00m-00s"})
     assert report["members"] == 2 and report["flow_episodes_without_depth"] == 1
-    with pytest.raises(archives.ExtractionError, match="truncated|zstd"):
+    with pytest.raises(archives.ExtractionError, match="truncated|exited"):
         archives.extract_stream(archives.file_chunks(parts[:2]), tmp_path / "s2", ["depth_320x180"])
 
 
@@ -706,8 +739,7 @@ def test_tar_padding_after_the_end_marker_does_not_block_zstd(tmp_path):
         info = tarfile.TarInfo(f"droid/depth_320x180/{EPISODES[0]}_depth.h5")
         info.size = len(data)
         tar.addfile(info, io.BytesIO(data))
-    blob = subprocess.run(["zstd", "-q", "-c"], input=raw.getvalue() + bytes(4 << 20), capture_output=True,
-                          check=True).stdout
+    blob = COMPRESS["active"](raw.getvalue() + bytes(4 << 20))
     (tmp_path / "a.zst").write_bytes(blob)
     done = []
     thread = threading.Thread(target=lambda: done.append(archives.extract_stream(
