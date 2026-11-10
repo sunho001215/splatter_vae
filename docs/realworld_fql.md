@@ -108,6 +108,16 @@ in the FQL dataset file next to the transitions. These are regenerable per-frame
 not window copies. The pipeline test checks that live encoding of store frames equals the cached features. For the two
 3D-MVP conditions only, the adapter reads them standardised (next section).
 
+## Superseded 3D-MVP rows (2026-11-10; documentation only, queue entries unchanged)
+
+The 12 FQL rows `rwcal-20261109-fql-mvp3d_{single,multiview}-{drawer-open,mug-hanging}-s{0,1,2}` (and their policies)
+are SUPERSEDED: vision-blind (un-normalised 3D-MVP read-out) and 8/12 critics diverged (MVP3D-FQL-DIAG.md). They stay
+quarantined and are never reported as 3D-MVP results. Replacements (user decisions 2026-11-10): native-RealSense-depth
+chain `rwcal-20261110-nativedepth-mvp3d-<task>` -> `rwcal-20261110-mvp3d-<task>-pre-native` ->
+`rwcal-20261110-fqldata-mvp3d_<view>-<task>-native` -> `rwcal-20261110-fql-mvp3d_<view>-<task>-s{0,1,2}`
+(`encoder.feature_norm=train_standardize`), FQL held until each dataset passes the standardised feature check. The
+2026-11-09 encoders (`rwcal-20261109-mvp3d-<task>-pre`, FS depth) and fqldata datasets are kept unchanged.
+
 ## Frozen-feature standardisation (3D-MVP only; 2026-11-10)
 
 **Why.** 3D-MVP's frozen read-out is the per-view max-pool of the last residual stream of a pre-norm transformer with
