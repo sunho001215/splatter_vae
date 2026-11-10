@@ -73,11 +73,13 @@ def read_training_contract(meta: dict, source=None) -> dict:
     standardisation: a sidecar must carry exactly the checkpoint's ``feature_norm`` record, or none for a checkpoint
     without one; the dataset predates the fit, so with it the checkpoint's record is taken as is)."""
     if meta.get("fixture") is True and meta.get("observation_contract") is not None:
-        if meta["observation_contract"].get("feature_norm") != meta.get("feature_norm"):
+        training = meta["observation_contract"]
+        if training.get("feature_norm") != meta.get("feature_norm"):
             raise ValueError("training contract feature_norm differs from the checkpoint")
-        if "training_depth" in meta and meta["observation_contract"].get("training_depth") != meta["training_depth"]:
+        if (("training_depth" in meta or training.get("training_depth") == NATIVE_DEPTH)
+                and training.get("training_depth") != meta.get("training_depth")):
             raise ValueError("training contract training_depth differs from the checkpoint")
-        return dict(meta["observation_contract"])  # labelled FIXTURE checkpoints only
+        return dict(training)  # labelled FIXTURE checkpoints only
     source = source if source is not None else meta.get("dataset")
     if source is None:
         raise ValueError("checkpoint has no training dataset: pass the deploy-contract sidecar or the dataset")
@@ -97,8 +99,8 @@ def read_training_contract(meta: dict, source=None) -> dict:
     checks = {"condition": meta["condition"], "export_sha256": meta.get("export_sha256") or "",
               "contract": meta["contract"], "image_hw": list(meta["image_hw"]),
               "feature_norm": meta.get("feature_norm")}
-    if "training_depth" in meta:
-        checks["training_depth"] = meta["training_depth"]
+    if "training_depth" in meta or training.get("training_depth") == NATIVE_DEPTH:
+        checks["training_depth"] = meta.get("training_depth")
     for key, expected in checks.items():
         if training.get(key) != expected:
             raise ValueError(f"training contract {key} differs from the checkpoint")

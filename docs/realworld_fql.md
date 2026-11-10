@@ -657,7 +657,8 @@ the output descriptor is published only once every episode's overlay exists and 
 
 The output descriptor preserves the input keys and adds `depth_source: native_realsense`, `depth_overlays`
 (one path per input `paths` entry, in the same order), and `rig_document_sha256`. `open_store` returns a compact
-store whose `depth()` reads the overlay, checking raw identity, counts and timestamps once per episode per process.
+store whose `depth()` reads the overlay through a process-local LRU of at most `max_open` handles (default 16).
+Raw identity, counts and timestamps are checked when each handle opens; replaced files are reopened and verified.
 RGB, masks, intrinsics, poses, synchronization and raw action provenance still come from the original store.
 
 Create separately named rows/artifacts with this chain:

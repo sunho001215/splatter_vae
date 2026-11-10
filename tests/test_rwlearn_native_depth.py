@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 import pickle
+import shutil
 import subprocess
 import sys
 from dataclasses import replace
@@ -133,7 +134,7 @@ def test_native_depth_matches_replay_history_and_pretraining(tmp_path, condition
     data = RealworldMVPTimeSteps(fixture.out, [ep], num_views=3)
     np.testing.assert_array_equal(data[2]["depth"].numpy(), np.stack([native.depth(ep, c, [2])[0] for c in cams]))
     restored = pickle.loads(pickle.dumps(native))
-    assert not restored._verified
+    assert not restored._overlay_files
     assert restored.depth(ep, cams[0], [0]).tobytes() == native.depth(ep, cams[0], [0]).tobytes()
     restored.close()
     ordinary.close()
@@ -179,6 +180,99 @@ def test_overlay_identity_refusals(tmp_path, case, message):
     else:
         with pytest.raises(ValueError, match=message):
             build(fixture)  # an existing invalid overlay never skips
+
+
+@pytest.mark.parametrize("reader", ["depth", "depth_provenance"])
+def test_overlay_replacement_is_reverified(tmp_path, reader):
+    fixture = make_store(tmp_path / "store")
+    build(fixture)
+    store = open_store(fixture.out)
+    ep, = store.episodes()
+    try:
+        store.depth(ep, store.cameras(ep)[0], [0])
+        original = store._overlay_files[ep][1]
+        path = Path(store.depth_overlays[ep])
+        replacement = path.with_suffix(".replacement.h5")
+        shutil.copyfile(path, replacement)
+        with h5py.File(replacement, "r+") as f:
+            f.attrs["raw_sha256"] = "0" * 64
+        replacement.replace(path)
+        with pytest.raises(ValueError, match="raw_sha256"):
+            if reader == "depth":
+                store.depth(ep, store.cameras(ep)[0], [0])
+            else:
+                store.depth_provenance([ep])
+        assert not original.id.valid and ep not in store._overlay_files
+    finally:
+        store.close()
+
+
+def test_overlay_cache_is_bounded(tmp_path):
+    fixture = make_store(tmp_path / "store", count=3)
+    build(fixture)
+    store = open_store(fixture.out)
+    store.max_open = 2
+    eps = store.episodes()
+    cam = store.cameras(eps[0])[0]
+    expected = {}
+    for ep in eps:
+        with h5py.File(store.depth_overlays[ep], "r") as f:
+            expected[ep] = f[f"cameras/{cam}/depth"][:][[3, 0, 3]].tobytes()
+    handles = []
+    try:
+        for i in (0, 1, 0, 2, 1):
+            ep = eps[i]
+            assert store.depth(ep, cam, [3, 0, 3]).tobytes() == expected[ep]
+            handles.append(store._overlay_files[ep][1])
+            assert len(store._overlay_files) <= store.max_open
+        assert handles[0] is handles[2]  # cache hits reuse the open handle and refresh its LRU position
+        assert not handles[1].id.valid and not handles[0].id.valid
+        assert handles[4] is not handles[1]
+        assert list(store._overlay_files) == [eps[2], eps[1]]
+        assert handles[3].id.valid and handles[4].id.valid
+    finally:
+        store.close()
+    assert not store._overlay_files and all(not f.id.valid for f in handles)
+
+
+def test_overlay_cache_pickle_pid_and_close(tmp_path, monkeypatch):
+    from s4d.rwlearn import native_depth as ND
+
+    fixture = make_store(tmp_path / "store")
+    build(fixture)
+    store = open_store(fixture.out)
+    ep, = store.episodes()
+    cam = store.cameras(ep)[0]
+    inherited = []
+    monkeypatch.setattr(ND, "_INHERITED_HANDLES", inherited)
+    try:
+        expected = store.depth(ep, cam, [3, 0, 3]).tobytes()
+        original = store._overlay_files[ep][1]
+        restored = pickle.loads(pickle.dumps(store))
+        try:
+            assert not restored._overlay_files and restored._overlay_pid is None
+            for _ in range(2):
+                assert restored.depth(ep, cam, [3, 0, 3]).tobytes() == expected
+        finally:
+            restored.close()
+        assert store._overlay_files[ep][1] is original and original.id.valid
+        # Simulate a worker inheriting a populated cache from a different PID.
+        store._overlay_pid = -1
+        assert store.depth(ep, cam, [3, 0, 3]).tobytes() == expected
+        assert inherited == [original] and original.id.valid
+        assert store._overlay_files[ep][1] is not original and store._overlay_pid == os.getpid()
+    finally:
+        store.close()
+        for f in inherited:
+            f.close()  # simulated inherited handles still belong to this test process
+    assert not store._overlay_files and store._overlay_pid is None
+    with h5py.File(store.depth_overlays[ep], "r+") as f:
+        f.attrs["raw_sha256"] = "0" * 64
+    try:
+        with pytest.raises(ValueError, match="raw_sha256"):
+            store.depth(ep, cam, [0])  # close() also invalidates verification
+    finally:
+        store.close()
 
 
 def test_native_build_resume_subset_and_parallelism(tmp_path):
@@ -353,15 +447,21 @@ def test_training_depth_contract_and_checkpoint_compatibility(tmp_path):
     sidecar = fixture.root / "sidecar.json"
     sidecar.write_text(json.dumps(native))
     assert C.read_training_contract(meta, sidecar) == native
-    for wrong in (fs, {k: v for k, v in native.items() if k != "training_depth"}):
-        with pytest.raises(ValueError, match="training_depth"):
-            C.read_training_contract(meta, wrong)
-    with pytest.raises(ValueError, match="training_depth"):
-        C.read_training_contract({**meta, "fixture": True, "observation_contract": fs})
     explicit_fs = {**meta, "training_depth": "foundation_stereo_depth"}
-    assert C.read_training_contract(explicit_fs, fs) == fs
-    with pytest.raises(ValueError, match="training_depth"):
-        C.read_training_contract(explicit_fs, native)
+    legacy = {k: v for k, v in fs.items() if k != "training_depth"}
+    for checkpoint in (payload["meta"], explicit_fs, meta):
+        for training in (legacy, fs, native):
+            accepted = (training.get("training_depth") == checkpoint["training_depth"]
+                        if "training_depth" in checkpoint else training.get("training_depth") != C.NATIVE_DEPTH)
+            sidecar.write_text(json.dumps(training))
+            # Both mismatch directions, including missing depth metadata, for both source paths and fixtures.
+            for ckpt, source in ((checkpoint, training), (checkpoint, sidecar),
+                                 ({**checkpoint, "fixture": True, "observation_contract": training}, None)):
+                if accepted:
+                    assert C.read_training_contract(ckpt, source) == training
+                else:
+                    with pytest.raises(ValueError, match="training_depth"):
+                        C.read_training_contract(ckpt, source)
     spec = C.InputSpec.from_meta(meta, native)
     assert all("FoundationStereo" not in text for text in spec.train_deploy_differences)
     # Existing frame validation also refuses FS-labelled frames for a native training spec.

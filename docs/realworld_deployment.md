@@ -84,10 +84,11 @@ Opt-in native training (`docs/realworld_fql.md`, "Native-depth 3D-MVP (2026-11-1
 `training_depth: native_realsense` in the FQL dataset, checkpoint and deployment sidecar. Its depth overlays are
 bitwise the recorded deployment client's `rs_align` frames, including the published rig's validated native scale;
 the sidecar records overlay/rig provenance. `read_training_contract` refuses a different or missing sidecar depth
-source when the checkpoint records one, including an FS sidecar paired with a native checkpoint. Native
+source when the checkpoint records one, including an FS sidecar paired with a native checkpoint. A checkpoint
+without `training_depth` is legacy FS and refuses a native sidecar; legacy FS sidecars remain accepted. Native
 `depth_source_evidence` and `train_deploy_differences` describe native training and deployment, with no FS training
 claim. Frame history already requires metadata `depth_source` to match `InputSpec.deployment_depth` and the
-session's native correction. Existing checkpoints without a recorded training source retain their compatibility.
+session's native correction.
 
 The legacy FoundationStereo training-store evidence and train/deploy depth difference below apply to ordinary
 stores; they do not describe native-overlay training.

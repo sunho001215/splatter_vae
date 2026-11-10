@@ -10,6 +10,7 @@ import json
 import multiprocessing
 import os
 import tempfile
+from collections import OrderedDict
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
@@ -18,7 +19,7 @@ import numpy as np
 import yaml
 
 from s4d.realworld.io import atomic_write_bytes, sha256_file
-from s4d.realworld.train_store import CompactStore
+from s4d.realworld.train_store import _INHERITED_HANDLES, CompactStore
 from s4d.rwlearn.deploy.contracts import NATIVE_DEPTH, validate_native_correction
 from s4d.rwlearn.deploy.realsense import load_rig_session
 from s4d.rwlearn.deploy.replay import RecordedEpisode
@@ -58,9 +59,9 @@ def _verify(f, store, ep, rig_sha256, corrections=None) -> dict:
 
 
 class NativeDepthStore(CompactStore):
-    """CompactStore with only ``depth`` overridden. Identity is checked once per episode per process.
+    """CompactStore with only ``depth`` overridden. Identity is checked for each cached overlay handle.
 
-    Overlay handles are short-lived; the base store keeps its existing bounded, fork-safe LRU.
+    Overlays use a separate fork/pickle-safe LRU, bounded by the base store's ``max_open``.
     """
     depth_source = NATIVE_DEPTH
 
@@ -78,37 +79,72 @@ class NativeDepthStore(CompactStore):
         for path in self.depth_overlays.values():
             if not Path(path).is_file():
                 raise ValueError(f"missing native depth overlay: {path}")
-        self._verified = {}
+        self._overlay_files = OrderedDict()
+        self._overlay_pid = None
 
     def __getstate__(self):
         state = super().__getstate__()
-        state["_verified"] = {}
+        state["_overlay_files"] = OrderedDict()
+        state["_overlay_pid"] = None
         return state
 
-    def _verify_episode(self, f, ep):
-        key = (os.getpid(), ep)
-        if key not in self._verified:
-            self._verified[key] = _verify(f, self, ep, self.rig_document_sha256)
-        return self._verified[key]
+    @staticmethod
+    def _overlay_identity(stat):
+        return stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns
+
+    def _overlay(self, ep):
+        if self._overlay_pid != os.getpid():
+            self.close()
+            self._overlay_pid = os.getpid()
+        path = self.depth_overlays[ep]
+        identity = self._overlay_identity(os.stat(path))
+        cached = self._overlay_files.pop(ep, None)
+        if cached is not None:
+            if cached[0] == identity:
+                self._overlay_files[ep] = cached
+                return cached[1:]
+            cached[1].close()
+        f = h5py.File(path, "r", rdcc_nbytes=1 << 20)
+        try:
+            # Bind verification to the open file, even if the path changes while opening it.
+            identity = self._overlay_identity(os.fstat(f.id.get_vfd_handle()))
+            provenance = _verify(f, self, ep, self.rig_document_sha256)
+        except BaseException:
+            f.close()
+            raise
+        self._overlay_files[ep] = (identity, f, provenance)
+        while len(self._overlay_files) > self.max_open:
+            _, (_, old, _) = self._overlay_files.popitem(last=False)
+            old.close()
+        return f, provenance
+
+    def close(self):
+        for _, f, _ in self._overlay_files.values():
+            if self._overlay_pid == os.getpid():
+                f.close()
+            else:  # match EpisodeFile: inherited HDF5 handles must stay alive in the child
+                _INHERITED_HANDLES.append(f)
+        self._overlay_files.clear()
+        self._overlay_pid = None
+        super().close()
 
     def depth(self, ep, cam, idx):
-        with h5py.File(self.depth_overlays[ep], "r") as f:
-            self._verify_episode(f, ep)
-            ds = f[f"cameras/{cam}/depth"]
-            idx = np.atleast_1d(np.asarray(idx, np.int64))
-            if len(idx) and (idx.min() < 0 or idx.max() >= len(ds)):
-                raise IndexError(f"{ep}/{cam}: native depth frame index out of range")
-            # Preserve duplicates and arbitrary order, as EpisodeFile._frames does.
-            out = np.empty((len(idx), *self.image_hw), np.float32)
-            for k, i in enumerate(idx):
-                ds.read_direct(out, np.s_[int(i)], np.s_[k])
-            return out
+        f, _ = self._overlay(ep)
+        ds = f[f"cameras/{cam}/depth"]
+        idx = np.atleast_1d(np.asarray(idx, np.int64))
+        if len(idx) and (idx.min() < 0 or idx.max() >= len(ds)):
+            raise IndexError(f"{ep}/{cam}: native depth frame index out of range")
+        # Preserve duplicates and arbitrary order, as EpisodeFile._frames does.
+        out = np.empty((len(idx), *self.image_hw), np.float32)
+        for k, i in enumerate(idx):
+            ds.read_direct(out, np.s_[int(i)], np.s_[k])
+        return out
 
     def depth_provenance(self, episodes):
         overlays = {}
         for ep in episodes:
-            with h5py.File(self.depth_overlays[ep], "r") as f:
-                overlays[ep] = {"path": self.depth_overlays[ep], **self._verify_episode(f, ep)}
+            _, provenance = self._overlay(ep)
+            overlays[ep] = {"path": self.depth_overlays[ep], **provenance}
         return {"rig_document_sha256": self.rig_document_sha256, "overlays": overlays}
 
 
