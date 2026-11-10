@@ -71,8 +71,17 @@ def main(argv=None, *, operator_input=input) -> int:
     root = Path(cfg["root"])
     opened = []  # cleanup stack
     failure = {"error": "launcher exited abnormally"}
+    recorder = None
+    recording_status = "error"
+    cleaning = prompting = False
     stop = threading.Event()  # the same cancellation event during preflight, engagement and streaming
-    shutdown = live.MotionShutdown(stop, report=say)
+
+    def record_release(text):
+        say(text)
+        if recorder is not None:
+            recorder.event(time.monotonic_ns(), text)
+
+    shutdown = live.MotionShutdown(stop, report=say, on_release=record_release)
     session_box = {}
     previous_signals = {}
 
@@ -84,7 +93,12 @@ def main(argv=None, *, operator_input=input) -> int:
             raise Cancelled()
 
     def on_signal(signum, frame):
+        if cleaning or shutdown._thread is not None:
+            say("shutdown in progress")
+            return
         stop.set()
+        if prompting:
+            raise Cancelled()
         if "s" in session_box:
             session_box["s"].stop("operator Ctrl-C (SIGINT)" if signum == signal.SIGINT else f"signal {signum}")
         if signum == signal.SIGINT:
@@ -99,11 +113,13 @@ def main(argv=None, *, operator_input=input) -> int:
                 return
 
     def cleanup():
-        shutdown.finish()  # executor join -> gripper clear/stop/join -> controller release, before any I/O close
+        nonlocal cleaning
+        cleaning = True
+        shutdown.finish()  # executor join -> gripper clear -> controller release -> gripper stop/join
         for close in reversed(opened):
             try:
                 close()
-            except Exception as exc:  # noqa: BLE001 - shutdown continues
+            except BaseException as exc:  # shutdown continues through every resource and recorder finalization
                 say(f"cleanup: {type(exc).__name__}: {exc}")
 
     try:
@@ -191,35 +207,56 @@ def main(argv=None, *, operator_input=input) -> int:
                                                                      "K_native": K[c].tolist(),
                                                                      "calibration": choices.get("calibration", {}).get(c)}
                                                                  for c in cams})
-            opened.append(lambda: recorder.close("error", failure["error"]))  # no-op after close()
+            def close_recorder():
+                summary = recorder.close(recording_status, failure["error"])
+                say(f"recorded: {summary.get('session_dir')}")
+            opened.append(close_recorder)
             say(f"recording to {recorder.session_dir}")
         limits = C.limits(cfg, task)
-        if profile != "none":
+        def start_limits():
+            base = C.limits(cfg, task)
+            if profile == "none":
+                return base
             from ops.robot_pc import conservative
 
             start = state.latest()
             if start is None:
                 raise ExecutionRefused("no robot state for the start box")
-            limits = conservative.test_box(limits, start["flange_pose7"],
-                                           conservative.PROFILES[profile]["test_radius_m"])
+            boxed = conservative.test_box(base, start["flange_pose7"],
+                                          conservative.PROFILES[profile]["test_radius_m"])
             say(f"profile {profile}: executor {applied}; goals within {conservative.PROFILES[profile]['test_radius_m']}"
-                f" m of the start: box {[round(x, 3) for x in limits.workspace_min_m]}.."
-                f"{[round(x, 3) for x in limits.workspace_max_m]}")
+                f" m of the start: box {[round(x, 3) for x in boxed.workspace_min_m]}.."
+                f"{[round(x, 3) for x in boxed.workspace_max_m]}")
             if recorder is not None:
                 recorder.event(time.monotonic_ns(), json.dumps({"profile": profile, "applied": applied,
-                                                                "workspace_min_m": limits.workspace_min_m,
-                                                                "workspace_max_m": limits.workspace_max_m}))
+                                                                "start_flange_pose7": list(start["flange_pose7"]),
+                                                                "workspace_min_m": boxed.workspace_min_m,
+                                                                "workspace_max_m": boxed.workspace_max_m}))
+            return boxed
+        if not args.execute:
+            limits = start_limits()
         ex = cfg.get("executor") or {}
         executor = HighRateExecutor(_Discard(), **{k: ex[k] for k in ex})  # the session thread sends
         check_cancel()  # before engagement (including the operator prompt)
         if args.execute:
-            say("READY. Operator: hand on the e-stop. Press ENTER to START robot motion "
-                "(during the run: s + ENTER or Ctrl-C stops).")
-            response = operator_input()
+            prompting = True
+            try:
+                check_cancel()
+                say("READY. Operator: hand on the e-stop. Press ENTER to START robot motion "
+                    "(during the run: s + ENTER or Ctrl-C stops).")
+                response = operator_input()
+            finally:
+                prompting = False
             if isinstance(response, str) and response.strip().lower() in ("s", "q", "stop"):
                 stop.set()
             check_cancel()  # after ENTER
+            blockers = state_blockers(list(reader.samples), time.monotonic_ns())
+            if blockers or not live.still(state):
+                raise ExecutionRefused("robot is not healthy and still at START: " + "; ".join(blockers))
+            limits = start_limits()
             auth = authorize_execution(cli_execute=True, operator_start=True, policy_info=info)
+            if auth.hardware_test is not None:
+                raise ExecutionRefused("policy execution requires hardware_test is None")
             from ops.robot_pc.controller import ControllerLink
 
             shutdown.link = link = ControllerLink(auth)  # register release IMMEDIATELY upon construction
@@ -232,6 +269,11 @@ def main(argv=None, *, operator_input=input) -> int:
                 return 3
             if not gripper.healthy():
                 raise ExecutionRefused(f"gripper became unhealthy before engagement ({gripper.error})")
+            blockers = state_blockers(list(reader.samples), time.monotonic_ns())
+            if blockers or not live.still(state):
+                raise ExecutionRefused("robot became unhealthy or moving before engagement: " + "; ".join(blockers))
+            if recorder is not None:
+                recorder.event(time.monotonic_ns(), "engage")
             link.engage(cancel=stop)
             check_cancel()  # after engage (also covers cancellation during settle)
             sink, sent = live.LiveSink(auth, link, gripper), True
@@ -258,11 +300,9 @@ def main(argv=None, *, operator_input=input) -> int:
         rows = session.run(steps=args.steps, duration_s=args.duration_s)
         say(f"STOPPED: {session.stop_reason}; {len(rows)} steps, executor {executor.counts}")
         say(f"loop rates: {session.loop_stats()}")
-        if recorder is not None:
-            summary = recorder.close("complete" if session.stop_reason in ("budget reached", "operator key",
-                                                                             "operator Ctrl-C") else "stopped",
-                                     session.stop_reason)
-            say(f"recorded: {summary.get('session_dir')}")
+        recording_status = "complete" if session.stop_reason in ("budget reached", "operator key",
+                                                                 "operator Ctrl-C") else "stopped"
+        failure["error"] = session.stop_reason
         return 0
     except Cancelled:
         failure["error"] = "cancelled during startup"

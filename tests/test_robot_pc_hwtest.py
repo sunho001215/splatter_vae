@@ -79,6 +79,7 @@ def hw_env(monkeypatch, tmp_path):
     import io
     import json
     import signal
+    import threading
     import time
     from types import SimpleNamespace
 
@@ -111,7 +112,12 @@ def hw_env(monkeypatch, tmp_path):
 
     monkeypatch.setattr(hwtest.signal, "signal", fake_signal)
     monkeypatch.setattr(hwtest.sys, "stdin", io.StringIO(""))
-    monkeypatch.setattr(hwtest, "say", env.messages.append)
+    def say(message):
+        env.messages.append(message)
+        if env.problem == "ready_sigterm" and message.startswith("READY"):
+            trigger_stop()
+
+    monkeypatch.setattr(hwtest, "say", say)
     monkeypatch.setattr(cli, "load_config", lambda args: {**BASE, "root": str(tmp_path),
                                                           "cameras": {"native_hw": [4, 6], "fps": 15}})
     monkeypatch.setattr(cli, "connect", forbidden)
@@ -126,9 +132,15 @@ def hw_env(monkeypatch, tmp_path):
             assert approved is True
             self.rows = collections.deque(maxlen=4096)
             self.seq = 0
+            self._sample_lock = threading.Lock()
 
         @property
         def samples(self):
+            # Main-loop recording and release both read samples. Simulate the real reader's single writer.
+            with self._sample_lock:
+                return list(self._sample_rows())
+
+        def _sample_rows(self):
             now = time.monotonic_ns()
             active = env.started is not None and (now - env.started) > 80_000_000
             if env.problem == "stale" and active:
@@ -158,6 +170,7 @@ def hw_env(monkeypatch, tmp_path):
     class Serial:
         def __init__(self, *a, **kw):
             assert kw["exclusive"] is True
+            assert kw["write_timeout"] == 0.05
             self.position = 30 if env.problem == "not_open" else 3
             self.reply, self.requests, self.reads = b"", [], 0
             env.serials.append(self)
@@ -232,6 +245,8 @@ def hw_env(monkeypatch, tmp_path):
 
         def close(self):
             env.order.append("camera close")
+            if env.problem == "cleanup_baseexception":
+                raise KeyboardInterrupt("fake camera close")
 
     class Recorder:
         session_dir = tmp_path
@@ -270,6 +285,10 @@ def hw_env(monkeypatch, tmp_path):
             assert all(not l.socks for l in env.links)
             self.status, self.error = status, error
             env.order.append("recorder close")
+            if env.problem == "cleanup_signals":
+                for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGINT):
+                    env.handlers[sig](sig, None)
+                env.order.append("recorder finalized")
             return {}
 
     def make_link(auth):
@@ -278,6 +297,17 @@ def hw_env(monkeypatch, tmp_path):
         msg.ControllerCommand = lambda ctrl_mode: {"ctrl_mode": ctrl_mode}
         msg.encode = lambda m: json.dumps(m if isinstance(m, dict) else dataclasses.asdict(m)).encode()
         link = real_link(auth, zmq_module=z, robot_msg=msg)
+        if env.problem == "hold_release_failure":
+            def fail_hold(*a):
+                raise OSError("fake release hold failure")
+            link._send_measured_ee_hold = fail_hold
+        if env.problem == "idle_release_failure":
+            request = link._request_mode
+            def fail_idle(mode):
+                if mode == 1:
+                    raise OSError("fake release IDLE failure")
+                request(mode)
+            link._request_mode = fail_idle
         link.update_peers = lambda: {"command": 0 if env.problem == "disconnect" and link.actions_sent > 10 else 1,
                                     "action": 1}
         engage_original, release_original, send_original = link.engage, link.release, link.send_flange_pose
@@ -300,10 +330,11 @@ def hw_env(monkeypatch, tmp_path):
 
         def release(*a, **kw):
             assert all(not s._exec_thread or not s._exec_thread.is_alive() for s in env.sessions)
-            assert not env.workers[0].is_alive() and env.workers[0]._target is None
+            assert env.workers[0]._target is None
             env.order.append("release")
-            release_original(*a, wait_still_s=0.08, **kw)
+            outcome = release_original(*a, wait_still_s=0.08, **kw)
             env.order.append("released")
+            return outcome
 
         def send(pose):
             if env.problem == "send_failure" and link.actions_sent >= 2:
@@ -337,6 +368,10 @@ def hw_env(monkeypatch, tmp_path):
 
     def operator_input():
         env.prompts.append(1)
+        if env.problem in ("prompt_sigterm", "prompt_sigint"):
+            sig = signal.SIGTERM if env.problem == "prompt_sigterm" else signal.SIGINT
+            env.handlers[sig](sig, None)
+            pytest.fail("signal did not interrupt START input")
         if env.problem == "cancel_enter":
             return "s"
         return ""
@@ -348,7 +383,8 @@ def hw_env(monkeypatch, tmp_path):
     monkeypatch.setattr(sc, "LiveStateReader", Reader)
     monkeypatch.setattr(G, "RobotiqRTU", lambda: real_rtu(serial_module=SimpleNamespace(Serial=Serial),
                                                        lock_path=str(tmp_path / "rtu.lock"),
-                                                       check_holders=lambda port: [], ioctl=lambda *a: None))
+                                                       check_holders=lambda port: [], ioctl=lambda *a: None,
+                                                       listen_s=0))
     monkeypatch.setattr(G, "GripperWorker", Worker)
     monkeypatch.setattr(cameras, "LiveCameras", Cameras)
     monkeypatch.setattr(recorder, "SessionRecorder", Recorder)
@@ -397,13 +433,14 @@ def test_gripper_real_targets_expire_and_are_written_in_order(hw_env, monkeypatc
 
     monkeypatch.setattr(controller, "ControllerLink", hw_env.forbid)
     assert hw_env.invoke("gripper") == 0
-    assert hw_env.serial_writes == [closure_to_position(0.3), closure_to_position(0.0)]
+    assert hw_env.serial_writes[:2] == [closure_to_position(0.3), closure_to_position(0.0)]
+    assert hw_env.serial_writes[2:] and set(hw_env.serial_writes[2:]) == {3}
     assert [c for c, expiry, now in hw_env.targets] == [0.3, 0.0]
     assert all(0.99 <= (expiry - now) / 1e9 <= 1.0 for c, expiry, now in hw_env.targets)
     assert hw_env.authorizations == [{"test": "gripper", "cli_flag": True, "operator_start": True}]
     assert hw_env.workers[0]._target is None and not hw_env.workers[0].is_alive()
     v, rec = _verdict(hw_env), hw_env.recorders[0]
-    assert v["pass"] and v["writes"] == 2 and all(t["reached"] for t in v["targets"])
+    assert v["pass"] and v["writes"] == 2 + len(hw_env.workers[0].holds) and all(t["reached"] for t in v["targets"])
     assert all(0 <= t["time_to_reach_s"] < 0.5 and t["faults"] == [0] for t in v["targets"])
     assert rec.status == "complete" and rec.robot and rec.grip
     assert rec.meta["mode"] == "hwtest-gripper" and rec.meta["config"]["executor"]["max_linear_speed"] == 0.05
@@ -463,7 +500,8 @@ def test_hold_real_streams_start_pose_then_releases_before_close(hw_env):
     assert v["loop_stats"]["period_ms_p99"] > 0 and "overruns_gt_1p5x" in v["loop_stats"]
     assert hw_env.authorizations == [{"test": "hold", "cli_flag": True, "operator_start": True}]
     assert "sink without gripper" in order and not hw_env.targets and not hw_env.serial_writes
-    assert order.index("executor joined") < order.index("gripper stopped") < order.index("release")
+    assert order.index("executor joined") < order.index("gripper clear") < order.index("release")
+    assert order.index("released") < order.index("gripper stopped") < order.index("recorder close")
     assert order.index("released") < order.index("recorder close") < order.index("camera close") < order.index("reader close")
     assert hw_env.workers[0].read_only and rec.status == "complete"
     assert all(r[4] and json.loads(r[5]) == {"arm": "sent", "gripper": "not queued"} for r in rec.executions)
@@ -567,7 +605,8 @@ def test_verify_hwtest_verdict_without_policy_steps(tmp_path, mode, passed):
     for i in range(5):
         rec.gripper(1_000_000_000 + i * 20_000_000, 3, {"fault": 0, "status": 3})
     verdict = {"test": test, "pass": passed, "rehearse": mode.endswith("-rehearsal"),
-               "abort_reasons": [] if passed else ["injected abort"], "writes": 0, "actions_sent": 0}
+               "abort_reasons": [] if passed else ["injected abort"], "writes": 0, "actions_sent": 0,
+               "release": {"hold": "sent", "still": True, "idle": "sent"}}
     rec.event(1_100_000_000, "verdict " + json.dumps(verdict))
     rec.close("complete" if passed else "stopped")
     report = verify(rec.session_dir)
@@ -600,3 +639,117 @@ def test_hwtest_real_recording_verifies_with_fake_hardware(hw_env, monkeypatch, 
         assert len(h["steps/json"]) == 0
         executed = len(h["executed/t_ns"])
         assert executed > 100 if test == "hold" else executed == 0
+
+
+@pytest.mark.parametrize("test", ["gripper", "hold"])
+@pytest.mark.parametrize("problem", ["prompt_sigterm", "prompt_sigint", "ready_sigterm"])
+def test_hwtest_prompt_signals_cancel_immediately_without_engagement(hw_env, test, problem):
+    hw_env.problem = problem
+    assert hw_env.invoke(test) == 130
+    assert bool(hw_env.prompts) is (problem != "ready_sigterm")
+    assert not hw_env.authorizations and not hw_env.links and not hw_env.serial_writes
+    assert hw_env.recorders[0].status == "stopped" and not hw_env.workers[0].is_alive()
+
+
+@pytest.mark.parametrize("problem", ["cleanup_signals", "cleanup_baseexception"])
+def test_hwtest_cleanup_finishes_recorder_and_resources_preserving_exit_code(hw_env, problem):
+    hw_env.problem = problem
+    assert hw_env.invoke("hold", "--rehearse", "--camera", "scene") == 0
+    assert hw_env.recorders[0].status == "complete"
+    assert hw_env.order[-1] == "reader close"
+    if problem == "cleanup_signals":
+        assert hw_env.messages.count("shutdown in progress") == 3 and "recorder finalized" in hw_env.order
+
+
+@pytest.mark.parametrize("problem,phase", [("hold_release_failure", "hold"), ("idle_release_failure", "idle")])
+def test_hold_release_failures_are_recorded_and_fail_verdict_and_exit(hw_env, problem, phase):
+    import json
+
+    hw_env.problem = problem
+    assert hw_env.invoke("hold") == 1
+    verdict = _verdict(hw_env)
+    assert not verdict["pass"] and not verdict["abort_reasons"] and verdict["duration_held_s"] >= 1
+    assert verdict["release"][phase].startswith("error:")
+    assert hw_env.recorders[0].status == "stopped"
+    events = [json.loads(e[len("release "):]) for e in hw_env.recorders[0].events if e.startswith("release ")]
+    assert events == [verdict["release"]]
+
+
+def test_policy_authorization_cannot_run_hwtest_hold(hw_env, monkeypatch):
+    from ops.robot_pc import safety
+
+    auth = safety.authorize_execution(cli_execute=True, operator_start=True, policy_info={"execution_eligible": True})
+    monkeypatch.setattr(safety, "authorize_hardware_test", lambda **kw: auth)
+    assert hw_env.invoke("hold") == 3
+    assert not hw_env.links and not hw_env.serial_writes
+    assert "requires its hardware_test authorization" in " ".join(_verdict(hw_env)["abort_reasons"])
+    # The hold runner itself also checks scope, even if a caller bypasses the launcher.
+    session = hw_env.sessions[0]
+    session.stop_event.clear()
+    session.sink = type("PolicySink", (), {"authorization": auth})()
+    with pytest.raises(safety.ExecutionRefused, match="hardware_test == 'hold'"):
+        session._hold_test()
+
+
+@pytest.mark.parametrize("release", [None, {"hold": "sent", "still": True, "idle": "error: injected"},
+                                    {"hold": "sent", "still": True, "idle": "sent"}])
+@pytest.mark.parametrize("mode", ["execute", "hwtest-hold"])
+def test_verifier_requires_recorded_idle_after_engagement(tmp_path, release, mode):
+    import json
+    import numpy as np
+
+    from ops.robot_pc.recorder import SessionRecorder
+    from ops.robot_pc import switch_controller as sc
+    from scripts.robot_pc.verify_session import verify
+
+    pose = (0.42, 0, 0.55, 0, 0, 0, 1)
+    rec = SessionRecorder(tmp_path, meta={"mode": mode, "test": "hold", "config": BASE}, cameras={}, video=False)
+    for i in range(100):
+        rec.robot_state(10**9 + i * 10**6, i, np.ones(7), np.zeros(7), np.zeros(7), pose, sc.ee_from_flange(pose))
+    rec.event(10**9, "engage")
+    if release is not None:
+        rec.event(10**9 + 10**8, "release " + json.dumps(release))
+    rec.close("complete")
+    result = verify(rec.session_dir)
+    assert result["checks"]["release"]["ok"] is (release is not None and release["idle"] == "sent")
+
+
+@pytest.mark.parametrize("boundary", ["first", "last", "after_last_state", "before_first_state", "fresh"])
+def test_verifier_includes_overlapping_gaps_and_ages_every_setpoint(tmp_path, boundary):
+    import numpy as np
+
+    from ops.robot_pc.recorder import SessionRecorder
+    from ops.robot_pc import switch_controller as sc
+    from scripts.robot_pc.verify_session import verify
+
+    pose = (0.42, 0, 0.55, 0, 0, 0, 1)
+    rt = np.arange(10**9, 3 * 10**9, 10**6)
+    start, end = 1_500_000_000, 2_500_000_000
+    if boundary == "first":
+        rt = rt[(rt < start - 60_000_000) | (rt > start + 10_000_000)]
+    if boundary == "last":
+        rt = rt[(rt < end - 60_000_000) | (rt > end + 10_000_000)]
+    if boundary == "after_last_state":
+        end = int(rt[-1] + 60_000_000)
+    if boundary == "before_first_state":
+        start = int(rt[0] - 1)
+    rec = SessionRecorder(tmp_path, meta={"mode": "hwtest-hold-rehearsal", "test": "hold", "config": BASE},
+                          cameras={}, video=False)
+    for i, t in enumerate(rt):
+        rec.robot_state(int(t), i, np.ones(7), np.zeros(7), np.zeros(7), pose, sc.ee_from_flange(pose))
+    # Every setpoint is checked even when message-byte verification is subsampled.
+    for t in (start, (start + end) // 2, end):
+        rec.executed(t, "track", pose, None, False, "rehearsal")
+    rec.close("complete")
+    result = verify(rec.session_dir, max_setpoints=1)
+    check = result["checks"]["executed"]
+    assert check["ok"] is (boundary == "fresh")
+    if boundary in ("first", "last"):
+        assert result["checks"]["robot_state"]["streaming_dt_ms_max"] > 50
+        assert check["max_robot_state_age_ms"] > 50
+    if boundary == "after_last_state":
+        assert check["max_robot_state_age_ms"] == 60
+    if boundary == "before_first_state":
+        assert check["setpoints_without_preceding_state"] == 1
+    if boundary == "fresh":
+        assert check["max_robot_state_age_ms"] == 0

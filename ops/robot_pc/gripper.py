@@ -85,6 +85,10 @@ class PortBusy(RuntimeError):
     pass
 
 
+class BadReply(OSError):
+    """A malformed or unsolicited Modbus response (possible second master)."""
+
+
 def port_holders(port: str = PORT, proc_root: str = "/proc", self_pid: int | None = None) -> dict:
     """Known holders and a separate count of fd entries/directories we cannot verify."""
     me, real, out = os.getpid() if self_pid is None else self_pid, os.path.realpath(port), []
@@ -113,7 +117,7 @@ class RobotiqRTU:
     """One serial connection, opened exclusively (single Modbus master)."""
 
     def __init__(self, port: str = PORT, *, serial_module=None, lock_path: str = LOCK, timeout: float = 0.05,
-                 check_holders=port_holders, ioctl=fcntl.ioctl):
+                 check_holders=port_holders, ioctl=fcntl.ioctl, listen_s: float = 0.3, read_source=None):
         from ops.robot_pc import devices
 
         busy = devices.scan(ipc_paths=())["recorders"]
@@ -137,12 +141,19 @@ class RobotiqRTU:
             if serial_module is None:
                 import serial as serial_module
             self.ser = serial_module.Serial(port, BAUDRATE, bytesize=8, parity="N", stopbits=1, timeout=timeout,
-                                            exclusive=True)
+                                            write_timeout=0.05, exclusive=True)
             ioctl(self.ser.fileno(), termios.TIOCEXCL)
             ownership = scan_holders()  # TIOCEXCL doesn't evict pre-existing opens
             self.unverifiable = max(self.unverifiable, ownership["unverifiable"])
             if ownership["holders"]:
                 raise PortBusy(f"{port}: holders after TIOCEXCL: {ownership['holders']}")
+            self._read = self.ser.read if read_source is None else read_source
+            self.consecutive_bad_replies = 0
+            self.ser.reset_input_buffer()
+            deadline = time.monotonic() + float(listen_s)
+            while time.monotonic() < deadline:
+                if self._read(1):
+                    raise PortBusy("bus traffic without our request: another Modbus master?")
             if self.unverifiable:
                 log.warning("%s: ownership unverifiable for %d /proc fd entries/directories", port,
                             self.unverifiable)
@@ -157,10 +168,14 @@ class RobotiqRTU:
     def _transact(self, request: bytes, reply_len: int) -> bytes:
         self.ser.reset_input_buffer()
         self.ser.write(request)
-        reply = self.ser.read(reply_len)
+        reply = self._read(reply_len)
         if len(reply) != reply_len or reply[0] != request[0] or reply[1] != request[1] or \
-                crc16_modbus(reply[:-2]) != reply[-2:]:
-            raise OSError(f"Robotiq: bad reply ({len(reply)}/{reply_len} bytes)")
+                crc16_modbus(reply[:-2]) != reply[-2:] or \
+                (request[1] == 0x03 and reply[2] != 6) or \
+                (request[1] == 0x10 and reply[:6] != request[:6]):
+            self.consecutive_bad_replies += 1
+            raise BadReply(f"Robotiq: bad reply (CRC / length / echo mismatch; {len(reply)}/{reply_len} bytes)")
+        self.consecutive_bad_replies = 0
         return reply
 
     def read_status(self) -> GripperStatus:
@@ -193,11 +208,17 @@ class GripperWorker(threading.Thread):
         self.factory, self.read_only, self.speed, self.force = device_factory, bool(read_only), int(speed), int(force)
         self.samples: collections.deque = collections.deque(maxlen=capacity)  # (t_ns, GripperStatus)
         self.sent: collections.deque = collections.deque(maxlen=capacity)  # (t_ns, register)
+        self.holds: list = []  # (t_ns, register, reason)
         self.latest: GripperStatus | None = None
         self.error: str | None = "connecting"
         self._target: int | None = None
         self._expires_ns = 0
         self._target_lock = threading.Lock()
+        self._generation = 0
+        self._hold_pending = None
+        self._has_written = False
+        self.error_latched = False
+        self._bad_replies = 0
         self._halt = threading.Event()
         self.unverifiable = 0
         self._last_sent, self._last_write = None, 0.0
@@ -210,10 +231,13 @@ class GripperWorker(threading.Thread):
             if not self._halt.is_set():
                 self._target = closure_to_position(closure)
                 self._expires_ns = int(expires_monotonic_ns)
+                self._generation += 1
 
     def clear_target(self) -> None:
         with self._target_lock:
             self._target, self._expires_ns = None, 0
+            self._generation += 1
+            self._hold_pending = self._hold_pending or "clear_target (session abort)"
 
     def healthy(self) -> bool:
         s = self.latest
@@ -221,12 +245,48 @@ class GripperWorker(threading.Thread):
                     s.activated == 1 and s.status == 3 and s.fault == 0 and self.error is None)
 
     def stop(self, join_timeout: float = 1.0) -> None:
-        self._halt.set()
-        self.clear_target()
+        with self._target_lock:
+            if not self._halt.is_set():
+                self._target, self._expires_ns = None, 0
+                self._generation += 1
+                self._hold_pending = self._hold_pending or "stop"
+                self._halt.set()
         if self.ident is not None and threading.current_thread() is not self:
             self.join(timeout=join_timeout)
             if self.is_alive():
                 log.error("gripper worker did not exit within %.3f s", join_timeout)
+
+    def _physical_hold(self, device, reason: str) -> None:
+        s = self.latest
+        if self.read_only or not self._has_written or s is None or \
+                not 0 <= time.monotonic_ns() - s.t_ns < 100_000_000 or \
+                s.activated != 1 or s.status != 3 or s.fault != 0:
+            return
+        # One FC16 only. The worker owns all I/O; an already-started transaction finishes before this hold.
+        try:
+            device.write(s.position, self.speed, self.force)
+        except Exception as exc:
+            # The request may have reached the device: never retry this stop/expiry event.
+            self.error = f"physical hold failed: {type(exc).__name__}: {exc}"
+            self._check_bad_replies(device)
+            log.exception("gripper physical hold failed")
+            return
+        t = time.monotonic_ns()
+        self.sent.append((t, s.position))
+        self.holds.append((t, s.position, reason))
+        self._last_sent, self._last_write = s.position, time.monotonic()
+
+    def _take_hold(self):
+        with self._target_lock:
+            reason, self._hold_pending = self._hold_pending, None
+            return reason
+
+    def _check_bad_replies(self, device) -> bool:
+        self._bad_replies = getattr(device, "consecutive_bad_replies", 0)
+        if self._bad_replies >= 3:
+            self.error_latched = True
+            self.error = "3 consecutive bad replies: " + (self.error or "CRC / length / echo mismatch")
+        return self.error_latched
 
     def run(self) -> None:
         period = 1.0 / RATE_HZ
@@ -238,37 +298,77 @@ class GripperWorker(threading.Thread):
                     if device is None:
                         device = self.factory()
                         self.unverifiable = getattr(device, "unverifiable", 0)
+                        if hasattr(device, "consecutive_bad_replies"):
+                            device.consecutive_bad_replies = self._bad_replies
                     s = device.read_status()
                     self.latest = s
                     self.samples.append((s.t_ns, s))
                     self.error = f"gripper fault 0x{s.fault:02X}" if s.fault else None
-                    # Serialize invalidation with the physical write: after clear_target returns no old write starts.
+                    # Only the mailbox decision is locked. Callers never wait on a serial read/write.
                     with self._target_lock:
-                        target = self._target
-                        if time.monotonic_ns() >= self._expires_ns:
-                            self._target, target = None, None
-                        if not self._halt.is_set() and not self.read_only and target is not None and \
-                                s.activated == 1 and s.status == 3 and s.fault == 0 and (
-                                self._last_sent is None or abs(target - self._last_sent) > DEADBAND or
-                                (target != self._last_sent and t0 - self._last_write > 0.2) or
-                                t0 - self._last_write > 1.0):
-                            device.write(target, self.speed, self.force)
-                            self._last_sent, self._last_write = target, t0
-                            self.sent.append((time.monotonic_ns(), target))
+                        if self._target is not None and time.monotonic_ns() >= self._expires_ns:
+                            self._target, self._expires_ns = None, 0
+                            self._generation += 1
+                            self._hold_pending = self._hold_pending or "expiry"
+                        target, generation = self._target, self._generation
+                    reason = self._take_hold()
+                    if reason is not None:
+                        self._physical_hold(device, reason)
+                        if self.error_latched:
+                            return
+                    with self._target_lock:
+                        write = (generation == self._generation and not self._halt.is_set() and
+                                 self._hold_pending is None and not self.read_only and target is not None and
+                                 time.monotonic_ns() < self._expires_ns and s.activated == 1 and
+                                 s.status == 3 and s.fault == 0 and (
+                                     self._last_sent is None or abs(target - self._last_sent) > DEADBAND or
+                                     (target != self._last_sent and t0 - self._last_write > 0.2) or
+                                     t0 - self._last_write > 1.0))
+                    if write:
+                        # A lost acknowledgement does not prove the position command was not applied.
+                        self._has_written = True
+                        device.write(target, self.speed, self.force)
+                        self._last_sent, self._last_write = target, t0
+                        self.sent.append((time.monotonic_ns(), target))
+                    self._check_bad_replies(device)
+                except BadReply as exc:
+                    self.error = f"{type(exc).__name__}: {exc}"
+                    if self._check_bad_replies(device):
+                        self.clear_target()
+                        return
+                    self.clear_target()
                 except Exception as exc:  # noqa: BLE001 - reported; retried after 1 s (never crashes the app)
                     self.error = f"{type(exc).__name__}: {exc}"
                     self.clear_target()  # a recovered connection needs a NEW session command
                     if isinstance(exc, PortBusy):
                         return
                     if device is not None:
-                        device.close()
-                        device = None
+                        try:
+                            reason = self._take_hold()
+                            if reason is not None:
+                                self._physical_hold(device, reason)
+                        except Exception:
+                            log.exception("gripper physical hold after I/O failure failed")
+                        finally:
+                            latched = self._check_bad_replies(device)
+                            device.close()
+                            device = None
+                        if latched:
+                            return
                     self._halt.wait(1.0)
                     continue
                 self._halt.wait(max(0.0, period - (time.monotonic() - t0)))
         finally:
             if device is not None:
-                device.close()
+                try:
+                    reason = self._take_hold()
+                    if reason is not None:
+                        self._physical_hold(device, reason)
+                except Exception as exc:
+                    self.error = f"physical hold failed: {type(exc).__name__}: {exc}"
+                    log.exception("gripper physical hold failed")
+                finally:
+                    device.close()
 
     def at_or_before(self, t_ns: int):
         """(t_ns, register) of the latest MEASURED sample at or before ``t_ns`` (the training binding)."""

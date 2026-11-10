@@ -78,6 +78,9 @@ class LiveSink(CommandSink):
             raise ExecutionRefused("LiveSink requires an ExecutionAuthorization (execution mode)")
         if link is None:
             raise Unbound("LiveSink needs the ControllerLink")
+        if authorization.hardware_test not in (None, "hold"):
+            raise ExecutionRefused("gripper authorization cannot command the arm")
+        self.authorization = authorization
         self.link, self.gripper, self.log, self.sent = link, gripper, log, 0
 
     def send(self, item) -> None:

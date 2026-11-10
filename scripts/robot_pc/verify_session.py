@@ -110,7 +110,7 @@ def verify(session: Path, *, max_setpoints: int = 2000) -> dict:
                 starts = [t for t, e in zip(ev_t, ev) if e.startswith("start ")]
                 ex_t = np.array([starts[0], rt[-1]], np.int64) if starts else ex_t
             if len(ex_t):
-                w = (rt[:-1] >= ex_t[0]) & (rt[1:] <= ex_t[-1])
+                w = (rt[:-1] <= ex_t[-1]) & (rt[1:] >= ex_t[0])
                 dts = np.diff(rt)[w] / 1e6
                 info.update(streaming_dt_ms_max=float(dts.max()) if len(dts) else None,
                             streaming_seq_missing=int((np.diff(seq)[w] - 1).clip(0).sum()),
@@ -220,6 +220,13 @@ def verify(session: Path, *, max_setpoints: int = 2000) -> dict:
         et, ep, sent = h["executed/t_ns"][()], h["executed/pose7"][()], h["executed/sent"][()]
         ex_cfg = meta.get("config", {}).get("executor", {})
         info = {"n": int(len(et)), "sent_true": int(sent.sum())}
+        preceding = np.searchsorted(rt, et, side="right") - 1
+        good = preceding >= 0
+        ages_ms = (et[good] - rt[preceding[good]]) / 1e6
+        max_age_ms = float(ages_ms.max()) if len(ages_ms) else None
+        info.update(max_robot_state_age_ms=max_age_ms, setpoints_without_preceding_state=int((~good).sum()))
+        state_age_ok = bool(good.all()) and (max_age_ms is None or
+                                            max_age_ms <= 1e3 * float(ex_cfg.get("state_timeout_s", 0.05)))
         if len(et) > 1:
             dt = np.diff(et) / 1e9
             cont = dt < 3 * (1.0 / ex_cfg.get("rate_hz", 500))  # consecutive ticks of one engagement
@@ -233,10 +240,24 @@ def verify(session: Path, *, max_setpoints: int = 2000) -> dict:
                 info["max_ang_speed_rad_s"] <= ex_cfg.get("max_angular_speed", 1.5) * 1.05 + 1e-6
         else:
             speed_ok = True
-        check("executed", speed_ok and
+        check("executed", speed_ok and state_age_ok and
               (not (mode == "dry_run" or str(mode).endswith("-rehearsal")) or info["sent_true"] == 0), **info)
         events = [x.decode() if isinstance(x, bytes) else x for x in h["events/text"][()]]
         out["events"] = events
+        releases, malformed_releases = [], []
+        for e in events:
+            if e.startswith("release "):
+                try:
+                    release = json.loads(e[len("release "):])
+                    if not isinstance(release, dict):
+                        raise ValueError("release must be an object")
+                    releases.append(release)
+                except (ValueError, TypeError):
+                    malformed_releases.append(e)
+        engaged = bool(sent.any()) or "engage" in events or any(r.get("idle") != "not requested" for r in releases)
+        if mode in ("execute", "hwtest-hold") and engaged:
+            check("release", bool(releases) and not malformed_releases and releases[-1].get("idle") == "sent",
+                  outcomes=releases, malformed=malformed_releases)
         if str(mode).startswith("hwtest"):
             verdicts, malformed = [], []
             for e in events:
@@ -250,6 +271,8 @@ def verify(session: Path, *, max_setpoints: int = 2000) -> dict:
             check("hwtest_verdict", len(verdicts) == 1 and not malformed and verdict.get("pass") is True and
                   verdict.get("test") == meta.get("test") and verdict.get("rehearse") is rehearsal and
                   not verdict.get("abort_reasons") and summary["status"] == "complete" and
+                  (mode != "hwtest-hold" or ((verdict.get("release") or {}).get("hold") == "sent" and
+                                            (verdict.get("release") or {}).get("idle") == "sent")) and
                   (not rehearsal or (verdict.get("writes", 0) == 0 and verdict.get("actions_sent", 0) == 0 and
                                      verdict.get("mode_requests_sent", 0) == 0)),
                   verdict=verdict, malformed=malformed)

@@ -18,6 +18,7 @@ Constructed only with an ``ExecutionAuthorization``. pyzmq / robot_msg imported 
 from __future__ import annotations
 
 import logging
+import threading
 import time
 
 import numpy as np
@@ -35,6 +36,11 @@ class ControllerLink:
                  action_bind: str = sc.ACTION_BIND, zmq_module=None, robot_msg=None, target_dt: float = sc.TARGET_DT_S):
         if not isinstance(authorization, ExecutionAuthorization):
             raise ExecutionRefused("ControllerLink requires an ExecutionAuthorization (execution mode)")
+        if authorization.hardware_test not in (None, "hold"):
+            raise ExecutionRefused("gripper authorization cannot command the arm")
+        self._send_lock = threading.RLock()
+        self._streaming = True
+        self.release_outcome = None
         if zmq_module is None:
             import zmq as zmq_module
         if robot_msg is None:
@@ -91,11 +97,18 @@ class ControllerLink:
         return False
 
     def request_mode(self, mode: int) -> None:
+        with self._send_lock:
+            if not self._streaming:
+                raise ExecutionRefused("controller streaming has been released")
+            self._request_mode(mode)
+
+    def _request_mode(self, mode: int) -> None:
         # A send can fail after handing bytes to the transport; release must still attempt IDLE.
-        self.mode_requested = int(mode)
-        self.socks["command"].send(self.msg.encode(self.msg.ControllerCommand(ctrl_mode=int(mode))),
-                                   self.zmq.NOBLOCK)
-        self.mode_requests_sent += 1
+        with self._send_lock:
+            self.mode_requested = int(mode)
+            self.socks["command"].send(self.msg.encode(self.msg.ControllerCommand(ctrl_mode=int(mode))),
+                                       self.zmq.NOBLOCK)
+            self.mode_requests_sent += 1
 
     def engage(self, settle_s: float = CONTROLLER_SETTLE_S, *, cancel=None) -> None:
         if not self.connected():
@@ -112,34 +125,48 @@ class ControllerLink:
                 cancel.wait(min(0.1, remaining))
 
     def send_flange_pose(self, flange_pose7) -> None:
-        self.socks["action"].send(self.msg.encode(sc.robot_action(self.msg, flange_pose7, self.target_dt)),
-                                  self.zmq.NOBLOCK)
-        self.actions_sent += 1
+        with self._send_lock:
+            if not self._streaming:
+                raise ExecutionRefused("controller streaming has been released")
+            self.socks["action"].send(self.msg.encode(sc.robot_action(self.msg, flange_pose7, self.target_dt)),
+                                      self.zmq.NOBLOCK)
+            self.actions_sent += 1
 
-    def send_measured_ee_hold(self, measured_ee_pose7) -> None:
+    def _send_measured_ee_hold(self, measured_ee_pose7) -> None:
         """The collector's disengage hold (app.py:360-361): the MEASURED controller-ee pose exactly as received
         (no flange round trip), so the message is byte-identical to the collector's."""
-        self.socks["action"].send(self.msg.encode(sc.robot_action_ee(self.msg, measured_ee_pose7, self.target_dt)),
-                                  self.zmq.NOBLOCK)
-        self.actions_sent += 1
+        with self._send_lock:
+            self.socks["action"].send(self.msg.encode(sc.robot_action_ee(self.msg, measured_ee_pose7, self.target_dt)),
+                                      self.zmq.NOBLOCK)
+            self.actions_sent += 1
 
-    def release(self, latest_state, *, still=None, wait_still_s: float = 1.0) -> None:
+    def release(self, latest_state, *, still=None, wait_still_s: float = 1.0) -> dict:
         """Independent hold / bounded stillness / IDLE phases; ``latest_state()`` has host ``t_ns``.
 
         A cached pose alone is never sufficient authority to send a final hold.
         """
+        # This barrier waits for an in-flight action before the hold, and forbids every later streaming send.
+        with self._send_lock:
+            self._streaming = False
+        outcome = self.release_outcome = {"hold": "skipped: no mode requested", "still": False,
+                                          "idle": "not requested"}
         try:
             if self.mode_requested is None:
-                return  # constructed but never engaged: close without publishing an action
+                return outcome  # constructed but never engaged: close without publishing an action
             try:
                 s = latest_state()
                 if s is None or not 0 <= time.monotonic_ns() - s["t_ns"] < 50_000_000:
+                    outcome["hold"] = "skipped: no fresh state (<50 ms)"
                     log.warning("release: skipping measured-ee hold: no fresh state (<50 ms)")
-                elif np.asarray(s["ee_pose7"]).shape != (7,) or not np.isfinite(s["ee_pose7"]).all():
+                elif np.asarray(s["ee_pose7"]).shape != (7,) or not np.isfinite(s["ee_pose7"]).all() or \
+                        not abs(float(np.linalg.norm(s["ee_pose7"][3:])) - 1.0) < 1e-3:
+                    outcome["hold"] = "skipped: invalid pose / unit quaternion"
                     log.warning("release: skipping measured-ee hold: invalid pose")
                 else:
-                    self.send_measured_ee_hold(s["ee_pose7"])
-            except (Exception, KeyboardInterrupt):
+                    self._send_measured_ee_hold(s["ee_pose7"])
+                    outcome["hold"] = "sent"
+            except BaseException as exc:
+                outcome["hold"] = f"error: {type(exc).__name__}: {exc}"
                 log.exception("release: measured-ee hold failed; continuing to IDLE")
             try:
                 # The collector's entire stillness wait is bounded to 1 s, including target_dt.
@@ -148,21 +175,28 @@ class ControllerLink:
                 time.sleep(min(self.target_dt, 1.0))
                 while still is not None and time.monotonic() < deadline and not still():
                     time.sleep(min(0.02, max(0.0, deadline - time.monotonic())))
-            except (Exception, KeyboardInterrupt):
+                outcome["still"] = bool(still is not None and still())
+            except BaseException as exc:
+                outcome["still"] = f"error: {type(exc).__name__}: {exc}"
                 log.exception("release: stillness wait failed; continuing to IDLE")
             try:
                 if self.mode_requested is not None:
-                    self.request_mode(IDLE)
+                    self._request_mode(IDLE)
+                    outcome["idle"] = "sent"
                     time.sleep(0.05)
-            except (Exception, KeyboardInterrupt):
+            except BaseException as exc:
+                outcome["idle"] = f"error: {type(exc).__name__}: {exc}"
                 log.exception("release: IDLE request failed")
         finally:
             self.close()
+        return outcome
 
     def close(self) -> None:
-        for s in [*self.socks.values(), *self._monitors.values()]:
-            try:
-                s.close(0)
-            except Exception:  # noqa: BLE001 - shutdown
-                pass
-        self.socks, self._monitors = {}, {}
+        with self._send_lock:
+            self._streaming = False
+            for s in [*self.socks.values(), *self._monitors.values()]:
+                try:
+                    s.close(0)
+                except BaseException:  # shutdown must close every socket
+                    pass
+            self.socks, self._monitors = {}, {}

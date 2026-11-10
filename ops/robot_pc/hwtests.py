@@ -15,7 +15,7 @@ import numpy as np
 from ops.robot_pc import live
 from ops.robot_pc.gripper import POS_CLOSED, POS_OPEN, closure_to_position
 from ops.robot_pc.poses import as_pose7, quat_angle
-from ops.robot_pc.safety import ExecutionRefused
+from ops.robot_pc.safety import ExecutionAuthorization, ExecutionRefused
 from ops.robot_pc.validation import Command
 
 
@@ -35,6 +35,8 @@ class HardwareTest:
         self.rehearse, self.sent = bool(rehearse), not rehearse
         self.stop_event, self.shutdown = stop_event, shutdown
         self.recorder, self.cameras, self.cams = recorder, cameras, list(cams)
+        if self.shutdown.on_release is None:
+            self.shutdown.on_release = self.event
         self.shutdown.session, self.shutdown.state = self, state
         self.executor = self.sink = self.link = None
         if test == "hold":
@@ -231,6 +233,10 @@ class HardwareTest:
 
     def _hold_test(self):
         self.checkpoint()
+        if self.sent:
+            authorization = getattr(self.sink, "authorization", None)
+            if not isinstance(authorization, ExecutionAuthorization) or authorization.hardware_test != "hold":
+                raise ExecutionRefused("hold test requires hardware_test == 'hold' authorization")
         if self.start_pose is None:
             raise ExecutionRefused("hold start pose has not been captured")
         started = self._hold_started = time.monotonic()
@@ -342,11 +348,15 @@ class HardwareTest:
                 verdict["verdict"] = f"rehearsal: {len(g.samples)} status reads, {len(g.sent)} writes"
         else:
             stats = live.LiveSession.loop_stats(self)
+            release = self.shutdown.release_outcome
             verdict.update(duration_held_s=self.held_s, max_drift_mm=self.max_drift_mm, max_drift_deg=self.max_drift_deg,
                            max_abs_dq=self.max_abs_dq, executor_counts=dict(self.executor.counts), loop_stats=stats,
                            actions_sent=0 if self.link is None else self.link.actions_sent,
                            mode_requests_sent=0 if self.link is None else self.link.mode_requests_sent,
-                           **{"pass": clean})
+                           release=release,
+                           **{"pass": clean and (self.rehearse or
+                                                  (isinstance(release, dict) and release.get("hold") == "sent" and
+                                                   release.get("idle") == "sent"))})
             self.event("loop_stats " + json.dumps(stats))
         self.event("verdict " + json.dumps(verdict, allow_nan=False))
         self._verdict = verdict

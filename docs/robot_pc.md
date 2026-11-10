@@ -211,11 +211,20 @@ the live joints (2e-15 m, 2e-13 deg); `state_blockers` empty (`realworld-ops/ser
   `exclusive=True` (an advisory flock), explicitly applies `ioctl(TIOCEXCL)`, then rechecks existing holders and closes
   if any are found. Unreadable `/proc/<pid>/fd` entries/directories are counted as `unverifiable` and exposed in
   status/logs; that count alone does not refuse ownership. TIOCEXCL blocks later unprivileged opens; privileged
-  processes can bypass it, and inaccessible root fds prevent proving exclusive ownership. Dry run /
+  processes can bypass it, and root processes cannot be inspected without sudo. Before the first actuating test,
+  the operator confirms `sudo fuser -v /dev/ttyUSB0` (expected: no other holder). After exclusivity and the holder
+  recheck, reset the input buffer and listen for 0.3 s without sending; any byte refuses ownership as possible
+  traffic from another Modbus master. Three consecutive bad replies (CRC, length or echo mismatch) latch the worker's
+  error and stop execution. Dry run /
   validation = status reads ONLY (no activation, no command: fingers cannot move); execution additionally sends the
   closure command (deadband / keepalive as the collector) and NEVER activates (an unactivated gripper is reported and
   commands are withheld - activation stays the operator's / collector's action). Targets carry the accepted command's
-  monotonic expiry; expired/cleared targets cannot be written or replayed on reconnect, including keepalives. Faults
+  monotonic expiry; expired/cleared targets cannot be replayed on reconnect, including keepalives. The target mailbox
+  lock never covers serial I/O; serial write timeout is 50 ms (read timeout 50 ms). A command in flight completes in
+  < 1 transaction. After any target has been written, stop, session abort and expiry each request one bounded FC16
+  hold at the latest measured gPO, with the same speed/force, only when activated, fault-free and <100 ms old.
+  The Robotiq holds position after a position command equal to its current position. Hold writes appear in `sent`
+  as `(t_ns, register)` and in `holds` as `(t_ns, register, reason)`; read-only workers never write a hold. Faults
   inhibit writes. Execution preflight requires activated gSTA=3, fault=0, no communication error and a status <100 ms
   old; it waits up to 1 s for readiness (initial idle-bus fault 0x09 can clear). Execution stops on a fault/inactive
   status or no fresh status for 200 ms; dry run logs/records health only. Measured samples (gPO with host time)
@@ -227,20 +236,37 @@ the live joints (2e-15 m, 2e-13 deg); `state_blockers` empty (`realworld-ops/ser
   (monitor ACCEPTED), and repeats mode 3 requests every ~100 ms during the 0.5 s settle (send count logged). This
   recovers requests dropped during subscription propagation; TCP connection and PUB send do not prove subscription
   readiness or mode acceptance. RobotState has **no mode field**: the operator confirms acceptance on the controller
-  UI. The executor's existing leash/rate-conflict latch detects non-following. Either subscriber DISCONNECTED event
+  UI. Alongside the leash/rate-conflict latch, policy execution stops if the emitted position stays at least half
+  `lead_m` away from the measured flange continuously for >1 s (mode possibly not accepted); this check does not
+  apply to dry run or the hold test. Either subscriber DISCONNECTED event
   latches a session stop, even if reconnected before the next tick. Release sends one hold at the measured ee pose as
-  received only with a finite sample <50 ms old, waits at least target_dt=50 ms and at most 1 s for fresh |dq|<0.02,
+  received only with a finite sample <50 ms old and a unit quaternion (norm error <1e-3), waits at least
+  target_dt=50 ms and at most 1 s for fresh |dq|<0.02,
   then requests IDLE + 50 ms sleep whenever a mode was requested. Hold/wait failures cannot skip IDLE; close always runs.
+  A transport lock finishes any in-flight streaming send before release latches streaming off; hold, IDLE and socket
+  close use the same lock. Later streaming sends are refused. Release returns/stores `release_outcome` with `hold`
+  (`sent`, `skipped: ...`, `error: ...`), `still` (boolean or `error: ...`) and `idle` (`sent`, `not requested`,
+  `error: ...`); shutdown records a `release {...}` event and the policy launcher prints it. A real hold-test PASS
+  requires hold and IDLE both `sent`; verification requires a release event with IDLE `sent` for engaged execute/hold
+  sessions. State-gap verification includes intervals overlapping the streaming boundaries and checks the latest
+  preceding robot-state age at every executed setpoint against `state_timeout_s`, reporting the maximum age.
 * **Safety** (simplified, directive item 4): one arm/start action (`--execute`, then ENTER) and an immediate stop
   (Ctrl-C, `s`, SIGTERM, or any failure); the hardware e-stop stays the operator's. Kept: the collector's rate / lead
   limits, task workspace boxes, stale / frozen / invalid state stop, expired action -> nothing sent (SC holds),
   communication failure -> stop, controller-compatibility checks (state live, subscribers connected; mode acceptance
-  confirmed on the UI), and execution only for policies the catalog marks `execution_eligible`. One cancellation
+  confirmed on the UI), and execution only for policies the catalog marks `execution_eligible`. Policy sessions
+  require `hardware_test is None`; a hold test requires the `hold` authorization stored by its sink; a gripper
+  authorization cannot construct an arm link or sink. After ENTER, policy execution validates fresh healthy, still
+  state, builds and records the start workspace intersection from that pose, and rechecks health before engagement.
+  One cancellation
   event covers startup and streaming, checked before engagement, after ENTER, after subscriber wait, after engage,
   and before streaming; release is registered immediately on link construction. The idempotent stop path runs on a
-  separate shutdown thread: stop/join the executor (timeout logged), clear gripper target and stop/join its worker,
-  then controller release. Only afterwards close recorder, client, cameras and state reader. Release does not depend
-  on an outstanding policy call or recorder/disk progress. Worker exceptions latch a stop; main-loop exceptions stop
+  separate shutdown thread: stop/join the executor (timeout logged), clear gripper target without serial I/O,
+  release the controller, then physically hold and stop/join the gripper worker (bounded join). Only afterwards close
+  recorder, client, cameras and state reader. Release does not depend on gripper I/O, an outstanding policy call or
+  recorder/disk progress. SIGINT/SIGTERM interrupt the blocking START prompt immediately via `Cancelled`; throughout
+  cleanup and recorder finalization they only log "shutdown in progress", preserving the exit status. Resource close
+  loops catch `BaseException` so subsequent resources still close. Worker exceptions latch a stop; main-loop exceptions stop
   then propagate. Consecutive failures count steps without an accepted command, including validation rejection.
 * **Acquisition**: RealSense RGB (+ native depth aligned to RGB only when the policy needs it); never IR. LiveSession
   and the launcher refuse policies needing multiple cameras: live multiview sync sets are not implemented.

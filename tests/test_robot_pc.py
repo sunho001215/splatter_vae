@@ -988,6 +988,7 @@ class FakeSerial:
 
     def __init__(self, *a, **k):
         assert k.get("exclusive") is True  # single Modbus master
+        assert k["write_timeout"] == 0.05
         self.requests, self.reply = [], b""
 
     def reset_input_buffer(self):
@@ -1024,7 +1025,8 @@ def test_gripper_single_owner_read_only_status_and_command_path(tmp_path, monkey
     def factory():
         dev = G.RobotiqRTU(serial_module=SimpleNamespace(Serial=lambda *a, **k: made.append(FakeSerial(*a, **k)) or
                                                          made[-1]),
-                           lock_path=str(tmp_path / "lock"), check_holders=lambda port: [], ioctl=lambda *a: None)
+                           lock_path=str(tmp_path / "lock"), check_holders=lambda port: [], ioctl=lambda *a: None,
+                           listen_s=0)
         return dev
 
     with pytest.raises(G.PortBusy, match="another s4d gripper owner"):
@@ -1478,7 +1480,8 @@ def _fake_link():
     return ControllerLink(auth, zmq_module=z, robot_msg=msg), z
 
 
-@pytest.mark.parametrize("failure", ["stale", "nonfinite", "hold", "still", "sample"])
+@pytest.mark.parametrize("failure", ["stale", "nonfinite", "zero_quaternion", "nonunit_quaternion",
+                                     "hold", "still", "sample", "idle"])
 def test_release_independent_phases_always_idle_and_close(failure, monkeypatch, caplog):
     import time
 
@@ -1489,18 +1492,26 @@ def test_release_independent_phases_always_idle_and_close(failure, monkeypatch, 
         sample["t_ns"] -= 60_000_000
     if failure == "nonfinite":
         sample["ee_pose7"] = (float("nan"), *POSE[1:])
+    if failure in ("zero_quaternion", "nonunit_quaternion"):
+        sample["ee_pose7"] = (*POSE[:3], 0, 0, 0, 0 if failure == "zero_quaternion" else 1.002)
 
     def boom(*a):
         raise OSError("injected " + failure)
 
     if failure == "hold":
-        monkeypatch.setattr(link, "send_measured_ee_hold", boom)
-    link.release(boom if failure == "sample" else lambda: sample,
-                 still=boom if failure == "still" else lambda: True, wait_still_s=0.1)
+        monkeypatch.setattr(link, "_send_measured_ee_hold", boom)
+    if failure == "idle":
+        monkeypatch.setattr(link, "_request_mode", boom)
+    outcome = link.release(boom if failure == "sample" else lambda: sample,
+                           still=boom if failure == "still" else lambda: True, wait_still_s=0.1)
     msgs = [json.loads(m) for m in z.sent]
-    assert msgs[-1] == {"ctrl_mode": 1} and not link.socks
+    assert not link.socks and outcome is link.release_outcome
+    assert outcome["idle"].startswith("error:") if failure == "idle" else outcome["idle"] == "sent"
+    assert msgs[-1] == {"ctrl_mode": 1} if failure != "idle" else "real_time_action" in msgs[-1]
     holds = [m for m in msgs if "real_time_action" in m]
-    assert len(holds) == (1 if failure == "still" else 0)
+    assert len(holds) == (1 if failure in ("still", "idle") else 0)
+    assert outcome["hold"] == "sent" if holds else outcome["hold"].startswith(("skipped:", "error:"))
+    assert outcome["still"].startswith("error:") if failure == "still" else outcome["still"] is True
     assert caplog.records  # the skipped/failed phase is visible
 
 
@@ -1656,7 +1667,8 @@ def test_gripper_expiry_inhibits_keepalive_and_stop_joins():
         time.sleep(0.15)
         worker._last_write = 0  # make the next cycle a would-be keepalive
         time.sleep(0.05)
-        assert len(writes) == 1
+        assert len(writes) == 2 and writes[-1][0] == 3
+        assert len(worker.holds) == 1 and worker.holds[0][2] == "expiry"
         worker.latest = dataclasses.replace(worker.latest, t_ns=time.monotonic_ns() - 100_000_001)
         assert not worker.healthy()
     finally:
@@ -1898,7 +1910,8 @@ def test_stop_releases_while_policy_step_is_blocked_in_required_order():
         assert policy_entered.wait(1)
         session.stop("operator key")
         assert released.wait(1) and runner.is_alive()  # release didn't need the policy call to return
-        assert order == ["executor joined", "gripper clear", "gripper joined", "release"]
+        session.shutdown.finish()
+        assert order == ["executor joined", "gripper clear", "release", "gripper joined"]
     finally:
         unblock_policy.set()
         runner.join(2)
@@ -1911,7 +1924,10 @@ def test_stop_releases_while_policy_step_is_blocked_in_required_order():
 
 @pytest.mark.parametrize("checkpoint", ["before_engagement", "after_enter", "constructed", "after_wait",
                                         "during_engage", "after_engage", "before_streaming", "ctrlc", "normal",
-                                        "multiview", "preflight_fault_clears", "preflight_fault_persists"])
+                                        "multiview", "preflight_fault_clears", "preflight_fault_persists",
+                                        "prompt_sigterm", "prompt_sigint", "ready_sigterm", "cleanup_signals", "cleanup_baseexception",
+                                        "reposition_at_enter", "moving_at_enter", "unhealthy_at_enter",
+                                        "moving_before_engage", "hold_authorization"])
 def test_launcher_cancellation_checkpoints_and_resource_order(checkpoint, monkeypatch, tmp_path):
     """All launcher dependencies are fakes: no controller connection, serial port, camera, policy server or disk."""
     import signal
@@ -1927,6 +1943,8 @@ def test_launcher_cancellation_checkpoints_and_resource_order(checkpoint, monkey
     order, links, zs, sessions, prompts = [], [], [], [], []
     handlers = {}
     engaging = [False]
+    entered = [False]
+    recorded_events, messages = [], []
     LinkClass, SessionClass = controller.ControllerLink, live.LiveSession
 
     def cancel():
@@ -1944,7 +1962,12 @@ def test_launcher_cancellation_checkpoints_and_resource_order(checkpoint, monkey
     monkeypatch.setattr(run.signal, "signal", fake_signal)
     monkeypatch.setattr(run.time, "sleep", sleep)
     monkeypatch.setattr(run.sys, "stdin", io.StringIO(""))
-    monkeypatch.setattr(run, "say", lambda msg: None)
+    def say(message):
+        messages.append(message)
+        if checkpoint == "ready_sigterm" and message.startswith("READY"):
+            cancel()
+
+    monkeypatch.setattr(run, "say", say)
     monkeypatch.setattr(cli, "load_config", lambda args: {"root": str(tmp_path)})
     monkeypatch.setattr(tunnel, "welcome", lambda port: {"fake": True})
     monkeypatch.setattr(devices, "require_free", lambda **kw: None)
@@ -1956,7 +1979,13 @@ def test_launcher_cancellation_checkpoints_and_resource_order(checkpoint, monkey
 
         @property
         def samples(self):
-            return [{"t_ns": time.monotonic_ns(), "ee_pose7": POSE, "flange_pose7": POSE, "dq": np.zeros(7)}]
+            pose = list(POSE)
+            if checkpoint == "reposition_at_enter" and entered[0]:
+                pose[0] += 0.1
+            moving = checkpoint == "moving_at_enter" and entered[0] or \
+                checkpoint == "moving_before_engage" and "wait" in order
+            return [{"t_ns": time.monotonic_ns(), "ee_pose7": pose, "flange_pose7": pose,
+                     "dq": np.ones(7) if moving else np.zeros(7)}]
 
         def close(self):
             order.append("reader close")
@@ -1996,6 +2025,8 @@ def test_launcher_cancellation_checkpoints_and_resource_order(checkpoint, monkey
 
         def close(self):
             order.append("cameras close")
+            if checkpoint == "cleanup_baseexception":
+                raise KeyboardInterrupt("fake resource close")
 
     class Recorder:
         session_dir = tmp_path
@@ -2006,11 +2037,15 @@ def test_launcher_cancellation_checkpoints_and_resource_order(checkpoint, monkey
         def close(self, *a):
             if not self.closed:
                 order.append("recorder close")
+                if checkpoint == "cleanup_signals":
+                    for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGINT):
+                        handlers[sig](sig, None)
+                    order.append("recorder finalized")
                 self.closed = True
             return {}
 
-        def event(self, *a):
-            pass
+        def event(self, t, text):
+            recorded_events.append(text)
 
     def make_link(auth):
         z, msg = FakeZmq(), fake_robot_msg()
@@ -2071,6 +2106,9 @@ def test_launcher_cancellation_checkpoints_and_resource_order(checkpoint, monkey
 
         def run(self, **kw):
             order.append("stream")
+            if checkpoint == "reposition_at_enter":
+                box = self.loop.limits
+                np.testing.assert_allclose(box.workspace_min_m, np.array(POSE[:3]) + [0.1, 0, 0] - 0.08)
             self._exec_thread = threading.Thread(target=self.stop_event.wait)
             self._exec_thread.start()
             self.stop("operator key")
@@ -2079,12 +2117,21 @@ def test_launcher_cancellation_checkpoints_and_resource_order(checkpoint, monkey
 
     def operator_input():
         prompts.append(1)
+        entered[0] = True
+        if checkpoint in ("prompt_sigterm", "prompt_sigint"):
+            sig = signal.SIGTERM if checkpoint == "prompt_sigterm" else signal.SIGINT
+            handlers[sig](sig, None)
+            pytest.fail("signal did not interrupt START input")
         if checkpoint == "after_enter":
             cancel()
         return ""
 
     monkeypatch.setattr(sc, "LiveStateReader", Reader)
-    monkeypatch.setattr(sc, "state_blockers", lambda *a: [])
+    monkeypatch.setattr(sc, "state_blockers", lambda *a: ["unhealthy"] if
+                        checkpoint == "unhealthy_at_enter" and entered[0] else [])
+    if checkpoint == "hold_authorization":
+        monkeypatch.setattr(safety, "authorize_execution", lambda **kw: safety.authorize_hardware_test(
+            test="hold", cli_flag=True, operator_start=True))
     monkeypatch.setattr(G, "GripperWorker", Grip)
     spec = {"views": 2 if checkpoint == "multiview" else 1, "modalities": ["rgb"]}
     monkeypatch.setattr(cli, "choose_policy", lambda *a: ("p", "t", spec, {"execution_eligible": True}))
@@ -2107,16 +2154,22 @@ def test_launcher_cancellation_checkpoints_and_resource_order(checkpoint, monkey
     monkeypatch.setattr(controller, "ControllerLink", make_link)
     monkeypatch.setattr(live, "LiveSession", Session)
     code = run.main(["--execute", "--policy", "p"], operator_input=operator_input)
-    if checkpoint in ("normal", "preflight_fault_clears"):
+    if checkpoint in ("normal", "preflight_fault_clears", "cleanup_signals", "cleanup_baseexception",
+                       "reposition_at_enter"):
         assert code == 0 and "stream" in order
         assert order.index("executor joined") < order.index("gripper clear") < order.index("gripper joined")
     elif checkpoint in ("multiview", "preflight_fault_persists"):
         assert code == 3 and not links and not prompts
+    elif checkpoint in ("moving_at_enter", "unhealthy_at_enter", "hold_authorization"):
+        assert code == 3 and not links and prompts
+    elif checkpoint == "moving_before_engage":
+        assert code == 3 and "engage" not in order
     else:
         assert code == 130 and "stream" not in order
     if links:
         assert order.count("release") == 1 and not links[0].socks
-        assert order.index("gripper joined") < order.index("release") < order.index("recorder close")
+        assert order.index("gripper clear") < order.index("release") < order.index("gripper joined")
+        assert order.index("gripper joined") < order.index("recorder close")
         modes = [m["ctrl_mode"] for data in zs[0].sent if "ctrl_mode" in (m := json.loads(data))]
         if "engage" in order:
             assert modes[0] == 3 and modes[-1] == 1
@@ -2124,5 +2177,402 @@ def test_launcher_cancellation_checkpoints_and_resource_order(checkpoint, monkey
             assert not modes
         closes = [order.index(name) for name in ("recorder close", "client close", "cameras close", "reader close")]
         assert closes == sorted(closes)
+        release_events = [e for e in recorded_events if e.startswith("release ")]
+        assert len(release_events) == 1 and release_events[0] in messages
+    if checkpoint == "cleanup_signals":
+        assert "recorder finalized" in order and messages.count("shutdown in progress") == 3
+    if checkpoint == "reposition_at_enter":
+        box_events = [json.loads(e) for e in recorded_events if e.startswith('{"profile"')]
+        assert len(box_events) == 1 and box_events[0]["start_flange_pose7"][0] == POSE[0] + 0.1
     if checkpoint in ("before_engagement", "after_enter", "constructed", "after_wait"):
         assert "engage" not in order
+
+
+def test_release_barrier_finishes_inflight_send_before_hold_and_refuses_late_send():
+    import threading
+    import time
+
+    entered, resume, releasing = threading.Event(), threading.Event(), threading.Event()
+    link, z = _fake_link()
+    link.request_mode(3)
+    send = link.socks["action"].send
+
+    def delayed(data, flags):
+        if not entered.is_set():
+            entered.set()
+            assert resume.wait(2)
+        send(data, flags)
+
+    link.socks["action"].send = delayed
+    sender = threading.Thread(target=lambda: link.send_flange_pose(POSE))
+
+    def latest():
+        releasing.set()  # release has acquired the barrier and disabled streaming
+        return {"t_ns": time.monotonic_ns(), "ee_pose7": POSE}
+
+    releaser = threading.Thread(target=lambda: link.release(latest, still=lambda: True))
+    sender.start()
+    try:
+        assert entered.wait(1)
+        releaser.start()
+        assert not releasing.wait(0.05) and len(z.sent) == 1
+        resume.set()
+        assert releasing.wait(1)
+        with pytest.raises(safety.ExecutionRefused, match="released"):
+            link.send_flange_pose(POSE)
+    finally:
+        resume.set()
+        sender.join(2)
+        releaser.join(2)
+    assert not sender.is_alive() and not releaser.is_alive() and not link.socks
+    msgs = [json.loads(m) for m in z.sent]
+    assert len(msgs) == 4 and msgs[-1] == {"ctrl_mode": 1}
+    assert link.release_outcome == {"hold": "sent", "still": True, "idle": "sent"}
+    assert z.sent[2] == link.msg.encode(sc.robot_action_ee(link.msg, POSE, link.target_dt))
+    with pytest.raises(safety.ExecutionRefused, match="released"):
+        link.send_flange_pose(POSE)
+
+
+@pytest.mark.parametrize("block", ["read", "write"])
+def test_blocked_serial_never_blocks_executor_target_update_or_arm_release(block):
+    import threading
+    import time
+
+    from ops.robot_pc import gripper as G
+    from ops.robot_pc import live
+
+    blocked, resume, sent, released = (threading.Event() for _ in range(4))
+    writes, order = [], []
+
+    class Device:
+        def read_status(self):
+            if block == "read" and writes:
+                blocked.set()
+                assert resume.wait(3)
+            return G.GripperStatus(time.monotonic_ns(), 1, 1, 3, 3, 0, 230, 71, 0)
+
+        def write(self, position, speed, force):
+            writes.append(position)
+            if block == "write" and len(writes) == 1:
+                blocked.set()
+                assert resume.wait(3)
+
+        def close(self):
+            pass
+
+    worker = G.GripperWorker(Device, read_only=False)
+    worker.set_closure(1, time.monotonic_ns() + 5_000_000_000)
+    worker.start()
+    assert blocked.wait(1)
+    auth = safety.authorize_execution(cli_execute=True, operator_start=True, policy_info={"execution_eligible": True})
+    link = SimpleNamespace(send_flange_pose=lambda p: None,
+                           release=lambda *a, **kw: (order.append("release"), released.set()) and
+                           {"hold": "sent", "still": True, "idle": "sent"})
+    sink = live.LiveSink(auth, link, worker)
+    sp = live.LiveSetpoint(time.monotonic_ns(), "track", POSE, 0.5, "r", time.monotonic_ns() + 1_000_000_000)
+    executor_thread = threading.Thread(target=lambda: (sink.send(sp), sent.set()))
+    shutdown = live.MotionShutdown(threading.Event())
+    shutdown.session = SimpleNamespace(join_executor=lambda: (executor_thread.join(0.1), order.append("joined")))
+    shutdown.gripper, shutdown.link = worker, link
+    shutdown.state = SimpleNamespace(latest=lambda: {"t_ns": time.monotonic_ns(), "dq": np.zeros(7)})
+    try:
+        executor_thread.start()
+        assert sent.wait(0.1), "set_closure waited for serial I/O"
+        shutdown.request()
+        assert released.wait(0.2), "arm release waited for serial I/O or gripper.stop"
+        assert worker._target is None and worker.is_alive()
+        assert order[:2] == ["joined", "release"]
+    finally:
+        resume.set()
+        executor_thread.join(2)
+        shutdown.finish()
+        worker.stop()
+    assert not worker.is_alive()
+    assert all(p == 71 for p in writes[1:])  # no mailbox target replays after cancellation
+
+
+@pytest.mark.parametrize("event", ["stop", "clear", "expiry"])
+@pytest.mark.parametrize("status", ["healthy", "stale", "fault", "inactive", "read_only", "never_written"])
+def test_gripper_physical_hold_once_per_event_at_latest_measured_position(event, status):
+    import threading
+    import time
+
+    from ops.robot_pc import gripper as G
+
+    wrote, held = threading.Event(), threading.Event()
+    writes = []
+    worker = None
+
+    class Device:
+        def read_status(self):
+            return G.GripperStatus(time.monotonic_ns() - (101_000_000 if wrote.is_set() and status == "stale" else 0),
+                                   1, 1, 0 if wrote.is_set() and status == "inactive" else 3, 3,
+                                   5 if wrote.is_set() and status == "fault" else 0, 230, 83, 0)
+
+        def write(self, position, speed, force):
+            writes.append((position, speed, force))
+            (held if position == 83 else wrote).set()
+
+        def close(self):
+            pass
+
+    worker = G.GripperWorker(Device, read_only=status == "read_only", speed=64, force=0)
+    if status not in ("read_only", "never_written"):
+        worker.set_closure(1, time.monotonic_ns() + 5_000_000_000)
+    worker.start()
+    try:
+        if status not in ("read_only", "never_written"):
+            assert wrote.wait(1)
+        deadline = time.monotonic() + 1
+        while (worker.latest is None or len(worker.samples) < 2) and time.monotonic() < deadline:
+            time.sleep(0.002)
+        if event == "stop":
+            worker.stop()
+            worker.stop()  # idempotent; a second call is the same stop event
+        elif event == "clear":
+            worker.clear_target()
+        else:
+            with worker._target_lock:
+                if worker._target is not None:
+                    worker._expires_ns = time.monotonic_ns() - 1
+        if status == "healthy":
+            assert held.wait(0.5)
+        time.sleep(0.06)
+        assert len(worker.holds) == (1 if status == "healthy" else 0)
+        if worker.holds:
+            t, register, reason = worker.holds[0]
+            assert register == 83 and (t, register) in worker.sent
+            assert ("stop" if event == "stop" else "clear_target" if event == "clear" else "expiry") in reason
+            assert writes == [(230, 64, 0), (83, 64, 0)]
+        elif status in ("read_only", "never_written"):
+            assert not writes
+    finally:
+        worker.stop()
+
+
+def test_rtu_listens_after_exclusivity_before_any_transmission(tmp_path, monkeypatch):
+    from ops.robot_pc import gripper as G
+
+    monkeypatch.setattr(devices, "scan", lambda **kw: {"recorders": []})
+    events, made = [], []
+
+    class Serial(FakeSerial):
+        def __init__(self, *a, **kw):
+            super().__init__(*a, **kw)
+            made.append(self)
+
+        def reset_input_buffer(self):
+            events.append("reset")
+
+        def close(self):
+            events.append("close")
+
+    def holders(port):
+        events.append("holders")
+        return {"holders": [], "unverifiable": 7}
+
+    def read(n):
+        assert n == 1 and events == ["holders", "TIOCEXCL", "holders", "reset"]
+        events.append("read")
+        return b"\x09"
+
+    with pytest.raises(G.PortBusy, match="bus traffic without our request: another Modbus master"):
+        G.RobotiqRTU(serial_module=SimpleNamespace(Serial=Serial), lock_path=str(tmp_path / "listen"),
+                     check_holders=holders, ioctl=lambda *a: events.append("TIOCEXCL"), read_source=read)
+    assert events[-2:] == ["read", "close"] and not made[0].requests
+
+
+@pytest.mark.parametrize("event", ["stop", "expiry"])
+def test_gripper_failed_physical_hold_is_attempted_only_once(event):
+    import threading
+    import time
+
+    from ops.robot_pc import gripper as G
+
+    first, hold = threading.Event(), threading.Event()
+    writes = []
+
+    def write(position, speed, force):
+        writes.append(position)
+        if position == 81:
+            hold.set()
+            raise OSError("lost hold acknowledgement")
+        first.set()
+
+    worker = G.GripperWorker(lambda: SimpleNamespace(write=write, close=lambda: None, read_status=lambda:
+        G.GripperStatus(time.monotonic_ns(), 1, 1, 3, 3, 0, 230, 81, 0)), read_only=False)
+    worker.set_closure(1, time.monotonic_ns() + 5_000_000_000)
+    worker.start()
+    try:
+        assert first.wait(1)
+        if event == "stop":
+            worker.stop()
+        else:
+            with worker._target_lock:
+                worker._expires_ns = time.monotonic_ns() - 1
+        assert hold.wait(0.5)
+        time.sleep(0.06)
+        assert writes == [230, 81] and not worker.holds
+    finally:
+        worker.stop()
+
+
+@pytest.mark.parametrize("bad", ["crc", "length", "echo", "crc_reconnect"])
+def test_rtu_three_consecutive_bad_replies_latch_worker_error_and_stop_execution(tmp_path, monkeypatch, bad):
+    import threading
+    import time
+
+    from ops.robot_pc import gripper as G
+
+    monkeypatch.setattr(devices, "scan", lambda **kw: {"recorders": []})
+    serials, replies = [], []
+
+    class Serial(FakeSerial):
+        def __init__(self, *a, **kw):
+            super().__init__(*a, **kw)
+            serials.append(self)
+
+        def read(self, n):
+            replies.append(1)
+            if bad == "crc_reconnect" and len(replies) == 3:
+                raise OSError("transient serial failure, without a valid reply")
+            reply = self.reply
+            if bad in ("crc", "crc_reconnect"):
+                return reply[:-1] + bytes([reply[-1] ^ 1])
+            if bad == "length":
+                return reply[:-1]
+            body = reply[:2] + b"\x05" + reply[3:-2]  # wrong FC03 byte count, valid CRC
+            return body + G.crc16_modbus(body)
+
+    worker = G.GripperWorker(lambda: G.RobotiqRTU(serial_module=SimpleNamespace(Serial=Serial),
+                            lock_path=str(tmp_path / "bad"), check_holders=lambda p: [],
+                            ioctl=lambda *a: None, listen_s=0), read_only=True)
+    worker.start()
+    worker.join(2)
+    assert not worker.is_alive() and worker.error_latched and "3 consecutive bad replies" in worker.error
+    reconnect = bad == "crc_reconnect"
+    assert len(serials) == (2 if reconnect else 1)
+    assert sum(len(s.requests) for s in serials) == (4 if reconnect else 3) and not worker.healthy()
+    # Even a fresh last-good status must not hide the latched protocol error from a policy session.
+    worker.latest = G.GripperStatus(time.monotonic_ns(), 1, 1, 3, 3, 0, 3, 3, 0)
+    released = threading.Event()
+    session = _unit_session(sent=True, gripper=worker, link=SimpleNamespace(
+        release=lambda *a, **kw: released.set(), peers_ok=lambda: True))
+    assert not session._check_gripper()
+    session.shutdown.finish()
+    assert released.is_set() and "gripper unhealthy" in session.stop_reason
+
+
+def test_rtu_default_quiet_listen_is_point_three_seconds_without_requests(tmp_path, monkeypatch):
+    from ops.robot_pc import gripper as G
+
+    monkeypatch.setattr(devices, "scan", lambda **kw: {"recorders": []})
+    now = [0.0]
+    serial = FakeSerial(exclusive=True, write_timeout=0.05)
+    monkeypatch.setattr(G.time, "monotonic", lambda: now[0])
+
+    def read(n):
+        assert not serial.requests
+        now[0] += 0.05
+        return b""
+
+    dev = G.RobotiqRTU(serial_module=SimpleNamespace(Serial=lambda *a, **kw: serial),
+                       lock_path=str(tmp_path / "quiet"), check_holders=lambda p: [], ioctl=lambda *a: None,
+                       read_source=read)
+    try:
+        assert now[0] >= 0.3 and not serial.requests
+    finally:
+        dev.close()
+
+
+def test_rtu_bad_reply_streak_resets_on_valid_reply_and_checks_fc16_echo(tmp_path, monkeypatch):
+    from ops.robot_pc import gripper as G
+
+    monkeypatch.setattr(devices, "scan", lambda **kw: {"recorders": []})
+    serial = FakeSerial(exclusive=True, write_timeout=0.05)
+    corrupt = [True]
+
+    def read(n):
+        if not corrupt[0]:
+            return serial.reply
+        body = serial.reply[:3] + bytes([serial.reply[3] ^ 1]) + serial.reply[4:-2]
+        return body + G.crc16_modbus(body)
+
+    dev = G.RobotiqRTU(serial_module=SimpleNamespace(Serial=lambda *a, **kw: serial),
+                       lock_path=str(tmp_path / "reset"), check_holders=lambda p: [], ioctl=lambda *a: None,
+                       listen_s=0, read_source=read)
+    try:
+        for _ in range(2):
+            with pytest.raises(G.BadReply):
+                dev.write(230, 64, 0)
+        assert dev.consecutive_bad_replies == 2
+        corrupt[0] = False
+        dev.read_status()
+        assert dev.consecutive_bad_replies == 0
+        corrupt[0] = True
+        with pytest.raises(G.BadReply):
+            dev.write(230, 64, 0)
+        assert dev.consecutive_bad_replies == 1
+    finally:
+        dev.close()
+
+
+def test_hardware_test_authorizations_cannot_run_a_policy_or_gripper_token_command_arm():
+    from ops.robot_pc import controller, live
+
+    hold = safety.authorize_hardware_test(test="hold", cli_flag=True, operator_start=True)
+    grip = safety.authorize_hardware_test(test="gripper", cli_flag=True, operator_start=True)
+    link = SimpleNamespace(send_flange_pose=lambda *a: pytest.fail("unauthorized arm send"))
+    sink = live.LiveSink(hold, link)
+    assert sink.authorization is hold
+    with pytest.raises(safety.ExecutionRefused, match="policy authorization"):
+        _unit_session(sent=True, sink=sink)
+    with pytest.raises(safety.ExecutionRefused, match="gripper authorization"):
+        sinks.LiveSink(grip, link)
+    with pytest.raises(safety.ExecutionRefused, match="gripper authorization"):
+        controller.ControllerLink(grip, zmq_module=FakeZmq(), robot_msg=fake_robot_msg())
+
+
+@pytest.mark.parametrize("following", ["never", "recovers", "dry_run"])
+def test_policy_following_detection_continuous_threshold_in_executor_path(following):
+    from ops.robot_pc import live
+
+    class ClockStop:
+        def __init__(self):
+            self.done, self.t = False, 0
+
+        def is_set(self):
+            return self.done
+
+        def set(self):
+            self.done = True
+
+        def wait(self, timeout=None):
+            self.t += 100_000_000
+            if self.t > 3_000_000_000:
+                self.done = True
+
+    stop = ClockStop()
+    # Keep shutdown out of the deterministic tick clock; test its stop request separately above.
+    shutdown = live.MotionShutdown(stop)
+    shutdown.request = stop.set
+    sink = sinks.DryRunSink() if following == "dry_run" else None
+    sent_poses = []
+    link = SimpleNamespace(peers_ok=lambda: True, send_flange_pose=sent_poses.append)
+    session = _unit_session(sent=following != "dry_run", link=link, sink=sink, stop_event=stop, shutdown=shutdown)
+    session.executor.command = SimpleNamespace(reference_id="r", expires_ns=10**20)
+    threshold = 0.5 * session.executor.lead_m
+
+    def tick(*a, **kw):
+        pose = list(POSE)
+        # One recovery below threshold must reset the entire continuous interval.
+        pose[0] += threshold if following != "recovers" or stop.t < 900_000_000 or stop.t > 1_000_000_000 else 0
+        return executor.Setpoint(stop.t, "track", tuple(pose), None, "r")
+
+    session.executor.tick = tick
+    session._executor_ticks()
+    if following == "dry_run":
+        assert session.stop_reason is None and not sent_poses
+    else:
+        assert session.stop_reason == "robot not following the command (controller mode not accepted?)"
+        assert stop.t == (2_300_000_000 if following == "recovers" else 1_200_000_000)

@@ -23,7 +23,7 @@ import numpy as np
 from ops.robot_pc.executor import Setpoint
 from ops.robot_pc.loop import PolicyLoop
 from ops.robot_pc.robot_state import RobotStateSource
-from ops.robot_pc.safety import ExecutionRefused
+from ops.robot_pc.safety import ExecutionAuthorization, ExecutionRefused
 from ops.robot_pc.sinks import LiveSink as _BaseLiveSink
 
 log = logging.getLogger(__name__)
@@ -73,8 +73,10 @@ class LiveSink(_BaseLiveSink):
 class MotionShutdown:
     """Stop motion independently of policy/network/disk waits. Resource closes belong to the launcher."""
 
-    def __init__(self, cancel, *, report=None):
+    def __init__(self, cancel, *, report=None, on_release=None):
         self.cancel, self.report = cancel, report or log.error
+        self.on_release = on_release
+        self.release_outcome = None
         self.session = self.gripper = self.link = self.state = None
         self._lock = threading.RLock()  # signal handlers may re-enter request() on the main thread
         self._thread = None
@@ -98,13 +100,19 @@ class MotionShutdown:
         if self.session is not None:
             phases.append(self.session.join_executor)
         if self.gripper is not None:
-            phases.extend([self.gripper.clear_target, self.gripper.stop])
+            phases.append(self.gripper.clear_target)
         if self.link is not None:
-            phases.append(lambda: self.link.release(self.state.latest, still=lambda: still(self.state)))
+            def release():
+                self.release_outcome = self.link.release(self.state.latest, still=lambda: still(self.state))
+                if self.on_release is not None:
+                    self.on_release("release " + json.dumps(self.release_outcome))
+            phases.append(release)
+        if self.gripper is not None:
+            phases.append(self.gripper.stop)
         for phase in phases:
             try:
                 phase()
-            except (Exception, KeyboardInterrupt) as exc:
+            except BaseException as exc:
                 self.report(f"motion shutdown: {type(exc).__name__}: {exc}")
 
     def finish(self) -> None:
@@ -168,6 +176,10 @@ class LiveSession:
         spec = getattr(client, "spec", None) or {}
         if len(cams) != 1 or spec.get("views", 1) > 1 or len(spec.get("camera_ids", ())) > 1:
             raise ExecutionRefused("live multiview sync sets are not implemented; select a single-camera policy")
+        if sent:
+            authorization = getattr(sink, "authorization", None)
+            if not isinstance(authorization, ExecutionAuthorization) or authorization.hardware_test is not None:
+                raise ExecutionRefused("policy execution requires a policy authorization (hardware_test must be None)")
         self.client, self.cameras, self.cams, self.state = client, cameras, list(cams), state
         self.executor, self.sink, self.recorder, self.sent = executor, sink, recorder, bool(sent)
         self._command_lock = threading.Lock()
@@ -177,6 +189,8 @@ class LiveSession:
         self.stop_event = stop_event if stop_event is not None else threading.Event()
         self._stop_lock = threading.RLock()
         self.shutdown = shutdown or MotionShutdown(self.stop_event)
+        if self.shutdown.on_release is None and recorder is not None:
+            self.shutdown.on_release = lambda text: recorder.event(time.monotonic_ns(), text)
         self.shutdown.session, self.shutdown.state = self, state
         self.shutdown.gripper = state.gripper if hasattr(state.gripper, "stop") else None
         if self.sent:
@@ -187,6 +201,7 @@ class LiveSession:
         self._rec_robot_t = self._rec_grip_t = 0
         self.tick_periods_ns: list = []  # measured executor loop periods (local control rate evidence)
         self._gripper_health = None
+        self._not_following_since_ns = None
 
     def accept(self, cmd) -> bool:
         with self._command_lock:
@@ -204,7 +219,8 @@ class LiveSession:
         s = g.latest
         # healthy() requires a <100 ms sample. Allow a missing reply up to 200 ms before latching comm loss.
         fatal = not healthy and (s is None or time.monotonic_ns() - s.t_ns >= 200_000_000 or
-                                 s.fault != 0 or s.status != 3 or s.activated != 1)
+                                 s.fault != 0 or s.status != 3 or s.activated != 1 or
+                                 getattr(g, "error_latched", False))
         if self.sent and fatal:
             self.stop(f"gripper unhealthy: {g.error or 'no fresh activated status'}")
             return False
@@ -258,12 +274,16 @@ class LiveSession:
                             break
                         outcome = self.sink.send(sp)
                         sent = self.sent
+                        if self.sent:
+                            self._check_following(sp, s["flange_pose7"])
                         detail = json.dumps(outcome) if outcome is not None else ""
                     except Exception as exc:  # noqa: BLE001 - a failed send ends the session
                         detail = str(exc)
                         self.stop(f"command send failed: {exc}")
                     if self.recorder is not None:
                         self.recorder.executed(sp.t_ns, sp.kind, sp.pose7, sp.gripper_closure, sent, detail)
+                else:
+                    self._not_following_since_ns = None
                 if self.executor.stopped and not self.stop_event.is_set():
                     self.stop(f"executor stop: {self.executor.stopped}")
             next_t += period
@@ -271,6 +291,15 @@ class LiveSession:
             if delay < -period:  # overrun by more than a period: resynchronise instead of bursting
                 next_t, delay = time.monotonic(), 0.0
             self.stop_event.wait(max(0.0, delay))
+
+    def _check_following(self, sp, measured) -> None:
+        if np.linalg.norm(np.asarray(sp.pose7[:3]) - measured[:3]) >= 0.5 * self.executor.lead_m:
+            if self._not_following_since_ns is None:
+                self._not_following_since_ns = sp.t_ns
+            elif sp.t_ns - self._not_following_since_ns > 1_000_000_000:
+                self.stop("robot not following the command (controller mode not accepted?)")
+        else:
+            self._not_following_since_ns = None
 
     def loop_stats(self) -> dict:
         """Executor (local control loop) and policy-step rates of this session, measured."""

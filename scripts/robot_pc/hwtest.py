@@ -74,13 +74,19 @@ def main(argv=None, *, operator_input=input) -> int:
     shutdown = live.MotionShutdown(stop, report=say)
     session = None
     result = {"verdict": None, "error": "launcher exited abnormally"}
+    cleaning = prompting = False
 
     def check_cancel():
         if stop.is_set():
             raise Cancelled()
 
     def on_signal(signum, frame):
+        if cleaning or shutdown._thread is not None:
+            say("shutdown in progress")
+            return
         stop.set()
+        if prompting:
+            raise Cancelled()
         if "s" in session_box:
             session_box["s"].abort("operator Ctrl-C (SIGINT)" if signum == signal.SIGINT else f"signal {signum}")
         if signum == signal.SIGINT:
@@ -101,17 +107,19 @@ def main(argv=None, *, operator_input=input) -> int:
                        ((session.stop_reason if session is not None else result["error"]) or "test did not pass"))
 
     def cleanup():
-        shutdown.finish()  # executor join -> gripper clear/stop -> fresh measured-ee hold / still wait / IDLE
+        nonlocal cleaning
+        cleaning = True
+        shutdown.finish()  # executor join -> gripper clear -> controller release -> gripper stop/join
         if session is not None:
             try:
                 result["verdict"] = session.finalize()
                 say("verdict " + json.dumps(result["verdict"], allow_nan=False))
-            except Exception as exc:
+            except BaseException as exc:
                 say(f"finalize: {type(exc).__name__}: {exc}")
         for close in reversed(opened):
             try:
                 close()
-            except Exception as exc:
+            except BaseException as exc:
                 say(f"cleanup: {type(exc).__name__}: {exc}")
 
     try:
@@ -189,13 +197,20 @@ def main(argv=None, *, operator_input=input) -> int:
                 say(f"ACTION: request mode 3; hold the measured flange pose at ENTER for {args.duration_s} s "
                     f"through the executor; drift limits {args.max_drift_mm} mm / {args.max_drift_deg} deg, "
                     f"|dq| limit {args.max_dq} rad/s; release to measured-ee hold then IDLE")
-            say("READY. Operator: hand on the e-stop. Press ENTER to START (s/q + ENTER cancels).")
-            response = operator_input()
+            prompting = True
+            try:
+                check_cancel()
+                say("READY. Operator: hand on the e-stop. Press ENTER to START (s/q + ENTER cancels).")
+                response = operator_input()
+            finally:
+                prompting = False
             if isinstance(response, str) and response.strip().lower() in ("s", "q", "stop"):
                 stop.set()
             check_cancel()
             session.capture_start()  # snapshot at ENTER, before subscriber wait / engage settle
             auth = authorize_hardware_test(test=args.test, cli_flag=True, operator_start=True)
+            if auth.hardware_test != args.test:
+                raise ExecutionRefused(f"{args.test} test requires its hardware_test authorization")
             check_cancel()
             threading.Thread(target=keys, daemon=True, name="stop-key").start()
             if args.test == "hold":
@@ -210,6 +225,7 @@ def main(argv=None, *, operator_input=input) -> int:
                 if not connected:
                     raise ExecutionRefused("switch_controller did not connect to command/action channels")
                 session._healthy_gripper()
+                session.event("engage")
                 link.engage(cancel=stop)
                 check_cancel()
                 session.sink = HoldSink(auth, link, gripper=None)
