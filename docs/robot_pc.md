@@ -202,7 +202,18 @@ m5-live-validation-20261110.json`.
 
 ## Latency
 
-Measured routes and numbers: `realworld-ops/serving/ROB-BENCH.md`. **Not yet measured (need robotpc access)**: the
-robotpc -> 5090 route itself (RTT, transport), robot-PC CPU preprocessing / native librealsense rs.align, live camera
-capture -> action (expected >= 65 ms by the recorded camera latency alone), live robot-state age, the 3-camera
-multi-view live dry run, and setup on the real Ubuntu 24.04 python3.
+Numbers, routes and GPU snapshots: `realworld-ops/serving/ROB-BENCH.md` (+ `rob-bench/<label>-<time>/`,
+`rob-dryrun/`). Measured 2026-11-10 ON the robot PC through the relay route (robot PC -> reverse forward over the
+robotpc ssh master -> LOCAL -> irsl ssh master -> shkim_rw), GPU CONTENDED (another user's training at 97 %):
+* live camera dry run (real D435i, static latency-only state): 15.0 Hz sustained, preprocessing -> action p50 40-47 ms,
+  capture -> validated command p50 105-109 ms of which ~63-66 ms is the camera's own device-stamp -> host latency
+  (recordings: 65 ms), transport 7.2 ms, server 31-38 ms (contended); every capture -> command exceeds 66.7 ms by
+  construction of the camera path;
+* recorded replay at 15 Hz (one per condition x task): preprocessing -> action p50 40-79 ms; DynaMo / SinCro exceed
+  66.7 ms under contention (server 56-70 ms); PING robot PC -> server 1.6 ms (LOCAL -> server 0.8 ms).
+
+**Not yet measured**: the UNCONTENDED repeat (one command: `scripts/robot_pc/route_bench.py --label uncontended`),
+the direct robot PC -> 5090 route (needs a robot-PC credential for the 5090: user decision), live multi-view / RGB-D
+(no deployable multi-view or 3D-MVP policy; native rs.align cost on the robot PC therefore unmeasured), live
+robot-state age (no read-only gripper source), setup.sh run as one script on the robot PC (its steps were run
+individually; the single-script remote execution was refused by the permission policy).
