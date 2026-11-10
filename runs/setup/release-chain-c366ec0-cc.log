@@ -1,0 +1,53 @@
+00:00:46 /home/ws/ws/splatter4d/.worktrees/mountfix/s4d/remote_access.py sync-code c366ec06332b99319a9dd92e23913ad12b29fcb4 -> 0 /home/compu/kaist/sunho/releases/c366ec06332b99319a9dd92e23913ad12b29fcb4/code 
+00:00:46 /home/compu/kaist/sunho/releases/c366ec06332b99319a9dd92e23913ad12b29fcb4/code
+00:00:52 sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a --tag cc -> 0 /home/ws/ws/splatter4d/runs/remote/verification/native-c366ec0-cc-queue.yaml 
+00:03:51 remote co-tenants: 3 known, 131 GB RAM not yet in use charged; GPU-9e9f1e97 3 (72.0 GB charged, 17.0 GB free after pending reservations)
+00:03:51 launched verify-native-c366ec0-cc on remote/GPU-ca65e1b7-c0ac-6757-7d3f-816c3119a4c1 (s4d-verify-native-c366ec0-cc-a1, attempt 1)
+00:03:52 wait {'verify-native-c366ec0-cc': 'running'}
+00:05:39 remote co-tenants: 3 known, 127 GB RAM not yet in use charged; GPU-9e9f1e97 3 (72.0 GB charged, 23.5 GB free after pending reservations)
+00:05:40 wait {'verify-native-c366ec0-cc': 'running'}
+00:06:58 remote co-tenants: 3 known, 127 GB RAM not yet in use charged; GPU-9e9f1e97 3 (72.0 GB charged, 23.5 GB free after pending reservations)
+00:06:59 wait {'verify-native-c366ec0-cc': 'running'}
+00:08:46 verify-native-c366ec0-cc: live result sync unavailable; job remains running
+00:08:46 remote co-tenants: 2 known, 86 GB RAM not yet in use charged; GPU-9e9f1e97 2 (48.0 GB charged, 47.6 GB free after pending reservations)
+00:08:46 foreign processes on remote/GPU-9e9f1e97-b2ca-04e0-eb2a-8035398daa79; not launching there
+00:08:46 wait {'verify-native-c366ec0-cc': 'running'}
+00:10:05 remote co-tenants: 1 known, 47 GB RAM not yet in use charged; GPU-9e9f1e97 1 (24.0 GB charged, 71.6 GB free after pending reservations)
+00:10:05 wait {'verify-native-c366ec0-cc': 'running'}
+00:11:47 remote co-tenants: 1 known, 45 GB RAM not yet in use charged; GPU-9e9f1e97 1 (24.0 GB charged, 71.6 GB free after pending reservations)
+00:11:47 wait {'verify-native-c366ec0-cc': 'running'}
+00:13:09 remote co-tenants: 1 known, 45 GB RAM not yet in use charged; GPU-9e9f1e97 1 (24.0 GB charged, 71.6 GB free after pending reservations)
+00:13:10 wait {'verify-native-c366ec0-cc': 'running'}
+00:14:50 remote co-tenants: 3 known, 140 GB RAM not yet in use charged; GPU-9e9f1e97 3 (72.0 GB charged, 22.5 GB free after pending reservations)
+00:14:51 wait {'verify-native-c366ec0-cc': 'running'}
+00:16:58 remote co-tenants: 3 known, 134 GB RAM not yet in use charged; GPU-9e9f1e97 3 (72.0 GB charged, 23.6 GB free after pending reservations)
+00:16:58 wait {'verify-native-c366ec0-cc': 'running'}
+00:18:43 verify-native-c366ec0-cc: live result sync unavailable; job remains running
+00:18:43 remote co-tenants: 3 known, 134 GB RAM not yet in use charged; GPU-9e9f1e97 3 (72.0 GB charged, 23.6 GB free after pending reservations)
+00:18:44 wait {'verify-native-c366ec0-cc': 'running'}
+00:20:02 remote co-tenants: 3 known, 134 GB RAM not yet in use charged; GPU-9e9f1e97 3 (72.0 GB charged, 23.6 GB free after pending reservations)
+00:20:03 wait {'verify-native-c366ec0-cc': 'running'}
+00:21:46 remote co-tenants: 3 known, 134 GB RAM not yet in use charged; GPU-9e9f1e97 3 (72.0 GB charged, 23.6 GB free after pending reservations)
+00:21:47 wait {'verify-native-c366ec0-cc': 'running'}
+00:23:06 remote co-tenants: 3 known, 134 GB RAM not yet in use charged; GPU-9e9f1e97 3 (72.0 GB charged, 23.6 GB free after pending reservations)
+00:23:06 wait {'verify-native-c366ec0-cc': 'running'}
+00:25:02 remote co-tenants: 3 known, 139 GB RAM not yet in use charged; GPU-9e9f1e97 3 (72.0 GB charged, 23.6 GB free after pending reservations)
+00:25:02 foreign processes on remote/GPU-ca65e1b7-c0ac-6757-7d3f-816c3119a4c1; not launching there
+00:25:02 wait {'verify-native-c366ec0-cc': 'running'}
+00:26:25 remote co-tenants: 3 known, 136 GB RAM not yet in use charged; GPU-9e9f1e97 3 (72.0 GB charged, 23.6 GB free after pending reservations)
+00:26:26 wait {'verify-native-c366ec0-cc': 'running'}
+00:27:43 remote co-tenants: 3 known, 134 GB RAM not yet in use charged; GPU-9e9f1e97 3 (72.0 GB charged, 17.9 GB free after pending reservations)
+00:27:44 done {'verify-native-c366ec0-cc': 'done'}
+00:27:44 {"exit_code": 0, "counts": {"passed": 2662, "error": 0, "failed": 0, "skipped": 0}, "full_suite_passed": true}
+00:27:50 sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a --tag cc -> 0 /home/ws/ws/splatter4d/runs/remote/verification/isolation-c366ec0-cc-queue.yaml 
+00:30:38 remote co-tenants: 3 known, 134 GB RAM not yet in use charged; GPU-9e9f1e97 3 (72.0 GB charged, 23.5 GB free after pending reservations)
+00:30:38 launched verify-isolation-0-c366ec0-cc on remote/GPU-4391fcee-537f-d408-d138-10d8a3866eea (s4d-verify-isolation-0-c366ec0-cc-a1, attempt 1)
+00:30:38 launched verify-isolation-1-c366ec0-cc on remote/GPU-6122c7a9-eaa6-b539-6005-f20e339da4ea (s4d-verify-isolation-1-c366ec0-cc-a1, attempt 1)
+00:30:38 launched verify-isolation-2-c366ec0-cc on remote/GPU-9e9f1e97-b2ca-04e0-eb2a-8035398daa79 (s4d-verify-isolation-2-c366ec0-cc-a1, attempt 1)
+00:30:38 launched verify-isolation-3-c366ec0-cc on remote/GPU-ca65e1b7-c0ac-6757-7d3f-816c3119a4c1 (s4d-verify-isolation-3-c366ec0-cc-a1, attempt 1)
+00:30:39 wait {'verify-isolation-0-c366ec0-cc': 'running', 'verify-isolation-1-c366ec0-cc': 'running', 'verify-isolation-2-c366ec0-cc': 'running', 'verify-isolation-3-c366ec0-cc': 'running'}
+00:33:55 verify-isolation-3-c366ec0-cc exited with 0 on remote; results checksum verified
+00:33:55 remote co-tenants: 3 known, 130 GB RAM not yet in use charged; GPU-9e9f1e97 3 (72.0 GB charged, 23.5 GB free after pending reservations)
+00:33:56 done {'verify-isolation-0-c366ec0-cc': 'done', 'verify-isolation-1-c366ec0-cc': 'done', 'verify-isolation-2-c366ec0-cc': 'done', 'verify-isolation-3-c366ec0-cc': 'done'}
+00:33:57 sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a --tag cc -> 0 ACCEPTED /home/ws/ws/splatter4d/runs/remote/acceptance/c366ec0-cc/manifest.json fc9631fd6e2ac216c19d81d6dfab854035e2dc1cde23dbd5212bff22b9dcd378 56bd8ce9c59e 
+00:33:57 ACCEPTED /home/ws/ws/splatter4d/runs/remote/acceptance/c366ec0-cc/manifest.json fc9631fd6e2ac216c19d81d6dfab854035e2dc1cde23dbd5212bff22b9dcd378 56bd8ce9c59e

@@ -310,6 +310,18 @@
       ],
       "lifted": "2026-11-10T23:07:00+0900",
       "lift_reason": "USER 23:0x: proceed with the native-depth 3D-MVP chain (instruction only meant the local server); failed launch reconciled; role release -> ed0c5a3"
+    },
+    {
+      "name": "nativedepth-rig-mount-20261110",
+      "active": false,
+      "since": "2026-11-10T23:58:00+0900",
+      "by": "coordinator (Claude), protective, reversible",
+      "reason": "native-depth stage attempt failed: realworld/configs (rig documents) is not mounted into real-world containers (ops/containers/mounts.py REALWORLD_READ_ROOTS). Hold retries until a released fix mounts it read-only.",
+      "prefixes": [
+        "rwcal-20261110-nativedepth-mvp3d-"
+      ],
+      "lifted": "2026-11-11T00:36:00+0900",
+      "lift_reason": "c366ec0 released (2662/0/0) and adopted: configs mounted read-only for realworld_native_depth.py; user 00:15: resume the two native-depth jobs"
     }
   ]
 }
