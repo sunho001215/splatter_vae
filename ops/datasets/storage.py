@@ -82,7 +82,8 @@ def plan_fit(items: list[dict], groups, usage: dict, margin_fraction: float, sta
     pending = [i for i in items if state_items.get(i["id"], {}).get("status") not in FINISHED]
     proj = projection(pending, groups, selection)
     for group, value in proj.items():
-        value["on_disk"] = sum(on_disk.get(i["id"], 0) for i in pending if i["group"] == group) + staged.get(group, 0)
+        members = [i for i in pending if i["group"] == group]
+        value["on_disk"] = sum(on_disk.get(i["id"], 0) for i in members) + (staged.get(group, 0) if members else 0)
         value["final"] -= value["on_disk"]
     margin = margin_bytes(usage["size"], margin_fraction)
     usable = usage["avail"] - margin
@@ -100,34 +101,31 @@ def peak_table(items: list[dict], groups, usage: dict, margin_fraction: float, s
 
     - final growth of every enabled group (credits for bytes already on disk), plus block rounding
       (``FS_OVERHEAD_PER_FILE`` per file still to be written: plain files, flow and depth members);
-    - transients: the depth parts held until the stream is published, ``pool_max`` in-flight flow shard archives
+    - transients: the depth parts held until the stream is published, ``pool_max`` in-flight shard archives
       (temp files of plain files become the final files themselves; depth parts are already counted as held), and
-      one more flow shard archive held during its extraction (its staged members are final bytes);
+      one more shard archive held during its extraction (its staged members are final bytes);
     - ``peak_unordered``: everything finishes before the depth stream is published (all parts held at the end);
-    - ``peak_depth_first``: the enforced order (depth parts first; the depth stream claims its remaining parts and
-      expansion from the first part on, so other work is admitted only into the space left beside it): the larger of
-      the moment the stream is published (all non-flow groups complete, all parts held, at most ``pool_max`` flow
-      shards with expansion beside them) and the end (final + ``pool_max`` + 1 shard archives).
+    - ``peak_depth_first``: the enforced order (schedule ``depth_first``: no flow shard is admitted before the depth
+      stream is published): the larger of the moment the stream is published (every non-flow group complete, all
+      parts held) and the end (final + ``pool_max`` + 1 shard archives).
     The runner enforces the floor at every admission whatever the order; this table shows the order completes."""
     fit = plan_fit(items, groups, usage, margin_fraction, state_items, selection, on_disk, staged)
     pending = [i for i in items if state_items.get(i["id"], {}).get("status") not in FINISHED and i["group"] in groups]
-    files = sum(1 for i in pending if "archive" not in i) + sum(i["archive"].get("members", 0) for i in pending
-                                                               if i["group"] == "pw_flows")
+    singles = [i for i in pending if i.get("archive", {}).get("kind") == "single"]  # flow shards, cameras
+    files = sum(1 for i in pending if "archive" not in i) + sum(int(i["archive"].get("members", 0)) for i in singles)
     depth = [i for i in pending if i["group"] == "pw_depth"]
     if depth and not stream_published:
         files += flow_members
     overhead = files * FS_OVERHEAD_PER_FILE
-    shard_archives = [int(i["size"]) for i in pending if i["group"] == "pw_flows"]
-    shard_growth = max((int(i["size"]) + int(i["archive"]["expanded"]) for i in pending if i["group"] == "pw_flows"),
-                       default=0)
+    shard_archives = [int(i["size"]) for i in singles]
     held_parts = sum(int(i["size"]) for i in depth) if not stream_published else 0
     inflight = pool_max * max(shard_archives, default=0)
     extraction = max(shard_archives, default=0)
     final = fit["final_growth"] + overhead
-    # until the stream is published: every group but the flows may complete (bound), the depth parts are all held,
-    # and at most pool_max flow shards (archive + expansion) are admitted beside them
+    # until the stream is published every group but the flows may complete (bound) and all depth parts are held;
+    # flow shards are not admitted before the publication
     others = sum(v["final"] for g, v in fit["groups"].items() if g != "pw_flows")
-    at_publish = others + held_parts + pool_max * shard_growth + overhead if depth and not stream_published else 0
+    at_publish = others + held_parts + overhead if depth and not stream_published else 0
     at_end = final + (pool_max + 1) * max(shard_archives, default=0)
     terms = {"final_growth": fit["final_growth"], "fs_overhead": overhead, "held_depth_parts": held_parts,
              "inflight_shard_archives": inflight, "shard_archive_during_extraction": extraction}

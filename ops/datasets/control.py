@@ -14,6 +14,7 @@ import base64
 import hashlib
 import io
 import json
+import math
 import shlex
 import statistics
 import subprocess
@@ -102,38 +103,50 @@ def staging_paths(name: str, digest: str) -> tuple[str, str]:
     return target, f"{target}.s4d-partial-{digest}"
 
 
-def stage_upload(local: Path, kib_per_s: int) -> dict:
-    """Upload one local file into the adopt staging directory on /data_8T (then ``adopt`` installs it): explicit
-    ``--bwlimit`` as the existing upload policy requires, resumable partial name, sha256 verified on the remote host,
-    renamed only if the target does not exist (never overwritten)."""
+def stage_upload(local: Path, kib_per_s: int, floor_fraction: float = 0.085) -> dict:
+    """Upload one local file into the adopt staging directory on /data_8T (then ``adopt`` installs it): the staging
+    directory must resolve (no symlink) onto the /data_8T mount and the file must fit above the data disk's floor;
+    explicit ``--bwlimit`` as the existing upload policy requires; partial name with rsync delta transfer (resumable,
+    and a corrupt full-length partial is repaired, not skipped); sha256 verified on the remote host; published with an
+    atomic no-replace hard link (an existing target is never overwritten)."""
     from ops.provenance.hashing import sha256_file
 
     if int(kib_per_s) <= 0:
         raise ValueError("an explicit positive --bwlimit (KiB/s) is required")
     remote_client, local = client(), Path(local)
-    digest, start = sha256_file(local), time.monotonic()
+    digest, start, size = sha256_file(local), time.monotonic(), local.stat().st_size
     target, partial = staging_paths(local.name, digest)
+    staging = shlex.quote(UPLOAD_STAGING)
 
     def remote_sha(path: str) -> str | None:
         out = remote_client.checked_ssh(f"if [ -f {shlex.quote(path)} ]; then sha256sum -- {shlex.quote(path)}; fi",
                                         wait=False, idempotent=True, timeout=600).stdout.split()
         return out[0] if out else None
 
-    remote_client.checked_ssh("mkdir -p " + shlex.quote(UPLOAD_STAGING), wait=False, idempotent=True)
+    check = remote_client.checked_ssh(
+        f"mkdir -p {staging} && [ \"$(realpath -e {staging})\" = {staging} ] && "
+        f"findmnt -n -o TARGET --target {staging} && df --output=avail,size -B1 {staging} | tail -1",
+        wait=False, idempotent=True).stdout.split()
+    if len(check) != 3 or check[0] != "/data_8T":
+        raise RuntimeError(f"staging directory is not a plain directory on /data_8T: {check}")
+    avail, fs_size = int(check[1]), int(check[2])
+    if avail - size < math.ceil(floor_fraction * fs_size):
+        raise RuntimeError("the upload would cross the data disk's free-space floor")
     existing = remote_sha(target)
     if existing is not None:
         if existing != digest:
             raise RuntimeError(f"{target} exists with another sha256; not overwritten")
         return {"file": local.name, "status": "present", "sha256": digest}
     remote_client._rsync_run(str(local), f"{remote_client.target}:{partial}", [f"--bwlimit={int(kib_per_s)}",
-                                                                               "--timeout=300"], True, True, (0,))
+                                                                               "--timeout=300"], True, False, (0,))
     if remote_sha(partial) != digest or sha256_file(local) != digest:
-        raise RuntimeError(f"{local.name}: uploaded sha256 differs or the source changed")
-    remote_client.checked_ssh(f"test ! -e {shlex.quote(target)} && mv -T -- {shlex.quote(partial)} "
-                              f"{shlex.quote(target)}", wait=False, idempotent=False)
+        remote_client.checked_ssh(f"rm -f -- {shlex.quote(partial)}", wait=False, idempotent=True)
+        raise RuntimeError(f"{local.name}: uploaded sha256 differs or the source changed (partial removed)")
+    remote_client.checked_ssh(f"ln -T -- {shlex.quote(partial)} {shlex.quote(target)} && rm -f -- "
+                              f"{shlex.quote(partial)}", wait=False, idempotent=False)
     if remote_sha(target) != digest:
-        raise RuntimeError(f"{target}: sha256 differs after the rename")
-    return {"file": local.name, "status": "uploaded", "sha256": digest, "bytes": local.stat().st_size,
+        raise RuntimeError(f"{target}: sha256 differs after publication")
+    return {"file": local.name, "status": "uploaded", "sha256": digest, "bytes": size,
             "seconds": round(time.monotonic() - start, 1), "kib_per_s": int(kib_per_s), "remote": target}
 
 

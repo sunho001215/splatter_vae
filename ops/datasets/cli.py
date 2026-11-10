@@ -27,11 +27,11 @@ from ops.datasets import catalog, health, storage
 from ops.datasets.runner import (
     DEFAULT_CONFIG,
     Runner,
+    depth_staged_credit,
     load_config,
     on_disk_bytes,
     resolve_selection,
     selection_fingerprint,
-    staged_depth_bytes,
     temp_path,
 )
 from ops.datasets.state import OwnerLock, StateStore, fsync_dir, read_json, write_json_atomic
@@ -67,9 +67,11 @@ def storage_report(root: Path, plan: dict, config: dict, state: dict | None = No
     usage = storage.fs_usage(root)
     mount = health.mount_entry(str(root))[0]
     margin = storage.effective_margin(float(config["margin_fraction"]), mount)
-    on_disk, staged = on_disk_bytes(root, plan["items"], state_items), {"pw_depth": staged_depth_bytes(root)}
-    published = ((state.get("sections") or {}).get("stream") or {}).get("status") == "published"
-    pool_max = int({**health.DEFAULTS, **config.get("controller", {})}["pool_max"])
+    stream = (state.get("sections") or {}).get("stream") or {}
+    on_disk = on_disk_bytes(root, plan["items"], state_items)
+    staged = {"pw_depth": depth_staged_credit(root, plan["items"], stream)}
+    published = stream.get("status") == "published"
+    pool_max = health.pool_bounds({**health.DEFAULTS, **config.get("controller", {})})[1]
     members = sum(len(m) for m in plan["flow_members"].values())
     tables = {name: storage.peak_table(plan["items"], names, usage, margin, state_items, on_disk, staged, published,
                                        pool_max, members, selection)
@@ -137,6 +139,10 @@ def configure(args, write: bool) -> int:
     for key in ("pool_initial", "pool_min", "pool_max"):
         if getattr(args, key) is not None:
             config["controller"][key] = getattr(args, key)
+    pools = {**health.DEFAULTS, **config["controller"]}
+    if not 1 <= int(pools["pool_min"]) <= int(pools["pool_initial"]) <= int(pools["pool_max"]):
+        emit({"error": "refused: pool limits must satisfy 1 <= pool_min <= pool_initial <= pool_max"})
+        return 2
     state = read_json(sd / "state.json", {}) or {}
     frozen = (state.get("sections") or {}).get("selection_lock")
     if frozen and args.pointworld_selection is not None:

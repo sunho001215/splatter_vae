@@ -110,22 +110,53 @@ def staged_depth_bytes(root: Path) -> int:
     return total
 
 
+def staging_dir(root: Path, item: dict) -> Path:
+    return Path(root) / ".staging" / item["group"] / item["archive"].get("shard", "cameras")
+
+
+def tree_bytes(path: Path) -> int:
+    total = 0
+    for folder, _, names in os.walk(path):
+        for name in names:
+            try:
+                total += os.stat(os.path.join(folder, name)).st_size
+            except FileNotFoundError:  # renamed by a concurrent publication
+                pass
+    return total
+
+
 def on_disk_bytes(root: Path, items: list[dict], state_items: dict, inflight: dict | None = None) -> dict:
-    """Bytes of unfinished items already on disk: held archives (downloaded/publishing) and partial temp files."""
+    """Bytes of each unfinished item that are already on disk, from the files themselves (not the status): its
+    destination (a held archive, or a plain file published before the state was saved), its partial temp file and,
+    for a shard/cameras archive, its staged members; a shard in ``publishing`` has all its members on disk (staged
+    or already published), so its whole expansion is credited."""
     out = {}
     for item in items:
         status = state_items.get(item["id"], {}).get("status", "pending")
         if status in ("done", "extracted"):
             continue
-        if status in ("downloaded", "publishing"):
-            out[item["id"]] = int(item["size"])
-        elif inflight and item["id"] in inflight:
-            out[item["id"]] = inflight[item["id"]]["on_disk"]
-        else:
-            temp = temp_path(root, item)
-            if temp.exists():
-                out[item["id"]] = temp.stat().st_size
+        total = 0
+        dest = Path(root) / item["dest"]
+        if dest.is_file():
+            total += dest.stat().st_size
+        if inflight and item["id"] in inflight:
+            total += inflight[item["id"]]["on_disk"]
+        elif temp_path(root, item).exists():
+            total += temp_path(root, item).stat().st_size
+        if item.get("archive", {}).get("kind") == "single":
+            total += int(item["archive"]["expanded"]) if status == "publishing" else tree_bytes(staging_dir(root, item))
+        if total:
+            out[item["id"]] = total
     return out
+
+
+def depth_staged_credit(root: Path, items: list[dict], stream: dict) -> int:
+    """Depth members already on disk: everything once the stream is publishing, the staged members before."""
+    if stream.get("status") == "publishing":
+        return sum(int(i["archive"]["expanded"]) for i in items if i["group"] == "pw_depth")
+    if stream.get("status") == "published":
+        return 0
+    return staged_depth_bytes(root)
 
 
 class Runner:
@@ -181,7 +212,8 @@ class Runner:
         self.cfg = {**health.DEFAULTS, **self.config.get("controller", {})}
         self.margin = storage.effective_margin(float(self.config["margin_fraction"]),
                                                health.mount_entry(str(self.root))[0])
-        low, high = int(self.cfg["pool_min"]), max(int(self.cfg["pool_min"]), int(self.cfg["pool_max"]))
+        low, high = health.pool_bounds(self.cfg)
+        self.cfg["pool_min"], self.cfg["pool_max"] = low, high
         self.control.pool = min(high, max(low, self.control.pool))
         gates = {}
         try:
@@ -198,6 +230,9 @@ class Runner:
             gates["pw_flows"] = gates["pw_depth_extract"] = reason
         elif not self.config["groups"].get("pw_flows"):
             gates["pw_flows"] = "group disabled"
+        elif (self.config.get("schedule") == "depth_first" and self.depth and self.config["groups"].get("pw_depth")
+              and self.state.section("stream").get("status") != "published"):
+            gates["pw_flows"] = "schedule depth_first: waits until the depth stream is published"
         else:
             fit = self.fit()
             if not fit["final_fits"]:
@@ -220,9 +255,10 @@ class Runner:
     def fit(self) -> dict:
         groups = [g for g in GROUPS if self.config["groups"].get(g)]
         selection = None if self.selection in (None, "pending") else self.selection
+        credit = depth_staged_credit(self.root, self.items, self.state.section("stream"))
         return storage.plan_fit(self.items, groups, storage.fs_usage(self.root), self.margin, self.state.items,
                                 selection, on_disk_bytes(self.root, self.items, self.state.items, self.inflight),
-                                {"pw_depth": self.staged["pw_depth"]})
+                                {"pw_depth": credit})
 
     def idle(self) -> float:
         return min(5.0, float(self.cfg["interval_s"]))
@@ -446,7 +482,7 @@ class Runner:
     def extract_single(self, item: dict) -> None:
         item_id, archive = item["id"], self.root / item["dest"]
         name = item["archive"].get("shard", "cameras")
-        staging = self.root / ".staging" / item["group"] / name
+        staging = staging_dir(self.root, item)
         self.lanes[item_id] = {"started": time.time()}
         try:
             members, expected = None, None
@@ -648,8 +684,8 @@ class Runner:
         return statuses <= set(FINISHED) | {"failed"} and not self.inflight
 
     def tick(self, probe, baseline: dict, errors_seen: int) -> tuple[tuple[str, str], int, dict]:
+        self.staged["pw_depth"] = staged_depth_bytes(self.root)  # before the gates use it
         self.reload_config()
-        self.staged["pw_depth"] = staged_depth_bytes(self.root)
         with self.counter_lock:
             total, errors = self.bytes_total, self.errors
         self.rates.append((self.clock(), total))
@@ -678,10 +714,32 @@ class Runner:
         self.state.save()
         return action, errors, status
 
+    def foreign_paths(self) -> list[str]:
+        """Directories the owner writes (temp, archives, staging, state, every destination) that resolve outside the
+        root or onto another file system than the one whose free space is checked."""
+        root = self.root.resolve()
+        device = os.stat(root).st_dev
+        folders = {self.root / ".downloads" / "tmp", self.root / ".staging", self.state_dir}
+        folders |= {(self.root / i["dest"]).parent for i in self.items}
+        folders |= {self.pointworld_root() / kind for kind in ("flows-fs-optimized", "depth_320x180", "cameras")}
+        bad = []
+        for folder in sorted(folders):
+            folder.mkdir(parents=True, exist_ok=True)
+            real = folder.resolve()
+            if (real != root and root not in real.parents) or os.stat(real).st_dev != device:
+                bad.append(str(folder))
+        return bad
+
     def run(self) -> int:
         if not self.lock.acquire(tools_sha=self.tools_sha, root=str(self.root)):
             print(json.dumps({"error": "another owner holds the lock", "owner": self.lock.owner()}))
             return 3
+        foreign = self.foreign_paths()
+        if foreign:
+            self.log("refused_foreign_paths", paths=foreign[:20])
+            print(json.dumps({"error": "paths outside the root's file system", "paths": foreign[:20]}))
+            self.lock.release()
+            return 5
         lanes: list[threading.Thread] = []
         baseline, action = {}, None
         try:

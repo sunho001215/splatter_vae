@@ -854,7 +854,10 @@ def test_fit_credits_bytes_already_on_disk_and_peak_terms():
     final = table["final_growth"] + table["fs_overhead"]
     assert table["peak_unordered"] == final + 100 + 80 + 40
     assert table["depth_first_at_end"] == final + 3 * 40
-    assert table["depth_first_at_stream_publish"] == (100 + 120 - 50) + 100 + 2 * (40 + 80) + table["fs_overhead"]
+    assert table["depth_first_at_stream_publish"] == (100 + 120 - 50) + 100 + table["fs_overhead"]  # no flows yet
+    done = {i["id"]: {"status": "extracted"} for i in items if i["group"] == "pw_depth"}
+    stale = storage.plan_fit(items, ("pw_depth",), usage, 0.15, done, staged={"pw_depth": 999})
+    assert stale["final_growth"] == 0  # a stale staged credit is ignored once the group is finished
     assert table["fits"]["peak_depth_first"] and table["headroom"]["final"] == table["usable"] - final
 
 
@@ -867,7 +870,7 @@ def test_depth_first_schedule(server, tmp_path):
     owner.reload_config()
     depth_first = [i["id"] for i in owner.candidates()]
     big = [i for i in depth_first if not i.startswith(("t/pw/cams", "droid3d"))]
-    assert big[:2] == ["t/pw/d0", "t/pw/d1"] and sorted(order) == sorted(depth_first)
+    assert big[:2] == ["t/pw/d0", "t/pw/d1"] and sorted(set(order) - {"t/pw/f0"}) == sorted(depth_first)
 
 
 def test_stage_upload_paths_stay_on_the_data_disk():
@@ -879,3 +882,73 @@ def test_stage_upload_paths_stay_on_the_data_disk():
             control.staging_paths(*bad)
     with pytest.raises(ValueError, match="bwlimit"):
         control.stage_upload(Path("/nonexistent"), 0)
+
+
+
+# ---- CODEX review 2 (2026-11-10 ~15:30) --------------------------------------------------------------------------
+def test_mount_lookup_resolves_paths_and_decodes_escapes(tmp_path):
+    data = tmp_path / "data disk"
+    other = tmp_path / "system"
+    (data).mkdir()
+    other.mkdir()
+    (data / "link").symlink_to(other)
+    info = tmp_path / "mountinfo"
+    escaped = str(data).replace(" ", "\\040")
+    info.write_text(f"1 0 1:1 / / rw - ext4 /dev/sys rw\n2 1 1:2 / {escaped} rw - ext4 /dev/data rw\n")
+    assert health.mount_entry(str(data / "x"), info) == (str(data), "/dev/data")
+    assert health.mount_entry(str(data / "link" / "x"), info) == ("/", "/dev/sys")  # the symlink leaves the disk
+    assert health.mount_entry(str(data / ".." / "system"), info) == ("/", "/dev/sys")
+    assert health.pool_bounds({"pool_min": 8, "pool_max": 1}) == (8, 8)
+    assert health.pool_bounds({"pool_min": 0, "pool_max": 3}) == (1, 3)
+
+
+def test_depth_first_holds_flows_until_the_stream_is_published(server, tmp_path):
+    root, plan, owner = owner_with_selection(server, tmp_path)
+    state.write_json_atomic(root / ".state" / "config.json",
+                            {**runner.DEFAULT_CONFIG, "margin_fraction": 0.0, "pointworld_selection": "all",
+                             "schedule": "depth_first", "groups": {"pw_flows": True}})
+    owner.reload_config()
+    assert owner.gates["pw_flows"].startswith("schedule depth_first")
+    assert "t/pw/f0" not in [i["id"] for i in owner.candidates()]
+    owner.state.set_section("stream", {"status": "published"})
+    owner.reload_config()
+    assert "pw_flows" not in owner.gates
+
+
+def test_on_disk_credit_comes_from_files(server, tmp_path):
+    root, plan, owner = owner_with_selection(server, tmp_path)
+    by_id = owner.by_id
+    states = {i["id"]: {"status": "pending"} for i in owner.items}
+    archive = root / by_id["t/pw/f0"]["dest"]
+    archive.parent.mkdir(parents=True)
+    archive.write_bytes(b"a" * 30)
+    staged = runner.staging_dir(root, by_id["t/pw/f0"]) / "flows-fs-optimized"
+    staged.mkdir(parents=True)
+    (staged / "m_flows.h5").write_bytes(b"b" * 7)
+    temp = runner.temp_path(root, by_id["t/rlds/shard0"])
+    temp.parent.mkdir(parents=True)
+    temp.write_bytes(b"c" * 5)
+    states["t/pw/f0"]["status"] = "downloaded"
+    states["t/pw/cams"]["status"] = "downloaded"  # status says held, but the archive file is missing: no credit
+    credit = runner.on_disk_bytes(root, owner.items, states)
+    assert credit == {"t/pw/f0": 37, "t/rlds/shard0": 5}
+    states["t/pw/f0"]["status"] = "publishing"
+    assert runner.on_disk_bytes(root, owner.items, states)["t/pw/f0"] == 30 + by_id["t/pw/f0"]["archive"]["expanded"]
+    assert runner.depth_staged_credit(root, owner.items, {"status": "publishing"}) == sum(
+        i["archive"]["expanded"] for i in owner.depth)
+
+
+def test_owner_refuses_destinations_outside_its_file_system(server, tmp_path, capsys):
+    root, plan, owner = owner_with_selection(server, tmp_path)
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    (root / "droid3d").symlink_to(elsewhere)
+    assert owner.run() == 5
+    assert "droid3d" in json.loads(capsys.readouterr().out)["paths"][0]
+    assert not state.OwnerLock(root / ".state").held_by_other()
+
+
+def test_configure_refuses_inconsistent_pool_limits(server, tmp_path, capsys):
+    root, plan, owner = owner_with_selection(server, tmp_path)
+    assert cli.main(["configure", "--root", str(root), "--pool-min", "8", "--pool-max", "1"]) == 2
+    assert "pool limits" in capsys.readouterr().out

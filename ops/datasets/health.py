@@ -15,6 +15,7 @@ persists, apply a per-process rate cap below the current rate, relaxed step-wise
 
 from __future__ import annotations
 
+import os
 import re
 import statistics
 import subprocess
@@ -46,6 +47,12 @@ DEFAULTS = {
 }
 
 
+def pool_bounds(cfg: dict) -> tuple[int, int]:
+    """(minimum, maximum) concurrent files, normalised the same way for reporting and execution."""
+    low = max(1, int(cfg["pool_min"]))
+    return low, max(low, int(cfg["pool_max"]))
+
+
 def read_psi(kind: str, root: Path = Path("/proc/pressure")) -> float | None:
     try:
         text = (root / kind).read_text()
@@ -63,12 +70,18 @@ def meminfo(path: Path = Path("/proc/meminfo")) -> dict:
     return values
 
 
+def _unescape(field: str) -> str:
+    return re.sub(r"\\([0-7]{3})", lambda m: chr(int(m.group(1), 8)), field)
+
+
 def mount_entry(path: str, mountinfo: Path = Path("/proc/self/mountinfo")) -> tuple[str, str | None]:
-    """(mount point, source device) of the file system holding ``path`` (longest mount-point prefix)."""
+    """(mount point, source device) of the file system holding ``path``: the path is resolved first (symlinks and
+    ``..`` cannot point the lookup at another file system) and mountinfo escapes (``\\040``) are decoded."""
+    path = os.path.realpath(path)
     best, device = "", None
     for line in mountinfo.read_text().splitlines():
         left, _, right = line.partition(" - ")
-        mount_point, source = left.split()[4], right.split()[1]
+        mount_point, source = _unescape(left.split()[4]), _unescape(right.split()[1])
         if (path == mount_point or path.startswith(mount_point.rstrip("/") + "/")) and len(mount_point) > len(best):
             best, device = mount_point, source
     return best, device

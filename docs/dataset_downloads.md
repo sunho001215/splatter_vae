@@ -80,14 +80,16 @@ python3 -I $T retry                     # failed -> pending
 ```
 
 Local: `.venv/bin/python -I scripts/datasets/droid_datasets_remote.py {deploy --sha S | latency | remote --sha S -- <cmd>
-| stage-upload --kib N <files>}` (`stage-upload`: explicit `--bwlimit`, partial name, sha256 verified on the remote
-host, into `.downloads/adopt/` on /data_8T; then `adopt`).
+| stage-upload --kib N <files>}` (`stage-upload`: into `.downloads/adopt/`, which must resolve onto the /data_8T mount,
+only if the file fits above the floor; explicit `--bwlimit`; partial name with delta transfer; sha256 verified on the
+remote host; atomic no-replace publication; then `adopt`).
 
 Space table (`storage`): final growth (credits for bytes already on disk), block rounding (one 4 KiB block per file
 still to be written; measured 2.0-2.8 KB per extracted member, 6-8 KB per multi-GB file), the depth parts held until
 the stream is published, in-flight flow shard archives at the maximum pool, one shard archive during its extraction;
-peaks unordered and with `schedule: depth_first` (depth parts before RLDS and flow shards; the depth stream claims its
-remaining parts and expansion from its first part on, so the order cannot be violated, only waited for).
+peaks unordered and with `schedule: depth_first` (depth parts are scheduled before RLDS, and no flow shard is admitted
+before the depth stream is published; the depth stream also claims its remaining parts and expansion from its first
+part on). The owner refuses to start if a directory it writes resolves outside the root's file system.
 
 Resume after a reboot or an outage: `start` (it refuses a second owner while the lock is held; a stale `owner.json`
 after a crash or reboot is ignored because the lock is free; `downloading` items return to `pending` and continue
