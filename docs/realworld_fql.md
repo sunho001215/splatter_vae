@@ -19,6 +19,7 @@ pretrainings (`docs/realworld_baselines.md`); one condition trains its CNN end-t
 | Single view | random camera per sample, fixed through the history and the paired next observation | `OfflineTransitions` / `OfflinePixelTransitions`, tests |
 | Calibration hold | only geometry-dependent consumers wait for `calibration_validated`; the 100-episode gate is unchanged | `s4d/rwlearn/gate.py` |
 | covering 98 episodes | user decision 2026-11-10: task-specific gate amendment on its 98 valid episodes. The same episodes and splits apply to every method; there is no duplication and no timestamp repair | `configs/realworld/gate_amendments/covering-98-20261110.json`, `docs/realworld_baselines.md` |
+| pick-and-place 97 episodes | user decision 2026-11-10: task-specific gate amendment on its 97 valid episodes, with the exact list and checksums pinned. The same split applies to every method; the 3 exclusions are documented; there is no duplication and no repair | `configs/realworld/gate_amendments/pick-and-place-97-20261110.json`, `docs/realworld_baselines.md` |
 
 ## Implementation choice: faithful PyTorch port + official-code equivalence
 

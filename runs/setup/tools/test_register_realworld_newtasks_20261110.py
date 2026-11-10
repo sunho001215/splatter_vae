@@ -154,22 +154,26 @@ def test_proposal_respects_each_consumer_gate_and_old_tasks_cannot_be_registered
         R.plan_task('covering', report, PIN, '/remote/covering')
 
 
-def test_an_amended_task_registers_on_exactly_its_amendment_episodes(tmp_path, monkeypatch):
-    """covering's 98-episode amendment (user decision 2026-11-10): the same rows, inputs checked against 98 episodes and
-    the seed-0 split of those 98 (10 / 88); a report whose target does not match its amendment is refused."""
-    measured_scenes(monkeypatch, 'covering')
-    manifest, report = staged_inputs(tmp_path, excluded=(57, 61))
-    assert report['tasks']['covering']['passed'] and report['tasks']['covering']['target'] == 98
-    assert R.plan_task('covering', report, PIN, '/remote/covering')['counts'] == {**IMAGE_COUNTS, **GEOMETRY_COUNTS}
-    assert set(R.verify_inputs('covering', manifest, report, tmp_path)) == set(R.INPUT_NAMES)
+# synthetic manifests number episodes 0..99 (the excluded indices stand in for the real ones)
+@pytest.mark.parametrize('task,excluded,n_train', [('covering', (57, 61), 88), ('pick-and-place', (14, 80, 99), 87)])
+def test_an_amended_task_registers_on_exactly_its_amendment_episodes(task, excluded, n_train, tmp_path, monkeypatch):
+    """The 2026-11-10 amendments (covering 98, pick-and-place 97): the same rows, inputs checked against exactly the
+    amendment's episodes and their seed-0 split (10 validation); a report whose target does not match its amendment is
+    refused."""
+    measured_scenes(monkeypatch, task)
+    manifest, report = staged_inputs(tmp_path, task, excluded=excluded)
+    n = 100 - len(excluded)
+    assert report['tasks'][task]['passed'] and report['tasks'][task]['target'] == n
+    assert R.plan_task(task, report, PIN, f'/remote/{task}')['counts'] == {**IMAGE_COUNTS, **GEOMETRY_COUNTS}
+    assert set(R.verify_inputs(task, manifest, report, tmp_path)) == set(R.INPUT_NAMES)
     split = json.loads((tmp_path / 'split_seed0.json').read_text())
-    assert len(split['validation']) == 10 and len(split['train']) == 88
-    report['tasks']['covering']['target'] = 100
+    assert len(split['validation']) == 10 and len(split['train']) == n_train
+    report['tasks'][task]['target'] = 100
     with pytest.raises(R.Refused, match='gate target'):
-        R.plan_task('covering', report, PIN, '/remote/covering')
-    # the same 98 episodes without the amendment never pass the gate
-    plain = gate.evaluate(manifest, ['covering'], amendments={})
-    assert not plain['tasks']['covering']['passed']
+        R.plan_task(task, report, PIN, f'/remote/{task}')
+    # the same episodes without the amendment never pass the gate
+    plain = gate.evaluate(manifest, [task], amendments={})
+    assert not plain['tasks'][task]['passed']
 
 
 @pytest.mark.parametrize('task', ['covering', 'pick-and-place'])

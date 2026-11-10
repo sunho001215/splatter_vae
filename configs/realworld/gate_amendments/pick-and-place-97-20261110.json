@@ -1,0 +1,315 @@
+{
+ "format": "rw-gate-amendment/1",
+ "task": "pick-and-place",
+ "version": 1,
+ "target": 97,
+ "base_target": 100,
+ "decision": "Pick-and-place: authorize a task-specific amendment to train on its 97 valid episodes. Pin the exact episode list and checksums, use the same split for every method, and document exclusions. Do not change other tasks' requirements or duplicate/repair recordings merely to reach 100.",
+ "decided_by": "user (relayed by the coordinator 2026-11-10 ~14:55 KST)",
+ "decided_at": "2026-11-10T14:55:00+09:00",
+ "document": {
+  "path": "realworld-ops/rwx/AMEND-pick-and-place-97.md",
+  "sha256": "2098ca9a4b74ed4d3dea6f39b64aed364abd7ea8b618453b11c7e691397af735"
+ },
+ "evidence": [
+  {
+   "path": "realworld-ops/rwx/results/amend-pick-and-place-manifest-extract.json",
+   "sha256": "fcc6761545fc8231403f53be674b83e43b28cde8daf78a39d96e0ba1b92e8be4"
+  },
+  {
+   "path": "realworld-ops/rwx/results/amend-pick-and-place-invalid-evidence.json",
+   "sha256": "2a618969fbe701dc8eb2e1e1829f2907ed3c417000b005d90aa37721355d2f6d"
+  }
+ ],
+ "splits": "s4d.rwlearn.store.split_episodes(store, validation_fraction=0.1, seed=0) on the gate-bound store of exactly these episodes, identical for every method (AMEND-pick-and-place-97.md section 5)",
+ "episodes": {
+  "pick-and-place/episode_000002.h5": "c1d6cf7ca39440b598017973b57df012b2ee892bffd78f7c75f19de7cee1c821",
+  "pick-and-place/episode_000004.h5": "b7e9a6c275c3f4c64eac8e9c70e9464774f1b457e194c05996c2e5ed2392d13e",
+  "pick-and-place/episode_000005.h5": "9ad89278a8989b8e733bf622fad4106e6837b68dfa945a063b5d862ec61226e1",
+  "pick-and-place/episode_000009.h5": "b484df14d8c5ad5284c0c916a6460dd33e1fd744f170240899835e334b5ddd96",
+  "pick-and-place/episode_000010.h5": "95f4db5bc9fdbe2dbe79f66b72a6a48e86801716a5a7b12f42fc551cc97b9b31",
+  "pick-and-place/episode_000011.h5": "0bc9690ec6126e5d2d07fa0bb7ae6a076d54bb1b140e370e46f6833449b7323e",
+  "pick-and-place/episode_000012.h5": "b1df6903c993dd1bea804edbf9fef66195872a73882cf3f1557d455ec38651be",
+  "pick-and-place/episode_000013.h5": "6e340f65eb362548be522c80adeefb9a59db15c328c36e25a7e989719fa02dc4",
+  "pick-and-place/episode_000015.h5": "0cdfff3620738581a23ec31737324155efe464c7144cab2e8f4c8145808ead55",
+  "pick-and-place/episode_000016.h5": "a7d25a404556ed06efc16bb6cf66da8f06857ca9ba08e6dd1fc1d786b50faea7",
+  "pick-and-place/episode_000019.h5": "d403956f96c7926b0b6cfedbb1562a6c81005eee6a3a429b9b88d2a34e7b4752",
+  "pick-and-place/episode_000021.h5": "0d5610acd1f60d10eb0362ce669a4a00b461ba43345e8dbcc5a69f3dd652ec56",
+  "pick-and-place/episode_000022.h5": "b1810d7fbb3b7903ad53e6a16b21aaf4e4d29ee695b378d890b359e75dad550b",
+  "pick-and-place/episode_000023.h5": "2eacad067f1dc49b0726a9f5836fa0890781b4c087f5e1e02030c533029e1b27",
+  "pick-and-place/episode_000024.h5": "5d3ea5ddaac589d3a7dc4c7f3a110b059ab3d72e1f26627b0e229bfd4a050ca4",
+  "pick-and-place/episode_000025.h5": "191c1fc7d3e6cb401f157f5997edabaddb9b98d993ec9b5ae54a6dc821a0ae76",
+  "pick-and-place/episode_000026.h5": "400e41d913d8eaf7e57acf91e381e290171d413eda5db63e20ac00a773fb411f",
+  "pick-and-place/episode_000027.h5": "21f5b2ca9aceb095368808e8b568721c1be2f06fb5fa09ed13e041923c2467b4",
+  "pick-and-place/episode_000029.h5": "dec90914dc77fd4f31870446d27c60899379f3e351a26efe2116f9df9c0eb894",
+  "pick-and-place/episode_000030.h5": "d4128eee7e69366b6e87b905df96ee0fde55226f2a6db89270b3b8927c52e92b",
+  "pick-and-place/episode_000031.h5": "88a3d6e270031d21f1851c7fb6264d5e4e6f20b5621222089da524eb91e0ad52",
+  "pick-and-place/episode_000032.h5": "5ee58ea48f54517956f423f83a97af8adc002f4af8baf899824c3a77d82fc1f9",
+  "pick-and-place/episode_000034.h5": "c1cfa84fdc0706b1547e417476d780a7d2fa58592b337a0a91cff2f761dc65e6",
+  "pick-and-place/episode_000035.h5": "4e60c559c83da8c6d126ebac67290e9344f2a856fc16ab4bfabc67e27c3d0609",
+  "pick-and-place/episode_000036.h5": "63e1b3603672cdcdf0c7a0480c7fb4a6b06386bdbfe428daff7c510ce703a1bd",
+  "pick-and-place/episode_000037.h5": "f45e7204563f369132702da0a4a0b0420d903b1abe671a6ea5557918e6597690",
+  "pick-and-place/episode_000038.h5": "a662d4b7d026b45577b011b169f6033cedda043dbce9b792aef4e05b7e3fc704",
+  "pick-and-place/episode_000039.h5": "566ee50c303b2f9bd98e0385ad3ab8be3327f6eeafe1695d719bd0847cda113b",
+  "pick-and-place/episode_000040.h5": "a482ee78db4fe7400dd789c7442ad8a591212679b5366ff06857bae39ee3c97c",
+  "pick-and-place/episode_000041.h5": "b1d25439d8f04d93de6fa7b1fc1544298906b627ca18e3463cb35d82c05ec146",
+  "pick-and-place/episode_000042.h5": "440ad5f7a1601677630f11ae1ff70c15253acf39ee049e3432c5b0d60bcffa3d",
+  "pick-and-place/episode_000043.h5": "278f53e0dd8f6d1d68c8b672642635bd26b668a93598eaa5bde4ec3d85ea965b",
+  "pick-and-place/episode_000044.h5": "29cb43f68c9e2ada347ed3956746c87e6f8da1d9039feb6e12eaeb437a2008ea",
+  "pick-and-place/episode_000045.h5": "3e19842129f4bb43bfe93e9ab5ce3315e07f58afdd985c6169a9a7736cc7e31b",
+  "pick-and-place/episode_000046.h5": "68e81f493bfe5dcd958d3d4268e3079d2f93da56ae197f2bb10679b6c14d8f1a",
+  "pick-and-place/episode_000047.h5": "26550f04f926555d0a55526d54d86e3607b7a2313110c4bf666b6414bda0ce63",
+  "pick-and-place/episode_000048.h5": "fcf19a1a5811485b8103435349f6d0ab09d7abd82130c023a6bda30dd8c369a1",
+  "pick-and-place/episode_000049.h5": "1ed3814525d898bb896f9fad8e16d89e875abc97642314e0aca03043e7badf31",
+  "pick-and-place/episode_000050.h5": "f19e151493379c01bbf408098b9300b48ea1fc29a199feab06090f141e6edb11",
+  "pick-and-place/episode_000051.h5": "5b9f92b984276884dcc5096fa1634c1666b844837d143b3d5a6673e364eb4502",
+  "pick-and-place/episode_000052.h5": "0817d303f5cd11d9f0bc6cd5a437c735e8bf9380e77a30fa6385417f64c010e1",
+  "pick-and-place/episode_000053.h5": "0cd3c5d7a7b3d3ad78d8bd74b22da6158d27c28f0cfccb2ff8652b4ad30c1678",
+  "pick-and-place/episode_000054.h5": "8e76db1ea75d9db560f23daa41b60f58b3d173e76fde1564a741ccf62fa5dcef",
+  "pick-and-place/episode_000055.h5": "fe53dff0644b43ed43d8df9c5d5658de289269026d22ec8da21220c6e35c812d",
+  "pick-and-place/episode_000056.h5": "7ff00984536bbffff57bbd660ec28af8876e5e4d77a963037bba33b131b1f34e",
+  "pick-and-place/episode_000057.h5": "4bb59c13e687a72ee3a23bee4d2cd803d411c259769f12c5cb052d6dac241e22",
+  "pick-and-place/episode_000058.h5": "9d40f555ffa6a2d708ffe09766299b5ee5eaa7b1d306ac5e7a4e79974e601982",
+  "pick-and-place/episode_000059.h5": "bb5ac95f47fdc93ed2130277a954c39130828f15a53e5e996ad1fdb2812c6d42",
+  "pick-and-place/episode_000060.h5": "d3c88471aa56e4aa7055e2e1dfdc49fa1870bad09b63de7ff7e3ec4900c178a4",
+  "pick-and-place/episode_000061.h5": "e50da592ff1842504f500cd3320bd6dde4daa9bcbf467b94ee5ad9324a8b9879",
+  "pick-and-place/episode_000063.h5": "67fed2ee50ab4e0f872244acd771f2b742852bd837bc61891954e232a0137a0a",
+  "pick-and-place/episode_000064.h5": "7547a84c13a3501e2b06923975cb90c45c5a925e617e2e9eff36646f3f0c6a11",
+  "pick-and-place/episode_000066.h5": "0ec2425f9d266ebba8e0b4d509eb7b4d820b28339f86a65ed00cab57728a7dcb",
+  "pick-and-place/episode_000067.h5": "f1bd9e0cb09952ace4aa814ea481dec021c82d24cb04b2fdf6027970e67c9289",
+  "pick-and-place/episode_000068.h5": "2a9127cf65a6349a8964a428ac16ec0635762c4cb8316820cda34427498f037a",
+  "pick-and-place/episode_000069.h5": "63c42287f4c255b09d89a1bb1f00bf711df444529b6ec3c9d431bb71d32e7061",
+  "pick-and-place/episode_000070.h5": "17dfdddcbfb712cdd7e0ac7b7ec0e6e66cbfbba44a1561001e050ca3afe54c2f",
+  "pick-and-place/episode_000071.h5": "e7ffe71956896bbf03d6c74b0f8f8eb5f854a19d386118b0ec2f1b1b50f3159a",
+  "pick-and-place/episode_000072.h5": "ed9af3abbb62b0a3154414bf59b628f95a37b24a7a929b69b6023e32c0225b66",
+  "pick-and-place/episode_000073.h5": "bfde073770052e93b078680d99ec04d876731ba4ddc5761f8f310f0751f88dc1",
+  "pick-and-place/episode_000074.h5": "b024a0ace7c4d6154e751cee2ca2c16ed1fa198880160ffee29f5574532c90d4",
+  "pick-and-place/episode_000075.h5": "895436d97645adccfdb4de941ba47df231a8103c0ad6b42e810699c0a29965ec",
+  "pick-and-place/episode_000076.h5": "c4e2c20c61a2e1632891b44572f544c20b654f235f954bde06d28be9e2af6271",
+  "pick-and-place/episode_000077.h5": "71af2900c53386969db3ced1fcdecd2aba8132d20e4bf93e0254c1685a4701e7",
+  "pick-and-place/episode_000078.h5": "8dda76eff670bf837e58d2b44a470174e98eced88da7dbf37f75106725e8f34d",
+  "pick-and-place/episode_000079.h5": "b5d66f61ee35be8ef53551e5e63d508ef1a06b7c234a135416e7f57a0b24af42",
+  "pick-and-place/episode_000081.h5": "b1b64c53af11547cee239c223ebfcf8a6bc3c46a21548f218bf9f8f0572cea63",
+  "pick-and-place/episode_000082.h5": "da3604d1754efb775da0ac928a88aadeae2a50c98f19cf1cb95187ad3b5c99d7",
+  "pick-and-place/episode_000083.h5": "42a5219bdcec88a29709b1170e1663a0b391ddee4e2e029072bd6b61a804af90",
+  "pick-and-place/episode_000084.h5": "f8c6ee3c76fbea99a1803d9305ffdf935c5d9339ad1570eeb9f13a6568947a93",
+  "pick-and-place/episode_000085.h5": "7c138504d8dcf614c5cfc5d8c4357f70df03226fe86206c60d2d1e81821e4f3d",
+  "pick-and-place/episode_000086.h5": "28d0250862047b9039707370fb77ccc6cc88009d5a30672b908bebc9d89c4534",
+  "pick-and-place/episode_000087.h5": "c53c81fce1510c060cf9626bcb40c131a1e9e81a3d7c995e4fbda63e1bef3a94",
+  "pick-and-place/episode_000088.h5": "eebbf6918e71e3678867d0f06f8e5f2c5d0a3af8db0fdd5e70cca5399a021f5d",
+  "pick-and-place/episode_000089.h5": "094b194da6209576b131fa6335eeb2260c417bc7e7f84219a1105057d92563a4",
+  "pick-and-place/episode_000090.h5": "45f3335ca504ccd4105fd0aaedbff04fcd0dbf0fd5b2fd3b20e585eb3f86d065",
+  "pick-and-place/episode_000091.h5": "fb452f74191a58e4d6b1c431701f5f4e459e9e97bfaa3dd1fbc0061853e0c620",
+  "pick-and-place/episode_000092.h5": "5092f253cee0db68e2d57bf64659e5186a6a973488640a385ed5547ead3aa992",
+  "pick-and-place/episode_000093.h5": "f9474aab75faed6a1a48abc0843a8935610c552d2260d0d5437e6c8929b5829a",
+  "pick-and-place/episode_000094.h5": "d6513b35e36dba9e8e0024fcdf20e83cf08663fec22dfe46a750fbda23e42999",
+  "pick-and-place/episode_000095.h5": "70e22cc66088aa0d3bf9665e62cce5c104ee0d01e75030110dffad0cc52dc6ac",
+  "pick-and-place/episode_000096.h5": "0e6501d2a4d3cfc1b132b74e1d3164a66baa06510ff2864279b99b76516e2ff1",
+  "pick-and-place/episode_000097.h5": "ae7d5dff68998780daf0ac4f19199350615a128b7fe3352727b8ebcbd9c4d999",
+  "pick-and-place/episode_000098.h5": "9cf54dfc4d9678a5704cfc139d0972968ef20db169854954694b3b0d170eef24",
+  "pick-and-place/episode_000099.h5": "9d11c93ac7c477db235e8ce08f5e85ad44ccad11215966f1186fbbdca7b21c3e",
+  "pick-and-place/episode_000100.h5": "eabba0def68475f5a3725bceb6a9d4575e4a029a222383d143e035bba4a8ec80",
+  "pick-and-place/episode_000102.h5": "0f04409aa28b866290dc0633d2ebbdf6a861511316357dc9bddba0306a644833",
+  "pick-and-place/episode_000103.h5": "8ddfd2106dd9e475924fefcc3d17dd5923ad5ad39f6ae9755c986e1a0b0eaafa",
+  "pick-and-place/episode_000104.h5": "a8d24c3d90d09e0fbd10739211756c059528e2b930c6abd93cf7827214142020",
+  "pick-and-place/episode_000105.h5": "fd44f41a1c411b25bd348da1a41188a7d5ecf4177cdaba76b0281d768ae9569a",
+  "pick-and-place/episode_000106.h5": "048de564ed8678918bc03befd1357b923e2221f58cc3577dacc91930a2a274f0",
+  "pick-and-place/episode_000107.h5": "b393bb97f3fd90a9c52a4f73277cf9172f0830b6421495bd8956b040654e796b",
+  "pick-and-place/episode_000108.h5": "a0b694b7b9e6734fe05049e4f5c7ec365eadb4a7ef3dcc004b1dd4a636b8b24f",
+  "pick-and-place/episode_000109.h5": "ecc6f6eb1e7ce76333f2c4b91af2116c82964326154a0a908e1f0a47ea61bf8e",
+  "pick-and-place/episode_000110.h5": "c0c5f2142a629c4054332ea5056ea0aa7fdaaa8c26114b9a575ceaf6591d080e",
+  "pick-and-place/episode_000113.h5": "94fca2b00a12a9e594eb9087a3299aecee4792d984824aa0c44a584a32bbc5a9",
+  "pick-and-place/episode_000114.h5": "f7ac90408b9228c49b277c1e7a45cf396d879a9c05febcfa43f75137e4fa18aa"
+ },
+ "excluded": {
+  "pick-and-place/episode_000014.h5": {
+   "reason": "invalid by the ingest validator; kept invalid - no repair, no duplication (user decision 2026-11-10)",
+   "validator": "rw-ingest-validator/1",
+   "validation_reasons": [
+    "cameras/cam_135122076054/frame_timestamp_us: not strictly increasing",
+    "cameras/cam_135122076054/sensor_timestamp_us: not strictly increasing",
+    "cameras/cam_135122076054/stereo/frame_timestamp_us: not strictly increasing",
+    "cameras/cam_135122076054/stereo/sensor_timestamp_us: not strictly increasing"
+   ],
+   "first_failed_at": "2026-11-10T00:42:52+09:00",
+   "raw_sha256": "218c6f486ae07b35fffb71d1df77948e4d8934a567d6716f76fdcc2763e169a1",
+   "raw_size": 214190168,
+   "independent_check": {
+    "cam_135122076054/frame_timestamp_us": {
+     "n": 168,
+     "nonfinite_at": [],
+     "nonincreasing_at": [
+      49
+     ],
+     "before": 4294953366.0,
+     "after": 52790.0,
+     "diff_plus_2_32": 66720.0,
+     "median_dt": 66720.0
+    },
+    "cam_135122076054/sensor_timestamp_us": {
+     "n": 168,
+     "nonfinite_at": [],
+     "nonincreasing_at": [
+      49
+     ],
+     "before": 4294953283.0,
+     "after": 52707.0,
+     "diff_plus_2_32": 66720.0,
+     "median_dt": 66720.0
+    },
+    "cam_135122076054/stereo/frame_timestamp_us": {
+     "n": 168,
+     "nonfinite_at": [],
+     "nonincreasing_at": [
+      49
+     ],
+     "before": 4294953322.0,
+     "after": 52746.0,
+     "diff_plus_2_32": 66720.0,
+     "median_dt": 66720.0
+    },
+    "cam_135122076054/stereo/sensor_timestamp_us": {
+     "n": 168,
+     "nonfinite_at": [],
+     "nonincreasing_at": [
+      49
+     ],
+     "before": 4294951289.0,
+     "after": 50713.0,
+     "diff_plus_2_32": 66720.0,
+     "median_dt": 66720.0
+    }
+   }
+  },
+  "pick-and-place/episode_000080.h5": {
+   "reason": "invalid by the ingest validator; kept invalid - no repair, no duplication (user decision 2026-11-10)",
+   "validator": "rw-ingest-validator/1",
+   "validation_reasons": [
+    "cameras/cam_135122070988/stereo/hw_timestamp_ms: non-finite timestamps",
+    "cameras/cam_135122070988/stereo/frame_timestamp_us: not strictly increasing",
+    "cameras/cam_135122070988/stereo/sensor_timestamp_us: not strictly increasing",
+    "cameras/cam_135122070988/stereo: left/right/depth hardware timestamps differ",
+    "cameras/cam_135122070988/stereo/left: 1 frame(s) empty or without png8 start/end markers (first [147])",
+    "cameras/cam_135122070988/stereo/right: 1 frame(s) empty or without png8 start/end markers (first [147])"
+   ],
+   "first_failed_at": "2026-11-10T02:14:14+09:00",
+   "raw_sha256": "30a4d8565fda2301eb67b5d4facb69f540bb4e94506878e623a577c922680441",
+   "raw_size": 220584288,
+   "independent_check": {
+    "cam_135122070988/stereo/frame_timestamp_us": {
+     "n": 174,
+     "nonfinite_at": [],
+     "nonincreasing_at": [
+      146
+     ],
+     "before": 3316788316.0,
+     "after": -1.0,
+     "diff_plus_2_32": 978178979.0,
+     "median_dt": 66720.0
+    },
+    "cam_135122070988/stereo/hw_timestamp_ms": {
+     "n": 174,
+     "nonfinite_at": [
+      147
+     ],
+     "nonincreasing_at": [
+      146,
+      147
+     ]
+    },
+    "cam_135122070988/stereo/right_hw_timestamp_ms": {
+     "n": 174,
+     "nonfinite_at": [
+      147
+     ],
+     "nonincreasing_at": [
+      146,
+      147
+     ]
+    },
+    "cam_135122070988/stereo/sensor_timestamp_us": {
+     "n": 174,
+     "nonfinite_at": [],
+     "nonincreasing_at": [
+      146
+     ],
+     "before": 3316786042.0,
+     "after": -1.0,
+     "diff_plus_2_32": 978181253.0,
+     "median_dt": 66720.0
+    },
+    "cam_135122070988/stereo/left": {
+     "n": 174,
+     "empty_frames": [
+      147
+     ]
+    },
+    "cam_135122070988/stereo/right": {
+     "n": 174,
+     "empty_frames": [
+      147
+     ]
+    }
+   }
+  },
+  "pick-and-place/episode_000101.h5": {
+   "reason": "invalid by the ingest validator; kept invalid - no repair, no duplication (user decision 2026-11-10)",
+   "validator": "rw-ingest-validator/1",
+   "validation_reasons": [
+    "cameras/cam_135122076054/frame_timestamp_us: not strictly increasing",
+    "cameras/cam_135122076054/sensor_timestamp_us: not strictly increasing",
+    "cameras/cam_135122076054/stereo/frame_timestamp_us: not strictly increasing",
+    "cameras/cam_135122076054/stereo/sensor_timestamp_us: not strictly increasing"
+   ],
+   "first_failed_at": "2026-11-10T02:49:19+09:00",
+   "raw_sha256": "a67d63a94fe5e76c008491a7d607a8bfd17a148506486977eee03a34223b89e5",
+   "raw_size": 205198118,
+   "independent_check": {
+    "cam_135122076054/frame_timestamp_us": {
+     "n": 161,
+     "nonfinite_at": [],
+     "nonincreasing_at": [
+      4
+     ],
+     "before": 4294924983.0,
+     "after": 24407.0,
+     "diff_plus_2_32": 66720.0,
+     "median_dt": 66720.0
+    },
+    "cam_135122076054/sensor_timestamp_us": {
+     "n": 161,
+     "nonfinite_at": [],
+     "nonincreasing_at": [
+      4
+     ],
+     "before": 4294924900.0,
+     "after": 24324.0,
+     "diff_plus_2_32": 66720.0,
+     "median_dt": 66720.0
+    },
+    "cam_135122076054/stereo/frame_timestamp_us": {
+     "n": 161,
+     "nonfinite_at": [],
+     "nonincreasing_at": [
+      4
+     ],
+     "before": 4294924939.0,
+     "after": 24363.0,
+     "diff_plus_2_32": 66720.0,
+     "median_dt": 66720.0
+    },
+    "cam_135122076054/stereo/sensor_timestamp_us": {
+     "n": 161,
+     "nonfinite_at": [],
+     "nonincreasing_at": [
+      4
+     ],
+     "before": 4294922931.0,
+     "after": 22355.0,
+     "diff_plus_2_32": 66720.0,
+     "median_dt": 66720.0
+    }
+   }
+  }
+ }
+}

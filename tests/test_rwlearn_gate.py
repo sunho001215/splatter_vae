@@ -674,17 +674,30 @@ def test_amendment_records_never_duplicate_content_or_tasks(tmp_path):
         gate.load_amendments(tmp_path)
 
 
-def test_the_versioned_covering_amendment_record():
-    """configs/realworld/gate_amendments: exactly covering's 98-episode record (user decision 2026-11-10)."""
-    amends = gate.load_amendments()
-    assert set(amends) == {"covering"}
-    rec = amends["covering"]["record"]
-    assert rec["target"] == len(rec["episodes"]) == 98 and rec["base_target"] == gate.TARGET
-    assert sorted(rec["excluded"]) == ["covering/episode_000057.h5", "covering/episode_000061.h5"]
-    assert all("not strictly increasing" in " ".join(v["validation_reasons"]) for v in rec["excluded"].values())
-    assert rec["document"]["path"].endswith("AMEND-covering-98.md")
+RECORDS = {  # the versioned amendment records (user decisions 2026-11-10): target, excluded indices, index range
+    "covering": (98, (57, 61), "AMEND-covering-98.md", (0, 106)),
+    "pick-and-place": (97, (14, 80, 101), "AMEND-pick-and-place-97.md", (2, 114)),
+}
+
+
+def test_the_versioned_amendment_records_are_exactly_the_user_decisions():
+    """configs/realworld/gate_amendments: covering 98 and pick-and-place 97, nothing else (drawer-open / mug-hanging
+    keep the default 100)."""
+    assert set(gate.load_amendments()) == set(RECORDS)
+
+
+@pytest.mark.parametrize("task", sorted(RECORDS))
+def test_the_versioned_amendment_record(task):
+    target, excluded, doc, (first, last) = RECORDS[task]
+    rec = gate.load_amendments()[task]["record"]
+    assert rec["target"] == len(rec["episodes"]) == target and rec["base_target"] == gate.TARGET
+    assert sorted(rec["excluded"]) == [f"{task}/episode_{i:06d}.h5" for i in excluded]
+    assert all(v["validation_reasons"] and v["validator"] == "rw-ingest-validator/1"
+               and len(v["raw_sha256"]) == 64 for v in rec["excluded"].values())
+    assert rec["document"]["path"].endswith(doc)
     indices = sorted(int(k[-9:-3]) for k in rec["episodes"])
-    assert indices[0] == 0 and indices[-1] == 106 and len(set(indices)) == 98
+    assert indices[0] == first and indices[-1] == last and len(set(indices)) == target
+    assert not set(indices) & set(excluded) and len(set(rec["episodes"].values())) == target
 
 
 def test_a_supplied_amendment_map_is_validated_like_the_versioned_records():

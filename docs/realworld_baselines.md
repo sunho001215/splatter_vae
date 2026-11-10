@@ -117,11 +117,16 @@ they hold.
   compact store's stage `train_data`. The list is configurable; a name that is never recorded makes the gate fail closed.
   DINO is not required.
 
-**Task-specific amendments** (user decision 2026-11-10 ~13:00 for covering). A versioned record
+**Task-specific amendments** (user decisions 2026-11-10 for covering and pick-and-place). A versioned record
 `configs/realworld/gate_amendments/<name>.json` (`rw-gate-amendment/1`) can fix one task's episode set. It lists the
 valid episodes (manifest key -> sha256) and the excluded invalid ones. Its `target` replaces 100 for that task only.
-covering's record `covering-98-20261110.json` has 98 episodes; 000057 and 000061 are excluded (one 32-bit device
-timestamp wrap each). They are never repaired or duplicated (`realworld-ops/rwx/AMEND-covering-98.md`).
+There are two records. Excluded recordings are never repaired or duplicated.
+
+- covering, `covering-98-20261110.json`: 98 episodes. 000057 and 000061 are excluded (one 32-bit device timestamp
+  wrap each; `realworld-ops/rwx/AMEND-covering-98.md`).
+- pick-and-place, `pick-and-place-97-20261110.json` (user decision 2026-11-10 ~14:55): 97 episodes. 000014 and
+  000101 are excluded (one timestamp wrap each), and 000080 (a missing stereo record; `realworld-ops/rwx/
+  AMEND-pick-and-place-97.md`).
 
 For an amended task the ingest worker's `counts.complete` 100-rule does not apply. Instead the gate requires:
 
