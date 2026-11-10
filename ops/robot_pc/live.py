@@ -74,12 +74,17 @@ class LiveSession:
         self.rows: list = []
         self._exec_thread: threading.Thread | None = None
         self._rec_robot_t = self._rec_grip_t = 0
+        self.tick_periods_ns: list = []  # measured executor loop periods (local control rate evidence)
 
     # ------------------------------------------------------------------------------------------------ executor
     def _executor_loop(self) -> None:
         period = self.executor.period_ns / 1e9
+        last = None
         while not self.stop_event.is_set():
             t0 = time.monotonic()
+            if last is not None:
+                self.tick_periods_ns.append(int((t0 - last) * 1e9))
+            last = t0
             s = self.state.latest()
             if s is not None:
                 measured = s["flange_pose7"]
@@ -97,6 +102,20 @@ class LiveSession:
                 if self.executor.stopped and not self.stop_event.is_set():
                     self.stop(f"executor stop: {self.executor.stopped}")
             time.sleep(max(0.0, period - (time.monotonic() - t0)))
+
+    def loop_stats(self) -> dict:
+        """Executor (local control loop) and policy-step rates of this session, measured."""
+        nominal = self.executor.period_ns / 1e6
+        out = {"executor_nominal_hz": 1e3 / nominal, "executor_ticks": len(self.tick_periods_ns) + 1}
+        if self.tick_periods_ns:
+            p = np.asarray(self.tick_periods_ns, float) / 1e6
+            out.update(executor_mean_hz=float(1e3 / p.mean()), period_ms_p50=float(np.median(p)),
+                       period_ms_p99=float(np.percentile(p, 99)), period_ms_max=float(p.max()),
+                       overruns_gt_1p5x=int((p > 1.5 * nominal).sum()), gaps_gt_10ms=int((p > 10).sum()))
+        t = [r.get("t_step_ns") for r in self.rows if r.get("t_step_ns")]
+        if len(t) > 1:
+            out["policy_steps"], out["policy_mean_hz"] = len(t), float((len(t) - 1) / ((t[-1] - t[0]) / 1e9))
+        return out
 
     def stop(self, reason: str) -> None:
         if self.stop_reason is None:
@@ -178,6 +197,10 @@ class LiveSession:
             if self._exec_thread is not None:
                 self._exec_thread.join(timeout=2.0)
             self._record_streams()
+            if self.recorder is not None:
+                import json
+
+                self.recorder.event(time.monotonic_ns(), "loop_stats " + json.dumps(self.loop_stats()))
         return self.rows
 
 

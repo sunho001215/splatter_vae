@@ -9,7 +9,7 @@
   collector's ``CONTROLLER_SETTLE_S`` 0.5 s;
 * ``send_flange_pose``: one RobotAction (flange goal -> controller ee, ``target_dt`` 0.05 s: without a fresher action the
   controller holds the measured pose);
-* ``release``: a final action at the MEASURED pose (immediate hold), wait until the robot is still (|dq| small, bounded
+* ``release``: a final action at the MEASURED ee pose as received (immediate hold, byte-identical to the collector's), wait until the robot is still (|dq| small, bounded
   wait), request IDLE (mode 1) - only if this link requested the mode.
 
 Constructed only with an ``ExecutionAuthorization``. pyzmq / robot_msg imported here only.
@@ -93,11 +93,20 @@ class ControllerLink:
                                   self.zmq.NOBLOCK)
         self.actions_sent += 1
 
-    def release(self, measured_flange_pose7=None, *, still=None, wait_still_s: float = 2.0) -> None:
-        """Hold at the measured pose, wait (bounded) until ``still()`` is true, then IDLE if we requested a mode."""
+    def send_measured_ee_hold(self, measured_ee_pose7) -> None:
+        """The collector's disengage hold (app.py:360-361): the MEASURED controller-ee pose exactly as received
+        (no flange round trip), so the message is byte-identical to the collector's."""
+        self.socks["action"].send(self.msg.encode(sc.robot_action_ee(self.msg, measured_ee_pose7, self.target_dt)),
+                                  self.zmq.NOBLOCK)
+        self.actions_sent += 1
+
+    def release(self, measured_ee_pose7=None, *, still=None, wait_still_s: float = 2.0) -> None:
+        """Hold at the measured ee pose, wait (bounded, >= target_dt) until ``still()``, then IDLE if we requested a
+        mode (collector shutdown, app.py:786-797 / _wait_until_still :851-860)."""
         try:
-            if measured_flange_pose7 is not None:
-                self.send_flange_pose(measured_flange_pose7)
+            if measured_ee_pose7 is not None:
+                self.send_measured_ee_hold(measured_ee_pose7)
+            time.sleep(self.target_dt)  # let the last target_dt expire (collector t_min)
             deadline = time.monotonic() + wait_still_s
             while still is not None and time.monotonic() < deadline and not still():
                 time.sleep(0.02)

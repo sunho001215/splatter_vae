@@ -49,12 +49,17 @@ def main(argv=None, *, operator_input=input) -> int:
                     help="static = a labelled fixed register, DRY RUN only (no gripper access)")
     ap.add_argument("--no-record", action="store_true")
     ap.add_argument("--route", default="direct robotpc->5090 ssh -L")
+    ap.add_argument("--fault-after-s", type=float, default=None,
+                    help="DRY RUN ONLY: raise an injected error after N s (verifies error-terminated recording)")
     args = ap.parse_args(argv)
     if args.execute and args.gripper != "measured":
         ap.error("execution needs the measured gripper")
+    if args.execute and args.fault_after_s is not None:
+        ap.error("--fault-after-s is a dry-run test option")
     cfg = cli.load_config(args)
     root = Path(cfg["root"])
     opened = []  # cleanup stack
+    failure = {"error": "launcher exited abnormally"}
 
     def cleanup():
         for close in reversed(opened):
@@ -127,7 +132,7 @@ def main(argv=None, *, operator_input=input) -> int:
                                                                      "K_native": K[c].tolist(),
                                                                      "calibration": choices.get("calibration", {}).get(c)}
                                                                  for c in cams})
-            opened.append(lambda: recorder.close("error", "launcher exited abnormally"))  # no-op after close()
+            opened.append(lambda: recorder.close("error", failure["error"]))  # no-op after close()
             say(f"recording to {recorder.session_dir}")
         ex = cfg.get("executor") or {}
         executor = HighRateExecutor(_Discard(), **{k: ex[k] for k in ex})  # the session thread sends
@@ -153,17 +158,24 @@ def main(argv=None, *, operator_input=input) -> int:
                 say("REFUSED: switch_controller did not connect to the command/action channels")
                 return 3
             link.engage()
-            opened.append(lambda: link.release(state.latest()["flange_pose7"] if state.latest() else None,
+            opened.append(lambda: link.release(state.latest()["ee_pose7"] if state.latest() else None,
                                                still=lambda: live.still(state)))
             sink, sent = LiveSink(auth, link, gripper), True
             say("controller: mode 3 requested; STREAMING")
         else:
             sink, sent = DryRunSink(), False
             say("DRY RUN: commands computed, validated and recorded, NOT sent")
+
+        def on_status(row):
+            _status(row)
+            if t_fault is not None and time.monotonic() > t_fault:
+                raise RuntimeError(f"injected fault after {args.fault_after_s} s (--fault-after-s, dry run)")
+
         session = live.LiveSession(client=client, cameras=cameras, cams=cams, state=state,
                                    limits=C.limits(cfg, task), executor=executor, sink=sink, recorder=recorder,
-                                   sent=sent, on_status=lambda r: _status(r))
+                                   sent=sent, on_status=on_status)
         session_box["s"] = session
+        t_fault = None if args.fault_after_s is None else time.monotonic() + args.fault_after_s
 
         def keys():
             for line in sys.stdin:
@@ -175,6 +187,7 @@ def main(argv=None, *, operator_input=input) -> int:
         say("RUNNING (s + ENTER or Ctrl-C to stop)")
         rows = session.run(steps=args.steps, duration_s=args.duration_s)
         say(f"STOPPED: {session.stop_reason}; {len(rows)} steps, executor {executor.counts}")
+        say(f"loop rates: {session.loop_stats()}")
         if recorder is not None:
             summary = recorder.close("complete" if session.stop_reason in ("budget reached", "operator key",
                                                                              "operator Ctrl-C") else "stopped",
@@ -185,8 +198,13 @@ def main(argv=None, *, operator_input=input) -> int:
         say(f"REFUSED: {exc}")
         return 3
     except KeyboardInterrupt:
+        failure["error"] = "interrupted (Ctrl-C outside the session loop)"
         say("interrupted")
         return 130
+    except Exception as exc:
+        failure["error"] = f"{type(exc).__name__}: {exc}"
+        say(f"ERROR: {failure['error']}")
+        return 1
     finally:
         cleanup()
 
