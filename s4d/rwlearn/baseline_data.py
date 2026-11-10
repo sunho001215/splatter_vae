@@ -404,7 +404,10 @@ def realworld_classes(interface: dict, steps: int | None, locator, caps: dict | 
     if declared is not None and declared != consumer:
         raise ValueError(f"data_interface.consumer {declared!r} conflicts with the trainer's consumer {consumer!r}")
     split = json.loads(Path(interface["split_manifest"]).read_text()) if interface.get("split_manifest") else None
-    check_gate(open_store(locator), interface.get("gate_report"), steps=steps, split=split,
+    store = open_store(locator)
+    if getattr(store, "depth_source", None) == "native_realsense" and consumer != "mvp3d":
+        raise ValueError("native_realsense pretraining is only supported for mvp3d")
+    check_gate(store, interface.get("gate_report"), steps=steps, split=split,
                target=interface.get("target"), caps=caps, consumer=consumer,
                smoke_without_calibration=interface.get("smoke_without_calibration") is True)  # literal True only
     return {"sincro": RealworldSinCroWindows, "reviwo": RealworldReViWoStates, "dynamo": RealworldDynaMoWindows,

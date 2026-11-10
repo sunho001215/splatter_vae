@@ -386,6 +386,10 @@ def _open_compact(spec: dict) -> FrameStore:
         module = importlib.import_module("s4d.realworld.train_store")
     except ImportError as exc:
         raise RuntimeError("store kind 'compact' needs s4d.realworld.train_store (format branch not merged)") from exc
+    if "depth_source" in spec:
+        from s4d.rwlearn.native_depth import NativeDepthStore
+
+        return NativeDepthStore(spec)
     return module.CompactStore(spec["paths"])
 
 

@@ -631,3 +631,49 @@ priorities / GPU / RAM / restarts / role, release pinned from `runs/setup/role-r
 learning inputs (`scripts/realworld_learning.py inputs --task T --ending-report R`: store.yaml, gate_report.json,
 split_seed0.json, outcomes.json) staged remotely and verified against the live gate as the two existing registrars do.
 Dry run by default; `--publish` / `--recover` follow the existing locked, journalled queue append.
+
+## Native-depth 3D-MVP (2026-11-10)
+
+The ordinary compact store contains FoundationStereo depth. Opt-in 3D-MVP runs can instead train on the exact
+native RealSense depth used by the deployment client. Other conditions, ordinary store descriptors and simulation
+keep their existing data path. No FoundationStereo or S2M2 runs in this stage.
+
+```bash
+OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 nice -n 15 .venv/bin/python -I scripts/realworld_native_depth.py build \
+  --store <store.yaml> --rig <rig-loma-drawer-open.json> \
+  --out-dir <native-overlays> --out-store <store-native.yaml> --workers 4
+```
+
+Use the task's published rig: `rig-loma-drawer-open.json` for drawer-open, `rig-loma-mug-hanging-fx.json` for
+mug-hanging. Run separately per task. The stage hashes each raw file and checks it against the compact episode,
+checks every camera's colour-stream timestamps, then writes every frame's
+`RecordedEpisode.frame(depth=True, correction=load_rig_session(...)["native_depth_correction"][cam],
+alignment="rs_align").depth` unchanged as float32 metres (0 invalid). This reuses deployment alignment, colour-z,
+native sensor scale, centre crop and nearest 128 resampling. It writes one atomic overlay per compact episode,
+with raw/rig SHA-256, corrections, alignment, counts and timestamps; inputs are never modified. Episode processes
+are bounded by `--workers`, with one BLAS/OpenMP thread each. A valid existing overlay is skipped; an existing
+invalid overlay refuses and must be removed explicitly to rebuild. `--episodes task/episode_id ...` stages a subset;
+the output descriptor is published only once every episode's overlay exists and verifies.
+
+The output descriptor preserves the input keys and adds `depth_source: native_realsense`, `depth_overlays`
+(one path per input `paths` entry, in the same order), and `rig_document_sha256`. `open_store` returns a compact
+store whose `depth()` reads the overlay, checking raw identity, counts and timestamps once per episode per process.
+RGB, masks, intrinsics, poses, synchronization and raw action provenance still come from the original store.
+
+Create separately named rows/artifacts with this chain:
+
+1. Native-depth stage above.
+2. `train_mvp3d.py` pretraining with `dataset.hdf5_path=<store-native.yaml>` and the existing task split/gate.
+   The saved run config's `dataset.hdf5_path` is the pretraining depth provenance; no trainer change is needed.
+3. `realworld_fql_dataset.py build --store <store-native.yaml> --condition mvp3d_single|mvp3d_multiview`
+   with the new pretraining encoder export and the existing gate/outcomes arguments.
+4. FQL training on that derived dataset with `encoder.feature_norm=train_standardize`.
+5. Deployment with the matching native training contract and the same task rig's native corrections.
+
+The FQL builder refuses a native store for any other condition; real-world pretraining gates refuse it for other
+baselines. Native FQL datasets record `training_depth: native_realsense` and `native_depth_provenance` (overlay
+paths, format/version, raw/rig hashes, per-camera counts and corrections). The checkpoint copies `training_depth`
+only when present in the dataset; the deploy sidecar includes that source and provenance and must match a
+checkpoint's recorded source. Native contracts describe the shared client depth processing. Ordinary datasets
+gain no attributes and retain their existing FoundationStereo contract text. Planned rows are unchanged: this
+chain is opt-in and requires new row names, output paths and native store arguments.

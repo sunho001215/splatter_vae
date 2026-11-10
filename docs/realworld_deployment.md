@@ -80,6 +80,18 @@ recorder's JPEG decoded by PIL, so recorded replay is bit-exact; live frames are
 
 ## RealSense depth (3D-MVP single and multi-view)
 
+Opt-in native training (`docs/realworld_fql.md`, "Native-depth 3D-MVP (2026-11-10)") records
+`training_depth: native_realsense` in the FQL dataset, checkpoint and deployment sidecar. Its depth overlays are
+bitwise the recorded deployment client's `rs_align` frames, including the published rig's validated native scale;
+the sidecar records overlay/rig provenance. `read_training_contract` refuses a different or missing sidecar depth
+source when the checkpoint records one, including an FS sidecar paired with a native checkpoint. Native
+`depth_source_evidence` and `train_deploy_differences` describe native training and deployment, with no FS training
+claim. Frame history already requires metadata `depth_source` to match `InputSpec.deployment_depth` and the
+session's native correction. Existing checkpoints without a recorded training source retain their compatibility.
+
+The legacy FoundationStereo training-store evidence and train/deploy depth difference below apply to ordinary
+stores; they do not describe native-overlay training.
+
 Deploy contract (agent DEP, `/home/ws/ws/realworld-ops/serving/DEPTH-COMPAT.md`, verified against real librealsense
 2.59.1 on recorded z16 and bitwise against the release `sensor_depth` stage and the compact store):
 `rs.align(color)` -> depth-camera z16 on the colour grid -> 0.1-6.0 m gate (the stage's range, on the device z as the
@@ -104,8 +116,8 @@ the rig pose (`pipeline.DEPTH_SCALE_RULE`); the training store multiplied Founda
 `depth_scale['sensor_depth']` (`load_rig_session`; drawer 0.9989 / 1.0003 / 1.0172, mug 0.9974 / 0.9983 / 1.0172 for
 070988 / 073201 / 076054; without it 076054 reads ~1.9 % short); an FS factor is refused
 (`validate_native_correction`), identity is explicit and labelled. Cameras are accepted with the release's effective
-status (`calib.rig.rig_camera_status`, incl. the mug fixedness exception). Training data, weights and normalisation are
-unchanged; the InputSpec lists the difference in `train_deploy_differences`.
+status (`calib.rig.rig_camera_status`, incl. the mug fixedness exception). Existing FS-trained policies keep their
+training data, weights and normalisation; their InputSpec lists the difference in `train_deploy_differences`.
 
 Residual train (FS) vs deploy (native) difference. DEP (16 release episodes, inside the 3D-MVP bounds): median ratio
 0.9938-1.0020 with the correction, median |dz| 4.3-7.2 mm, 12-20 mm in the depth-edge band (20-23 % of pixels,

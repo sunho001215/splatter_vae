@@ -170,6 +170,8 @@ def checkpoint_payload(agent: FQLAgent, data, condition: str, step: int, **extra
             "image_hw": json.loads(data.attrs["image_hw"]), "feat_dim": data.feat_dim,
             "sequence_feature": data.sequence, "reward": data.attrs["reward"], "dataset": data.path,
             "inputs": data.attrs.get("inputs"), "extra_inputs": data.attrs.get("extra_inputs")}
+    if "training_depth" in data.attrs:
+        meta["training_depth"] = data.attrs["training_depth"]
     if condition == "e2e_cnn":
         meta["encoder_config"] = dict(agent.critic.encoder.config)
     else:

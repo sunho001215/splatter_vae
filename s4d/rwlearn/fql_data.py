@@ -124,6 +124,10 @@ def build_fql_dataset(store: FrameStore, condition: str, export_path, out: Path,
     from s4d.rwlearn.identity import match_recordings, store_identities
     from s4d.rwlearn.outcomes import load_outcomes
 
+    native_depth = getattr(store, "depth_source", None) == "native_realsense"
+    if native_depth and condition not in ("mvp3d_single", "mvp3d_multiview"):
+        raise ValueError("native_realsense training depth is only supported for 3D-MVP depth conditions")
+    depth_provenance = store.depth_provenance(episodes) if native_depth else None
     outcome_doc = outcomes if isinstance(outcomes, dict) and "schema" in outcomes else None
     outcomes = load_outcomes(outcomes) if outcomes is not None else {}
     missing = [ep for ep in episodes if ep not in outcomes]
@@ -198,6 +202,10 @@ def build_fql_dataset(store: FrameStore, condition: str, export_path, out: Path,
                        outcomes=json.dumps({"assume_final_success": bool(assume_final_success),
                                             "labels": {ep: bool(v) for ep, v in outcomes.items()},
                                             "document": outcome_doc}))
+        if native_depth:
+            from s4d.rwlearn.deploy.contracts import NATIVE_DEPTH
+
+            f.attrs.update(training_depth=NATIVE_DEPTH, native_depth_provenance=json.dumps(depth_provenance))
     tmp.replace(out)
     return {"path": str(out), **stats}
 

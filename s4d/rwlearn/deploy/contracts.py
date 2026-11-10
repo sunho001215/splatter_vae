@@ -57,6 +57,13 @@ def training_contract(attrs: dict) -> dict:
         out["depth_source_evidence"] = (f"train_data depth_stage default pipeline.default_depth_stage(meta, 'lift') = "
                                         f"{RGBD_LIFT_DEPTH}; stored depth = depth x accepted calibrate "
                                         f"depth_scale[{RGBD_LIFT_DEPTH}] ({DEPTH_SCALE_RULE})")
+        if out["training_depth"] == NATIVE_DEPTH:
+            out["depth_source_evidence"] = (
+                "native depth overlay: RecordedEpisode.frame(alignment='rs_align'); native RealSense z16 -> "
+                "colour-camera z -> validated rig depth_scale[sensor_depth] -> centre crop + nearest 128 resample; "
+                "float32 metres, 0 invalid; identical to deployment client preprocessing")
+            if "native_depth_provenance" in attrs:
+                out["native_depth_provenance"] = _json(attrs["native_depth_provenance"])
     return out
 
 
@@ -68,6 +75,8 @@ def read_training_contract(meta: dict, source=None) -> dict:
     if meta.get("fixture") is True and meta.get("observation_contract") is not None:
         if meta["observation_contract"].get("feature_norm") != meta.get("feature_norm"):
             raise ValueError("training contract feature_norm differs from the checkpoint")
+        if "training_depth" in meta and meta["observation_contract"].get("training_depth") != meta["training_depth"]:
+            raise ValueError("training contract training_depth differs from the checkpoint")
         return dict(meta["observation_contract"])  # labelled FIXTURE checkpoints only
     source = source if source is not None else meta.get("dataset")
     if source is None:
@@ -88,16 +97,23 @@ def read_training_contract(meta: dict, source=None) -> dict:
     checks = {"condition": meta["condition"], "export_sha256": meta.get("export_sha256") or "",
               "contract": meta["contract"], "image_hw": list(meta["image_hw"]),
               "feature_norm": meta.get("feature_norm")}
+    if "training_depth" in meta:
+        checks["training_depth"] = meta["training_depth"]
     for key, expected in checks.items():
         if training.get(key) != expected:
             raise ValueError(f"training contract {key} differs from the checkpoint")
     return training
 
 
-def _differences(condition: str, depth: bool, cameras: bool) -> tuple[str, ...]:
+def _differences(condition: str, depth: bool, cameras: bool, training_depth: str | None = None) -> tuple[str, ...]:
     out = ["rgb: training frames are the recorder's JPEG (quality 90, encoded from bgr8) decoded by PIL; live frames are "
            "uncompressed RealSense colour (recorded replay decodes the same JPEG and is bit-exact)"]
-    if depth:
+    if depth and training_depth == NATIVE_DEPTH:
+        out.append("depth: training and deployment use native RealSense z16 aligned to colour (rs.align; "
+                   "recorded replay: validated emulation), 0.1-6 m gate, exact depth-camera -> colour-camera z, "
+                   "x validated rig depth_scale[sensor_depth], centre crop + nearest resampling; "
+                   "float32 metres, 0 invalid")
+    elif depth:
         out.append("depth: training = FoundationStereo IR-stereo depth x calibrate depth_scale[foundation_stereo_depth]; "
                    "deployment = native RealSense z16 aligned to colour (rs.align; replay: validated emulation), "
                    "0.1-6 m gate, exact depth-camera -> colour-camera z, x depth_scale[sensor_depth] of the same "
@@ -182,7 +198,7 @@ class InputSpec:
                    depth_range_m=SENSOR_DEPTH_RANGE_M if depth else None,
                    sequence_feature=bool(meta.get("sequence_feature", False)),
                    feature_precision=FEATURE_PRECISION if frozen else None,
-                   train_deploy_differences=_differences(condition, depth, cameras))
+                   train_deploy_differences=_differences(condition, depth, cameras, training.get("training_depth")))
 
     @property
     def history_spacing_s(self) -> float:
