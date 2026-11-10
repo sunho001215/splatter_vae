@@ -820,6 +820,12 @@ class RealSenseCapture:
         color_ms, number = float(color.get_timestamp()), int(color.get_frame_number())
         capture_ns = self.clock.map(color_ms, domain, offset_ns=offset)
         t0 = time.monotonic_ns()
+        native_depth = depth_scale = None
+        if self.keep_native and self.rgbd is not None:  # the camera's own z16 frame (not aligned), before processing
+            d = frames.get_depth_frame()
+            if d:
+                native_depth = np.array(np.asanyarray(d.get_data()), np.uint16, copy=True)
+                depth_scale = float(d.get_units())
         if self.rgbd is not None:
             out = self.rgbd.process(frames)
         else:
@@ -832,6 +838,8 @@ class RealSenseCapture:
         t1 = time.monotonic_ns()
         if self.keep_native:
             out["native_rgb"] = np.array(np.asanyarray(color.get_data()), copy=True)
+            if native_depth is not None:  # recorded only for depth policies (the rgbd path); never IR
+                out["native_depth"], out["depth_scale_m"] = native_depth, depth_scale
         out.update(frame_id=number, capture_ns=capture_ns, preprocess_ns=(t0, t1), native_hw=list(self.native_hw))
         out["K"] = np.asarray(out["K"]).tolist()
         return out

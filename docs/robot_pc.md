@@ -86,6 +86,8 @@ Gripper: speed 146 (collector `config/default.yaml:63`, rSP; DROID goto(speed=0.
    speed cap any more: the robot follows the policy's goals as fast as the controller's impedance allows), stop with
    `s` + ENTER; then `verify_session.py` (release hold + IDLE sent, `controller_guard` count, robot-state age).
 6. Full-duration run; inspect `inference_outputs/<...>_runNNN/` (`left.mp4` ..., `config.json`).
+7. Depth policies only (none execution-eligible today): a `--dry-run` must record native z16 depth
+   (`/cameras/<name>/depth` + depth scale) next to the RGB; RGB-only policies record no depth, never IR.
 
 Validated OFFLINE (fakes, CPU): selection / camera-name contract errors / `--list` / run-folder numbering / config
 refusal of removed keys / executor interpolation + controller guard + expiry + state stops / launcher ordering /
@@ -265,6 +267,13 @@ RobotActions for a caller-supplied publisher, but is refused (`EXECUTION_PERMITT
 
 ## LIVE integration design (Directive J, 2026-11-10; P0 read-only inspection of panda-teleop)
 
+> **Superseded in part by user directive K (2026-11-10 22:10, see "OPERATOR GUIDE" above).** The design below records
+> Directive J. Its speed / acceleration caps, 0.04 m / 20 deg (and slow-profile 0.02 m / 8 deg) lead leash, per-step
+> rejection, task workspace boxes, start radius, rejection abort and not-following detector were REMOVED; the executor
+> now interpolates to the policy's raw goal and only never sends beyond switch_controller's 0.2 m / 0.5 rad guard.
+> State-health stops, expiry, communication-loss stops, release, single commander / Modbus master and
+> execution_eligible remain as described.
+
 Evidence (read-only; teleop_collector = `TC`, switch_controller = `SC`):
 
 | topic | fact | source |
@@ -380,6 +389,13 @@ static latency-only state is the one explicit exception) and `PolicyLoop` applie
 (`test_policy_gripper_input_is_the_measured_register_never_the_command`).
 
 ## Control path design (no actuation)
+
+> **Superseded in part by user directive K (2026-11-10 22:10, see "OPERATOR GUIDE" above).** The design below records
+> Directive J. Its speed / acceleration caps, 0.04 m / 20 deg (and slow-profile 0.02 m / 8 deg) lead leash, per-step
+> rejection, task workspace boxes, start radius, rejection abort and not-following detector were REMOVED; the executor
+> now interpolates to the policy's raw goal and only never sends beyond switch_controller's 0.2 m / 0.5 rad guard.
+> State-health stops, expiry, communication-loss stops, release, single commander / Modbus master and
+> execution_eligible remain as described.
 
 1. **Binding** (training rule, checked by the client and the server): pose = latest robot sample at or before the
    observation time (<= 15 ms old), register = latest register sample (<= 100 ms old); the action's goal is relative to

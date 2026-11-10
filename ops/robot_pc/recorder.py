@@ -446,6 +446,10 @@ class SessionRecorder:
         status, error = self._requests.get("close", ("complete", None))
         if self._failure:
             return "error", f"{error}; {self._failure}" if error else self._failure
+        broken = [s for s, v in self._videos.items() if str(v.get("status", "")).startswith("unavailable")
+                  and self._counts.get(f"cameras/{s}", 0) > 0]
+        if self._video_enabled and broken and status == "complete":  # frames recorded but an MP4 is missing
+            return "error", f"MP4 unavailable for {broken}: {self._videos[broken[0]]['status']}"
         return status, error
 
     def _run(self) -> None:
