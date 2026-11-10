@@ -99,7 +99,22 @@ def verify(session: Path, *, max_setpoints: int = 2000) -> dict:
             info["flange_vs_ee_frame_max_m"] = float(max(np.linalg.norm(sc.flange_from_ee(ee[i])[:3] - fl[i][:3])
                                                          for i in k))
             info["max_abs_dq"] = float(np.abs(h["robot/dq"][()]).max())
-            check("robot_state", info["rate_hz"] > 900 and info["seq_missing"] == 0, **info)
+            # streaming window = from the first executed setpoint (the executor's state-age check is what matters:
+            # a receipt gap > state_timeout_s latches a stop); gaps before it (preflight: camera / gripper / policy
+            # start-up starving the reader) are reported separately
+            ex_t = h["executed/t_ns"][()]
+            stale_ms = 1e3 * float(meta.get("config", {}).get("executor", {}).get("state_timeout_s", 0.05))
+            if len(ex_t):
+                w = (rt[:-1] >= ex_t[0]) & (rt[1:] <= ex_t[-1])
+                dts = np.diff(rt)[w] / 1e6
+                info.update(streaming_dt_ms_max=float(dts.max()) if len(dts) else None,
+                            streaming_seq_missing=int((np.diff(seq)[w] - 1).clip(0).sum()),
+                            preflight_seq_missing=int((np.diff(seq)[rt[:-1] < ex_t[0]] - 1).clip(0).sum()),
+                            stale_threshold_ms=stale_ms)
+                ok_rs = info["rate_hz"] > 900 and (info["streaming_dt_ms_max"] or 0) < stale_ms
+            else:
+                ok_rs = info["rate_hz"] > 900 and info["dt_ms_max"] < stale_ms
+            check("robot_state", ok_rs, **info)
         else:
             check("robot_state", False, n=int(len(rt)))
         gt = h["gripper/t_ns"][()]
@@ -149,52 +164,53 @@ def verify(session: Path, *, max_setpoints: int = 2000) -> dict:
             cam_info[serial] = ci
         check("cameras_video", all(c.get("mp4_ok") is not False and (c["frame_number_missing"] or 0) == 0
                                    for c in cam_info.values()), per_camera=cam_info)
-        # ---- steps: latency, sync, transformations
-        steps = [json.loads(x) for x in h["steps/json"][()]]
-        ok_steps = [s for s in steps if s.get("status") == "ok"]
-        lat = {k: _pct(s["client_ms"].get(k) for s in ok_steps)
-               for k in ("e2e_ms", "preprocess_ms", "rtt_ms", "network_ms", "acquire_ms", "capture_to_action_ms",
-                         "capture_to_command_ms")}
-        lat["server_total_ms"] = _pct(s["server_ms"].get("total_ms") for s in ok_steps)
-        span = (steps[-1]["t_step_ns"] - steps[0]["t_step_ns"]) / 1e9 if len(steps) > 1 else None
-        out["latency_ms"] = lat
-        check("steps", len(ok_steps) > 0, steps=len(steps), ok_steps=len(ok_steps),
-              statuses={k: sum((s.get("code") or s["status"]) == k for s in steps)
-                        for k in {s.get("code") or s["status"] for s in steps}},
-              rejected={k: sum(s.get("rejected") == k for s in steps) for k in {s.get("rejected") for s in steps} if k},
-              policy_hz=(len(steps) - 1) / span if span else None)
-        # sync: observation time vs the newest robot / gripper sample at or before it (host monotonic clock)
-        obs_t = np.array([s["observation_time_ns"] for s in ok_steps], np.int64)
-        def ages(t_stream):
-            if not len(t_stream) or not len(obs_t):
-                return None
-            i = np.searchsorted(t_stream, obs_t, side="right") - 1
-            good = i >= 0
-            return _pct(((obs_t[good] - t_stream[i[good]]) / 1e6).tolist())
-        check("sync", True, robot_age_at_observation_ms=ages(rt), gripper_age_at_observation_ms=ages(gt),
-              note="host CLOCK_MONOTONIC: RealSense global_time frame time vs the latest RobotState receipt / Modbus "
-                   "status read; the policy binds the newest state at or before the frame")
-        # transformations
-        bad = []
-        cmds = [s for s in ok_steps if s.get("command")]
-        for s in cmds:
-            c = s["command"]
-            g, m = np.asarray(c["goal_pose7"]), np.asarray(c["measured_pose7"])
-            ex = np.asarray(s["execution_flange_pose"])
-            errs = {"goal_vs_policy_m": float(np.linalg.norm(g[:3] - ex[:3])), "goal_vs_policy_rad": _q_angle(g[3:], ex[3:]),
-                    "translation_m": abs(float(np.linalg.norm(g[:3] - m[:3])) - c["translation_m"]),
-                    "rotation_deg": abs(np.degrees(_q_angle(g[3:], m[3:])) - c["rotation_deg"]),
-                    "register": abs(closure_to_position(c["gripper_closure"]) - c["gripper_register"])}
-            if errs["goal_vs_policy_m"] > 1e-9 or errs["goal_vs_policy_rad"] > 1e-6 or errs["translation_m"] > 1e-9 \
-                    or errs["rotation_deg"] > 1e-4 or errs["register"] > 0:
-                bad.append({"ref": c["reference_id"], **errs})
-        lim = meta.get("config", {}).get("limits", {})
-        check("action_transformations", not bad and all(
-            s["command"]["translation_m"] <= lim.get("max_translation_m", 1) + 1e-9 and
-            s["command"]["rotation_deg"] <= lim.get("max_rotation_deg", 360) + 1e-9 for s in cmds),
-              commands=len(cmds), mismatches=bad[:5],
-              max_translation_m=max((s["command"]["translation_m"] for s in cmds), default=None),
-              max_rotation_deg=max((s["command"]["rotation_deg"] for s in cmds), default=None))
+        if not str(mode).startswith("hwtest"):
+            # ---- steps: latency, sync, transformations
+            steps = [json.loads(x) for x in h["steps/json"][()]]
+            ok_steps = [s for s in steps if s.get("status") == "ok"]
+            lat = {k: _pct(s["client_ms"].get(k) for s in ok_steps)
+                   for k in ("e2e_ms", "preprocess_ms", "rtt_ms", "network_ms", "acquire_ms", "capture_to_action_ms",
+                             "capture_to_command_ms")}
+            lat["server_total_ms"] = _pct(s["server_ms"].get("total_ms") for s in ok_steps)
+            span = (steps[-1]["t_step_ns"] - steps[0]["t_step_ns"]) / 1e9 if len(steps) > 1 else None
+            out["latency_ms"] = lat
+            check("steps", len(ok_steps) > 0, steps=len(steps), ok_steps=len(ok_steps),
+                  statuses={k: sum((s.get("code") or s["status"]) == k for s in steps)
+                            for k in {s.get("code") or s["status"] for s in steps}},
+                  rejected={k: sum(s.get("rejected") == k for s in steps) for k in {s.get("rejected") for s in steps} if k},
+                  policy_hz=(len(steps) - 1) / span if span else None)
+            # sync: observation time vs the newest robot / gripper sample at or before it (host monotonic clock)
+            obs_t = np.array([s["observation_time_ns"] for s in ok_steps], np.int64)
+            def ages(t_stream):
+                if not len(t_stream) or not len(obs_t):
+                    return None
+                i = np.searchsorted(t_stream, obs_t, side="right") - 1
+                good = i >= 0
+                return _pct(((obs_t[good] - t_stream[i[good]]) / 1e6).tolist())
+            check("sync", True, robot_age_at_observation_ms=ages(rt), gripper_age_at_observation_ms=ages(gt),
+                  note="host CLOCK_MONOTONIC: RealSense global_time frame time vs the latest RobotState receipt / Modbus "
+                       "status read; the policy binds the newest state at or before the frame")
+            # transformations
+            bad = []
+            cmds = [s for s in ok_steps if s.get("command")]
+            for s in cmds:
+                c = s["command"]
+                g, m = np.asarray(c["goal_pose7"]), np.asarray(c["measured_pose7"])
+                ex = np.asarray(s["execution_flange_pose"])
+                errs = {"goal_vs_policy_m": float(np.linalg.norm(g[:3] - ex[:3])), "goal_vs_policy_rad": _q_angle(g[3:], ex[3:]),
+                        "translation_m": abs(float(np.linalg.norm(g[:3] - m[:3])) - c["translation_m"]),
+                        "rotation_deg": abs(np.degrees(_q_angle(g[3:], m[3:])) - c["rotation_deg"]),
+                        "register": abs(closure_to_position(c["gripper_closure"]) - c["gripper_register"])}
+                if errs["goal_vs_policy_m"] > 1e-9 or errs["goal_vs_policy_rad"] > 1e-6 or errs["translation_m"] > 1e-9 \
+                        or errs["rotation_deg"] > 1e-4 or errs["register"] > 0:
+                    bad.append({"ref": c["reference_id"], **errs})
+            lim = meta.get("config", {}).get("limits", {})
+            check("action_transformations", not bad and all(
+                s["command"]["translation_m"] <= lim.get("max_translation_m", 1) + 1e-9 and
+                s["command"]["rotation_deg"] <= lim.get("max_rotation_deg", 360) + 1e-9 for s in cmds),
+                  commands=len(cmds), mismatches=bad[:5],
+                  max_translation_m=max((s["command"]["translation_m"] for s in cmds), default=None),
+                  max_rotation_deg=max((s["command"]["rotation_deg"] for s in cmds), default=None))
         # executed setpoints
         et, ep, sent = h["executed/t_ns"][()], h["executed/pose7"][()], h["executed/sent"][()]
         ex_cfg = meta.get("config", {}).get("executor", {})
@@ -212,9 +228,26 @@ def verify(session: Path, *, max_setpoints: int = 2000) -> dict:
                 info["max_ang_speed_rad_s"] <= ex_cfg.get("max_angular_speed", 1.5) * 1.05 + 1e-6
         else:
             speed_ok = True
-        check("executed", speed_ok and (mode != "dry_run" or info["sent_true"] == 0), **info)
+        check("executed", speed_ok and
+              (not (mode == "dry_run" or str(mode).endswith("-rehearsal")) or info["sent_true"] == 0), **info)
         events = [x.decode() if isinstance(x, bytes) else x for x in h["events/text"][()]]
         out["events"] = events
+        if str(mode).startswith("hwtest"):
+            verdicts, malformed = [], []
+            for e in events:
+                if e.startswith("verdict "):
+                    try:
+                        verdicts.append(json.loads(e[len("verdict "):]))
+                    except (ValueError, TypeError):
+                        malformed.append(e)
+            verdict = verdicts[-1] if verdicts and isinstance(verdicts[-1], dict) else {}
+            rehearsal = str(mode).endswith("-rehearsal")
+            check("hwtest_verdict", len(verdicts) == 1 and not malformed and verdict.get("pass") is True and
+                  verdict.get("test") == meta.get("test") and verdict.get("rehearse") is rehearsal and
+                  not verdict.get("abort_reasons") and summary["status"] == "complete" and
+                  (not rehearsal or (verdict.get("writes", 0) == 0 and verdict.get("actions_sent", 0) == 0 and
+                                     verdict.get("mode_requests_sent", 0) == 0)),
+                  verdict=verdict, malformed=malformed)
         for e in events:
             if e.startswith("loop_stats "):
                 out["loop_stats"] = json.loads(e[len("loop_stats "):])

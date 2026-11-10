@@ -226,6 +226,7 @@ class LiveSession:
     def _executor_ticks(self) -> None:
         period = self.executor.period_ns / 1e9
         last = None
+        next_t = time.monotonic()  # absolute deadlines: the mean rate stays at rate_hz despite sleep overshoot
         while not self.stop_event.is_set():
             t0 = time.monotonic()
             if last is not None:
@@ -265,7 +266,11 @@ class LiveSession:
                         self.recorder.executed(sp.t_ns, sp.kind, sp.pose7, sp.gripper_closure, sent, detail)
                 if self.executor.stopped and not self.stop_event.is_set():
                     self.stop(f"executor stop: {self.executor.stopped}")
-            self.stop_event.wait(max(0.0, period - (time.monotonic() - t0)))
+            next_t += period
+            delay = next_t - time.monotonic()
+            if delay < -period:  # overrun by more than a period: resynchronise instead of bursting
+                next_t, delay = time.monotonic(), 0.0
+            self.stop_event.wait(max(0.0, delay))
 
     def loop_stats(self) -> dict:
         """Executor (local control loop) and policy-step rates of this session, measured."""
