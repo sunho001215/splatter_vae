@@ -225,8 +225,12 @@ def read_registry(path: Path = REGISTRY) -> dict[str, dict]:
                             or any(check.get("containers_with_name") != 0 or check.get("remote_output") != "absent"
                                    for check in checks)):
                         raise ValueError(f"invalid refused-launch reconciliation for {event['id']}")
-                    # There was no execution or checkpoint: a corrected launch specification is not a run retry.
+                    # There was no execution or checkpoint: a corrected launch specification is not a run retry, and
+                    # the refused attempt's release must not pin the next launch (2026-11-10: a stage row refused on a
+                    # release without its script kept being relaunched on that release).
                     job.pop("job_sha256", None)
+                    job.pop("commit", None)
+                    job.pop("image_digest", None)
                 job.update(status=PENDING)
             elif kind == "migrated":
                 # an owned run stopped at a recorded checkpoint pause moves to another host and resumes there from that

@@ -138,6 +138,24 @@ def test_only_proven_refused_launch_can_release_its_job_fingerprint(tmp_path):
         jobs.read_registry(registry)
 
 
+def test_proven_refused_launch_does_not_pin_the_next_launch_release(tmp_path):
+    """A refused launch never executed: its release must not pin the next launch (a plain reset keeps it)."""
+    registry = tmp_path / "registry.jsonl"
+    old = {"commit": "a" * 40, "image_digest": "sha256:" + "b" * 64}
+    jobs.record({"event": "launching", "id": "a", "host": "remote", "attempt": 1, "job_sha256": "0" * 64, **old},
+                registry)
+    jobs.record({"event": "reset", "id": "a"}, registry)
+    state = jobs.read_registry(registry)["a"]
+    assert state["commit"] == old["commit"] and state["image_digest"] == old["image_digest"]
+    jobs.record({"event": "launching", "id": "a", "host": "remote", "attempt": 2, "job_sha256": "0" * 64, **old},
+                registry)
+    proof = {"conclusion": "launch refused before docker run; deterministic container never existed", "attempt": 2,
+             "checks": [{"containers_with_name": 0, "remote_output": "absent"}] * 2}
+    jobs.record({"event": "reset", "id": "a", "reconciliation": proof}, registry)
+    state = jobs.read_registry(registry)["a"]
+    assert state["status"] == "pending" and "commit" not in state and "image_digest" not in state
+
+
 def test_audited_infrastructure_failure_replay_is_append_only_and_idempotent(tmp_path):
     registry = tmp_path / "registry.jsonl"
     events = [
