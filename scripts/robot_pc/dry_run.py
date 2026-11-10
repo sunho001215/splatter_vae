@@ -5,9 +5,11 @@ robot-side validation -> DryRunSink (JSONL log, nothing is sent).
         --log runs/dryrun-dynamo.jsonl --summary runs/dryrun-dynamo.json
 
 Refuses (before opening any camera) when a recorder / teleop process, a device holder or the teleop collector's IPC
-socket exists, i.e. whenever live acquisition could interfere with a recording. ``--state live`` is the read-only live
-robot state source, UNBOUND in this revision (refuses); ``--state static`` binds a FIXED labelled state for latency
-measurements only (its actions are meaningless and only logged).
+socket exists, i.e. whenever live acquisition could interfere with a recording. ``--state live`` is the read-only
+switch_controller RobotState reader (``switch_controller.LiveStateReader``: a SUB, never a publisher) and needs
+``--live-state-approved`` (explicit go-ahead); no read-only gripper register source exists, so its steps are refused
+(no_state) until one does. ``--state static`` binds a FIXED labelled state for latency measurements only (its actions
+are meaningless and only logged).
 """
 
 from __future__ import annotations
@@ -28,12 +30,16 @@ def main(argv=None) -> int:
     from ops.robot_pc import dryrun
     from ops.robot_pc.cameras import LiveCameras
     from ops.robot_pc.loop import PolicyLoop, summarize
-    from ops.robot_pc.robot_state import LiveRobotState, StaticLatencyState
+    from ops.robot_pc.robot_state import StaticLatencyState
+    from ops.robot_pc.safety import Unbound, execution_eligible
+    from ops.robot_pc.switch_controller import LiveStateReader
     from ops.robot_pc.sinks import DryRunSink
 
     ap = argparse.ArgumentParser(prog="dry_run.py", description=__doc__.split("\n")[0])
     cli.add_common(ap)
     ap.add_argument("--state", choices=("live", "static"), required=True)
+    ap.add_argument("--live-state-approved", action="store_true",
+                    help="explicit go-ahead to connect the read-only RobotState SUB (coordinator decision)")
     ap.add_argument("--steps", type=int, default=None)
     ap.add_argument("--duration-s", type=float, default=None)
     ap.add_argument("--route", default="", help="label of the network route")
@@ -45,9 +51,13 @@ def main(argv=None) -> int:
         ap.error("give --steps or --duration-s")
     cfg = cli.load_config(args)
     st = cfg.get("static_latency_state") or {}
-    state = LiveRobotState() if args.state == "live" else \
-        StaticLatencyState(st["pose7"], st["q7"], st["gripper_register"])
-    pid, task, spec = cli.choose_policy(cfg, args)
+    try:
+        state = LiveStateReader(approved=args.live_state_approved) if args.state == "live" else \
+            StaticLatencyState(st["pose7"], st["q7"], st["gripper_register"])
+    except Unbound as exc:
+        print(f"dry run REFUSED: {exc}", file=sys.stderr)
+        return 3
+    pid, task, spec, info = cli.choose_policy(cfg, args)
     cams = selection.session_cameras(spec, args.camera)
     rig = cli.rig_document(cfg, task)
     corrections = selection.depth_corrections(spec, cams, rig, identity=args.identity_depth)
@@ -69,6 +79,7 @@ def main(argv=None) -> int:
         rows = dryrun.run(client, loop, cameras, state, cams=cams, steps=args.steps, duration_s=args.duration_s,
                           live_m5=live_m5, on_row=rows_out)
         summary = {**cli.SAFETY, "policy": pid, "task": task, "cameras": cams, "state_source": state.kind,
+                   "catalog_info": info, "execution_eligible": execution_eligible(info),
                    "state_label": state.label, "sink": "DryRunSink", "dry_run_log": str(args.log),
                    **summarize(rows, route=args.route, mode="live-dry-run"), "loop_counts": dict(loop.counts),
                    "camera_errors": dict(cameras.errors), "client_stats": dict(client.stats)}
@@ -81,6 +92,7 @@ def main(argv=None) -> int:
             client.close()
         if sink is not None:
             sink.close()
+        state.close()
     cli.write_json(args.summary, summary)
     return 0
 

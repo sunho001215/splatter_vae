@@ -143,19 +143,20 @@ def recorded_comparison(recording, cams: list, rows: list, offset_ns: int, spec:
 
 
 def replay_episode(cfg: dict, args, *, episode, pace: str, start: int = 0, count: int | None = None,
-                   name: str = "robot-pc-replay", m5_store=None, on_row=None, route: str = "") -> tuple[list, dict]:
+                   name: str = "robot-pc-replay", m5_store=None, on_row=None, route: str = "", warmup: int = 0,
+                   pings: int = 0) -> tuple[list, dict]:
     """Everything of one recorded replay: policy selection from the server, session choices from the recording and
     the task's rig document, the persistent link, the live M5 helper (multi-view), validation and the MockSink."""
-    from ops.robot_pc import cli
+    from ops.robot_pc import cli, safety
     from ops.robot_pc import config as C
     from ops.robot_pc import selection
     from ops.robot_pc.cameras import RecordedCameras
-    from ops.robot_pc.loop import PolicyLoop, summarize
+    from ops.robot_pc.loop import PolicyLoop, percentiles, summarize
     from ops.robot_pc.robot_state import RecordedRobotState
     from ops.robot_pc.sinks import MockSink
     from s4d.rwlearn.deploy.replay import RecordedEpisode
 
-    pid, task, _ = cli.choose_policy(cfg, args)
+    pid, task, _, info = cli.choose_policy(cfg, args)  # info["resident"]: loaded on the server before this session
     rec = RecordedEpisode(episode)
     plan = {}
 
@@ -169,8 +170,11 @@ def replay_episode(cfg: dict, args, *, episode, pace: str, start: int = 0, count
                                          K_native={c: rec.K_native(c) for c in cams},
                                          rig_document=cli.rig_document(cfg, task), identity_depth=args.identity_depth)
 
+    t_hello = time.monotonic_ns()
     client = cli.connect(cfg, args, pid, choose, name)
+    hello_ms = (time.monotonic_ns() - t_hello) / 1e6
     try:
+        ping_ms = [client.ping() for _ in range(int(pings))]
         spec, cams = client.spec, plan["cams"]
         cameras = RecordedCameras(rec, cams, depth="depth" in spec["modalities"])
         live_m5 = C.m5(cfg, task, cams, float(spec["frame_period_s"])) if spec["views"] > 1 else None
@@ -181,8 +185,10 @@ def replay_episode(cfg: dict, args, *, episode, pace: str, start: int = 0, count
         rows = run(client, loop, cameras, state, clock, cams=cams, start=start, count=count, live_m5=live_m5,
                    noise_seed=args.noise_seed, on_row=on_row)
         summary = {"policy": pid, "task": task, "condition": spec["condition"], "cameras": cams,
+                   "catalog_info": info, "execution_eligible": safety.execution_eligible(info),
                    "episode": str(episode), "pace": pace, "sink": "MockSink", "commands_recorded": len(sink.items),
-                   **summarize(rows, route=route, mode=f"replay-{pace}"),
+                   "session_open_ms": hello_ms, "ping_ms": percentiles(ping_ms),
+                   **summarize(rows, route=route, mode=f"replay-{pace}", warmup=warmup),
                    "vs_recorded": recorded_comparison(rec, cams, rows, clock.offset_ns, spec),
                    "loop_counts": dict(loop.counts), "client_stats": dict(client.stats),
                    "input_note": "recorded JPEG decoded (bit-exact with training); depth: recorded z16 through the "

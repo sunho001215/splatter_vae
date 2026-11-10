@@ -7,7 +7,7 @@ PC; staging it on the 5090 (``~/shkim/robot-pc/``) is a separate copy (docs/robo
 Contents (prefix ``s4d-robot-pc-<short>/``): ``src/`` = ``git archive <commit>`` of the client-side code (ops/__init__,
 ops/policy_serving/{__init__,protocol,client,bench,config}.py, ops/robot_pc/, s4d/, scripts/robot_pc/,
 configs/robot_pc/, the deployment docs); ``setup.sh``; ``wheels/`` (pinned cp312 manylinux wheels +
-hash-locked requirements); ``assets/`` (M5 surface asset, the unmodified composed URDF + manifest, the per-task rig
+hash-locked requirements: core, realsense, live = pyzmq + robot-msg-irsl); ``assets/`` (M5 surface asset, the unmodified composed URDF + manifest, the per-task rig
 documents + their reference npz); ``BUNDLE.json`` (commit, every file's sha256, pins, asset provenance, validation).
 Deterministic: sorted members, mtime = commit time, uid/gid 0, gzip mtime 0.
 """
@@ -35,6 +35,7 @@ SRC = ["ops/__init__.py", "ops/policy_serving/__init__.py", "ops/policy_serving/
        "docs/realworld_policy_serving.md"]
 SETUP = "scripts/robot_pc/setup.sh"  # copied to the bundle top level
 CORE = ("numpy", "pillow", "pyyaml", "scipy", "h5py")
+LIVE = ("pyzmq", "robot-msg-irsl")  # the read-only RobotState reader: the teleop collector's exact pins
 URDF = Path("/home/ws/ws/validation-20261031/panda_assets/panda_robotiq_2f85_droid_iso50.urdf")
 RIG = Path("/home/ws/ws/realworld-ops/calib-loma/rel/rig")
 RIG_DOCS = ("rig-loma-drawer-open", "rig-loma-mug-hanging-fx")
@@ -84,6 +85,7 @@ def build(args) -> dict:
         (top / "wheels/requirements.txt").write_text(requirements(args.wheels, CORE))
         (top / "wheels/requirements-pip.txt").write_text(requirements(args.wheels, ("pip",)))
         (top / "wheels/requirements-realsense.txt").write_text(requirements(args.wheels, ("pyrealsense2",)))
+        (top / "wheels/requirements-live.txt").write_text(requirements(args.wheels, LIVE))
         for sub in ("m5", "urdf", "rig"):
             (top / "assets" / sub).mkdir(parents=True)
         shutil.copy2(args.m5_asset, top / "assets/m5" / args.m5_asset.name)
@@ -96,13 +98,13 @@ def build(args) -> dict:
         files = {str(p.relative_to(top)): sha256(p) for p in sorted(top.rglob("*")) if p.is_file()}
         manifest = {"name": name, "commit": commit, "commit_time": t_commit, "files": files,
                     "pins": {"python": "3.12", **{n: requirements(args.wheels, (n,)).split()[0] for n in
-                                                  (*CORE, "pip", "pyrealsense2")}},
+                                                  (*CORE, "pip", "pyrealsense2", *LIVE)}},
                     "layout": "<root>/releases/<name>/{src,assets,wheels,setup.sh}; <root>/{venv,src->,assets->,"
                               "config,secrets,logs,runs}",
                     "assets": {"urdf_sha256": sha256(URDF), "m5_header": validation["header"],
                                "m5_validation": {"pass": validation["pass"], "episodes": [
                                    {k: e[k] for k in ("episode", "pass")} for e in validation["episodes"]]}},
-                    "safety": "dry run / replay only; execution.armed false; controller binding UNBOUND"}
+                    "safety": "dry run / replay only; execution.armed false; EXECUTION_PERMITTED False; no command transport"}
         (top / "BUNDLE.json").write_text(json.dumps(manifest, indent=1, sort_keys=True) + "\n")
         args.out_dir.mkdir(parents=True, exist_ok=True)
         out = args.out_dir / f"{name}.tar.gz"

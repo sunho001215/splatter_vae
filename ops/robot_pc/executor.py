@@ -13,7 +13,7 @@ safety behaviour, inferred from its config and recordings (docs/robot_pc.md):
   max age) the loop HOLDS: the setpoint becomes the measured pose (no motion), the gripper keeps its last command;
 * nothing is sent before the first command (``tick`` returns None).
 
-In this revision the only sinks are MockSink / DryRunSink; the live sink is UNBOUND (``sinks.LiveSink``).
+In this revision the only sinks are MockSink / DryRunSink; ``sinks.LiveSink`` is refused (``safety.EXECUTION_PERMITTED``).
 """
 
 from __future__ import annotations

@@ -1,6 +1,6 @@
 """Shared command-line plumbing of the scripts/robot_pc entry points: arguments, policy selection from the server's
 WELCOME, recorded / live session setup. Never constructs a live sink (only ``execute.py`` asks for one, and it is
-UNBOUND)."""
+refused)."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from pathlib import Path
 from ops.robot_pc import config as C
 from ops.robot_pc import selection
 
-SAFETY = {"robot_commands_sent": 0, "controller_binding": "UNBOUND",
+SAFETY = {"robot_commands_sent": 0, "controller_binding": "message-format-only", "execution_permitted": False,
           "note": "dry run / replay only: no robot, arm, gripper or controller was contacted"}
 
 
@@ -59,16 +59,16 @@ def welcome(cfg: dict, args) -> dict:
     return msg.header
 
 
-def choose_policy(cfg: dict, args) -> tuple[str, str, dict]:
-    """(policy id, task, unbound input spec): explicit id or the unique deployable match; the task from the catalog
-    info unless given."""
+def choose_policy(cfg: dict, args) -> tuple[str, str, dict, dict]:
+    """(policy id, task, unbound input spec, catalog info): explicit id or the unique deployable match; the task from
+    the catalog info unless given."""
     offered = welcome(cfg, args)["policies"]
     pid = selection.select_policy(offered, args.policy, condition=args.condition, task=args.task, seed=args.seed)
     task = args.task or (offered[pid].get("info") or {}).get("task")
     if task is None:
         raise SystemExit(f"{pid}: the server gives no task; pass --task")
     C.task_entry(cfg, task)
-    return pid, task, offered[pid]["input_spec"]
+    return pid, task, offered[pid]["input_spec"], dict(offered[pid].get("info") or {})
 
 
 def rig_document(cfg: dict, task: str) -> Path | None:
@@ -77,9 +77,22 @@ def rig_document(cfg: dict, task: str) -> Path | None:
 
 
 def connect(cfg: dict, args, pid: str, choose, name: str):
+    """The persistent session; a server that requires the shared token while the token file is missing fails closed
+    with the path to fill (the token is never read from anywhere else, printed or passed on a command line)."""
+    from ops.policy_serving.client import ServingError
+
     client = C.client(cfg, pid, choose, name=name, token_file=args.token_file, host=args.host, port=args.port,
                       step_timeout_s=args.step_timeout_s)
-    client.connect()
+    try:
+        client.connect()
+    except ServingError as exc:
+        client.close()
+        if exc.code == "auth":
+            tok = C.path(cfg, args.token_file or (cfg.get("server") or {}).get("token_file"))
+            raise SystemExit(f"REFUSED: the policy server requires the shared token; token file {tok} is "
+                             f"{'present but rejected' if tok is not None and tok.is_file() else 'MISSING'} "
+                             "(user action: copy it there, mode 0600)") from exc
+        raise
     return client
 
 

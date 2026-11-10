@@ -3,9 +3,10 @@
 * ``MockSink``: records in memory (recorded replay, tests);
 * ``DryRunSink``: appends one JSON line per command to a log (or keeps them in memory); it opens no socket, device or
   port and never sends anything;
-* ``LiveSink``: the future manual execution path. It refuses to exist without an ``ExecutionAuthorization`` (explicit
-  manual mode: CLI flag + typed confirmation + config ``execution.armed``) and, even then, raises ``Unbound``: the robot
-  PC's teleop / switch_controller interface has not been inspected, so no binding to it exists in this revision.
+* ``LiveSink``: the future manual execution path, bound to switch_controller's RobotAction format. It refuses to exist
+  without an ``ExecutionAuthorization`` (explicit manual mode: CLI flag + typed confirmation + config
+  ``execution.armed``) and, in this revision, even with one (``safety.EXECUTION_PERMITTED`` is False); it never
+  creates a socket (the publisher is supplied by a future, separately approved caller).
 
 Nothing in setup, tests, replay, dry run or the benchmark constructs a ``LiveSink`` (tests/test_robot_pc.py).
 """
@@ -69,18 +70,40 @@ class DryRunSink(CommandSink):
 
 
 class LiveSink(CommandSink):
-    """UNBOUND. Constructing it requires an ExecutionAuthorization and still raises ``Unbound``."""
+    """The future manual execution path, bound to switch_controller's message format (``switch_controller.robot_action``:
+    the collector's RobotAction for the flange goal of each executor setpoint) and to a caller-supplied ``publisher``
+    (``.send(bytes)``; this package creates no command socket). Refused without an ``ExecutionAuthorization`` and,
+    in this revision, refused even with one (``safety.EXECUTION_PERMITTED`` is False). Gripper commands have no path
+    (the teleop collector owns the Robotiq port)."""
 
     mode = Mode.EXECUTE
     sends_to_robot = True
 
-    def __init__(self, authorization: ExecutionAuthorization):
+    def __init__(self, authorization: ExecutionAuthorization, publisher=None, *, robot_msg=None,
+                 target_dt: float | None = None):
+        from ops.robot_pc import safety
+
         if not isinstance(authorization, ExecutionAuthorization):
             raise ExecutionRefused("LiveSink requires an ExecutionAuthorization (manual execution mode)")
-        raise Unbound(f"controller binding {CONTROLLER_BINDING}: the robot PC's teleop / switch_controller interface "
-                      "(recorded endpoints tcp://127.0.0.1:28401 command, :28402 action, request "
-                      "ipc:///tmp/teleop_collector_requests.ipc; gripper /dev/ttyUSB0) has not been inspected read-only; "
-                      "no live command path exists in this revision (docs/robot_pc.md)")
+        if not safety.EXECUTION_PERMITTED:
+            raise ExecutionRefused("Directive I (2026-11-10): the robot is never operated; EXECUTION_PERMITTED is "
+                                   f"False (controller binding: {CONTROLLER_BINDING}, no command transport)")
+        if publisher is None or robot_msg is None:
+            raise Unbound("LiveSink needs the command publisher and robot_msg (the commander-owned :28402 PUB); "
+                          "none is created by this package")
+        from ops.robot_pc import switch_controller as sc
+
+        self.publisher, self.robot_msg = publisher, robot_msg
+        self.target_dt = sc.TARGET_DT_S if target_dt is None else float(target_dt)
+        self.sent = 0
+
+    def send(self, item) -> None:
+        from ops.robot_pc import switch_controller as sc
+
+        if getattr(item, "kind", None) not in ("track", "hold"):
+            raise ExecutionRefused("LiveSink sends only executor setpoints (track / hold), never raw policy commands")
+        self.publisher.send(self.robot_msg.encode(sc.robot_action(self.robot_msg, item.pose7, self.target_dt)))
+        self.sent += 1
 
 
 def make_sink(mode: Mode, *, log_path=None, authorization: ExecutionAuthorization | None = None) -> CommandSink:
@@ -88,4 +111,4 @@ def make_sink(mode: Mode, *, log_path=None, authorization: ExecutionAuthorizatio
         return MockSink()
     if mode is Mode.DRY_RUN:
         return DryRunSink(log_path)
-    return LiveSink(authorization)
+    return LiveSink(authorization)  # refused (no authorization / EXECUTION_PERMITTED False / no publisher)

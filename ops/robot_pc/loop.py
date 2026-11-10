@@ -99,7 +99,8 @@ def summarize(rows: list, *, route: str, mode: str, budget_ms: float = BUDGET_MS
     hz = (len(starts) - 1) / ((starts[-1] - starts[0]) / 1e9) if len(starts) > 1 and starts[-1] > starts[0] else None
     steady = [r["request_bytes"] for r in ok if r.get("frames_sent") is not None][1:]
     return {
-        "route": route, "mode": mode, "steps_sent": len(measured), "ok": len(ok),
+        "route": route, "mode": mode, "warmup_steps_discarded": min(warmup, len(sent)), "steps_sent": len(measured),
+        "ok": len(ok),
         "commands": sum(r.get("command") is not None for r in measured),
         "rejected": dict(collections.Counter(r["rejected"] for r in measured if r.get("rejected"))),
         "errors": dict(collections.Counter(r.get("code") or r["status"] for r in measured if r["status"] != "ok")),

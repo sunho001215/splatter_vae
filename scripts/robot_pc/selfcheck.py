@@ -1,6 +1,6 @@
 """ROBOT PC self-check after setup (no device access, no robot, no session): interpreter and pinned packages, the
 client stack imports WITHOUT torch, bundle file / asset sha256s, the M5 helper on the shipped URDF + surface asset,
-the rig documents, the safety configuration (execution not armed, binding UNBOUND, manual mode refused), the token
+the rig documents, the safety configuration (execution not armed, not permitted, manual mode refused), the token
 file's permissions; with ``--server`` also the server's WELCOME through the tunnel (no session is opened).
 
     venv/bin/python -I src/scripts/robot_pc/selfcheck.py [--server]
@@ -22,7 +22,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 import numpy as np  # noqa: E402
 
 PINS = {"numpy": "1.26.4", "PIL": "11.3.0", "yaml": "6.0.3", "scipy": "1.15.3", "h5py": "3.16.0"}
-OPTIONAL = {"pyrealsense2": "2.59.1"}
+OPTIONAL = {"pyrealsense2": "2.59.1", "zmq": "27.2.0", "robot_msg": "0.4.0"}
+DISTRIBUTIONS = {"robot_msg": "robot-msg-irsl"}
 
 
 def sha256(path: Path) -> str:
@@ -52,6 +53,7 @@ def main(argv=None) -> int:
 
     check("python", sys.version_info[:2] == (3, 12), platform.python_version())
     import importlib
+    import importlib.metadata
 
     import ops.policy_serving.client  # noqa: F401
     import ops.robot_pc.cli  # noqa: F401
@@ -64,12 +66,14 @@ def main(argv=None) -> int:
     versions = {}
     for mod, want in {**PINS, **OPTIONAL}.items():
         try:
-            versions[mod] = getattr(importlib.import_module(mod), "__version__", "?")
+            versions[mod] = getattr(importlib.import_module(mod), "__version__", None) or \
+                importlib.metadata.version(DISTRIBUTIONS.get(mod, mod))
         except ImportError:
             versions[mod] = None
     for mod, want in PINS.items():
         check(f"pin_{mod}", versions[mod] == want, versions[mod])
     checks["pyrealsense2"] = {"ok": True, "detail": versions["pyrealsense2"] or "not installed (live acquisition off)"}
+    checks["live_state_reader_deps"] = {"ok": True, "detail": {k: versions[k] for k in ("zmq", "robot_msg")}}
 
     from ops.robot_pc import cli
     from ops.robot_pc import config as C

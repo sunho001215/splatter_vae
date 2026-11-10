@@ -9,7 +9,8 @@ Reported per mode (client monotonic clock): p50/p95/p99/max of preprocessing->ac
 capture->validated command (replay: capture = release time, no camera latency), replay acquisition (JPEG decode +
 rs.align emulation), client preprocessing, serialisation, transport (round trip - server time), server prep / queue /
 encoder / FQL / total, action validation; achieved Hz, payload bytes (first = history fill / steady / response),
-missed 66.7 ms deadlines. Live camera latency (device stamp -> host, ~65 ms in the recordings) and native rs.align
+missed 66.7 ms deadlines, PING round trips, session-open (HELLO, incl. a first lazy load) time and whether the policy
+was resident before (catalog info). The first ``--warmup`` sent steps of each mode are excluded. Live camera latency (device stamp -> host, ~65 ms in the recordings) and native rs.align
 are measured only by dry_run.py on the robot PC.
 """
 
@@ -32,7 +33,9 @@ def main(argv=None) -> int:
     cli.add_common(ap)
     ap.add_argument("--episode", type=Path, required=True)
     ap.add_argument("--start", type=int, default=0)
-    ap.add_argument("--steps", type=int, default=150, help="reference frames per mode")
+    ap.add_argument("--steps", type=int, default=150, help="reference frames per mode (incl. warm-up)")
+    ap.add_argument("--warmup", type=int, default=10, help="first sent steps per mode excluded from the statistics")
+    ap.add_argument("--pings", type=int, default=20, help="PING round trips after each session opens")
     ap.add_argument("--modes", default="realtime,max")
     ap.add_argument("--route", required=True, help="label of the measured route, e.g. 'robotpc -> 5090 (ssh -L)'")
     ap.add_argument("--rows-dir", type=Path, default=None)
@@ -50,7 +53,7 @@ def main(argv=None) -> int:
         try:
             _, summary = replay_episode(cfg, args, episode=args.episode, pace=mode, start=args.start,
                                         count=args.steps, name=f"robot-pc-bench-{mode}", on_row=rows_out,
-                                        route=args.route)
+                                        route=args.route, warmup=args.warmup, pings=args.pings)
         finally:
             rows_out.close()
         out["runs"].append(summary)

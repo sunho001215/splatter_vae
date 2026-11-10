@@ -1,12 +1,14 @@
 """Robot-PC side of real-world policy deployment (Directive I, 2026-11-10; docs/robot_pc.md). CPU only, no torch.
 
-- ``safety``: execution-mode guard (manual mode needs CLI flag + typed confirmation + config armed; binding UNBOUND);
+- ``safety``: execution-mode guard (manual mode needs CLI flag + typed confirmation + config armed; EXECUTION_PERMITTED
+  False in this revision);
 - ``sinks``: controller-integration interface: ``MockSink`` (replay), ``DryRunSink`` (logs, never sends),
-  ``LiveSink`` (refuses without authorization, then raises Unbound);
+  ``LiveSink`` (refuses without authorization; refused in this revision even with it);
 - ``validation`` / ``poses``: robot-side action validation (finite, contract range, per-step lead, workspace, gripper,
   binding to the observation's measured pose, expiry);
 - ``executor``: the local high-rate loop (rate-limited tracking of the bound absolute goal, hold on expiry);
-- ``robot_state``: read-only robot state (recorded replay, static latency-only, live UNBOUND skeleton);
+- ``robot_state``: read-only robot state (recorded replay, static latency-only); ``switch_controller``: the real
+  interface (RobotState reader with approval, RobotAction format, flange <-> controller ee frame);
 - ``cameras`` / ``devices``: RealSense acquisition with the training preprocessing, device-busy guard;
 - ``selection``: policy / task / camera selection and session choices from the server's contracts;
 - ``loop``: one policy step + latency summary; ``replay`` / ``dryrun``: the two drivers; ``config``: config reader.

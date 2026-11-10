@@ -38,6 +38,8 @@ PIPWHL="$(ls "$BUNDLE"/wheels/pip-*.whl)"
   -r "$BUNDLE/wheels/requirements-pip.txt"
 "$VPY" -m pip install --quiet --no-index --find-links "$BUNDLE/wheels" --require-hashes \
   -r "$BUNDLE/wheels/requirements.txt"
+"$VPY" -m pip install --quiet --no-index --find-links "$BUNDLE/wheels" --require-hashes \
+  -r "$BUNDLE/wheels/requirements-live.txt" || echo "[setup] WARNING: pyzmq / robot-msg-irsl not installed (no live state reader)"
 if [ "$REALSENSE" = 1 ]; then
   "$VPY" -m pip install --quiet --no-index --find-links "$BUNDLE/wheels" --require-hashes \
     -r "$BUNDLE/wheels/requirements-realsense.txt" || echo "[setup] WARNING: pyrealsense2 not installed (replay still works)"

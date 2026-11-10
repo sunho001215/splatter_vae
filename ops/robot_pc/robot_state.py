@@ -11,9 +11,8 @@ robot PC's CLOCK_MONOTONIC.
 * ``RecordedRobotState``: a recording (replay), optionally shifted onto the current monotonic clock;
 * ``StaticLatencyState``: a fixed, labelled state for LATENCY measurements with live cameras while the live source is
   unbound (its actions are meaningless and only ever reach the DryRunSink);
-* ``LiveRobotState``: UNBOUND skeleton of the read-only live source (raises): the robot PC's state publisher
-  (recorded ``robot.state_endpoint`` tcp://127.0.0.1:28400) and the gripper register (serial /dev/ttyUSB0, owned by
-  the teleop collector) have not been inspected; docs/robot_pc.md lists what is inferred from the recordings.
+* the live read-only source is ``ops.robot_pc.switch_controller.LiveStateReader`` (SUB to switch_controller's
+  RobotState PUB; only with explicit approval; no gripper source exists: docs/robot_pc.md).
 """
 
 from __future__ import annotations
@@ -22,7 +21,6 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from ops.robot_pc.safety import CONTROLLER_BINDING, Unbound
 
 
 class StateUnavailable(ValueError):
@@ -92,7 +90,7 @@ class StaticLatencyState(RobotStateSource):
     every observation. Its actions are meaningless; the dry run labels every row with it."""
 
     kind = "static_latency_only"
-    label = "STATIC LATENCY-ONLY STATE: fixed pose, actions meaningless (live robot state source UNBOUND)"
+    label = "STATIC LATENCY-ONLY STATE: fixed pose, actions meaningless (no live robot state in this run)"
 
     def __init__(self, pose7, q7, gripper_register: float):
         self.pose7 = tuple(float(x) for x in np.asarray(pose7, np.float64).reshape(7))
@@ -108,16 +106,3 @@ class StaticLatencyState(RobotStateSource):
         grip = [(t, self.register) for t in range((int(after_ns) // 10_000_000 + 1) * 10_000_000, int(up_to_ns) + 1,
                                                   10_000_000)]
         return robot, grip
-
-
-class LiveRobotState(RobotStateSource):
-    """UNBOUND read-only live source. Constructing it raises: nothing connects to the robot PC's state endpoint until
-    its publisher (switch_controller / teleop collector) has been inspected read-only."""
-
-    kind = "live"
-
-    def __init__(self, *_, **__):
-        raise Unbound(f"live robot state {CONTROLLER_BINDING}: inferred read-only sources (not connected): "
-                      "robot.state_endpoint tcp://127.0.0.1:28400 (switch_controller state, ~1 kHz seq), gripper "
-                      "register via the teleop collector (it owns /dev/ttyUSB0; a second serial reader would "
-                      "interfere); bind only after reading the robot PC's code (docs/robot_pc.md)")

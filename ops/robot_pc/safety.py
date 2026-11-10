@@ -1,12 +1,15 @@
 """Execution-mode guard of the robot PC: nothing in this package can command a robot unless a human explicitly selects
-the manual execution mode, and even then the live controller binding is UNBOUND (raises) until the robot PC's own
-teleop / switch_controller code has been inspected read-only and the binding written against it.
+the manual execution mode, and in this revision not even then.
 
-Three independent conditions are required to obtain an ``ExecutionAuthorization`` (``authorize_execution``):
-the ``--execute`` command-line flag, the typed confirmation phrase ``CONFIRMATION`` and ``execution.armed: true`` in
-the robot-PC config file. The authorization object cannot be built any other way (private construction token), and
-``sinks.LiveSink`` refuses to exist without one. Setup, tests, recorded replay, dry run and the benchmark never call
-``authorize_execution``. Standard library only.
+Four independent conditions are required to obtain an ``ExecutionAuthorization`` (``authorize_execution``):
+the ``--execute`` command-line flag, the typed confirmation phrase ``CONFIRMATION``, ``execution.armed: true`` in
+the robot-PC config file, and a policy whose server catalog entry says ``execution_eligible: true`` (a missing field is
+NOT eligible: fail closed; e.g. DynaMo is dry-run / replay only by user decision 2026-11-10). The authorization object cannot be built any other way (private construction token), and
+``sinks.LiveSink`` refuses to exist without one. On top, ``EXECUTION_PERMITTED`` is False for Directive I (the robot is
+never operated): ``LiveSink`` refuses even an authorized construction. The controller binding is the MESSAGE FORMAT
+only (``switch_controller.robot_action``, written from the robot PC's code); no command transport (socket) exists in
+this package. Setup, tests, recorded replay, dry run and the benchmark never call ``authorize_execution``.
+Standard library only.
 """
 
 from __future__ import annotations
@@ -15,7 +18,8 @@ import enum
 import time
 from dataclasses import dataclass, field
 
-CONTROLLER_BINDING = "UNBOUND"  # the robot PC's teleop/switch_controller interface has not been inspected yet
+CONTROLLER_BINDING = "message-format-only"  # switch_controller RobotAction built from its code; no command transport
+EXECUTION_PERMITTED = False  # Directive I (2026-11-10): the robot is never operated; a later directive may lift it
 CONFIRMATION = "I am at the robot, the workspace is clear and the emergency stop is in my hand"
 _TOKEN = object()  # only authorize_execution can construct an ExecutionAuthorization
 
@@ -23,7 +27,7 @@ _TOKEN = object()  # only authorize_execution can construct an ExecutionAuthoriz
 class Mode(str, enum.Enum):
     REPLAY = "replay"  # recorded episode -> server -> MockSink (no camera, no robot)
     DRY_RUN = "dry_run"  # live cameras + read-only state -> server -> validation -> DryRunSink (never sends)
-    EXECUTE = "execute"  # future manual mode: LiveSink (UNBOUND in this revision: always refuses)
+    EXECUTE = "execute"  # future manual mode: LiveSink (refused in this revision: EXECUTION_PERMITTED is False)
 
 
 class ExecutionRefused(RuntimeError):
@@ -31,7 +35,7 @@ class ExecutionRefused(RuntimeError):
 
 
 class Unbound(RuntimeError):
-    """A robot-side interface whose real implementation has not been inspected; it never connects to anything."""
+    """A robot-side interface that is not available (not approved, or no read-only source exists); nothing connects."""
 
 
 @dataclass(frozen=True)
@@ -46,9 +50,14 @@ class ExecutionAuthorization:
             raise ExecutionRefused("an ExecutionAuthorization is only issued by authorize_execution()")
 
 
-def authorize_execution(*, cli_execute: bool, typed_confirmation: str | None, config_armed: bool) -> \
-        ExecutionAuthorization:
-    """All three explicit conditions, or ExecutionRefused naming every missing one."""
+def execution_eligible(policy_info: dict | None) -> bool:
+    """The catalog's explicit per-policy execution flag; anything but ``True`` (missing included) is not eligible."""
+    return isinstance(policy_info, dict) and policy_info.get("execution_eligible") is True
+
+
+def authorize_execution(*, cli_execute: bool, typed_confirmation: str | None, config_armed: bool,
+                        policy_info: dict | None = None) -> ExecutionAuthorization:
+    """All four explicit conditions, or ExecutionRefused naming every missing one."""
     missing = []
     if cli_execute is not True:
         missing.append("the --execute flag")
@@ -56,7 +65,11 @@ def authorize_execution(*, cli_execute: bool, typed_confirmation: str | None, co
         missing.append(f"the typed confirmation {CONFIRMATION!r}")
     if config_armed is not True:
         missing.append("execution.armed: true in the robot-PC config")
+    if not execution_eligible(policy_info):
+        missing.append(f"a policy whose catalog entry is execution_eligible: true (got "
+                       f"{(policy_info or {}).get('execution_eligible', 'missing')!r})")
     if missing:
         raise ExecutionRefused("manual execution mode NOT selected; missing: " + "; ".join(missing))
     return ExecutionAuthorization(Mode.EXECUTE, time.monotonic_ns(),
-                                  ("cli --execute", "typed confirmation", "config execution.armed"), _TOKEN)
+                                  ("cli --execute", "typed confirmation", "config execution.armed",
+                                   "policy execution_eligible"), _TOKEN)
