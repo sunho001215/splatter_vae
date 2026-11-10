@@ -65,9 +65,10 @@ def main(argv=None, *, operator_input=input) -> int:
 
     try:
         # ------------------------------------------------------------------ preflight
-        st = tunnel.status(root, int(args.port or (cfg.get("server") or {}).get("port", 47100)))
-        say(f"server route: {'OK' if st['welcome'] else 'NO WELCOME'} {st}")
-        if not st["welcome"]:
+        port = int(args.port or (cfg.get("server") or {}).get("port", 47100))
+        w = tunnel.welcome(port)  # (the tunnel's pid identity is not checkable under `sg dialout`: other gid)
+        say(f"server route 127.0.0.1:{port}: {'WELCOME ' + str(w) if w else 'NO WELCOME (tunnel.py status / start)'}")
+        if not w:
             return 2
         devices.require_free(allow_controller=True)  # no teleop collector / recorder / camera holder
         if not devices.scan(ipc_paths=())["controllers"]:

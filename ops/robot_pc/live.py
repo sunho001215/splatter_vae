@@ -1,6 +1,7 @@
 """The live session of the robot PC (Directive J): live RealSense cameras + switch_controller RobotState (read-only
 SUB) + measured Robotiq state -> policy server (newest observation, 15 Hz) -> validation -> the local 500 Hz executor
--> DryRunSink (dry run: computed, validated, recorded, NOT sent) or LiveSink (execution: ControllerLink + gripper
+-> DryRunSink (dry run: computed, validated, recorded, NOT sent; the executor's measured pose is then an ideal
+follower of its own setpoints, since the real robot does not move - health checks still use the real stream) or LiveSink (execution: ControllerLink + gripper
 command), with the whole session recorded (``recorder.SessionRecorder``).
 
 Stops (any of them ends the session; in execution the link then holds at the measured pose and requests IDLE):
@@ -81,7 +82,10 @@ class LiveSession:
             t0 = time.monotonic()
             s = self.state.latest()
             if s is not None:
-                sp = self.executor.tick(time.monotonic_ns(), s["flange_pose7"], state_t_ns=s["t_ns"],
+                measured = s["flange_pose7"]
+                if not self.sent and self.executor._setpoint is not None:  # dry run: nothing is sent, so the robot
+                    measured = self.executor._setpoint  # cannot follow; an ideal follower (labelled) keeps the shaping
+                sp = self.executor.tick(time.monotonic_ns(), measured, state_t_ns=s["t_ns"],
                                         signature=s["signature"])
                 if sp is not None:
                     try:
