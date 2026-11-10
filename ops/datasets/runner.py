@@ -505,12 +505,19 @@ class Runner:
                     report = archives.verify_cameras(staging, item["archive"]["members"], item["archive"]["expanded"])
                 self.state.update(item_id, status="publishing", extracted=report)
                 self.state.save(force=True)
+            verified_bytes = None
+            if item["group"] == "pw_flows":  # the verified staging report excludes non-episode members
+                verified_bytes = self.state.items[item_id].get("extracted", {}).get("bytes")
+                if verified_bytes is None:
+                    if expected is None or others:  # nothing exact to check the published bytes against
+                        self.state.update(item_id, status="downloaded")
+                        raise archives.ExtractionError("publishing without a verified byte report: extracting again")
+                    verified_bytes = expected
             for kind in item["archive"]["kinds"]:
                 archives.publish(staging, kind, self.pointworld_root())
-            if item["group"] == "pw_flows":  # against the verified staging report (non-episode members excluded)
+            if item["group"] == "pw_flows":
                 report = archives.verify_published(self.pointworld_root(), "flows-fs-optimized",
-                                                   [f"{m}_flows.h5" for m in members],
-                                                   self.state.items[item_id].get("extracted", {}).get("bytes"))
+                                                   [f"{m}_flows.h5" for m in members], verified_bytes)
             else:
                 report = self.state.items[item_id].get("extracted", {})
             archives.clear_staging(staging)

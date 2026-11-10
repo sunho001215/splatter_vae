@@ -1065,3 +1065,18 @@ def test_memory_pressure_rule_follows_our_cgroup_with_a_host_floor(tmp_path):
     own.mkdir(parents=True)
     (own / "memory.pressure").write_text("some avg10=3.25 avg60=0 avg300=0 total=1\nfull avg10=0\n")
     assert health.read_psi("memory.pressure", own) == 3.25
+
+
+
+def test_resumed_publication_without_a_byte_report_extracts_again(server, tmp_path):
+    root, plan, owner = owner_with_selection(server, tmp_path)
+    item = owner.by_id["t/pw/f0"]
+    owner.plan["flow_members"]["shard-000000"] = sorted(EPISODES + ["migration_state_h5_repack_droid_qnorm1_g"])
+    archive = root / item["dest"]
+    archive.parent.mkdir(parents=True)
+    archive.write_bytes(server.files["pw/f0"])
+    owner.state.update("t/pw/f0", status="publishing")  # an old record: no extracted.bytes
+    owner.stop_event.set()  # skip the 60 s back-off after the error
+    owner.extract_single(item)
+    record = owner.state.items["t/pw/f0"]
+    assert record["status"] == "downloaded" and archive.exists() and "byte report" in record["error"]
