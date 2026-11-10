@@ -20,7 +20,7 @@ from pathlib import Path
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from ops.robot_pc import cli, conservative  # noqa: E402
+from ops.robot_pc import cli  # noqa: E402
 from ops.robot_pc.hwtests import Cancelled, HardwareTest  # noqa: E402
 
 
@@ -55,7 +55,9 @@ def main(argv=None, *, operator_input=input) -> int:
     args = ap.parse_args(argv)
     if args.test == "gripper":
         try:
-            closures = conservative.gripper_closures(args.closures)
+            closures = [float(c) for c in args.closures]
+            if not closures or any(not math.isfinite(c) or not 0.0 <= c <= 1.0 for c in closures):
+                raise ValueError(f"gripper closures must be in [0, 1]: {args.closures}")
         except ValueError as exc:
             ap.error(str(exc))
         if not math.isfinite(args.dwell_s) or not 0.5 <= args.dwell_s <= 5:
@@ -68,7 +70,8 @@ def main(argv=None, *, operator_input=input) -> int:
             ap.error("drift and dq limits must be finite and positive")
         parameters = {"duration_s": args.duration_s, "max_drift_mm": args.max_drift_mm,
                       "max_drift_deg": args.max_drift_deg, "max_dq": args.max_dq}
-    cfg, applied = conservative.tighten(cli.load_config(args), "slow")
+    cfg = cli.load_config(args)
+    gcfg = cfg.get("gripper") or {}
     opened, previous_signals, session_box = [], {}, {}
     stop = threading.Event()  # one event throughout preflight, ENTER, engagement, streaming and shutdown
     shutdown = live.MotionShutdown(stop, report=say)
@@ -153,7 +156,7 @@ def main(argv=None, *, operator_input=input) -> int:
             cameras.bind(K)
             say(f"scene camera: {args.camera} (native RGB only)")
         gripper = GripperWorker(RobotiqRTU, read_only=args.rehearse or args.test != "gripper",
-                                speed=conservative.GRIPPER_TEST["speed"], force=conservative.GRIPPER_TEST["force"])
+                                speed=int(gcfg.get("speed", 146)), force=int(gcfg.get("force", 255)))
         shutdown.gripper = gripper
         gripper.start()
         deadline = time.monotonic() + 1.0
@@ -182,7 +185,6 @@ def main(argv=None, *, operator_input=input) -> int:
             say(f"recording to {recorder.session_dir}")
         session = HardwareTest(args.test, parameters=parameters, cfg=cfg, state=state, rehearse=args.rehearse,
                                stop_event=stop, shutdown=shutdown, recorder=recorder, cameras=cameras, cams=cams)
-        say(f"profile slow: {applied}")
         session.prepare()
         check_cancel()
         if args.rehearse:

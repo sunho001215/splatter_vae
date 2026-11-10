@@ -203,7 +203,6 @@ class LiveSession:
         self._rec_robot_t = self._rec_grip_t = self._rec_write_t = self._rec_hold_t = 0
         self.tick_periods_ns: list = []  # measured executor loop periods (local control rate evidence)
         self._gripper_health = None
-        self._follow = None  # FollowMonitor, created at the first sent setpoint
 
     def accept(self, cmd) -> bool:
         with self._command_lock:
@@ -276,16 +275,12 @@ class LiveSession:
                             break
                         outcome = self.sink.send(sp)
                         sent = self.sent
-                        if self.sent:
-                            self._check_following(sp, s["flange_pose7"])
                         detail = json.dumps(outcome) if outcome is not None else ""
                     except Exception as exc:  # noqa: BLE001 - a failed send ends the session
                         detail = str(exc)
                         self.stop(f"command send failed: {exc}")
                     if self.recorder is not None:
                         self.recorder.executed(sp.t_ns, sp.kind, sp.pose7, sp.gripper_closure, sent, detail)
-                elif self._follow is not None:
-                    self._follow.pause()
                 if self.executor.stopped and not self.stop_event.is_set():
                     self.stop(f"executor stop: {self.executor.stopped}")
             next_t += period
@@ -293,19 +288,6 @@ class LiveSession:
             if delay < -period:  # overrun by more than a period: resynchronise instead of bursting
                 next_t, delay = time.monotonic(), 0.0
             self.stop_event.wait(max(0.0, delay))
-
-    def _check_following(self, sp, measured) -> None:
-        """ops/robot_pc/following.py: no motion at all since engagement (mode not accepted) or no progress toward
-        the command (position / rotation) for 1 s; an error at the lead while the robot moves is normal tracking."""
-        if self._follow is None:
-            from ops.robot_pc.following import FollowMonitor
-
-            lim = self.executor.limiter
-            self._follow = FollowMonitor(lead_m=self.executor.lead_m, lead_rad=self.executor.lead_rad,
-                                         max_speed=lim.v_max, max_ang_speed=lim.w_max)
-        reason = self._follow.update(sp.t_ns, sp.pose7, measured)
-        if reason is not None:
-            self.stop(reason)
 
     def loop_stats(self) -> dict:
         """Executor (local control loop) and policy-step rates of this session, measured."""
@@ -404,20 +386,21 @@ class LiveSession:
                 if newest is None:
                     time.sleep(0.001)
                     continue
-                accepted_before = self._accepted
                 row = self.loop.step(*newest, acquire_ms=acquire)
                 self.rows.append(row)
                 if self.recorder is not None:
                     self.recorder.step(row)
                     if row.get("command"):
                         self.recorder.command(row["command"])
-                failed = 0 if self._accepted > accepted_before else failed + 1
+                # policy-server / route failures only (no answer): a validation rejection just sends nothing
+                failed = 0 if row.get("status") == "ok" else failed + 1
                 if self.on_status is not None:
                     self.on_status(row)
                 if row.get("terminal"):
                     self.stop("session taken over by another client")
                 elif failed >= self.max_failed:
-                    self.stop(f"{failed} consecutive steps without an action ({row.get('code') or row.get('status')})")
+                    self.stop(f"policy server: {failed} consecutive steps without an answer "
+                              f"({row.get('code') or row.get('status')})")
         except KeyboardInterrupt:
             self.stop("operator Ctrl-C")
         except BaseException as exc:

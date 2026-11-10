@@ -1,9 +1,16 @@
-"""ROBOT PC launcher: live inference with switch_controller, the measured Robotiq gripper, the cameras and the 5090 policy
-server; every session recorded under inference_outputs/. DRY RUN by default (commands computed, validated, recorded,
-NOT sent); ``--execute`` arms the execution mode, which starts only when the operator presses ENTER.
+"""ROBOT PC inference: ONE entry point. Choose the policy by task / method / seed (or --policy), the cameras by NAME
+(config/camera_names.yaml: left / middle / right), run it on the robot (default: starts on the operator's ENTER) or as
+a --dry-run (commands computed and recorded, NOT sent). Every run is recorded to
+inference_outputs/<task>_<method>_seed<N>_<cameras>_runNNN/ (inference.h5, <camera>.mp4, config.json, summary.json).
 
-    venv/bin/python -I src/scripts/robot_pc/run.py --policy reviwo-drawer-open-s0 --duration-s 20          # dry run
-    sg dialout -c "venv/bin/python -I src/scripts/robot_pc/run.py --policy reviwo-drawer-open-s0 --execute"  # live
+    venv/bin/python -I src/scripts/robot_pc/infer.py --list                                   # what can run
+    sg dialout -c "venv/bin/python -I src/scripts/robot_pc/infer.py --task drawer-open --method e2e_cnn --seed 0 \
+        --cameras right --duration-s 30"                                                     # on the robot
+    sg dialout -c "venv/bin/python -I src/scripts/robot_pc/infer.py --task drawer-open --method reviwo --seed 1 --dry-run"
+
+No workspace box, speed / acceleration cap or lead limit is applied (user directive K): the policy's goal is
+interpolated at 500 Hz over one policy period and streamed; only setpoints switch_controller would reject (> 0.2 m /
+0.5 rad from the measured pose) are not sent.
 
 Stop at any time: Ctrl-C, ``s`` + ENTER, or SIGTERM (the robot then holds the measured pose and switch_controller is
 asked for IDLE); the hardware e-stop stays the operator's. Preflight (console): tunnel / server WELCOME, no teleop
@@ -40,34 +47,36 @@ def main(argv=None, *, operator_input=input) -> int:
     from ops.robot_pc.sinks import DryRunSink
     from ops.robot_pc.switch_controller import LiveStateReader, state_blockers
 
-    ap = argparse.ArgumentParser(prog="run.py", description=__doc__.split("\n")[0])
+    ap = argparse.ArgumentParser(prog="infer.py", description=__doc__.split("\n")[0])
     cli.add_common(ap)
-    ap.add_argument("--execute", action="store_true", help="arm the execution mode (starts on the operator's ENTER)")
+    ap.add_argument("--method", "--baseline", dest="condition", default=None,
+                    help="method / baseline name of the catalog (reviwo, e2e_cnn, sincro, dynamo, ...); with --task "
+                         "and --seed it selects the policy (or give --policy <id>)")
+    ap.add_argument("--cameras", default=None,
+                    help="camera NAMES, comma separated (config/camera_names.yaml), e.g. right or left,middle,right; "
+                         "default: what the policy contract requires (its first trained camera)")
+    ap.add_argument("--dry-run", action="store_true", help="compute, validate and record commands; send NOTHING")
+    ap.add_argument("--list", action="store_true", help="list tasks / methods / seeds and execution eligibility")
     ap.add_argument("--steps", type=int, default=None)
     ap.add_argument("--duration-s", type=float, default=None)
     ap.add_argument("--gripper", choices=("measured", "static"), default="measured",
                     help="static = a labelled fixed register, DRY RUN only (no gripper access)")
     ap.add_argument("--no-record", action="store_true")
     ap.add_argument("--route", default="direct robotpc->5090 ssh -L")
-    ap.add_argument("--profile", choices=("slow", "none"), default=None,
-                    help="tighten-only motion profile (ops/robot_pc/conservative.py); default: slow with --execute, "
-                         "none for a dry run (pass --profile slow to rehearse the execution limits)")
     ap.add_argument("--fault-after-s", type=float, default=None,
                     help="DRY RUN ONLY: raise an injected error after N s (verifies error-terminated recording)")
     args = ap.parse_args(argv)
+    args.execute = not args.dry_run
+    if args.camera is not None and args.cameras is not None:
+        ap.error("give camera names with --cameras (or one serial with --camera), not both")
     if args.execute and args.gripper != "measured":
         ap.error("execution needs the measured gripper")
     if args.execute and args.fault_after_s is not None:
         ap.error("--fault-after-s is a dry-run test option")
     cfg = cli.load_config(args)
-    profile = args.profile or ("slow" if args.execute else "none")
-    if args.execute and profile != "slow":
-        ap.error("execution runs with the conservative 'slow' profile (P3)")
-    applied = {}
-    if profile != "none":
-        from ops.robot_pc import conservative
-
-        cfg, applied = conservative.tighten(cfg, profile)
+    if args.list:
+        return list_policies(cfg, args)
+    names = camera_names(cfg)
     root = Path(cfg["root"])
     opened = []  # cleanup stack
     failure = {"error": "launcher exited abnormally"}
@@ -146,11 +155,9 @@ def main(argv=None, *, operator_input=input) -> int:
         if args.gripper == "measured":
             from ops.robot_pc.gripper import GripperWorker, RobotiqRTU
 
-            from ops.robot_pc.conservative import GRIPPER_TEST
-
-            gripper = GripperWorker(RobotiqRTU, read_only=not args.execute,
-                                    **({"speed": GRIPPER_TEST["speed"], "force": GRIPPER_TEST["force"]}
-                                       if profile == "slow" else {}))
+            gcfg = cfg.get("gripper") or {}
+            gripper = GripperWorker(RobotiqRTU, read_only=not args.execute, speed=int(gcfg.get("speed", 146)),
+                                    force=int(gcfg.get("force", 255)))
             shutdown.gripper = gripper
             gripper.start()
             # 0x09 on the first reads of an idle bus can clear normally. Give readiness up to 1 s.
@@ -179,9 +186,9 @@ def main(argv=None, *, operator_input=input) -> int:
         if args.execute and not execution_eligible(info):
             say("REFUSED: the catalog does not mark this policy execution_eligible")
             return 3
-        cams = selection.session_cameras(spec, args.camera)
-        if spec.get("views", 1) > 1 or len(cams) != 1:
-            raise ExecutionRefused("live multiview sync sets are not implemented; select a single-camera policy")
+        cams = resolve_cameras(spec, names, args.cameras, args.camera)
+        cam_label = "-".join(_name(names, c) for c in cams)
+        say(f"cameras: {', '.join(f'{_name(names, c)}={c}' for c in cams)}")
         cc = cfg.get("cameras") or {}
         hw = tuple(cc.get("native_hw", (480, 640)))
         rig = cli.rig_document(cfg, task)
@@ -192,49 +199,35 @@ def main(argv=None, *, operator_input=input) -> int:
         K = cameras.start(corrections)
         choices = selection.session_choices(spec, cams, native_hw={c: hw for c in cams}, K_native=K, rig_document=rig,
                                             identity_depth=args.identity_depth)
-        client = cli.connect(cfg, args, pid, choices, "robot-pc-run")
+        client = cli.connect(cfg, args, pid, choices, "robot-pc-infer")
         opened.append(client.close)
         cameras.bind(K)
         recorder = None
         if not args.no_record:
             from ops.robot_pc.recorder import SessionRecorder
 
-            meta = {"policy": pid, "task": task, "catalog_info": info, "mode": "execute" if args.execute else "dry_run",
-                    "profile": profile,
-                    "cameras": cams, "route": args.route, "gripper_origin": getattr(gripper, "origin", None),
-                    "config": cfg, "bundle": str(root / "BUNDLE.json")}
-            recorder = SessionRecorder(root, meta=meta, cameras={c: {"native_hw": list(hw), "depth": False,
-                                                                     "K_native": K[c].tolist(),
-                                                                     "calibration": choices.get("calibration", {}).get(c)}
-                                                                 for c in cams})
+            method, seed = info.get("condition") or "policy", info.get("seed")
+            experiment = {"policy": pid, "task": task, "method": method, "seed": seed,
+                          "mode": "execute" if args.execute else "dry_run", "duration_s": args.duration_s,
+                          "steps": args.steps, "cameras": [{"name": _name(names, c), "serial": c} for c in cams],
+                          "camera_names_file": str(C.path(cfg, (cfg.get("cameras") or {}).get("names_file"))),
+                          "camera_names": names, "catalog_info": info, "input_spec": spec, "route": args.route,
+                          "gripper_origin": getattr(gripper, "origin", None),
+                          "gripper": {"speed": getattr(gripper, "speed", None), "force": getattr(gripper, "force", None)},
+                          "config": cfg, "bundle": str(root / "BUNDLE.json"), "argv": list(argv or sys.argv[1:])}
+            prefix = f"{task}_{method}_seed{seed if seed is not None else 'x'}_{cam_label}"
+            recorder = SessionRecorder(root, meta=experiment, run_prefix=prefix,
+                                       camera_names={c: _name(names, c) for c in cams},
+                                       files={"config.json": experiment},
+                                       cameras={c: {"native_hw": list(hw), "depth": False, "K_native": K[c].tolist(),
+                                                    "calibration": choices.get("calibration", {}).get(c)}
+                                                for c in cams})
             def close_recorder():
                 summary = recorder.close(recording_status, failure["error"])
                 say(f"recorded: {summary.get('session_dir')}")
             opened.append(close_recorder)
             say(f"recording to {recorder.session_dir}")
         limits = C.limits(cfg, task)
-        def start_limits():
-            base = C.limits(cfg, task)
-            if profile == "none":
-                return base
-            from ops.robot_pc import conservative
-
-            start = state.latest()
-            if start is None:
-                raise ExecutionRefused("no robot state for the start box")
-            boxed = conservative.test_box(base, start["flange_pose7"],
-                                          conservative.PROFILES[profile]["test_radius_m"])
-            say(f"profile {profile}: executor {applied}; goals within {conservative.PROFILES[profile]['test_radius_m']}"
-                f" m of the start: box {[round(x, 3) for x in boxed.workspace_min_m]}.."
-                f"{[round(x, 3) for x in boxed.workspace_max_m]}")
-            if recorder is not None:
-                recorder.event(time.monotonic_ns(), json.dumps({"profile": profile, "applied": applied,
-                                                                "start_flange_pose7": list(start["flange_pose7"]),
-                                                                "workspace_min_m": boxed.workspace_min_m,
-                                                                "workspace_max_m": boxed.workspace_max_m}))
-            return boxed
-        if not args.execute:
-            limits = start_limits()
         ex = cfg.get("executor") or {}
         executor = HighRateExecutor(_Discard(), **{k: ex[k] for k in ex})  # the session thread sends
         check_cancel()  # before engagement (including the operator prompt)
@@ -251,9 +244,8 @@ def main(argv=None, *, operator_input=input) -> int:
                 stop.set()
             check_cancel()  # after ENTER
             blockers = state_blockers(list(reader.samples), time.monotonic_ns())
-            if blockers or not live.still(state):
-                raise ExecutionRefused("robot is not healthy and still at START: " + "; ".join(blockers))
-            limits = start_limits()
+            if blockers:
+                raise ExecutionRefused("robot state is not healthy at START: " + "; ".join(blockers))
             auth = authorize_execution(cli_execute=True, operator_start=True, policy_info=info)
             if auth.hardware_test is not None:
                 raise ExecutionRefused("policy execution requires hardware_test is None")
@@ -270,8 +262,8 @@ def main(argv=None, *, operator_input=input) -> int:
             if not gripper.healthy():
                 raise ExecutionRefused(f"gripper became unhealthy before engagement ({gripper.error})")
             blockers = state_blockers(list(reader.samples), time.monotonic_ns())
-            if blockers or not live.still(state):
-                raise ExecutionRefused("robot became unhealthy or moving before engagement: " + "; ".join(blockers))
+            if blockers:
+                raise ExecutionRefused("robot state became unhealthy before engagement: " + "; ".join(blockers))
             if recorder is not None:
                 recorder.event(time.monotonic_ns(), "engage")
             link.engage(cancel=stop)
@@ -333,6 +325,75 @@ def main(argv=None, *, operator_input=input) -> int:
         finally:
             for sig, handler in previous_signals.items():
                 signal.signal(sig, handler)
+
+
+def camera_names(cfg: dict) -> dict:
+    """{name: serial} from the mapping file (config/camera_names.yaml; the repo template if the copy is missing)."""
+    import yaml
+
+    p = C.path(cfg, (cfg.get("cameras") or {}).get("names_file") or "config/camera_names.yaml")
+    if p is None or not p.is_file():
+        p = Path(__file__).resolve().parents[2] / "configs/robot_pc/camera_names.yaml"
+    m = {str(k): str(v) for k, v in (yaml.safe_load(p.read_text()) or {}).items()}
+    bad = [k for k in m if not k or not all(ch.isalnum() or ch == "_" for ch in k)]
+    if bad or len(set(m.values())) != len(m):
+        raise SystemExit(f"{p}: camera names must be [a-z0-9_] and every serial used once ({m})")
+    return m
+
+
+def _name(names: dict, serial: str) -> str:
+    inv = {v: k for k, v in names.items()}
+    return inv.get(serial, serial)
+
+
+def resolve_cameras(spec: dict, names: dict, requested: str | None, serial: str | None = None) -> list:
+    """Requested camera names -> serials, checked against the policy contract (count and trained cameras)."""
+    from ops.robot_pc.safety import ExecutionRefused
+
+    orders = spec["trained_camera_orders"]
+    trained = sorted({c for o in orders for c in o})
+    tnames = ",".join(_name(names, c) for c in trained)
+    if requested is not None:
+        want = [x.strip() for x in requested.split(",") if x.strip()]
+        unknown = [w for w in want if w not in names]
+        if unknown:
+            raise ExecutionRefused(f"unknown camera name(s) {unknown}; known: {sorted(names)} (config/camera_names.yaml)")
+        cams = [names[w] for w in want]
+    elif serial is not None:
+        cams = [serial]
+    else:
+        cams = list(orders[0]) if spec["views"] > 1 else [orders[0][0]]
+    if spec["views"] == 1:
+        if len(cams) != 1:
+            raise ExecutionRefused(f"this policy is single-view: give exactly ONE camera (trained: {tnames})")
+        if cams[0] not in trained:
+            raise ExecutionRefused(f"camera {_name(names, cams[0])} is not a trained camera of this policy ({tnames})")
+        return cams
+    if [list(o) for o in orders].count(cams) == 0:
+        need = " or ".join(",".join(_name(names, c) for c in o) for o in orders)
+        raise ExecutionRefused(f"this policy needs {spec['views']} cameras in training order: {need}")
+    raise ExecutionRefused("live multi-view (synchronised camera sets) is not implemented yet: select a single-view "
+                           "policy (infer.py --list shows the views)")
+
+
+def list_policies(cfg: dict, args) -> int:
+    from ops.robot_pc.safety import execution_eligible
+
+    offered = cli.welcome(cfg, args)["policies"]
+    names = camera_names(cfg)
+    rows = []
+    for pid, p in sorted(offered.items()):
+        info, spec = p.get("info") or {}, p.get("input_spec") or {}
+        cams = sorted({c for o in spec.get("trained_camera_orders", []) for c in o})
+        rows.append((info.get("task", "?"), info.get("condition", "?"), str(info.get("seed", "?")), pid,
+                     "yes" if execution_eligible(info) else "no", info.get("status", "?"), str(spec.get("views", "?")),
+                     "+".join(spec.get("modalities", [])), ",".join(_name(names, c) for c in cams)))
+    head = ("task", "method", "seed", "policy id", "eligible", "status", "views", "inputs", "cameras")
+    w = [max(len(r[i]) for r in rows + [head]) for i in range(len(head))]
+    for r in [head] + rows:
+        print("  ".join(x.ljust(w[i]) for i, x in enumerate(r)))
+    print(f"\ncamera names: {names} (config/camera_names.yaml); 'eligible' = may run on the robot (catalog)")
+    return 0
 
 
 class _Discard:

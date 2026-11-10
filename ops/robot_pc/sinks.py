@@ -99,4 +99,4 @@ def make_sink(mode: Mode, *, log_path=None, authorization: ExecutionAuthorizatio
         return MockSink()
     if mode is Mode.DRY_RUN:
         return DryRunSink(log_path)
-    raise ExecutionRefused("execution sinks are built by the launcher with the ControllerLink (scripts/robot_pc/run.py)")
+    raise ExecutionRefused("execution sinks are built by the launcher with the ControllerLink (scripts/robot_pc/infer.py)")

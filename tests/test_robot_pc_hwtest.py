@@ -1,54 +1,14 @@
-"""Conservative limits, hardware-test authorization and the hardware-test launcher (fakes only; nothing real)."""
+"""Hardware-test authorization and the hardware-test launcher (fakes only; nothing real)."""
 
 from __future__ import annotations
 
 import pytest
 
-from ops.robot_pc import conservative
 from ops.robot_pc.safety import ExecutionAuthorization, ExecutionRefused, Mode, authorize_execution, \
     authorize_hardware_test
-from ops.robot_pc.validation import ActionLimits
 
-BASE = {"executor": {"rate_hz": 500, "max_linear_speed": 0.3, "max_angular_speed": 1.5, "max_linear_accel": 4.0,
-                     "max_angular_accel": 15.0, "lead_m": 0.04, "lead_rot_deg": 20.0, "state_timeout_s": 0.05,
-                     "frozen_state_s": 0.25}}
-
-
-def test_tighten_only_lowers():
-    cfg, applied = conservative.tighten(BASE, "slow")
-    ex = cfg["executor"]
-    assert ex["max_linear_speed"] == 0.05 and ex["max_angular_speed"] == 0.25 and ex["lead_m"] == 0.02
-    assert ex["rate_hz"] == 500 and ex["state_timeout_s"] == 0.05  # untouched
-    assert BASE["executor"]["max_linear_speed"] == 0.3  # input not mutated
-    assert applied["max_linear_speed"] == (0.3, 0.05)
-
-
-def test_tighten_never_loosens():
-    strict = {"executor": {**BASE["executor"], "max_linear_speed": 0.01, "lead_m": 0.005}}
-    cfg, _ = conservative.tighten(strict, "slow")
-    assert cfg["executor"]["max_linear_speed"] == 0.01 and cfg["executor"]["lead_m"] == 0.005
-
-
-def test_tighten_unknown_profile():
-    with pytest.raises(ValueError):
-        conservative.tighten(BASE, "fast")
-
-
-def test_test_box_intersects():
-    lim = ActionLimits.from_config({"workspace_min_m": [0.257, -0.242, 0.425], "workspace_max_m": [0.621, 0.321, 0.694]})
-    box = conservative.test_box(lim, [0.42, 0.0, 0.66, 0, 0, 0, 1], 0.08)
-    assert box.workspace_min_m == pytest.approx((0.34, -0.08, 0.58))
-    assert box.workspace_max_m == pytest.approx((0.50, 0.08, 0.694))  # clipped by the task box
-    assert box.max_translation_m == lim.max_translation_m
-    with pytest.raises(ValueError):
-        conservative.test_box(lim, [0.9, 0.0, 0.6, 0, 0, 0, 1], 0.08)  # start outside the task box
-
-
-def test_gripper_closures_bounded():
-    assert conservative.gripper_closures([0.3, 0.0]) == [0.3, 0.0]
-    for bad in ([0.8], [-0.1], [], [float("nan")]):
-        with pytest.raises(ValueError):
-            conservative.gripper_closures(bad)
+BASE = {"executor": {"rate_hz": 500, "interpolation_s": 1 / 15, "state_timeout_s": 0.05, "frozen_state_s": 0.25},
+        "gripper": {"speed": 146, "force": 255}}
 
 
 def test_hardware_test_authorization():
@@ -196,7 +156,7 @@ def hw_env(monkeypatch, tmp_path):
                 status = 1 | 8 | (3 << 4) | (obj << 6)
                 body = bytes([9, 3, 6, status, 0, fault, self.position, self.position, 0])
             else:
-                assert req[1] == 0x10 and req[11:13] == bytes([64, 0])
+                assert req[1] == 0x10 and req[11:13] == bytes([146, 255])  # collector speed, maximum force (directive K)
                 env.serial_writes.append(req[10])
                 if env.problem != "unreached":
                     self.position = req[10]
@@ -443,7 +403,7 @@ def test_gripper_real_targets_expire_and_are_written_in_order(hw_env, monkeypatc
     assert v["pass"] and v["writes"] == 2 + len(hw_env.workers[0].holds) and all(t["reached"] for t in v["targets"])
     assert all(0 <= t["time_to_reach_s"] < 0.5 and t["faults"] == [0] for t in v["targets"])
     assert rec.status == "complete" and rec.robot and rec.grip
-    assert rec.meta["mode"] == "hwtest-gripper" and rec.meta["config"]["executor"]["max_linear_speed"] == 0.05
+    assert rec.meta["mode"] == "hwtest-gripper" and rec.meta["config"]["gripper"] == {"speed": 146, "force": 255}
 
 
 @pytest.mark.parametrize("problem", ["contact", "fault"])
@@ -467,7 +427,8 @@ def test_gripper_refuses_closed_precondition(hw_env):
 @pytest.mark.parametrize("problem", ["before_enter", "cancel_enter"])
 def test_cancel_before_start_sends_nothing(hw_env, test, problem):
     hw_env.problem = problem
-    assert hw_env.invoke(test, "--camera", "scene") == 130
+    code = hw_env.invoke(test, "--camera", "scene")
+    assert code == 130, hw_env.messages
     assert not hw_env.authorizations and not hw_env.links and not hw_env.serial_writes and not hw_env.targets
     # the scene camera starts before the gripper owner and the recorder: a cancel at its bind precedes the recording
     assert (problem == "before_enter" and not hw_env.recorders) or hw_env.recorders[0].status == "stopped"
@@ -529,7 +490,8 @@ def test_hold_aborts_latches_and_releases(hw_env, problem, reason):
     import json
 
     hw_env.problem = problem
-    assert hw_env.invoke("hold") == 1
+    code = hw_env.invoke("hold")
+    assert code == 1, [m for m in hw_env.messages if "REFUSED" in m or "verdict" in m]
     v, rec = _verdict(hw_env), hw_env.recorders[0]
     assert not v["pass"] and reason in " ".join(v["abort_reasons"])
     assert v["duration_held_s"] < 1 and rec.status == "stopped"
@@ -573,7 +535,7 @@ def test_hwtest_persistent_preflight_fault_refuses(hw_env):
     assert not hw_env.workers[0].is_alive()
 
 
-@pytest.mark.parametrize("args", [("gripper", "--closures", "0.6"), ("gripper", "--dwell-s", "nan"),
+@pytest.mark.parametrize("args", [("gripper", "--closures", "1.2"), ("gripper", "--dwell-s", "nan"),
                                   ("gripper", "--dwell-s", "0.4"), ("hold", "--duration-s", "0.5"),
                                   ("hold", "--duration-s", "31"), ("hold", "--max-drift-mm", "nan"),
                                   ("hold", "--max-dq", "0")])

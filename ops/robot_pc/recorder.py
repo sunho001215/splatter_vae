@@ -83,6 +83,23 @@ def _image(value: Any, dtype: Any, shape: tuple) -> np.ndarray:
     return array
 
 
+def _next_run_dir(parent: Path, prefix: str) -> Path:
+    """``<prefix>_runNNN``: 1 + the largest existing index of that prefix, created exclusively (a concurrent run that
+    takes the index first moves this one to the next)."""
+    import re
+
+    pat = re.compile(re.escape(prefix) + r"_run(\d{3,})$")
+    used = [int(m.group(1)) for p in parent.iterdir() if (m := pat.match(p.name))]
+    n = max(used, default=0) + 1
+    while True:
+        d = parent / f"{prefix}_run{n:03d}"
+        try:
+            d.mkdir()
+            return d
+        except FileExistsError:
+            n += 1
+
+
 class SessionRecorder:
     """One session under ``root/inference_outputs/inference_YYYYMMDD_HHMMSS``.
 
@@ -96,7 +113,12 @@ class SessionRecorder:
 
     def __init__(self, root: str | Path, *, meta: dict, cameras: dict[str, dict],
                  clock: Callable[[], int] = time.monotonic_ns, queue_size: int = 65536,
-                 video: bool = True, video_fps: float = 15.0):
+                 video: bool = True, video_fps: float = 15.0, run_prefix: str | None = None,
+                 camera_names: dict | None = None, files: dict | None = None):
+        """``run_prefix`` (e.g. ``drawer-open_e2e_cnn_seed0_right``): the session folder is
+        ``inference_outputs/<run_prefix>_runNNN`` with NNN the next free index (exclusive mkdir, never reused);
+        without it ``inference_YYYYMMDD_HHMMSS``. ``camera_names`` {serial: name}: the MP4 of a camera is
+        ``<name>.mp4``. ``files`` {filename: JSON-able}: written into the folder at start (resolved config, mapping)."""
         if not isinstance(queue_size, int) or queue_size <= 0:
             raise ValueError("queue_size must be a positive integer")
         if not math.isfinite(video_fps) or video_fps <= 0:
@@ -114,11 +136,24 @@ class SessionRecorder:
             _json(config.get("calibration"))
         self.clock, self.video_fps = clock, float(video_fps)
         self._start_unix, self._start_ns = time.time(), int(clock())
-        name = time.strftime("inference_%Y%m%d_%H%M%S", time.localtime(self._start_unix))
         parent = Path(root).expanduser().resolve() / "inference_outputs"
         parent.mkdir(parents=True, exist_ok=True)
-        self.session_dir = parent / name
-        self.session_dir.mkdir()  # exclusive: a same-second collision must not clobber a prior run
+        self.camera_names = {str(k): str(v) for k, v in (camera_names or {}).items()}
+        for v in self.camera_names.values():
+            if not v or any(c in v for c in "/\\\x00") or v in (".", ".."):
+                raise ValueError(f"invalid camera name {v!r}")
+        if run_prefix is None:
+            name = time.strftime("inference_%Y%m%d_%H%M%S", time.localtime(self._start_unix))
+            self.session_dir = parent / name
+            self.session_dir.mkdir()  # exclusive: a same-second collision must not clobber a prior run
+        else:
+            if not run_prefix or any(c in run_prefix for c in "/\\\x00") or run_prefix.startswith("."):
+                raise ValueError(f"invalid run prefix {run_prefix!r}")
+            self.session_dir = _next_run_dir(parent, run_prefix)
+        for fname, obj in (files or {}).items():
+            if "/" in fname or fname.startswith("."):
+                raise ValueError(f"invalid file name {fname!r}")
+            (self.session_dir / fname).write_text(json.dumps(obj, indent=1, ensure_ascii=False, default=str) + "\n")
         self._partial = self.session_dir / "inference.h5.partial"
         self._h5_path = self.session_dir / "inference.h5"
         streams = ["robot", "gripper", "steps", "commands", "executed", "events"]
@@ -359,7 +394,8 @@ class SessionRecorder:
                     return
                 self._cv2 = cv2
             if serial not in self._video_writers:
-                path = self.session_dir / f"camera_{serial}.mp4"
+                path = self.session_dir / (f"{self.camera_names[serial]}.mp4" if serial in self.camera_names
+                                           else f"camera_{serial}.mp4")
                 writer = self._cv2.VideoWriter(str(path), self._cv2.VideoWriter_fourcc(*"mp4v"), self.video_fps,
                                                (rgb.shape[1], rgb.shape[0]))
                 self._video_writers[serial] = writer

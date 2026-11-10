@@ -122,6 +122,14 @@ def main(argv=None) -> int:
             check(f"rig_{task}", True, {c: v["factor"] for c, v in out["native_depth_correction"].items()})
         except Exception as exc:  # noqa: BLE001 - reported
             check(f"rig_{task}", False, f"{type(exc).__name__}: {exc}")
+    try:  # infer.py --cameras: the user-editable name -> serial mapping (config/camera_names.yaml)
+        from scripts.robot_pc.infer import camera_names
+
+        names = camera_names(cfg)
+        known = set((cfg.get("cameras") or {}).get("serials", []))
+        check("camera_names", set(names.values()) <= known, names)
+    except BaseException as exc:  # noqa: BLE001 - reported (SystemExit included)
+        check("camera_names", False, f"{type(exc).__name__}: {exc}")
     from ops.robot_pc import safety
 
     try:  # execution needs an execution_eligible policy (and the flag + the operator's start, not testable here)

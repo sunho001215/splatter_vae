@@ -1,14 +1,13 @@
 """Robot-side action validation: a policy result becomes an executable ``Command`` only if it is finite, inside the
-contract ranges and the configured limits, bound to the measured pose of ITS observation, and not expired. numpy only.
+contract ranges, bound to the measured pose of ITS observation, and not expired. numpy only. No per-step distance,
+workspace box or speed limit (user directive K, 2026-11-10): the goal is the policy's; the executor never sends a
+setpoint switch_controller would reject (its 0.2 m / 0.5 rad log6 guard).
 
 Checks (``validate_action``), each failure an ``ActionRejected`` with a code:
 * ``no_action``: the step returned no action (error / timeout / takeover);
 * ``binding``: reference id, session, frame ids, observation time, pose / gripper sample times or the echoed measured
   pose differ from the request this client sent (an action is never re-applied to another pose);
 * ``non_finite`` / ``range``: non-finite outputs, |action_norm| > 1 (the FQL actor's tanh range), malformed quaternion;
-* ``translation`` / ``rotation``: the executed goal (``execution_flange_pose``, the recorder's lead envelope around the
-  measured pose) farther than the configured per-step limit from the measured pose;
-* ``workspace``: goal position outside the configured base-frame box;
 * ``gripper``: closure outside the configured range, or register != round(3 + 227 c) (recorder convention);
 * ``expired`` / ``future``: observation older than ``max_action_age_ms`` (or stamped in the future) at validation time.
 """
@@ -22,7 +21,6 @@ import numpy as np
 from ops.robot_pc.poses import as_pose7, quat_angle
 
 GRIPPER_OPEN_REGISTER, GRIPPER_SPAN = 3.0, 227.0  # conventions_json: "Robotiq position 3 + 227 * closure (DROID)"
-CONTROLLER_REJECT_M, CONTROLLER_REJECT_RAD = 0.2, 0.5  # switch_controller rejects targets this far (robot.py docstring)
 
 
 class ActionRejected(ValueError):
@@ -33,10 +31,6 @@ class ActionRejected(ValueError):
 
 @dataclass(frozen=True)
 class ActionLimits:
-    max_translation_m: float = 0.04  # recorder teleop.max_position_lead (every recorded command lies inside)
-    max_rotation_deg: float = 20.0  # recorder teleop.max_rotation_lead_deg
-    workspace_min_m: tuple = (0.2, -0.45, 0.35)  # base frame; per task in configs/robot_pc/robot_pc.yaml
-    workspace_max_m: tuple = (0.75, 0.3, 0.85)
     gripper_closure_min: float = 0.0
     gripper_closure_max: float = 1.0
     max_action_age_ms: float = 200.0  # observation (capture) age bound at validation and until execution
@@ -49,15 +43,9 @@ class ActionLimits:
             raise ValueError(f"unknown action limit keys {sorted(unknown)}")
         kw = {k: tuple(float(x) for x in v) if isinstance(v, (list, tuple)) else float(v) for k, v in d.items()}
         out = cls(**kw)
-        values = [*out.workspace_min_m, *out.workspace_max_m, out.max_translation_m, out.max_rotation_deg,
-                  out.gripper_closure_min, out.gripper_closure_max, out.max_action_age_ms, out.quaternion_tolerance]
-        if not all(np.isfinite(values)) or min(out.max_translation_m, out.max_rotation_deg, out.max_action_age_ms) <= 0:
+        values = [out.gripper_closure_min, out.gripper_closure_max, out.max_action_age_ms, out.quaternion_tolerance]
+        if not all(np.isfinite(values)) or out.max_action_age_ms <= 0:
             raise ValueError("action limits must be finite and positive")
-        if out.max_translation_m >= CONTROLLER_REJECT_M or np.deg2rad(out.max_rotation_deg) >= CONTROLLER_REJECT_RAD:
-            raise ValueError("per-step limits must stay below switch_controller's rejection (0.2 m / 0.5 rad)")
-        if len(out.workspace_min_m) != 3 or len(out.workspace_max_m) != 3 or \
-                any(a >= b for a, b in zip(out.workspace_min_m, out.workspace_max_m)):
-            raise ValueError("workspace box must be 3 increasing (min, max) pairs")
         if not 0 <= out.gripper_closure_min <= out.gripper_closure_max <= 1:
             raise ValueError("gripper closure range must lie in [0, 1]")
         return out
@@ -128,13 +116,6 @@ def validate_action(result, request: BoundRequest, limits: ActionLimits, *, sess
     goal = as_pose7(goal)
     t_m = float(np.linalg.norm(goal[:3] - measured[:3]))
     r_deg = float(np.degrees(quat_angle(goal[3:], measured[3:])))
-    if t_m > limits.max_translation_m + 1e-9:
-        raise ActionRejected("translation", f"{t_m * 1e3:.2f} mm > {limits.max_translation_m * 1e3:.1f} mm per step")
-    if r_deg > limits.max_rotation_deg + 1e-6:
-        raise ActionRejected("rotation", f"{r_deg:.2f} deg > {limits.max_rotation_deg} deg per step")
-    lo, hi = np.asarray(limits.workspace_min_m), np.asarray(limits.workspace_max_m)
-    if (goal[:3] < lo).any() or (goal[:3] > hi).any():
-        raise ActionRejected("workspace", f"goal {np.round(goal[:3], 4).tolist()} outside {lo.tolist()}..{hi.tolist()}")
     if not limits.gripper_closure_min <= c <= limits.gripper_closure_max:
         raise ActionRejected("gripper", f"closure {c:.4f} outside [{limits.gripper_closure_min}, "
                                         f"{limits.gripper_closure_max}]")

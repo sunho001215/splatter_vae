@@ -85,10 +85,15 @@ class HardwareTest:
         if first:
             self.event("abort: " + reason)
 
-    def _healthy_gripper(self):
+    def _healthy_gripper(self, wait_s: float = 0.3):
+        """Healthy now, or within ``wait_s`` (one late 50 Hz status read must not refuse a test)."""
         g = self.state.gripper
-        if not g.healthy():
-            raise ExecutionRefused(f"gripper unhealthy: {g.error or 'no fresh activated status'}")
+        deadline = time.monotonic() + wait_s
+        while not g.healthy():
+            self.checkpoint()  # a cancel during the wait is a cancel (130), never a refusal
+            if time.monotonic() >= deadline:
+                raise ExecutionRefused(f"gripper unhealthy: {g.error or 'no fresh activated status'}")
+            time.sleep(0.01)
 
     def _gripper_not_fatal(self):
         """Hold test (gripper read-only, never commanded): LiveSession's rule - a single missed / bad status reply

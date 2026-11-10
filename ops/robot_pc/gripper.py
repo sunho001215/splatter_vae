@@ -202,7 +202,9 @@ class GripperWorker(threading.Thread):
     ``read_only`` is False and a target was set - the closure command (deadband, keepalive). It never activates the
     gripper: a gripper that is not activated (gSTA != 3) is reported, and commands are withheld."""
 
-    def __init__(self, device_factory, *, read_only: bool = True, speed: int = 146, force: int = 0,
+    # speed: the collector's teleop value (config/default.yaml:63, rSP; DROID goto(speed=0.05) -> 146); force: the
+    # MAXIMUM rFR register value 255 (0..255, default.yaml:64 / gripper.py write_request; user directive K)
+    def __init__(self, device_factory, *, read_only: bool = True, speed: int = 146, force: int = 255,
                  capacity: int = 100_000):
         super().__init__(daemon=True, name="gripper")
         self.factory, self.read_only, self.speed, self.force = device_factory, bool(read_only), int(speed), int(force)

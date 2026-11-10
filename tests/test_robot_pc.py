@@ -226,7 +226,8 @@ def test_config_file_and_limits(tmp_path):
     cfg = C.load(root=tmp_path)
     assert "execution" not in cfg
     lim = C.limits(cfg, "mug-hanging")
-    assert lim.max_translation_m == 0.04 and lim.workspace_max_m == (0.699, 0.243, 0.831)
+    assert lim.max_action_age_ms == 200.0 and not hasattr(lim, "workspace_max_m")  # directive K: no box / step cap
+    assert cfg["gripper"] == {"speed": 146, "force": 255} and "lead_m" not in cfg["executor"]
     assert C.path(cfg, "assets/x") == tmp_path / "assets/x"
     bad = tmp_path / "bad.yaml"
     bad.write_text(yaml.safe_dump({**yaml.safe_load(C.DEFAULT_PATH.read_text()), "extra": 1}))
@@ -236,6 +237,12 @@ def test_config_file_and_limits(tmp_path):
     bad.write_text(yaml.safe_dump(old))
     with pytest.raises(ValueError, match="unknown robot-PC config sections"):
         C.load(bad)
+    for sec, key in (("limits", "max_translation_m"), ("executor", "lead_m")):  # removed caps are refused loudly
+        old = yaml.safe_load(C.DEFAULT_PATH.read_text())
+        old[sec][key] = 0.04
+        bad.write_text(yaml.safe_dump(old))
+        with pytest.raises(ValueError, match="were removed"):
+            C.load(bad)
 
 
 # ------------------------------------------------------------------------------------------------ imports
@@ -294,7 +301,7 @@ def test_no_robot_io_in_the_robot_pc_sources():
             found = {n.split(".")[0] for n in names} & banned
             assert found <= allowed.get(path.name, set()), (path, names)
         text = path.read_text()
-        if path.name not in ("sinks.py", "live.py", "safety.py", "run.py"):
+        if path.name not in ("sinks.py", "live.py", "safety.py", "infer.py"):
             assert "LiveSink(" not in text and "ControllerLink(" not in text.replace("class ControllerLink(", ""), path
     text = (REPO / "ops/robot_pc/switch_controller.py").read_text()  # the state reader never publishes
     assert ".bind(" not in text and ".PUB" not in text and ".send(" not in text and "request_mode" not in text
@@ -339,8 +346,6 @@ def test_action_validation_accepts_bound_actions_and_names_every_refusal():
         "binding": (_result(_outputs(req), ref="other"), now),
         "non_finite": (_result(_outputs(req, gripper_closure=float("nan"))), now),
         "range": (_result(_outputs(req, action_norm=np.full(7, 1.5, np.float32))), now),
-        "translation": (_result(_outputs(req, far)), now),
-        "rotation": (_result(_outputs(req, rot)), now),
         "gripper": (_result(_outputs(req, gripper_register=np.int64(99))), now),
         "expired": (_result(_outputs(req)), req.observation_time_ns + 250_000_000),
         "future": (_result(_outputs(req)), req.observation_time_ns - 1),
@@ -354,11 +359,11 @@ def test_action_validation_accepts_bound_actions_and_names_every_refusal():
         validate_action(_result(moved), req, lim, session_id="s1", now_ns=now)
     with pytest.raises(ActionRejected, match="binding"):
         validate_action(_result(_outputs(req)), req, lim, session_id="other", now_ns=now)
-    box = ActionLimits(workspace_min_m=(0.5, -1, 0), workspace_max_m=(1, 1, 1))
-    with pytest.raises(ActionRejected, match="workspace"):
-        validate_action(_result(_outputs(req)), req, box, session_id="s1", now_ns=now)
-    with pytest.raises(ValueError, match="increasing"):
-        ActionLimits.from_config({"workspace_min_m": [1, 0, 0], "workspace_max_m": [0, 1, 1]})
+    # directive K: no per-step distance / rotation cap and no workspace box - far goals are the policy's to make
+    for g in (far, rot, [POSE[0] + 0.5, *POSE[1:]]):
+        validate_action(_result(_outputs(req, g)), req, lim, session_id="s1", now_ns=now)
+    with pytest.raises(ValueError, match="unknown action limit keys"):
+        ActionLimits.from_config({"workspace_min_m": [1, 0, 0]})
 
 
 def Rquat(angle: float):
@@ -391,51 +396,40 @@ def _cmd(goal, t_obs=0, age_ms=200.0, closure=0.5):
                    closure, int(round(3 + 227 * closure)), 0.0, 0.0)
 
 
-def test_executor_enforces_the_collector_speed_acceleration_and_lead_limits():
-    """RateLimiter port (teleop.py:154-190): |v| <= 0.3 m/s, |dv| <= 4 m/s^2 dt, |w| <= 1.5 rad/s, |dw| <= 15 rad/s^2 dt;
-    the command stays within the lead envelope of the measured pose; no overshoot at the goal."""
+def test_executor_interpolates_without_caps_and_never_sends_what_the_controller_rejects():
+    """Directive K: previous setpoint -> newest goal over one policy period (no speed / acceleration / lead caps); a
+    setpoint beyond switch_controller's log6 guard (0.2 m / 0.5 rad from the measured pose) is never sent."""
     sink = sinks.MockSink()
     ex = executor.HighRateExecutor(sink)
-    goal = [POSE[0] + 0.03, POSE[1] - 0.01, POSE[2], *Rquat(np.deg2rad(15))]
-    assert ex.tick(0, POSE, state_t_ns=0) is None and not sink.items  # nothing before the first command
+    goal = [POSE[0] + 0.15, POSE[1] - 0.01, POSE[2], *Rquat(np.deg2rad(15))]  # far + fast: no cap applies
+    assert ex.tick(0, POSE, state_t_ns=0, signature=b"0") is None and not sink.items  # nothing before a command
     assert ex.accept(_cmd(goal, age_ms=1e6))
-    dt_ns, t, prev_p, prev_v, prev_q, prev_w = 2_000_000, 1_000_000, np.array(POSE[:3]), np.zeros(3), \
-        np.array(POSE[3:]), 0.0
-    for k in range(600):
-        t += dt_ns
-        sp = ex.tick(t, POSE, state_t_ns=t - 500_000, signature=bytes([k % 256, k // 256]))
-        p, q = np.array(sp.pose7[:3]), np.array(sp.pose7[3:])
-        v = (p - prev_p) / (dt_ns / 1e9)
-        w = poses.quat_angle(prev_q, q) / (dt_ns / 1e9)
-        assert np.linalg.norm(v) <= 0.3 + 1e-9 and np.linalg.norm(v - prev_v) <= 4.0 * dt_ns / 1e9 + 1e-9, k
-        assert w <= 1.5 + 1e-6 and abs(w - prev_w) <= 15.0 * dt_ns / 1e9 + 1e-6, k
-        assert np.linalg.norm(p - np.array(POSE[:3])) <= 0.04 + 1e-5
-        assert poses.quat_angle(q, POSE[3:]) <= np.deg2rad(20) + 1e-4
-        prev_p, prev_v, prev_q, prev_w = p, v, q, w
-    np.testing.assert_allclose(prev_p, goal[:3], atol=1e-6)  # reached, braking without overshoot
-    assert poses.quat_angle(prev_q, goal[3:]) < 1e-5
-    for target in (0.04, 0.15):  # exactly at the lead, and beyond it (clamped): braking stays within the limits
-        far = executor.HighRateExecutor(sinks.MockSink())
-        far.accept(_cmd([POSE[0] + target, *POSE[1:]], age_ms=1e6))
-        t, prev_x, prev_v = 0, POSE[0], 0.0
-        for k in range(500):
-            t += dt_ns
-            sp = far.tick(t, POSE, state_t_ns=t, signature=bytes([k % 256, k // 256]))
-            v = (sp.pose7[0] - prev_x) / (dt_ns / 1e9)
-            assert abs(v) <= 0.3 + 1e-9 and abs(v - prev_v) <= 4.0 * dt_ns / 1e9 + 1e-9, (target, k)
-            prev_x, prev_v = sp.pose7[0], v
-    assert abs(np.linalg.norm(np.array(sp.pose7[:3]) - np.array(POSE[:3])) - 0.04) < 1e-5  # braked into the lead
-    assert far.stopped is None
-    # the measured pose runs away from the command (-5 mm per 2 ms tick): stop instead of a leash jump
-    run = executor.HighRateExecutor(sinks.MockSink())
-    run.accept(_cmd([POSE[0] + 0.04, *POSE[1:]], age_ms=1e6))
-    t, x = 0, POSE[0]
+    dt, t, out = 2_000_000, 0, []
     for k in range(60):
-        t, x = t + dt_ns, x - (0.0 if k < 50 else 0.005)
-        out = run.tick(t, [x, *POSE[1:]], state_t_ns=t, signature=bytes([k]))
-        if out is None:
-            break
-    assert run.stopped and "rate limits conflict" in run.stopped and k >= 50
+        t += dt
+        out.append(ex.tick(t, POSE, state_t_ns=t, signature=bytes([k])))
+    p = np.array([o.pose7[:3] for o in out])
+    np.testing.assert_allclose(p[0], POSE[:3], atol=1e-12)  # starts at the measured pose
+    a = np.clip((np.arange(60) * dt) / ex.interp_ns, 0, 1)  # linear in time over one policy period
+    np.testing.assert_allclose(p, np.array(POSE[:3]) + a[:, None] * (np.array(goal[:3]) - POSE[:3]), atol=1e-12)
+    assert poses.quat_angle(out[-1].pose7[3:], goal[3:]) < 1e-9 and ex.counts["controller_guard"] == 0
+    peak = np.max(np.linalg.norm(np.diff(p, axis=0), axis=1)) / (dt / 1e9)
+    assert peak > 2.0  # 0.15 m in 66.7 ms: ~2.3 m/s - the old 0.3 m/s cap is gone
+    nxt = [goal[0] + 0.02, *goal[1:]]  # a newer goal continues from the last SENT setpoint (no jump back)
+    assert ex.accept(_cmd(nxt, t_obs=1, age_ms=1e6))
+    t += dt
+    np.testing.assert_allclose(ex.tick(t, POSE, state_t_ns=t, signature=b"n").pose7[:3], goal[:3], atol=1e-12)
+    far = executor.HighRateExecutor(sinks.MockSink())
+    far.accept(_cmd([POSE[0] + 0.25, *POSE[1:]], age_ms=1e6))  # beyond the controller's 0.2 m guard
+    t, sent = 0, []
+    for k in range(60):
+        t += dt
+        o = far.tick(t, POSE, state_t_ns=t, signature=bytes([k]))
+        if o is not None:
+            sent.append(o.pose7[0] - POSE[0])
+    assert sent and max(sent) <= 0.95 * 0.2 + 1e-12 and far.counts["controller_guard"] > 0 and far.stopped is None
+    m, r = executor.log6_norms([*POSE[:3], *Rquat(0.3)], POSE)
+    assert abs(m) < 1e-12 and abs(r - 0.3) < 1e-9
 
 
 def test_executor_holds_on_expiry_and_latches_a_stop_on_stale_or_frozen_state():
@@ -444,17 +438,15 @@ def test_executor_holds_on_expiry_and_latches_a_stop_on_stale_or_frozen_state():
     ex.accept(_cmd([POSE[0] + 0.02, *POSE[1:]], t_obs=0, age_ms=100, closure=0.3))
     a = ex.tick(10_000_000, POSE, state_t_ns=10_000_000, signature=b"a")
     assert a.kind == "track" and a.gripper_closure == 0.3
-    again = ex.tick(10_000_000, POSE, state_t_ns=10_000_000, signature=b"a")
-    assert again.pose7 == a.pose7 and ex.counts["resent"] == 1  # repeated timestamp: no motion
     moved = [POSE[0] + 0.001, *POSE[1:]]
     n_sent = len(sink.items)
     assert ex.tick(150_000_000, moved, state_t_ns=150_000_000, signature=b"b") is None  # expired: nothing sent
     assert ex.tick(150_000_000, moved, state_t_ns=150_000_000, signature=b"b") is None  # not even a re-send
-    assert len(sink.items) == n_sent and ex.counts["expired"] == 1
+    assert len(sink.items) == n_sent and ex.counts["expired"] == 2  # every expired tick sends nothing
     assert not ex.accept(_cmd([POSE[0] + 0.01, *POSE[1:]], t_obs=-1, closure=1.0))  # older observation refused
     assert ex.accept(_cmd([POSE[0] + 0.01, *POSE[1:]], t_obs=140_000_000, age_ms=100))  # re-engage from measured
     sp = ex.tick(152_000_000, moved, state_t_ns=152_000_000, signature=b"c")
-    assert sp.kind == "track" and abs(sp.pose7[0] - moved[0]) <= 0.3 * 0.002 + 1e-12
+    assert sp.kind == "track" and sp.pose7[0] == moved[0]  # a new engagement starts at the measured pose
     late = executor.HighRateExecutor(sinks.MockSink())
     late.accept(_cmd(POSE, t_obs=0, age_ms=10, closure=1.0))  # first tick after expiry: nothing of it applied
     assert late.tick(20_000_000, POSE, state_t_ns=20_000_000, signature=b"x") is None
@@ -1789,11 +1781,15 @@ def test_dry_run_unhealthy_gripper_is_recorded_without_stop():
     assert any("healthy=False" in e for e in events)
 
 
-def test_rejected_actions_count_as_failures_and_main_exceptions_propagate():
+def test_server_failures_stop_but_rejections_do_not_and_main_exceptions_propagate():
     session = _unit_session(max_failed_steps=2)
     session.loop.step = lambda *a, **kw: {"status": "ok", "command": None, "rejected": "non_finite"}
-    rows = session.run(steps=10)
-    assert len(rows) == 2 and "2 consecutive steps without an action" in session.stop_reason
+    rows = session.run(steps=6)  # directive K: a rejected action sends nothing, it never ends the run
+    assert len(rows) == 6 and session.stop_reason == "budget reached"
+    down = _unit_session(max_failed_steps=2)
+    down.loop.step = lambda *a, **kw: {"status": "timeout", "code": "timeout", "command": None}
+    rows = down.run(steps=10)  # the policy server / route does not answer: communication loss stops the run
+    assert len(rows) == 2 and "policy server: 2 consecutive steps without an answer" in down.stop_reason
     failed = _unit_session()
 
     def boom(*a, **kw):
@@ -1804,23 +1800,6 @@ def test_rejected_actions_count_as_failures_and_main_exceptions_propagate():
         failed.run()
     assert failed.stop_event.is_set() and "main loop failed" in failed.stop_reason
     assert not failed._exec_thread.is_alive()
-
-
-def test_only_accepted_commands_reset_the_failure_counter():
-    session = _unit_session(max_failed_steps=2)
-    session.executor.tick = lambda *a, **kw: None
-    candidates = iter([None, 1, None, 1])  # the fourth command repeats an old observation and is refused
-
-    def step(*a, **kw):
-        observation = next(candidates)
-        if observation is not None:
-            session.accept(SimpleNamespace(observation_time_ns=observation))
-        return {"status": "ok", "command": {"observation": observation} if observation else None}
-
-    session.loop.step = step
-    assert len(session.run(steps=10)) == 4
-    assert session.executor.counts["accepted"] == 1 and session.executor.counts["refused_older"] == 1
-    assert "2 consecutive steps" in session.stop_reason
 
 
 def test_release_proceeds_after_executor_join_timeout_when_recorder_is_blocked(caplog):
@@ -1938,7 +1917,7 @@ def test_launcher_cancellation_checkpoints_and_resource_order(checkpoint, monkey
     from ops.robot_pc import controller, live, tunnel
     from ops.robot_pc import gripper as G
     from ops.robot_pc import recorder as recorder_mod
-    from scripts.robot_pc import run
+    from scripts.robot_pc import infer as run
 
     order, links, zs, sessions, prompts = [], [], [], [], []
     handlers = {}
@@ -2106,9 +2085,7 @@ def test_launcher_cancellation_checkpoints_and_resource_order(checkpoint, monkey
 
         def run(self, **kw):
             order.append("stream")
-            if checkpoint == "reposition_at_enter":
-                box = self.loop.limits
-                np.testing.assert_allclose(box.workspace_min_m, np.array(POSE[:3]) + [0.1, 0, 0] - 0.08)
+            assert not hasattr(self.loop.limits, "workspace_min_m")  # directive K: no box around the start pose
             self._exec_thread = threading.Thread(target=self.stop_event.wait)
             self._exec_thread.start()
             self.stop("operator key")
@@ -2133,7 +2110,8 @@ def test_launcher_cancellation_checkpoints_and_resource_order(checkpoint, monkey
         monkeypatch.setattr(safety, "authorize_execution", lambda **kw: safety.authorize_hardware_test(
             test="hold", cli_flag=True, operator_start=True))
     monkeypatch.setattr(G, "GripperWorker", Grip)
-    spec = {"views": 2 if checkpoint == "multiview" else 1, "modalities": ["rgb"]}
+    spec = {"views": 2 if checkpoint == "multiview" else 1, "modalities": ["rgb"],
+            "trained_camera_orders": [["cam_a", "cam_b"]] if checkpoint == "multiview" else [["cam_a"]]}
     monkeypatch.setattr(cli, "choose_policy", lambda *a: ("p", "t", spec, {"execution_eligible": True}))
     monkeypatch.setattr(selection, "session_cameras", lambda *a: ["cam_a", "cam_b"] if spec["views"] > 1 else ["cam_a"])
     monkeypatch.setattr(cli, "rig_document", lambda *a: None)
@@ -2153,17 +2131,16 @@ def test_launcher_cancellation_checkpoints_and_resource_order(checkpoint, monkey
     monkeypatch.setattr(C, "limits", lambda *a: ActionLimits())
     monkeypatch.setattr(controller, "ControllerLink", make_link)
     monkeypatch.setattr(live, "LiveSession", Session)
-    code = run.main(["--execute", "--policy", "p"], operator_input=operator_input)
+    code = run.main(["--policy", "p"], operator_input=operator_input)
+    # directive K: no start box and no "robot still" requirement - repositioning / moving at ENTER runs normally
     if checkpoint in ("normal", "preflight_fault_clears", "cleanup_signals", "cleanup_baseexception",
-                       "reposition_at_enter"):
+                       "reposition_at_enter", "moving_at_enter", "moving_before_engage"):
         assert code == 0 and "stream" in order
         assert order.index("executor joined") < order.index("gripper clear") < order.index("gripper joined")
     elif checkpoint in ("multiview", "preflight_fault_persists"):
         assert code == 3 and not links and not prompts
-    elif checkpoint in ("moving_at_enter", "unhealthy_at_enter", "hold_authorization"):
+    elif checkpoint in ("unhealthy_at_enter", "hold_authorization"):
         assert code == 3 and not links and prompts
-    elif checkpoint == "moving_before_engage":
-        assert code == 3 and "engage" not in order
     else:
         assert code == 130 and "stream" not in order
     if links:
@@ -2181,9 +2158,7 @@ def test_launcher_cancellation_checkpoints_and_resource_order(checkpoint, monkey
         assert len(release_events) == 1 and release_events[0] in messages
     if checkpoint == "cleanup_signals":
         assert "recorder finalized" in order and messages.count("shutdown in progress") == 3
-    if checkpoint == "reposition_at_enter":
-        box_events = [json.loads(e) for e in recorded_events if e.startswith('{"profile"')]
-        assert len(box_events) == 1 and box_events[0]["start_flange_pose7"][0] == POSE[0] + 0.1
+    assert not [e for e in recorded_events if e.startswith('{"profile"')]  # no profile / start box any more
     if checkpoint in ("before_engagement", "after_enter", "constructed", "after_wait"):
         assert "engage" not in order
 
@@ -2531,55 +2506,6 @@ def test_hardware_test_authorizations_cannot_run_a_policy_or_gripper_token_comma
         sinks.LiveSink(grip, link)
     with pytest.raises(safety.ExecutionRefused, match="gripper authorization"):
         controller.ControllerLink(grip, zmq_module=FakeZmq(), robot_msg=fake_robot_msg())
-
-
-@pytest.mark.parametrize("following", ["never", "recovers", "dry_run"])
-def test_policy_following_detection_continuous_threshold_in_executor_path(following):
-    from ops.robot_pc import live
-
-    class ClockStop:
-        def __init__(self):
-            self.done, self.t = False, 0
-
-        def is_set(self):
-            return self.done
-
-        def set(self):
-            self.done = True
-
-        def wait(self, timeout=None):
-            self.t += 100_000_000
-            if self.t > 3_000_000_000:
-                self.done = True
-
-    stop = ClockStop()
-    # Keep shutdown out of the deterministic tick clock; test its stop request separately above.
-    shutdown = live.MotionShutdown(stop)
-    shutdown.request = stop.set
-    sink = sinks.DryRunSink() if following == "dry_run" else None
-    sent_poses = []
-    link = SimpleNamespace(peers_ok=lambda: True, send_flange_pose=sent_poses.append)
-    session = _unit_session(sent=following != "dry_run", link=link, sink=sink, stop_event=stop, shutdown=shutdown)
-    session.executor.command = SimpleNamespace(reference_id="r", expires_ns=10**20)
-    threshold = 0.5 * session.executor.lead_m
-
-    def tick(*a, **kw):
-        pose = list(POSE)
-        # The command ramps away (1 mm / 100 ms, up to the lead) from a robot that never moves; "recovers": the command
-        # returns to the start between 0.9 and 1.0 s, which must restart the continuous interval.
-        back = following == "recovers" and 900_000_000 <= stop.t <= 1_000_000_000
-        pose[0] += 0.0 if back else min(threshold * 2, 0.001 * stop.t / 100_000_000)
-        return executor.Setpoint(stop.t, "track", tuple(pose), None, "r")
-
-    session.executor.tick = tick
-    session._executor_ticks()
-    if following == "dry_run":
-        assert session.stop_reason is None and not sent_poses
-    else:
-        assert session.stop_reason.startswith("robot has not moved since engagement")
-        assert session.stop_reason.endswith("controller mode not accepted?")
-        # first setpoint (sp0) at 0.1 s; cmd >= 5 mm from it at 0.6 s -> stop 1 s later; recovery restarts it at 1.2 s
-        assert stop.t == (2_200_000_000 if following == "recovers" else 1_600_000_000), stop.t
 
 
 def test_gripper_expiry_hold_skipped_when_stationary_or_in_contact():

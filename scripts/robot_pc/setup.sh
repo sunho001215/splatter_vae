@@ -54,6 +54,9 @@ if [ "$REALSENSE" = 1 ]; then
 fi
 ln -sfn "$BUNDLE/src" "$ROOT/src.new" && mv -T "$ROOT/src.new" "$ROOT/src"
 ln -sfn "$BUNDLE/assets" "$ROOT/assets.new" && mv -T "$ROOT/assets.new" "$ROOT/assets"
+if [ ! -f "$ROOT/config/camera_names.yaml" ]; then  # left / middle / right -> serial (user-editable)
+  cp "$BUNDLE/src/configs/robot_pc/camera_names.yaml" "$ROOT/config/camera_names.yaml"
+fi
 if [ ! -f "$ROOT/config/robot_pc.yaml" ]; then
   cp "$BUNDLE/src/configs/robot_pc/robot_pc.yaml" "$ROOT/config/robot_pc.yaml"
 elif ! cmp -s "$BUNDLE/src/configs/robot_pc/robot_pc.yaml" "$ROOT/config/robot_pc.yaml"; then

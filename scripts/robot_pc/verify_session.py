@@ -82,6 +82,8 @@ def verify(session: Path, *, max_setpoints: int = 2000) -> dict:
         # ---- monotonic timestamps
         mono = {}
         for s in summary["counts"]:
+            if s == "events":  # events carry their source times (e.g. a gripper write), recorded in arrival order
+                continue
             col = f"{s}/t_ns" if f"{s}/t_ns" in h else f"{s}/t_step_ns"
             t = h[col][()]
             mono[s] = bool(len(t) < 2 or np.all(np.diff(t) >= 0))
@@ -144,7 +146,8 @@ def verify(session: Path, *, max_setpoints: int = 2000) -> dict:
                   "interval_ms": _pct(np.diff(t) / 1e6) if len(t) > 1 else None,
                   "frame_number_gaps": int((np.diff(fn) != 1).sum()) if len(fn) > 1 else None,
                   "frame_number_missing": int((np.diff(fn) - 1).clip(0).sum()) if len(fn) > 1 else None}
-            vid = session / f"camera_{serial}.mp4"
+            vfile = (summary.get("videos") or {}).get(serial, {}).get("file")  # <camera name>.mp4 (directive K)
+            vid = session / Path(vfile).name if vfile else session / f"camera_{serial}.mp4"
             try:
                 import cv2
 
