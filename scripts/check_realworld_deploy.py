@@ -63,6 +63,8 @@ def cmd_contracts(args) -> dict:
         dataset = local(args.runs_root, meta["dataset"])
         with h5py.File(dataset, "r") as f:
             training = training_contract(dict(f.attrs))
+        if meta.get("feature_norm") is not None:  # the checkpoint's frozen-feature standardisation (sha256-checked)
+            training["feature_norm"] = dict(meta["feature_norm"])
         training["source_dataset"] = {"recorded": meta["dataset"], "local": str(dataset), "sha256": sha256(dataset)}
         read_training_contract(meta, training)  # checked against the checkpoint
         path = args.out_dir / f"{run}.deploy_contract.json"

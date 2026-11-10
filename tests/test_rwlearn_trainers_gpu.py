@@ -86,8 +86,9 @@ def dynamo_export(path: Path) -> Path:
     return path
 
 
-@pytest.mark.parametrize("condition", ["e2e_cnn", "dynamo"])
-def test_dataset_build_training_lossless_resume_and_policy(tmp_path, condition):
+@pytest.mark.parametrize("condition,feature_norm", [("e2e_cnn", "none"), ("dynamo", "none"),
+                                                    ("dynamo", "train_standardize")])
+def test_dataset_build_training_lossless_resume_and_policy(tmp_path, condition, feature_norm):
     locator = write_compact_store(tmp_path / "store")
     from s4d.rwlearn import outcomes as O
     from s4d.rwlearn.store import open_store
@@ -111,6 +112,8 @@ def test_dataset_build_training_lossless_resume_and_policy(tmp_path, condition):
             "train.device=cuda"]
     if condition == "e2e_cnn":
         sets.append(f"data.store={locator}")
+    if feature_norm != "none":
+        sets.append(f"encoder.feature_norm={feature_norm}")
     common = ["--config", "configs/realworld/fql/base.yaml", "--output-root", str(root), "--no-wandb"]
     det = [*sets, "train.deterministic=true"]
     run("scripts/train_realworld_fql.py", *common, "--name", "straight", "--set", *det, "train.offline_steps=4")
@@ -141,6 +144,19 @@ def test_dataset_build_training_lossless_resume_and_policy(tmp_path, condition):
     val = [x for x in rows("straight") if "validation/onestep_pos_err_mm" in x]
     assert val and all(np.isfinite(x["validation/critic/critic_loss"]) for x in val)
     assert a["agent"]["config"]["alpha"] == 10.0
+    if feature_norm == "none":  # default: checkpoint meta and resume identity exactly as before the option existed
+        assert "feature_norm" not in a["meta"] and "feature_norm" not in a["identity"]
+    else:  # fitted on the TRAINING split only, recorded in meta and identity; a different setting never resumes
+        from s4d.rwlearn import fql_data as FD
+
+        fit = FD.fit_feature_standardization(FD.OfflineTransitions(data, [eps[0]]).features)
+        assert a["meta"]["feature_norm"]["sha256"] == fit["sha256"] == a["identity"]["feature_norm"]["sha256"]
+        assert fit["sha256"] != FD.fit_feature_standardization(FD.OfflineTransitions(data).features)["sha256"]
+        env = {**os.environ, "CUDA_VISIBLE_DEVICES": os.environ["CUDA_VISIBLE_DEVICES"].split(",")[0]}
+        res = subprocess.run([sys.executable, "-I", str(REPO / "scripts/train_realworld_fql.py"), *common, "--name",
+                              "straight", "--set", *det, "encoder.feature_norm=none", "train.offline_steps=6"],
+                             env=env, capture_output=True, text=True, timeout=1200)
+        assert res.returncode != 0 and "refusing to resume" in res.stdout + res.stderr
     if condition == "e2e_cnn":  # the jointly trained CNN is part of the agent (no export); policy meta has its config
         assert any(k.startswith("encoder.stacks.") for k in a["agent"]["modules"]["critic"])
         assert a["meta"]["encoder_config"]["stack_sizes"] == [16, 32, 32] and a["meta"]["export_sha256"] == ""

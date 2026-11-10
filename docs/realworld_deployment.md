@@ -127,6 +127,13 @@ GPU; FQL includes the trainable projection head). `act` reuses `OfflinePolicy.fe
 `act_from_pixels` and, for frozen encoders, rounds the features to **float16** before the agent, exactly as training
 saw them (`fql_data.encode_timeline` stores `.to(torch.float16)`, the FQL encoder reads `.float()`;
 `InputSpec.feature_precision`). `OfflinePolicy.act` itself is unchanged and feeds unrounded float32 features.
+Checkpoints trained with the frozen-feature standardisation (3D-MVP reruns from 2026-11-10; `docs/realworld_fql.md`)
+carry its mean / std as encoder buffers inside `policy.pt`: the same `OfflinePolicy` load path rebuilds and
+sha256-checks them and the encoder applies `(f16(f) - mean) / std` after the float16 rounding, exactly as in training
+(test: `infer` == `act` == the adapter on the explicitly standardised features, bitwise). The client contract
+(`InputSpec`) is unchanged; the deploy-contract sidecar carries the checkpoint's `feature_norm` record and a sidecar
+whose record differs (or is missing) is refused, so regenerate sidecars (`check_realworld_deploy.py contracts`) for
+the rerun checkpoints.
 `noise` (1, 7) float32 fixes the FQL noise (direct vs network equality); None uses the agent's own generator.
 `reset_session(concurrent=True)` keeps other live sessions on the same loaded model (`end_session`, `live_sessions`);
 by default a reset replaces them. Every refusal is a typed `DeployRefusal(ValueError)` (`errors.py`:

@@ -3,8 +3,10 @@ trained jointly (``condition=e2e_cnn``; s4d/rwlearn/pixel.py) (docs/realworld_fq
 no robot. The agent is the PyTorch port of the official FQL (s4d/rwlearn/fql.py); the loop is the official
 ``main.py`` offline phase (uniform batches, one ``agent.update`` per step, validation losses every ``log_interval``)
 with offline validation metrics in place of environment evaluation. alpha = 10 for every condition (user decision
-2026-11-06; no sweep). The offline metrics are diagnostics only, never a selection criterion: later tuning follows a
-predefined real-robot evaluation protocol.
+2026-11-06; no sweep). ``encoder.feature_norm=train_standardize`` (opt-in; the 3D-MVP rows) standardises the frozen
+features with statistics fitted on the training split before the adapter (stored in ``policy.pt``). The offline
+metrics are diagnostics only, never a selection criterion: later tuning follows a predefined real-robot evaluation
+protocol.
 
     CUDA_VISIBLE_DEVICES=<uuid> python -I scripts/train_realworld_fql.py --config configs/realworld/fql/base.yaml \
         --name fql-dynamo-drawer-open-s0 --set condition=dynamo data.dataset=... data.split_manifest=... \
@@ -36,7 +38,13 @@ from s4d.config import dump_config, load_config  # noqa: E402
 from s4d.diag.wandb_log import init_wandb  # noqa: E402
 from s4d.rwlearn import actions as A  # noqa: E402
 from s4d.rwlearn.fql import FQLAgent, Noise  # noqa: E402
-from s4d.rwlearn.fql_data import CONDITIONS, OfflineTransitions, sha256_file  # noqa: E402
+from s4d.rwlearn.fql_data import (  # noqa: E402
+    CONDITIONS,
+    FEATURE_NORMS,
+    OfflineTransitions,
+    fit_feature_standardization,
+    sha256_file,
+)
 from s4d.rwlearn.gate import check_dataset_gate  # noqa: E402
 from s4d.rwlearn.inference import checkpoint_payload  # noqa: E402
 from s4d.rwlearn.pixel import OfflinePixelTransitions  # noqa: E402
@@ -109,6 +117,10 @@ def main() -> None:
     clip = data_cfg.get("action_clip_eps")
     pixel_cfg = dict(cfg.get("pixel") or {})
     end_to_end = CONDITIONS[condition].encoder_type is None
+    feature_norm = cfg["encoder"].get("feature_norm", "none")
+    if feature_norm not in FEATURE_NORMS or (end_to_end and feature_norm != "none"):
+        raise SystemExit(f"encoder.feature_norm must be one of {FEATURE_NORMS} (none for e2e_cnn)")
+    feature_stats = None
     if end_to_end:  # frames of the store, loaded once per camera and frame; CNN trained jointly with FQL
         if pixel_cfg.get("encoder") != "impala_small":
             raise SystemExit("e2e_cnn uses the official impala_small encoder (pixel.encoder)")
@@ -124,7 +136,9 @@ def main() -> None:
         train = OfflineTransitions(data_cfg["dataset"], split["train"], device, action_clip_eps=clip)
         val = (OfflineTransitions(data_cfg["dataset"], split["validation"], device, action_clip_eps=clip)
                if split["validation"] else None)
-        enc = train.encoder_factory(int(cfg["encoder"]["proj_dim"]))
+        if feature_norm == "train_standardize":  # fitted on the TRAINING split only (``train`` = split["train"])
+            feature_stats = fit_feature_standardization(train.features)
+        enc = train.encoder_factory(int(cfg["encoder"]["proj_dim"]), feature_stats)
     if train.attrs["condition"] != condition:
         raise SystemExit(f"dataset condition {train.attrs['condition']} != {condition}")
     seed = int(train_cfg["seed"])
@@ -142,6 +156,8 @@ def main() -> None:
                 "dataset_sha256": sha256_file(data_cfg["dataset"]), "split": split, "smoke": bool(gate["smoke"]),
                 "agent": agent_cfg, "action_clip_eps": clip,
                 "pixel": {**pixel_cfg, "store": str(data_cfg.get("store"))} if end_to_end else None}
+    if feature_stats is not None:  # only then: the identity of every other run stays as before
+        identity["feature_norm"] = {k: v for k, v in feature_stats.items() if k not in ("mean", "std")}
     if latest.is_file():
         ckpt = torch.load(latest, map_location="cpu", weights_only=False)  # own checkpoint (RNG payload)
         if json.dumps(ckpt.get("identity"), sort_keys=True, default=list) != json.dumps(identity, sort_keys=True,

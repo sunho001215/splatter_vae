@@ -204,6 +204,88 @@ def test_export_mismatch_is_refused(tmp_path, exports):
         OfflinePolicy(tmp_path / "p.pt", export_path=exports / "snerl.pt")
 
 
+def test_default_adapter_input_is_unchanged():
+    """``feature_norm`` none (every condition but 3D-MVP): no buffers, the head reads the stored features as before."""
+    torch.manual_seed(3)
+    enc = FD.ObsEncoder(12, False, proj=8)
+    assert enc.feature_norm is None and enc.stats_sha256() is None
+    assert set(enc.state_dict()) == {f"head.{k}" for k in enc.head.state_dict()}
+    feat, proprio = torch.randn(5, FD.FRAME_STACK, 12).half(), torch.randn(5, A.PROPRIO_DIM).double()
+    assert torch.equal(enc({"feat": feat, "proprio": proprio}),
+                       torch.cat([enc.head(feat.float()), proprio.float()], dim=-1))
+    ok = {"kind": "train_standardize", "dim": 12, "mean": np.zeros(12), "std": np.ones(12)}
+    for bad in ({**ok, "dim": 13}, {**ok, "kind": "other"}, {**ok, "std": np.ones(11)}):
+        with pytest.raises(ValueError):
+            FD.ObsEncoder(12, False, proj=8, feature_stats=bad)
+
+
+@pytest.mark.parametrize("condition", ["dynamo", "sincro", "mvp3d_single", "mvp3d_multiview"])
+def test_feature_standardisation_is_fitted_on_the_given_rows_and_travels_with_the_policy(tmp_path, exports,
+                                                                                         condition):
+    """``encoder.feature_norm=train_standardize``: per-dimension statistics of the stored rows of the given (training)
+    timelines, float64, std floored; buffers of EVERY network's encoder (target critic included), constant under the
+    updates, recorded in the checkpoint meta and the deploy contract, rebuilt and sha256-verified by
+    ``OfflinePolicy``; the adapter sees exactly (f - mu) / sigma and starts from the same initial weights."""
+    from s4d.rwlearn.deploy.contracts import read_training_contract
+
+    torch.manual_seed(0)
+    store = store_on_fixture()
+    ep = store.episodes()[0]
+    path = tmp_path / f"{condition}.h5"
+    FD.build_fql_dataset(store, condition, exports / f"{FD.CONDITIONS[condition].encoder_type}.pt", path,
+                         episodes=[ep], assume_final_success=True)
+    data = FD.OfflineTransitions(path, [ep])
+    stats = FD.fit_feature_standardization(data.features, chunk=7)
+    with h5py.File(path, "r") as f:
+        x = np.concatenate([g["features"][:] for g in f["episodes"][ep].values()]).astype(np.float64)
+    sd = x.std(0)
+    np.testing.assert_allclose(stats["mean"], x.mean(0), rtol=1e-6, atol=1e-7)
+    np.testing.assert_allclose(stats["std"], np.maximum(sd, FD.STD_FLOOR_REL * sd.max()), rtol=1e-5, atol=1e-8)
+    assert stats["mean"].dtype == stats["std"].dtype == np.float32
+    assert (stats["rows"], stats["dim"]) == (len(x), data.feat_dim) and stats["kind"] == "train_standardize"
+    assert stats["sha256"] == FD.feature_stats_sha256(stats["mean"], stats["std"])
+    record = {k: v for k, v in stats.items() if k not in ("mean", "std")}
+
+    cfg = {"actor_hidden_dims": (32, 32), "value_hidden_dims": (32, 32), "batch_size": 64}
+    agent = FQLAgent.create(0, 32 + A.PROPRIO_DIM, A.ACTION_DIM, cfg, encoder=data.encoder_factory(32, stats))
+    raw = FQLAgent.create(0, 32 + A.PROPRIO_DIM, A.ACTION_DIM, cfg, encoder=data.encoder_factory(32))
+    for name, module in agent.modules().items():  # the buffers consume no randomness: same initial parameters
+        sd_norm, sd_raw = module.state_dict(), raw.modules()[name].state_dict()
+        assert set(sd_norm) - set(sd_raw) == {"encoder.feat_mean", "encoder.feat_std"}
+        assert all(torch.equal(sd_norm[k], v) for k, v in sd_raw.items())
+    obs = data.sample(16, torch.Generator().manual_seed(1))["observations"]
+    z = (obs["feat"].float() - torch.from_numpy(stats["mean"])) / torch.from_numpy(stats["std"])
+    assert torch.equal(agent.critic.encoder(obs), raw.critic.encoder({"feat": z, "proprio": obs["proprio"]}))
+    gen = torch.Generator().manual_seed(0)
+    for _ in range(3):
+        info = agent.update(data.sample(64, gen))
+    assert all(np.isfinite(v) for v in info.values())
+    assert all(m.encoder.stats_sha256() == stats["sha256"] for m in agent.modules().values())
+
+    ckpt = tmp_path / "policy.pt"
+    torch.save(checkpoint_payload(agent, data, condition, 3), ckpt)
+    payload = torch.load(ckpt, map_location="cpu", weights_only=False)
+    assert payload["meta"]["feature_norm"] == record
+    assert read_training_contract(payload["meta"], path)["feature_norm"] == record  # dataset source: the ckpt's
+    policy = OfflinePolicy(ckpt)
+    agent.train_mode(False)
+    probe = {"feat": obs["feat"][:2].float(), "proprio": obs["proprio"][:2]}
+    noise = torch.randn(2, A.ACTION_DIM, generator=torch.Generator().manual_seed(2))
+    assert torch.equal(policy.agent.sample_actions(probe, noise), agent.sample_actions(probe, noise))
+    rep = replay(policy, path, ep, sorted(store.cameras(ep))[0] if not FD.CONDITIONS[condition].multiview else "sync")
+    assert np.isfinite(rep["position_error_mm_median"])
+
+    payload["agent"]["modules"]["actor_onestep_flow"]["encoder.feat_mean"][0] += 1
+    torch.save(payload, tmp_path / "tampered.pt")
+    with pytest.raises(ValueError, match="standardisation differs"):
+        OfflinePolicy(tmp_path / "tampered.pt")
+    payload = torch.load(ckpt, map_location="cpu", weights_only=False)
+    payload["meta"].pop("feature_norm")
+    torch.save(payload, tmp_path / "unrecorded.pt")
+    with pytest.raises(RuntimeError, match="Unexpected key"):  # buffers without the meta record never load silently
+        OfflinePolicy(tmp_path / "unrecorded.pt")
+
+
 def test_fql_build_preserves_raw_identity_across_pipeline_names(tmp_path):
     import json
 

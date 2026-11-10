@@ -171,6 +171,9 @@ do. They also cut the floor and walls. The 1.2 m x extent sets the scale, so a 4
      belongs to its action head (3D-MVP's D).
    - The RVT read-out also has a heatmap-weighted part, which needs the action head and is not used.
    - `FrameMLPStackHead` stacks the feature over the 3 frames (feature_dim 256).
+   - The read-out carries a large constant offset (z is never normalised). Real-world offline FQL standardises it per
+     dimension with training-split statistics before the adapter (`docs/realworld_fql.md`, "Frozen-feature
+     standardisation", 2026-11-10); the Meta-World DrM rows read it un-normalised (unchanged; user decision pending).
 7. **Determinism.** The trainer sets `cudnn.deterministic = True`. The default cuDNN convolution backward differs
    between identical runs (by about 1e-8). With deterministic kernels a resumed run is bitwise equal to an
    uninterrupted one (tested).

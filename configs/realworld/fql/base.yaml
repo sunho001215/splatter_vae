@@ -26,6 +26,9 @@ agent:
   normalize_q_loss: false
 encoder:
   proj_dim: 256            # campaign frozen-encoder adapter width (FrameMLPStackHead / SmallPostEncoderMLPHead)
+  feature_norm: none       # none | train_standardize: per-dimension (f - mean) / std of the frozen features before the
+                           # adapter, fitted on the TRAINING split, saved in policy.pt (docs/realworld_fql.md "Frozen-
+                           # feature standardisation"). Opt-in per condition by the plan rows (3D-MVP only, 2026-11-10)
 pixel:                     # e2e_cnn only: the official pixel handling (README: --agent.encoder=impala_small --p_aug=0.5
   encoder: impala_small    #   --frame_stack=3; s4d/rwlearn/pixel.py); frame stack = the shared 3-step history
   p_aug: 0.5               # one coin per batch; random crop, edge padding 3 px, same offsets for obs and next obs

@@ -42,6 +42,11 @@ RESUME_ARGS = {"snerl": ["--resume", "auto"], "dynamo": ["--resume", "auto"], "m
 PRETRAIN_PRIORITY, FQL_PRIORITY = 1, 2  # lower runs first: baselines before FQL
 FQL_BUDGET = {"offline_steps": 1_000_000, "batch_size": 256, "alpha": 10.0, "log_interval": 5000,
               "eval_interval": 100_000}
+# Opt-in trainer settings per FQL condition (docs/realworld_fql.md). 3D-MVP's frozen read-out is the un-normalised
+# residual stream (offset/signal 84-136 on the real-world stores): its features are standardised on the training split
+# (2026-11-10, MVP3D-FQL-DIAG.md); every other condition reads its stored features unchanged.
+FQL_CONDITION_SETS = {"mvp3d_multiview": ("encoder.feature_norm=train_standardize",),
+                      "mvp3d_single": ("encoder.feature_norm=train_standardize",)}
 
 
 def pretrain_row_id(baseline: str, task: str) -> str:
@@ -104,7 +109,8 @@ def fql_rows(task: str, commit: str, gate_sha: str, seeds=SEEDS, conditions=FQL_
         for seed in seeds:
             rid = f"rw-fql-{cond}-{task}-s{seed}"
             sets = [f"condition={cond}", f"data.dataset={data_path}", f"data.split_manifest={inputs}/split_seed0.json",
-                    f"data.gate_report={inputs}/gate_report.json", f"train.seed={seed}"]
+                    f"data.gate_report={inputs}/gate_report.json", f"train.seed={seed}",
+                    *FQL_CONDITION_SETS.get(cond, ())]
             if enc is None:
                 sets.append(f"data.store={inputs}/store.yaml")
             rows.append({

@@ -414,6 +414,17 @@ def test_role_classification_of_planned_rows_matches_the_declared_roles():
         assert not any("metaworld" in a or "configs/baselines/" in a or "configs/rl/" in a for a in r["args"])
 
 
+def test_only_3dmvp_fql_runs_standardise_their_frozen_features():
+    """encoder.feature_norm is opt-in per condition: exactly the 3D-MVP FQL runs set it; every other row (pretraining,
+    datasets, the other FQL conditions) keeps its arguments."""
+    rows = launch.plan_preview()["rows"]
+    flagged = {r["id"] for r in rows if "encoder.feature_norm=train_standardize" in r["args"]}
+    assert flagged == {r["id"] for r in rows if r["script"] == "scripts/train_realworld_fql.py"
+                       and r["fql_condition"] in ("mvp3d_single", "mvp3d_multiview")}
+    assert len(flagged) == 2 * len(launch.SEEDS) * len(launch.TASKS)
+    assert not any("feature_norm" in a for r in rows if r["id"] not in flagged for a in r["args"])
+
+
 def _families(entry_, **passed):
     entry_["preprocessing"]["stages"]["qa"].update(
         output_format="rwprep-qa/3", metrics={"families": {f: {"passed": passed.get(f, True), "failed": []}

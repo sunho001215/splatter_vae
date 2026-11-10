@@ -103,7 +103,52 @@ commands already inside the labelled action (Codex review).
 
 **Features.** Frozen features are computed once per observation time with the export the policy will run, and stored
 in the FQL dataset file next to the transitions. These are regenerable per-frame vectors keyed to the export's sha256,
-not window copies. The pipeline test checks that live encoding of store frames equals the cached features.
+not window copies. The pipeline test checks that live encoding of store frames equals the cached features. For the two
+3D-MVP conditions only, the adapter reads them standardised (next section).
+
+## Frozen-feature standardisation (3D-MVP only; 2026-11-10)
+
+**Why.** 3D-MVP's frozen read-out is the per-view max-pool of the last residual stream of a pre-norm transformer with
+no final norm (`docs/baselines_mvp3d.md` §6). On the real-world stores it is a large constant vector plus a small
+signal: offset/signal ||mu|| / sqrt(sum var) = 84-136 on the four 3D-MVP FQL datasets (ReViWo 0.03, DynaMo 2.5,
+SinCro 0.57-0.74; Meta-World 3D-MVP 3.5-4.7). The adapter's first operation is Linear -> LayerNorm; with ~99 % of its
+input the same vector for every sample, the LayerNorm output is constant to ~1e-3 (random-projection unit std
+0.007-0.010; ReViWo 0.99) and, LayerNorm being scale-invariant, no gradient removes the offset. All 12 trained
+real-world 3D-MVP FQL policies (`rwcal-20261109-fql-mvp3d_*`) are therefore vision-blind (replacing the features
+changes the action by <= 2e-7) and 8 of 12 critics ran away to Q = +4 000..+20 000 (feasible range [-100, 0]).
+Diagnosis: `/home/ws/ws/realworld-ops/serving/MVP3D-FQL-DIAG.md`; this fix and its validation:
+`/home/ws/ws/realworld-ops/serving/MVP-STATUS.md`.
+
+**What** (`encoder.feature_norm: train_standardize`; default `none`). Per dimension d, the adapter input is
+`(f_d - mu_d) / sigma_d`:
+
+- *Fit.* `fql_data.fit_feature_standardization(train.features)`: mean and population standard deviation over every
+  stored row (observation time) of the TRAINING split's timelines (`OfflineTransitions(split["train"])`; validation
+  episodes never enter), two passes with float64 accumulation on CPU, sigma floored at 1e-3 x max sigma (no 3D-MVP
+  dimension is near the floor), kept as float32. The fit runs once at the start of a run; its descriptor (kind, rows,
+  dim, floor, sha256 of the float32 mean||std) joins the resume identity, so a run never resumes under a different
+  standardisation.
+- *Where.* `fql_data.ObsEncoder` holds mean / std as non-trainable buffers `feat_mean` / `feat_std` of every network's
+  encoder (critic, target critic, BC flow, one-step policy; constant under Adam and the Polyak update) and applies them
+  to the float32 view of the stored float16 features, in front of the unchanged campaign adapter (`FrameMLPStackHead`;
+  `s4d/rl/encoders.py` is not touched). Registering the buffers consumes no randomness: the adapter's initial weights
+  are those of the unstandardised run with the same seed.
+- *Persistence.* The buffers are part of the agent state in `policy.pt` / `latest.pt`; the checkpoint meta carries the
+  descriptor (`meta["feature_norm"]`). `OfflinePolicy` (and so `DeployPolicy`) rebuilds the encoders with the buffers,
+  loads them strictly (buffers without the meta record, or the reverse, do not load) and checks every network's buffers
+  against the recorded sha256. `check_realworld_deploy.py contracts` writes the descriptor into the run's
+  `<run>.deploy_contract.json`, and `deploy.contracts.read_training_contract` refuses a sidecar whose record differs
+  from the checkpoint's (a stale sidecar without one included).
+- *Opt-in.* Only the 3D-MVP FQL rows set it (`ops/jobs/realworld_plan.py::FQL_CONDITION_SETS`, preview
+  `docs/realworld_training_plan.yaml`); the trainer refuses it for `e2e_cnn`. With `none`, ObsEncoder state, forward,
+  FQL updates, checkpoint meta, resume identity and deployment are bitwise those of d9b759c (tests + MVP-STATUS V4).
+  Not changed: the encoder exports, the FQL datasets (reused as built), the FQL agent and its hyperparameters (alpha 10,
+  `normalize_q_loss` false), every other condition, and the Meta-World DrM path (its 3D-MVP rows read the same
+  read-out un-normalised; a user decision, MVP3D-FQL-DIAG.md §7).
+
+Precedent: RVT-1's `rot_ver=1` path normalises the same pooled global feature with `BatchNorm1d` before its MLP
+(`third_party/rvt/rvt/mvt/mvt_single.py`, `feat_fc_init_bn`); a frozen read-out has no trainable bias that could absorb
+the offset, so it is removed with statistics of the training data.
 
 ## Action contract (Franka Panda + Robotiq 2F-85; `s4d/rwlearn/actions.py`)
 
@@ -181,7 +226,8 @@ ending-review evidence already use raw recording frames. Frozen encoders, pixel 
   1M steps, `log_interval` 5000. Every `eval_interval` it logs the official validation losses plus offline action
   errors of the one-step policy and the BC flow against the recorded commands (mm, deg, gripper) on validation
   episodes. Checkpoints are lossless: agent, optimiser, sampler and noise generators. It writes `policy.pt`.
-- `s4d/rwlearn/inference.py::OfflinePolicy` loads `policy.pt` and checks the encoder export's sha256. `act(history,
+- `s4d/rwlearn/inference.py::OfflinePolicy` loads `policy.pt` and checks the encoder export's sha256 (and, for the
+  3D-MVP rows, the frozen-feature standardisation's; previous section). `act(history,
   measured pose, gripper register)` returns the robot command; `replay` compares against a recorded episode. There is
   no robot I/O.
 - `scripts/realworld_learning.py plan` emits rows for every consumer whose gate level passed ("Training plan"
@@ -345,8 +391,8 @@ unmeasured (covering, pick-and-place; below).
 | each | `reviwo` | `rw-reviwo-<task>-pre`: 100,001 steps, seed 42 (4 / 16) | 1 RGB view (none) | same | 6 / 12 | no |
 | each | `sincro` | `rw-sincro-<task>-pre`: 300k steps (50 epochs cap), seed 42 (12 / 24) | 1 RGB view (none) | same | 6 / 12 | yes |
 | each | `snerl` | `rw-snerl-<task>-pre`: 2.4M iterations (official), 3 input cameras, seed 0 (16 / 20) | +2 RGB views, +3 camera poses (native multi-view) | same | 6 / 12 | yes |
-| each | `mvp3d_multiview` | `rw-mvp3d-<task>-pre`: 15 epochs, seed 0 (12 / 24) | +2 RGB views, +depth, +K / extrinsics | same | 6 / 12 | yes |
-| each | `mvp3d_single` | same encoder as above | +depth, +K / extrinsics | same | 6 / 12 | yes |
+| each | `mvp3d_multiview` | `rw-mvp3d-<task>-pre`: 15 epochs, seed 0 (12 / 24) | +2 RGB views, +depth, +K / extrinsics | same + `encoder.feature_norm=train_standardize` | 6 / 12 | yes |
+| each | `mvp3d_single` | same encoder as above | +depth, +K / extrinsics | same + `encoder.feature_norm=train_standardize` | 6 / 12 | yes |
 | each | `e2e_cnn` | none: IMPALA-small random init, trained jointly with FQL | 1 RGB view (none) | same | 12 / 24 | no |
 
 Each task is drawer-open, mug-hanging, covering or pick-and-place (gated separately; new tasks: last section).
