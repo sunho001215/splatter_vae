@@ -31,7 +31,7 @@ def describe(policies: dict) -> list[dict]:
                      "fixture": bool(spec.get("fixture")), "views": spec.get("views"),
                      "modalities": spec.get("modalities"), "needs_calibration": spec.get("needs_calibration"),
                      "trained_cameras": [list(o) for o in spec.get("trained_camera_orders", [])],
-                     "flags": info.get("flags", [])})
+                     "flags": info.get("flags", []), "alias_of": info.get("alias_of")})
     return rows
 
 
@@ -44,7 +44,8 @@ def select_policy(policies: dict, policy_id: str | None = None, *, condition: st
         return policy_id
     match = [r["policy_id"] for r in describe(policies)
              if (condition is None or r["condition"] == condition) and (task is None or r["task"] == task)
-             and (seed is None or r["seed"] == seed) and r["status"] == "deployable" and not r["fixture"]]
+             and (seed is None or r["seed"] == seed) and r["status"] == "deployable" and not r["fixture"]
+             and not r["alias_of"]]  # a legacy alias names the same checkpoint as its canonical id
     if len(match) != 1:
         raise SelectionError(f"{len(match)} deployable policies match condition={condition} task={task} seed={seed}: "
                              f"{match}; give --policy")

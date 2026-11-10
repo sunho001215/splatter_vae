@@ -381,9 +381,12 @@ def list_policies(cfg: dict, args) -> int:
 
     offered = cli.welcome(cfg, args)["policies"]
     names = camera_names(cfg)
-    rows = []
+    rows, aliases = [], 0
     for pid, p in sorted(offered.items()):
         info, spec = p.get("info") or {}, p.get("input_spec") or {}
+        if info.get("alias_of"):  # legacy alias of a canonical <method>-<task>-s<seed> id (same checkpoint)
+            aliases += 1
+            continue
         cams = sorted({c for o in spec.get("trained_camera_orders", []) for c in o})
         rows.append((info.get("task", "?"), info.get("condition", "?"), str(info.get("seed", "?")), pid,
                      "yes" if execution_eligible(info) else "no", info.get("status", "?"), str(spec.get("views", "?")),
@@ -392,7 +395,8 @@ def list_policies(cfg: dict, args) -> int:
     w = [max(len(r[i]) for r in rows + [head]) for i in range(len(head))]
     for r in [head] + rows:
         print("  ".join(x.ljust(w[i]) for i, x in enumerate(r)))
-    print(f"\ncamera names: {names} (config/camera_names.yaml); 'eligible' = may run on the robot (catalog)")
+    print(f"\ncamera names: {names} (config/camera_names.yaml); 'eligible' = may run on the robot (catalog); "
+          f"{aliases} legacy alias ids not shown")
     return 0
 
 

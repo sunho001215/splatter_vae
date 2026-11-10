@@ -77,6 +77,12 @@ def test_list_shows_task_method_seed_eligibility(monkeypatch, capsys, tmp_path):
                                            "status": "restricted", "execution_eligible": False},
                                   "input_spec": {"views": 1, "modalities": ["rgb"], "trained_camera_orders": ALL3}},
     }
+    offered["e2e_cnn-drawer-open"] = {"info": {**offered["e2e_cnn-drawer-open-s0"]["info"],
+                                               "alias_of": "e2e_cnn-drawer-open-s0"},
+                                      "input_spec": offered["e2e_cnn-drawer-open-s0"]["input_spec"]}
+    from ops.robot_pc import selection
+
+    assert selection.select_policy(offered, condition="e2e_cnn", task="drawer-open", seed=0) == "e2e_cnn-drawer-open-s0"
     monkeypatch.setattr(cli, "welcome", lambda cfg, args: {"policies": offered})
     monkeypatch.setattr(cli, "load_config", lambda args: C.load(root=tmp_path))
     assert _infer().main(["--list"]) == 0
@@ -84,6 +90,7 @@ def test_list_shows_task_method_seed_eligibility(monkeypatch, capsys, tmp_path):
     rows = {r.split()[3]: r.split() for r in out[1:] if r.strip() and not r.startswith("camera names")}
     assert rows["e2e_cnn-drawer-open-s0"][:5] == ["drawer-open", "e2e_cnn", "0", "e2e_cnn-drawer-open-s0", "yes"]
     assert rows["dynamo-drawer-open-s0"][4] == "no" and rows["dynamo-drawer-open-s0"][-1] == "left,right,middle"
+    assert "e2e_cnn-drawer-open" not in rows and "1 legacy alias ids not shown" in out[-1]
 
 
 def test_run_folders_are_named_numbered_and_never_reused(tmp_path):
