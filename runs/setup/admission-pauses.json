@@ -1,189 +1,202 @@
 {
- "doc": "Intentional admission pauses. A listed row (id or id prefix) is never admitted, retried, relaunched or moved between hosts by any driver while its pause is active; its registration, checkpoints, replay and results are kept. Read by runs/setup/tools/admission_pause.py (remote_campaign_driver.py, stage2_local_driver.py, baseline_local_driver.py). Lifting a pause = setting active false with a reason.",
- "pauses": [
-  {
-   "name": "paper-ablations-csw4-door-open",
-   "active": true,
-   "since": "2026-10-28T13:53:17+0900",
-   "reason": "user directive 2026-10-28 (downstream-algorithm / six-environment campaign has priority): pause the five paper-ablation arms and descendants at the nearest complete checkpoint; resumable; no automatic relaunch until the campaign priorities change",
-   "prefixes": [
-    "enc-abl-"
-   ],
-   "ids": [
-    "enc-abl-nochamfer-csw4-drm-door-open-s2000",
-    "enc-abl-nochamfer-csw4-drm-door-open-s2000-eval",
-    "enc-abl-nochamfer-csw4-drm-door-open-s2001",
-    "enc-abl-nochamfer-csw4-drm-door-open-s2001-eval",
-    "enc-abl-nochamfer-csw4-drm-door-open-s2002",
-    "enc-abl-nochamfer-csw4-drm-door-open-s2002-eval",
-    "enc-abl-nochamfer-csw4-export-seed0-door-open-200k",
-    "enc-abl-nochamfer-csw4-seed0-door-open-200k",
-    "enc-abl-nodepth-csw4-drm-door-open-s2000",
-    "enc-abl-nodepth-csw4-drm-door-open-s2000-eval",
-    "enc-abl-nodepth-csw4-drm-door-open-s2001",
-    "enc-abl-nodepth-csw4-drm-door-open-s2001-eval",
-    "enc-abl-nodepth-csw4-drm-door-open-s2002",
-    "enc-abl-nodepth-csw4-drm-door-open-s2002-eval",
-    "enc-abl-nodepth-csw4-export-seed0-door-open-200k",
-    "enc-abl-nodepth-csw4-seed0-door-open-200k",
-    "enc-abl-noinfonce-csw4-drm-door-open-s2000",
-    "enc-abl-noinfonce-csw4-drm-door-open-s2000-eval",
-    "enc-abl-noinfonce-csw4-drm-door-open-s2001",
-    "enc-abl-noinfonce-csw4-drm-door-open-s2001-eval",
-    "enc-abl-noinfonce-csw4-drm-door-open-s2002",
-    "enc-abl-noinfonce-csw4-drm-door-open-s2002-eval",
-    "enc-abl-noinfonce-csw4-export-seed0-door-open-200k",
-    "enc-abl-noinfonce-csw4-seed0-door-open-200k",
-    "enc-abl-nomotion-csw4-drm-door-open-s2000",
-    "enc-abl-nomotion-csw4-drm-door-open-s2000-eval",
-    "enc-abl-nomotion-csw4-drm-door-open-s2001",
-    "enc-abl-nomotion-csw4-drm-door-open-s2001-eval",
-    "enc-abl-nomotion-csw4-drm-door-open-s2002",
-    "enc-abl-nomotion-csw4-drm-door-open-s2002-eval",
-    "enc-abl-nomotion-csw4-export-seed0-door-open-200k",
-    "enc-abl-nomotion-csw4-seed0-door-open-200k",
-    "enc-abl-t1spatial-csw4-drm-door-open-s2000",
-    "enc-abl-t1spatial-csw4-drm-door-open-s2000-eval",
-    "enc-abl-t1spatial-csw4-drm-door-open-s2001",
-    "enc-abl-t1spatial-csw4-drm-door-open-s2001-eval",
-    "enc-abl-t1spatial-csw4-drm-door-open-s2002",
-    "enc-abl-t1spatial-csw4-drm-door-open-s2002-eval",
-    "enc-abl-t1spatial-csw4-export-seed0-door-open-200k",
-    "enc-abl-t1spatial-csw4-seed0-door-open-200k"
-   ]
-  },
-  {
-   "name": "selfrender-v2-stopped-20261031",
-   "active": true,
-   "since": "2026-10-31T02:35:39+09:00",
-   "reason": "cancelled: user instruction 2026-10-31 -- stop all running Gaussian self-rendering experiments (selfrender_replace_v2); replaced by a new variant (+-5 % radial camera jitter and the 5 %-relaxed viewpoint domain) trained from scratch under new names",
-   "prefixes": [
-    "sr-csw4-",
-    "ds-flashsac-sr-csw4-"
-   ],
-   "ids": [
-    "sr-csw4-seed0-hammer-200k",
-    "sr-csw4-seed0-pick-place-200k",
-    "sr-csw4-seed0-bin-picking-200k",
-    "sr-csw4-export-seed0-hammer-200k",
-    "sr-csw4-export-seed0-pick-place-200k",
-    "sr-csw4-export-seed0-bin-picking-200k",
-    "ds-flashsac-sr-csw4-hammer-s2000",
-    "ds-flashsac-sr-csw4-hammer-s2000-eval",
-    "ds-flashsac-sr-csw4-hammer-s2001",
-    "ds-flashsac-sr-csw4-hammer-s2001-eval",
-    "ds-flashsac-sr-csw4-hammer-s2002",
-    "ds-flashsac-sr-csw4-hammer-s2002-eval",
-    "ds-flashsac-sr-csw4-pick-place-s2000",
-    "ds-flashsac-sr-csw4-pick-place-s2000-eval",
-    "ds-flashsac-sr-csw4-pick-place-s2001",
-    "ds-flashsac-sr-csw4-pick-place-s2001-eval",
-    "ds-flashsac-sr-csw4-pick-place-s2002",
-    "ds-flashsac-sr-csw4-pick-place-s2002-eval",
-    "ds-flashsac-sr-csw4-bin-picking-s2000",
-    "ds-flashsac-sr-csw4-bin-picking-s2000-eval",
-    "ds-flashsac-sr-csw4-bin-picking-s2001",
-    "ds-flashsac-sr-csw4-bin-picking-s2001-eval",
-    "ds-flashsac-sr-csw4-bin-picking-s2002",
-    "ds-flashsac-sr-csw4-bin-picking-s2002-eval"
-   ]
-  },
-  {
-   "name": "snerl-newtask-class-table-20261031",
-   "active": false,
-   "since": "2026-10-31T11:10:01+09:00",
-   "reason": "ds-pre-snerl-drawer-open crashed deterministically (KeyError: drawer-open in s4d/baselines/snerl/data.py TASK_BODIES: the SNeRL semantic class table has only the 8 original tasks). Hold the four new-task SNeRL pretrainings (no admission, no retry on the unfixed release, which a retry would stay pinned to) until the class table for the new tasks is decided; lift after the fix is released.",
-   "prefixes": [],
-   "ids": [
-    "ds-pre-snerl-drawer-open",
-    "ds-pre-snerl-window-open",
-    "ds-pre-snerl-soccer",
-    "ds-pre-snerl-sweep-into"
-   ],
-   "lifted": "2026-10-31T12:08:39+09:00",
-   "lift_reason": "fix released as dd86d78 (user approval 2026-10-31; remote suite 1222 passed); window-open, soccer and sweep-into run on it as new launches (SNERL_NT_COMMIT); drawer-open is rerun as ds-pre-snerl-drawer-open-r2 and the original row is cancelled"
-  },
-  {
-   "name": "s3spec-held-20261102",
-   "active": true,
-   "since": "2026-11-02T20:59:23+0900",
-   "reason": "enforce the documented hold (EXPERIMENT_LOG: s3spec rows are a Stage 3 specification gated on a 300k freeze, 'not ready experiments', 'held'); the remote driver gate only blocks them when method-frozen-v1.json exists, which it does not, so they could otherwise launch once remote capacity frees and delay the SNeRL critical path. Registration untouched; lift by setting active false with a reason.",
-   "prefixes": [
-    "s3spec-"
-   ],
-   "ids": []
-  },
-  {
-   "name": "non-drm-rl-stopped-20261105",
-   "active": true,
-   "since": "2026-11-05T22:47:58+09:00",
-   "reason": "user directive 2026-11-05 ~22:45 KST: stop all FlashSAC, PPO, Dreamer and standalone (SNeRL-code) SAC experiments; DrM is the sole downstream RL algorithm going forward for our method and all baselines. Queued rows, automatic launches, retries and their dedicated evaluators are disabled; the running trainer is paused losslessly at its next checkpoint (pause_flashsac_at_checkpoint_20261031.py); registrations, checkpoints, replay, logs and results are kept. Shared pretraining (ds-pre-*, enc-*, sr*/srv4 encoders) and everything DrM needs are NOT covered by this pause.",
-   "prefixes": [
-    "ds-flashsac-",
-    "ds-ppo-",
-    "ds-dreamer-",
-    "ds-sac-"
-   ],
-   "ids": []
-  },
-  {
-   "name": "additional-metaworld-tasks-stopped-20261106",
-   "active": true,
-   "since": "2026-11-06T00:02:20+09:00",
-   "reason": "user directive 2026-11-06 ~00:00 KST: stop the additional Meta-World environment expansion (drawer-open, window-open, soccer, sweep-into); gracefully pause the four new-task SNeRL pretrainings at resumable checkpoints (pause_remote_pretrain_at_checkpoint.py) and disable all pending training, exports, evaluations, retries and automatic launches belonging exclusively to the additional-task campaigns; completed results and history kept. Focus: best architecture within the original eight environments, DrM only. (FlashSAC rows on these tasks are already covered by non-drm-rl-stopped-20261105.)",
-   "prefixes": [
-    "ds-pre-",
-    "ds-csw4-"
-   ],
-   "ids": [
-    "ds-pre-snerl-drawer-open-r2",
-    "ds-pre-snerl-window-open",
-    "ds-pre-snerl-soccer",
-    "ds-pre-snerl-sweep-into",
-    "ds-pre-snerl-drawer-open"
-   ]
-  },
-  {
-   "name": "rwng-learning-inputs-20261107",
-   "active": true,
-   "prefixes": [
-    "rwng-20261106-"
-   ],
-   "since": "2026-11-07T01:55:00+09:00",
-   "by": "coordinator",
-   "reason": "real-world non-geometric rows fail at start: learning_inputs/<task>/split_seed0.json missing because scripts/realworld_learning.py inputs refuses the real stores (gate store_episode_id episode_NNNNNN vs pipeline store key task-NNNNNN; fix rw-epid-20261107 in progress). Lift after the fix is released, inputs are written and the failed rows are reset. UPDATE 02:30: SUPERSEDED (permanent): replaced by rwng-20261107-* rows pinned to 782f140 (retries would keep the first launch commit c9fc448); learning inputs written 02:28 under learning_inputs/<task>/ with 782f140."
-  },
-  {
-   "name": "rwng-mounts-20261107",
-   "active": false,
-   "prefixes": [
-    "rwng-20261107-"
-   ],
-   "since": "2026-11-07T02:35:00+09:00",
-   "by": "coordinator",
-   "reason": "rwng-20261107 pretrainings exit 1: learning_inputs/<task>/split_seed0.json exists on the remote host but is not visible inside the scheduler job containers (mounts); pause until the mount/path is fixed, then reset or re-register LIFTED 03:09 after 080f330 (read-only real-world mounts) merged; retries keep commit 782f140.",
-   "lifted": "2026-11-07T03:09:30+09:00"
-  },
-  {
-   "name": "rwng-fqldata-20261107",
-   "active": true,
-   "prefixes": [
-    "rwng-20261107-fqldata-",
-    "rwng-20261107-fql-"
-   ],
-   "since": "2026-11-07T07:10:30+09:00",
-   "by": "coordinator",
-   "reason": "fqldata builds exit 1 on attempt 1 (diagnosing); pause datasets + FQL runs to keep retries UPDATE 07:53: SUPERSEDED (permanent) by rwng-20261107b-* dataset/FQL rows pinned to ee07b2e (FQL store->raw frame mapping); retries would keep commit 782f140."
-  },
-  {
-   "name": "rwcal-fql-feature-check-20261109",
-   "active": true,
-   "prefixes": [
-    "rwcal-20261109-fql-snerl-"
-   ],
-   "since": "2026-11-09T23:17:07+0900",
-   "by": "coordinator",
-   "reason": "protective pre-launch check (2026-11-09 23:25): all 12 rwcal 3D-MVP FQL policies are vision-blind (frozen features ~99 % constant offset -> LayerNorm head collapse; 8/12 critics diverged; realworld-ops/serving/MVP3D-FQL-DIAG.md). SinCro/SNeRL FQL use the same ObsEncoder/head path. Their fqldata rows still run; lift as soon as the built dataset's feature offset/signal ratio is comparable to ReViWo/DynaMo (no checkpoint, run, or dataset is touched). | 2026-11-10 05:15 coordinator: sincro drawer-open dataset PASSES (offset/signal 0.74, LN unit std 0.77, realworld-ops/serving/evidence/fqlfeat-sincro-drawer-open.json) -> prefix narrowed to sincro mug-hanging; mug-hanging + snerl lifted the same way once their datasets pass. | 2026-11-10 10:10 coordinator: sincro mug-hanging dataset PASSES (offset/signal 0.57, LN unit std 0.84, realworld-ops/serving/evidence/fqlfeat-sincro-mug-hanging.json) -> only snerl remains paused."
-  }
- ]
+  "doc": "Intentional admission pauses. A listed row (id or id prefix) is never admitted, retried, relaunched or moved between hosts by any driver while its pause is active; its registration, checkpoints, replay and results are kept. Read by runs/setup/tools/admission_pause.py (remote_campaign_driver.py, stage2_local_driver.py, baseline_local_driver.py). Lifting a pause = setting active false with a reason.",
+  "pauses": [
+    {
+      "name": "paper-ablations-csw4-door-open",
+      "active": true,
+      "since": "2026-10-28T13:53:17+0900",
+      "reason": "user directive 2026-10-28 (downstream-algorithm / six-environment campaign has priority): pause the five paper-ablation arms and descendants at the nearest complete checkpoint; resumable; no automatic relaunch until the campaign priorities change",
+      "prefixes": [
+        "enc-abl-"
+      ],
+      "ids": [
+        "enc-abl-nochamfer-csw4-drm-door-open-s2000",
+        "enc-abl-nochamfer-csw4-drm-door-open-s2000-eval",
+        "enc-abl-nochamfer-csw4-drm-door-open-s2001",
+        "enc-abl-nochamfer-csw4-drm-door-open-s2001-eval",
+        "enc-abl-nochamfer-csw4-drm-door-open-s2002",
+        "enc-abl-nochamfer-csw4-drm-door-open-s2002-eval",
+        "enc-abl-nochamfer-csw4-export-seed0-door-open-200k",
+        "enc-abl-nochamfer-csw4-seed0-door-open-200k",
+        "enc-abl-nodepth-csw4-drm-door-open-s2000",
+        "enc-abl-nodepth-csw4-drm-door-open-s2000-eval",
+        "enc-abl-nodepth-csw4-drm-door-open-s2001",
+        "enc-abl-nodepth-csw4-drm-door-open-s2001-eval",
+        "enc-abl-nodepth-csw4-drm-door-open-s2002",
+        "enc-abl-nodepth-csw4-drm-door-open-s2002-eval",
+        "enc-abl-nodepth-csw4-export-seed0-door-open-200k",
+        "enc-abl-nodepth-csw4-seed0-door-open-200k",
+        "enc-abl-noinfonce-csw4-drm-door-open-s2000",
+        "enc-abl-noinfonce-csw4-drm-door-open-s2000-eval",
+        "enc-abl-noinfonce-csw4-drm-door-open-s2001",
+        "enc-abl-noinfonce-csw4-drm-door-open-s2001-eval",
+        "enc-abl-noinfonce-csw4-drm-door-open-s2002",
+        "enc-abl-noinfonce-csw4-drm-door-open-s2002-eval",
+        "enc-abl-noinfonce-csw4-export-seed0-door-open-200k",
+        "enc-abl-noinfonce-csw4-seed0-door-open-200k",
+        "enc-abl-nomotion-csw4-drm-door-open-s2000",
+        "enc-abl-nomotion-csw4-drm-door-open-s2000-eval",
+        "enc-abl-nomotion-csw4-drm-door-open-s2001",
+        "enc-abl-nomotion-csw4-drm-door-open-s2001-eval",
+        "enc-abl-nomotion-csw4-drm-door-open-s2002",
+        "enc-abl-nomotion-csw4-drm-door-open-s2002-eval",
+        "enc-abl-nomotion-csw4-export-seed0-door-open-200k",
+        "enc-abl-nomotion-csw4-seed0-door-open-200k",
+        "enc-abl-t1spatial-csw4-drm-door-open-s2000",
+        "enc-abl-t1spatial-csw4-drm-door-open-s2000-eval",
+        "enc-abl-t1spatial-csw4-drm-door-open-s2001",
+        "enc-abl-t1spatial-csw4-drm-door-open-s2001-eval",
+        "enc-abl-t1spatial-csw4-drm-door-open-s2002",
+        "enc-abl-t1spatial-csw4-drm-door-open-s2002-eval",
+        "enc-abl-t1spatial-csw4-export-seed0-door-open-200k",
+        "enc-abl-t1spatial-csw4-seed0-door-open-200k"
+      ]
+    },
+    {
+      "name": "selfrender-v2-stopped-20261031",
+      "active": true,
+      "since": "2026-10-31T02:35:39+09:00",
+      "reason": "cancelled: user instruction 2026-10-31 -- stop all running Gaussian self-rendering experiments (selfrender_replace_v2); replaced by a new variant (+-5 % radial camera jitter and the 5 %-relaxed viewpoint domain) trained from scratch under new names",
+      "prefixes": [
+        "sr-csw4-",
+        "ds-flashsac-sr-csw4-"
+      ],
+      "ids": [
+        "sr-csw4-seed0-hammer-200k",
+        "sr-csw4-seed0-pick-place-200k",
+        "sr-csw4-seed0-bin-picking-200k",
+        "sr-csw4-export-seed0-hammer-200k",
+        "sr-csw4-export-seed0-pick-place-200k",
+        "sr-csw4-export-seed0-bin-picking-200k",
+        "ds-flashsac-sr-csw4-hammer-s2000",
+        "ds-flashsac-sr-csw4-hammer-s2000-eval",
+        "ds-flashsac-sr-csw4-hammer-s2001",
+        "ds-flashsac-sr-csw4-hammer-s2001-eval",
+        "ds-flashsac-sr-csw4-hammer-s2002",
+        "ds-flashsac-sr-csw4-hammer-s2002-eval",
+        "ds-flashsac-sr-csw4-pick-place-s2000",
+        "ds-flashsac-sr-csw4-pick-place-s2000-eval",
+        "ds-flashsac-sr-csw4-pick-place-s2001",
+        "ds-flashsac-sr-csw4-pick-place-s2001-eval",
+        "ds-flashsac-sr-csw4-pick-place-s2002",
+        "ds-flashsac-sr-csw4-pick-place-s2002-eval",
+        "ds-flashsac-sr-csw4-bin-picking-s2000",
+        "ds-flashsac-sr-csw4-bin-picking-s2000-eval",
+        "ds-flashsac-sr-csw4-bin-picking-s2001",
+        "ds-flashsac-sr-csw4-bin-picking-s2001-eval",
+        "ds-flashsac-sr-csw4-bin-picking-s2002",
+        "ds-flashsac-sr-csw4-bin-picking-s2002-eval"
+      ]
+    },
+    {
+      "name": "snerl-newtask-class-table-20261031",
+      "active": false,
+      "since": "2026-10-31T11:10:01+09:00",
+      "reason": "ds-pre-snerl-drawer-open crashed deterministically (KeyError: drawer-open in s4d/baselines/snerl/data.py TASK_BODIES: the SNeRL semantic class table has only the 8 original tasks). Hold the four new-task SNeRL pretrainings (no admission, no retry on the unfixed release, which a retry would stay pinned to) until the class table for the new tasks is decided; lift after the fix is released.",
+      "prefixes": [],
+      "ids": [
+        "ds-pre-snerl-drawer-open",
+        "ds-pre-snerl-window-open",
+        "ds-pre-snerl-soccer",
+        "ds-pre-snerl-sweep-into"
+      ],
+      "lifted": "2026-10-31T12:08:39+09:00",
+      "lift_reason": "fix released as dd86d78 (user approval 2026-10-31; remote suite 1222 passed); window-open, soccer and sweep-into run on it as new launches (SNERL_NT_COMMIT); drawer-open is rerun as ds-pre-snerl-drawer-open-r2 and the original row is cancelled"
+    },
+    {
+      "name": "s3spec-held-20261102",
+      "active": true,
+      "since": "2026-11-02T20:59:23+0900",
+      "reason": "enforce the documented hold (EXPERIMENT_LOG: s3spec rows are a Stage 3 specification gated on a 300k freeze, 'not ready experiments', 'held'); the remote driver gate only blocks them when method-frozen-v1.json exists, which it does not, so they could otherwise launch once remote capacity frees and delay the SNeRL critical path. Registration untouched; lift by setting active false with a reason.",
+      "prefixes": [
+        "s3spec-"
+      ],
+      "ids": []
+    },
+    {
+      "name": "non-drm-rl-stopped-20261105",
+      "active": true,
+      "since": "2026-11-05T22:47:58+09:00",
+      "reason": "user directive 2026-11-05 ~22:45 KST: stop all FlashSAC, PPO, Dreamer and standalone (SNeRL-code) SAC experiments; DrM is the sole downstream RL algorithm going forward for our method and all baselines. Queued rows, automatic launches, retries and their dedicated evaluators are disabled; the running trainer is paused losslessly at its next checkpoint (pause_flashsac_at_checkpoint_20261031.py); registrations, checkpoints, replay, logs and results are kept. Shared pretraining (ds-pre-*, enc-*, sr*/srv4 encoders) and everything DrM needs are NOT covered by this pause.",
+      "prefixes": [
+        "ds-flashsac-",
+        "ds-ppo-",
+        "ds-dreamer-",
+        "ds-sac-"
+      ],
+      "ids": []
+    },
+    {
+      "name": "additional-metaworld-tasks-stopped-20261106",
+      "active": true,
+      "since": "2026-11-06T00:02:20+09:00",
+      "reason": "user directive 2026-11-06 ~00:00 KST: stop the additional Meta-World environment expansion (drawer-open, window-open, soccer, sweep-into); gracefully pause the four new-task SNeRL pretrainings at resumable checkpoints (pause_remote_pretrain_at_checkpoint.py) and disable all pending training, exports, evaluations, retries and automatic launches belonging exclusively to the additional-task campaigns; completed results and history kept. Focus: best architecture within the original eight environments, DrM only. (FlashSAC rows on these tasks are already covered by non-drm-rl-stopped-20261105.)",
+      "prefixes": [
+        "ds-pre-",
+        "ds-csw4-"
+      ],
+      "ids": [
+        "ds-pre-snerl-drawer-open-r2",
+        "ds-pre-snerl-window-open",
+        "ds-pre-snerl-soccer",
+        "ds-pre-snerl-sweep-into",
+        "ds-pre-snerl-drawer-open"
+      ]
+    },
+    {
+      "name": "rwng-learning-inputs-20261107",
+      "active": true,
+      "prefixes": [
+        "rwng-20261106-"
+      ],
+      "since": "2026-11-07T01:55:00+09:00",
+      "by": "coordinator",
+      "reason": "real-world non-geometric rows fail at start: learning_inputs/<task>/split_seed0.json missing because scripts/realworld_learning.py inputs refuses the real stores (gate store_episode_id episode_NNNNNN vs pipeline store key task-NNNNNN; fix rw-epid-20261107 in progress). Lift after the fix is released, inputs are written and the failed rows are reset. UPDATE 02:30: SUPERSEDED (permanent): replaced by rwng-20261107-* rows pinned to 782f140 (retries would keep the first launch commit c9fc448); learning inputs written 02:28 under learning_inputs/<task>/ with 782f140."
+    },
+    {
+      "name": "rwng-mounts-20261107",
+      "active": false,
+      "prefixes": [
+        "rwng-20261107-"
+      ],
+      "since": "2026-11-07T02:35:00+09:00",
+      "by": "coordinator",
+      "reason": "rwng-20261107 pretrainings exit 1: learning_inputs/<task>/split_seed0.json exists on the remote host but is not visible inside the scheduler job containers (mounts); pause until the mount/path is fixed, then reset or re-register LIFTED 03:09 after 080f330 (read-only real-world mounts) merged; retries keep commit 782f140.",
+      "lifted": "2026-11-07T03:09:30+09:00"
+    },
+    {
+      "name": "rwng-fqldata-20261107",
+      "active": true,
+      "prefixes": [
+        "rwng-20261107-fqldata-",
+        "rwng-20261107-fql-"
+      ],
+      "since": "2026-11-07T07:10:30+09:00",
+      "by": "coordinator",
+      "reason": "fqldata builds exit 1 on attempt 1 (diagnosing); pause datasets + FQL runs to keep retries UPDATE 07:53: SUPERSEDED (permanent) by rwng-20261107b-* dataset/FQL rows pinned to ee07b2e (FQL store->raw frame mapping); retries would keep commit 782f140."
+    },
+    {
+      "name": "rwcal-fql-feature-check-20261109",
+      "active": true,
+      "prefixes": [
+        "rwcal-20261109-fql-snerl-"
+      ],
+      "since": "2026-11-09T23:17:07+0900",
+      "by": "coordinator",
+      "reason": "protective pre-launch check (2026-11-09 23:25): all 12 rwcal 3D-MVP FQL policies are vision-blind (frozen features ~99 % constant offset -> LayerNorm head collapse; 8/12 critics diverged; realworld-ops/serving/MVP3D-FQL-DIAG.md). SinCro/SNeRL FQL use the same ObsEncoder/head path. Their fqldata rows still run; lift as soon as the built dataset's feature offset/signal ratio is comparable to ReViWo/DynaMo (no checkpoint, run, or dataset is touched). | 2026-11-10 05:15 coordinator: sincro drawer-open dataset PASSES (offset/signal 0.74, LN unit std 0.77, realworld-ops/serving/evidence/fqlfeat-sincro-drawer-open.json) -> prefix narrowed to sincro mug-hanging; mug-hanging + snerl lifted the same way once their datasets pass. | 2026-11-10 10:10 coordinator: sincro mug-hanging dataset PASSES (offset/signal 0.57, LN unit std 0.84, realworld-ops/serving/evidence/fqlfeat-sincro-mug-hanging.json) -> only snerl remains paused."
+    },
+    {
+      "name": "mvp3d-native-fql-feature-check-20261110",
+      "active": true,
+      "prefixes": [
+        "rwcal-20261110-fql-mvp3d_single-drawer-open-",
+        "rwcal-20261110-fql-mvp3d_single-mug-hanging-",
+        "rwcal-20261110-fql-mvp3d_multiview-drawer-open-",
+        "rwcal-20261110-fql-mvp3d_multiview-mug-hanging-"
+      ],
+      "since": "2026-11-10T11:40:25.376064+00:00",
+      "by": "register_mvp3d_native_20261110",
+      "reason": "held until the cell's native fqldata passes the standardised A1 feature check"
+    }
+  ]
 }

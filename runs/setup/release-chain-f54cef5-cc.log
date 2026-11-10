@@ -1,0 +1,57 @@
+19:00:32 /home/ws/ws/splatter4d/.worktrees/rel-mvpdat/s4d/remote_access.py sync-code f54cef5041293675df05a6f2a76bb44b830d1c30 -> 0 /home/compu/kaist/sunho/releases/f54cef5041293675df05a6f2a76bb44b830d1c30/code 
+19:00:32 /home/compu/kaist/sunho/releases/f54cef5041293675df05a6f2a76bb44b830d1c30/code
+19:00:38 sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a --tag cc -> 0 /home/ws/ws/splatter4d/runs/remote/verification/native-f54cef5-cc-queue.yaml 
+19:01:38 remote co-tenants: 2 known, 88 GB RAM not yet in use charged; GPU-9e9f1e97 2 (68.0 GB charged, 27.6 GB free after pending reservations)
+19:01:38 launched verify-native-f54cef5-cc on remote/GPU-ca65e1b7-c0ac-6757-7d3f-816c3119a4c1 (s4d-verify-native-f54cef5-cc-a1, attempt 1)
+19:01:39 wait {'verify-native-f54cef5-cc': 'running'}
+19:03:00 remote co-tenants: 1 known, 45 GB RAM not yet in use charged; GPU-9e9f1e97 1 (34.0 GB charged, 61.6 GB free after pending reservations)
+19:03:01 wait {'verify-native-f54cef5-cc': 'running'}
+19:04:57 remote co-tenants: 1 known, 45 GB RAM not yet in use charged; GPU-9e9f1e97 1 (34.0 GB charged, 61.6 GB free after pending reservations)
+19:04:57 wait {'verify-native-f54cef5-cc': 'running'}
+19:16:24 rwcal-20261109-fql-sincro-mug-hanging-s2: local backup checksum verified; done
+19:16:24 verify-native-f54cef5-cc: live result sync unavailable; job remains running
+19:16:24 remote co-tenants: 1 known, 48 GB RAM not yet in use charged; GPU-9e9f1e97 1 (34.0 GB charged, 61.6 GB free after pending reservations)
+19:16:25 wait {'verify-native-f54cef5-cc': 'running'}
+19:18:01 remote co-tenants: 1 known, 45 GB RAM not yet in use charged; GPU-9e9f1e97 1 (34.0 GB charged, 61.6 GB free after pending reservations)
+19:18:01 wait {'verify-native-f54cef5-cc': 'running'}
+19:19:25 verify-native-f54cef5-cc: live result sync unavailable; job remains running
+19:19:25 remote co-tenants: 1 known, 45 GB RAM not yet in use charged; GPU-9e9f1e97 1 (34.0 GB charged, 61.6 GB free after pending reservations)
+19:19:25 wait {'verify-native-f54cef5-cc': 'running'}
+19:21:01 verify-native-f54cef5-cc: live result sync unavailable; job remains running
+19:21:01 remote co-tenants: 2 known, 90 GB RAM not yet in use charged; GPU-9e9f1e97 2 (68.0 GB charged, 27.6 GB free after pending reservations)
+19:21:02 wait {'verify-native-f54cef5-cc': 'running'}
+19:26:47 verify-native-f54cef5-cc: live result sync unavailable; job remains running
+19:26:47 remote co-tenants: 2 known, 91 GB RAM not yet in use charged; GPU-9e9f1e97 2 (68.0 GB charged, 27.6 GB free after pending reservations)
+19:26:48 wait {'verify-native-f54cef5-cc': 'running'}
+19:28:45 remote co-tenants: 2 known, 87 GB RAM not yet in use charged; GPU-9e9f1e97 2 (68.0 GB charged, 27.6 GB free after pending reservations)
+19:28:45 launched verify-native-f54cef5-cc on remote/GPU-ca65e1b7-c0ac-6757-7d3f-816c3119a4c1 (s4d-verify-native-f54cef5-cc-a2, attempt 2)
+19:28:46 wait {'verify-native-f54cef5-cc': 'running'}
+19:30:17 remote co-tenants: 2 known, 88 GB RAM not yet in use charged; GPU-9e9f1e97 2 (68.0 GB charged, 27.6 GB free after pending reservations)
+19:30:18 wait {'verify-native-f54cef5-cc': 'running'}
+19:31:36 remote co-tenants: 2 known, 85 GB RAM not yet in use charged; GPU-9e9f1e97 2 (68.0 GB charged, 27.6 GB free after pending reservations)
+19:31:37 wait {'verify-native-f54cef5-cc': 'running'}
+19:33:09 remote co-tenants: 1 known, 42 GB RAM not yet in use charged; GPU-9e9f1e97 1 (34.0 GB charged, 61.6 GB free after pending reservations)
+19:33:09 wait {'verify-native-f54cef5-cc': 'running'}
+19:34:34 verify-native-f54cef5-cc: live result sync unavailable; job remains running
+19:34:34 remote co-tenants: 1 known, 42 GB RAM not yet in use charged; GPU-9e9f1e97 1 (34.0 GB charged, 61.6 GB free after pending reservations)
+19:34:34 wait {'verify-native-f54cef5-cc': 'running'}
+19:36:28 remote co-tenants: 1 known, 48 GB RAM not yet in use charged; GPU-9e9f1e97 1 (34.0 GB charged, 61.6 GB free after pending reservations)
+19:36:29 wait {'verify-native-f54cef5-cc': 'running'}
+19:41:11 verify-native-f54cef5-cc: live result sync unavailable; job remains running
+19:41:11 remote co-tenants: 1 known, 45 GB RAM not yet in use charged; GPU-9e9f1e97 1 (34.0 GB charged, 61.1 GB free after pending reservations)
+19:41:12 wait {'verify-native-f54cef5-cc': 'running'}
+19:43:01 verify-native-f54cef5-cc: live result sync unavailable; job remains running
+19:43:01 remote co-tenants: 2 known, 93 GB RAM not yet in use charged; GPU-9e9f1e97 2 (68.0 GB charged, 27.0 GB free after pending reservations)
+19:43:01 foreign processes on local/MIG-02b55a66-ed41-53c2-9004-c3f5619d6369; not launching there
+19:43:02 wait {'verify-native-f54cef5-cc': 'running'}
+19:44:46 remote co-tenants: 2 known, 88 GB RAM not yet in use charged; GPU-9e9f1e97 2 (68.0 GB charged, 27.5 GB free after pending reservations)
+19:44:46 foreign processes on local/MIG-02b55a66-ed41-53c2-9004-c3f5619d6369; not launching there
+19:44:46 wait {'verify-native-f54cef5-cc': 'running'}
+19:46:11 remote co-tenants: 2 known, 88 GB RAM not yet in use charged; GPU-9e9f1e97 2 (68.0 GB charged, 27.6 GB free after pending reservations)
+19:46:11 foreign processes on local/MIG-8da55219-bd6b-5260-8be1-3b2a76ac733c; not launching there
+19:46:11 wait {'verify-native-f54cef5-cc': 'running'}
+19:51:36 verify-native-f54cef5-cc: live result sync unavailable; job remains running
+19:51:36 remote co-tenants: 1 known, 45 GB RAM not yet in use charged; GPU-9e9f1e97 1 (34.0 GB charged, 61.6 GB free after pending reservations)
+19:51:37 wait {'verify-native-f54cef5-cc': 'running'}
+19:53:14 remote co-tenants: 2 known, 89 GB RAM not yet in use charged; GPU-9e9f1e97 2 (68.0 GB charged, 27.6 GB free after pending reservations)
+19:53:14 FAILED {'verify-native-f54cef5-cc': 'failed'}
