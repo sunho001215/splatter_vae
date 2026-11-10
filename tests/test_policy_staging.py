@@ -313,27 +313,39 @@ def test_staging_files_never_include_datasets_and_dry_run_touches_no_host(tmp_pa
     S.signal_reload(host, execute=False, log=lambda m: None)
 
 
-def test_usage_restrictions_fail_closed_and_validator_rules():
-    for status in ("deployable", "restricted", "quarantined"):
+def test_usage_restrictions_eligibility_and_validator_rules():
+    dep = S.usage_of("deployable")  # user decision 2026-11-10 21:10: deployable -> execution-eligible
+    assert dep["execution_eligible"] is True and dep["usage"] == "execution"
+    assert dep["execution_decision"]["decided_by"] == "user" and dep["execution_decision"]["text"]
+    for status in ("restricted", "quarantined", "incomplete", "superseded"):
         u = S.usage_of(status)
-        assert u["execution_eligible"] is False and u["usage_reasons"]
+        assert u["execution_eligible"] is False and u["usage"] != "execution" and "execution_decision" not in u
     assert S.usage_of("restricted")["usage"] == "dry_run_replay_only"
     assert S.usage_of("restricted")["usage_reasons"][0] == C.LN_SPREAD_DECISION
     assert S.usage_of("quarantined")["usage"] == "none"
     base = {**S.catalog_entry(_row()), "checkpoint": "runs/x/policy.pt"}
+    assert base["execution_eligible"] is True
 
     def cat(**over):
-        return {"schema": "s4d-policy-catalog/1", "policies": {"p": {**base, **over}}, "aliases": {}}
+        e = {**base, **over}
+        return {"schema": "s4d-policy-catalog/1", "policies": {"p": {k: v for k, v in e.items() if v is not None}},
+                "aliases": {}}
 
-    validate_catalog(cat())
+    validate_catalog(cat())  # deployable + usage execution + user decision
     with pytest.raises(ValueError, match="states its reasons"):
         validate_catalog(cat(status="restricted", reasons=[]))
-    for over in ({"execution_eligible": True}, {"usage": "execution", "execution_eligible": True},
-                 {"status": "restricted", "reasons": ["x"], "execution_eligible": True}):
-        with pytest.raises(ValueError):  # Directive I: never execution-eligible, whatever the labels say
+    for over in ({"status": "restricted", "reasons": ["x"]}, {"status": "quarantined", "reasons": ["x"]}):
+        with pytest.raises(ValueError, match="never execution-eligible"):
             validate_catalog(cat(**over))
-    with pytest.raises(ValueError, match="usage"):
-        validate_catalog(cat(usage="execution"))
+    for decision in (None, {}, {"decided_by": "coordinator", "at": "t", "text": "x"},
+                     {"decided_by": "user", "at": "t", "text": " "}):
+        with pytest.raises(ValueError, match="execution_decision"):
+            validate_catalog(cat(execution_decision=decision))
+    with pytest.raises(ValueError, match="usage 'execution'"):
+        validate_catalog(cat(usage="dry_run_replay_only"))  # eligible without execution usage
+    with pytest.raises(ValueError, match="requires execution_eligible"):
+        validate_catalog(cat(execution_eligible=False, execution_decision=None))  # execution usage, not eligible
+    validate_catalog(cat(execution_eligible=False, usage="dry_run_replay_only", execution_decision=None))
     with pytest.raises(ValueError, match="non-finite"):  # would break the JSON wire format for every client
         validate_catalog(cat(criteria={"e2_visual_sensitivity": {"d_vis_over_noise": float("inf")}}))
     with pytest.raises(ValueError, match="usage"):
@@ -435,7 +447,7 @@ def test_stage_publishes_idempotently_repairs_partial_publication_and_withdraws(
     args, inv = _stage_env(tmp_path, monkeypatch)
     assert S.cmd_stage(args) == 0 and host.writes == 1 and host.copies["host"] == host.copies["container"]
     entry = json.loads(host.copies["host"])["policies"]["e2e_cnn-t-s0"]
-    assert entry["status"] == "deployable" and entry["execution_eligible"] is False
+    assert entry["status"] == "deployable" and entry["execution_eligible"] is True and entry["execution_decision"]
     assert S.cmd_stage(args) == 0 and host.writes == 1  # unchanged: nothing written, no reload
     host.copies["container"] = ""  # a publication interrupted after the host copy
     assert S.cmd_stage(args) == 0 and host.writes == 2 and host.copies["host"] == host.copies["container"]
@@ -447,6 +459,7 @@ def test_stage_publishes_idempotently_repairs_partial_publication_and_withdraws(
     assert S.cmd_stage(args, hook=True) == 3
     entry = json.loads(host.copies["host"])["policies"]["e2e_cnn-t-s0"]
     assert entry["status"] == "quarantined" and entry["usage"] == "none" and "f: q_mean runaway" in entry["reasons"]
+    assert entry["execution_eligible"] is False and "execution_decision" not in entry  # withdrawn: never eligible
     f = entry["criteria"]["f_stability"]  # the re-evaluation's results replace the staged (passing) ones
     assert f["pass"] is False and f["final_q_mean"] is None and f["peak_q_mean"] == [900, None]
 

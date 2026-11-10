@@ -397,17 +397,27 @@ def catalog_entry(row: dict, input_spec: dict | None = None) -> dict:
     return out
 
 
-DIRECTIVE_NO_EXECUTION = ("Directive I (2026-11-10): no robot operation; staging never grants execution "
-                          "eligibility (an explicit later decision would)")
+EXECUTION_DECISION = {"decided_by": "user", "at": "2026-11-10T21:10+09:00",
+                      "text": "I think you should make execution_eligible=True for the trained policies. (scope, relayed "
+                              "by the coordinator: every catalog entry with status deployable, including future "
+                              "deployable stagings; restricted DynaMo and quarantined 3D-MVP stay false)"}
+NOT_ELIGIBLE = "not execution-eligible: only deployable entries are (user decision 2026-11-10 21:10)"
 
 
 def usage_of(status: str) -> dict:
-    """Usage restriction of a staged entry. FAIL CLOSED: staging never writes ``execution_eligible: true`` (a missing
-    field means not eligible for every consumer); quarantined entries are not usable at all."""
+    """Usage restriction of a staged entry (user decision 2026-11-10 21:10): a ``deployable`` entry (every criterion
+    passed) is execution-eligible with the recorded decision; ``restricted`` stays dry run / replay only, quarantined
+    is not usable; anything else fails closed (a missing field means not eligible for every consumer). Execution on
+    the robot PC still needs its own explicit manual mode (flag, typed confirmation, armed config)."""
+    if status == "deployable":
+        return {"usage": "execution", "execution_eligible": True, "execution_decision": dict(EXECUTION_DECISION),
+                "usage_reasons": [f"user decision {EXECUTION_DECISION['at']}: deployable (all criteria passed) -> "
+                                  "execution-eligible; robot-PC manual execution mode still required"]}
     if status == "quarantined":
         return {"usage": "none", "execution_eligible": False,
-                "usage_reasons": ["quarantined: refused by the server unless --allow-quarantined (pipeline tests)"]}
-    reasons = [DIRECTIVE_NO_EXECUTION]
+                "usage_reasons": ["quarantined: refused by the server unless --allow-quarantined (pipeline tests)",
+                                  NOT_ELIGIBLE]}
+    reasons = [NOT_ELIGIBLE]
     if status == "restricted":
         reasons.insert(0, C.LN_SPREAD_DECISION)
     return {"usage": "dry_run_replay_only", "execution_eligible": False, "usage_reasons": reasons}
@@ -711,6 +721,7 @@ def _evaluated_shas(row: dict, sidecar_dir: Path) -> dict[str, str]:
 def withdrawn_entry(entry: dict, row: dict) -> dict:
     """A staged entry whose run no longer passes: quarantined with the re-evaluation's reasons (never left
     selectable); the staged files stay (immutable) but the server refuses it."""
+    entry = {k: v for k, v in entry.items() if k != "execution_decision"}
     return {**entry, "status": "quarantined", "usage": "none", "execution_eligible": False, "flags": [],
             "criteria": C.criteria_summary(row["condition"], row.get("checks") or {}),
             "usage_reasons": ["withdrawn by re-evaluation"],

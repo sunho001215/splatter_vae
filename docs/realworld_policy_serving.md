@@ -9,7 +9,7 @@ the client. Directive 2026-11-09 (network policy inference). **Dry-run only: not
 | science | `s4d/rwlearn/deploy/` (docs/realworld_deployment.md) | input contracts (`InputSpec`), CPU crop/resize + native depth (`preprocess_frame`, `realsense`), trained history (`HistoryWindow`), encoder + FQL + action conversion (`DeployPolicy`), typed refusals (`errors`), recorded replay helpers (`replay`) |
 | networking | `ops/policy_serving/` | wire protocol, persistent server (sessions, seq/ack, queue, staleness), CPU client (reconnect, resume, action expiry), bench |
 | config | `configs/realworld/policy_serving.yaml` | bind address/port, limits, timeouts, GPU memory budget, catalog path (+ optional static policies) |
-| catalog | `<checkpoint_root>/catalog.json` (`config.load_catalog`, written by the staging tool) | selectable policy ids `<condition>-<task>-s<seed>`, aliases, status deployable / restricted / quarantined + reasons, per-criterion results (`criteria`), usage restriction (`usage`, `usage_reasons`, `execution_eligible`), advertised input spec, staged paths + sha256 |
+| catalog | `<checkpoint_root>/catalog.json` (`config.load_catalog`, written by the staging tool) | selectable policy ids `<condition>-<task>-s<seed>`, aliases, status deployable / restricted / quarantined + reasons, per-criterion results (`criteria`), usage restriction (`usage`, `usage_reasons`, `execution_eligible`, `execution_decision`), advertised input spec, staged paths + sha256 |
 | demo | `scripts/policy_replay_demo.py` | recorded episode -> client -> server -> actions JSONL (+ direct equality, recorded commands) |
 | staging | `ops/policy_serving/staging.py` + `criteria.py` | inventory of every real-world pretraining / FQL row (registry + queue read as data), the deployability criteria (realworld-ops/serving/POL-CRITERIA.md), staging of deployable policies to the inference host + catalog + reload (dry run by default) |
 | tests | `tests/test_policy_serving.py`, `tests/test_policy_staging.py` | CPU loopback, labelled FIXTURE policies of every condition; criteria, inventory, catalog, dry-run staging |
@@ -35,7 +35,7 @@ deadline, at most `io_timeout_s`) also makes the connection unusable: it is drop
 
 | message | direction | fields |
 |---|---|---|
-| WELCOME | s -> c (on connect) | `server`, `nonce`, `auth_required`, `policies: {id or alias: {input_spec (unbound), info {condition, task, seed, run, status, reasons, criteria, usage, usage_reasons, execution_eligible, flags, checkpoint_sha256, resident, alias_of}}}`, `unavailable: {id: {status, reasons}}` |
+| WELCOME | s -> c (on connect) | `server`, `nonce`, `auth_required`, `policies: {id or alias: {input_spec (unbound), info {condition, task, seed, run, status, reasons, criteria, usage, usage_reasons, execution_eligible, execution_decision, flags, checkpoint_sha256, resident, alias_of}}}`, `unavailable: {id: {status, reasons}}` |
 | HELLO | c -> s | `policy_id`, `choices` {`camera_id` (single view), `native_hw` {cam: [H, W]}, `calibration` {cam: {K_native, c2w}}, `native_depth_correction` {cam: ...}}, `resume` {session_id, last_ack} or null, `auth` (HMAC), `takeover` |
 | SPEC | s -> c | `session_id`, `resumed`, `input_spec` (bound `InputSpec.to_json()`), `limits`, `last_seq_received`, `redeliver` [seq] |
 | STEP | c -> s | `session_id`, `seq`, `frames` [NEW frames only: `camera_id`, `frame_id` (camera acquisition counter), `capture_ns` (client monotonic), `pose7`, `gripper_register` (measured at that frame), `metadata` (`native_hw` [H, W] of the native colour frame, `K` at the training grid for calibrated conditions; depth: `depth_source`, `native_correction`), `arrays` {rgb, depth, valid}], `sets` [multi-view: `frame_ids` {cam: id}, `surface_disp_m` (M5; null = no valid robot state)], `request` {`end_ids` {cam: id}, `reference_id`, `pose7` + `pose_time_ns`, `gripper_register` + `gripper_time_ns` (the measured samples bound to the observation, client monotonic), `ttl_ms`, `pad_run_start`, validation `noise` (array, float32 (1, 7)) or `noise_seed`} |
@@ -217,8 +217,11 @@ late-phase q_mean <= +1. Explicit decisions (rwcal-20261109 3D-MVP: quarantined)
 
 **Usage restriction (fail closed).** Every catalog entry carries `usage` (`dry_run_replay_only` / `none` /
 `execution`), `usage_reasons` and `execution_eligible`; WELCOME and SPEC `info` publish them (`execution_eligible` is
-true only if the entry says exactly true; under Directive I the validator refuses `execution_eligible: true` and any
-`execution` usage outright: eligibility needs an explicit decision and a code change). A withdrawn policy's remaining
+true only if the entry says exactly true). User decision 2026-11-10 21:10: every `deployable` entry (all criteria
+passed) is staged with `execution_eligible: true`, `usage: execution` and an `execution_decision` record
+{decided_by: user, at, text}; the validator accepts `true` ONLY for a deployable entry with usage execution and that
+record, and refuses it for `restricted` (DynaMo: dry run / replay only) and `quarantined` entries; withdrawn entries
+are never eligible. Execution on the robot PC additionally needs its own manual execution mode. A withdrawn policy's remaining
 sessions see `status: withdrawn`, `usage: none`; non-finite numbers are refused in catalog entries (JSON wire safety). The robot-PC client refuses execution mode for any other policy. A
 re-evaluation that no longer passes withdraws the run's catalog entry (quarantined, usage none). Label changes
 (status / criteria / usage) refresh on reload without reloading the model; the catalog transaction is serialised by a

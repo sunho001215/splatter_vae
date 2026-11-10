@@ -57,11 +57,13 @@ POLICY_KEYS = {"checkpoint", "export", "dataset", "training_contract", "sha256",
 CATALOG_SCHEMA = "s4d-policy-catalog/1"
 CATALOG_TOP_KEYS = frozenset({"schema", "generated_utc", "criteria_sha256", "policies", "aliases", "note"})
 CATALOG_ENTRY_KEYS = frozenset(POLICY_KEYS | {"seed", "run", "status", "flags", "reasons", "input_spec", "criteria",
-                                             "usage", "usage_reasons", "execution_eligible"})
+                                             "usage", "usage_reasons", "execution_eligible",
+                                             "execution_decision"})
 CATALOG_REQUIRED_KEYS = frozenset({"checkpoint", "sha256", "condition", "task", "status"})
 CATALOG_STATUSES = ("deployable", "restricted", "quarantined")  # restricted: served, a criterion FAILED (see reasons)
 SERVABLE_STATUSES = ("deployable", "restricted")
-CATALOG_USAGES = ("dry_run_replay_only", "none")  # Directive I: no execution usage exists (a later decision adds it)
+CATALOG_USAGES = ("execution", "dry_run_replay_only", "none")  # usage restriction published to the robot-PC client
+EXECUTION_DECISION_KEYS = ("decided_by", "at", "text")
 
 
 def _load_file(path: Path) -> dict:
@@ -109,6 +111,26 @@ def _finite_json(x) -> bool:
     return True
 
 
+def _check_eligibility(source, pid, entry: dict) -> None:
+    """``execution_eligible: true`` only for a ``deployable`` entry with usage ``execution`` and a non-empty user
+    ``execution_decision`` {decided_by: user, at, text} (user decision 2026-11-10 21:10); restricted / quarantined
+    entries can never be eligible; usage ``execution`` without eligibility is refused (fail closed)."""
+    eligible, usage, decision = entry.get("execution_eligible") is True, entry.get("usage"), entry.get("execution_decision")
+    if eligible:
+        if entry["status"] != "deployable":
+            raise ValueError(f"{source}: policy {pid}: a {entry['status']} entry is never execution-eligible")
+        if usage != "execution":
+            raise ValueError(f"{source}: policy {pid}: an execution-eligible entry has usage 'execution'")
+        if not isinstance(decision, dict) or decision.get("decided_by") != "user" or \
+                not all(isinstance(decision.get(k), str) and decision.get(k).strip() for k in EXECUTION_DECISION_KEYS):
+            raise ValueError(f"{source}: policy {pid}: execution eligibility needs an execution_decision record "
+                             f"{{decided_by: user, at, text}}")
+    elif usage == "execution":
+        raise ValueError(f"{source}: policy {pid}: usage 'execution' requires execution_eligible: true")
+    elif decision is not None and not eligible:
+        raise ValueError(f"{source}: policy {pid}: an execution_decision on a non-eligible entry")
+
+
 def validate_catalog(raw: dict, source="catalog") -> dict:
     """Checked catalog dict (see ``CATALOG_*``): unknown keys refused, status values checked, aliases point at existing
     ids and never shadow one. Returns ``{"schema", ..., "policies": {id: entry}, "aliases": {alias: id}}``."""
@@ -143,9 +165,7 @@ def validate_catalog(raw: dict, source="catalog") -> dict:
             raise ValueError(f"{source}: policy {pid}: execution_eligible must be true or false")
         if entry.get("usage", "dry_run_replay_only") not in CATALOG_USAGES:
             raise ValueError(f"{source}: policy {pid}: usage {entry.get('usage')!r} not in {CATALOG_USAGES}")
-        if entry.get("execution_eligible") is True:
-            raise ValueError(f"{source}: policy {pid}: no entry is execution-eligible under Directive I (fail closed; "
-                             "eligibility needs an explicit decision and a code change)")
+        _check_eligibility(source, pid, entry)
         if not _finite_json(entry):
             raise ValueError(f"{source}: policy {pid}: non-finite number (NaN / Infinity) in the entry")
         if not isinstance(entry.get("usage_reasons", []), list) or \

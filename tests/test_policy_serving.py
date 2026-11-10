@@ -1385,6 +1385,17 @@ def test_label_refresh_keeps_the_resident_model_and_execution_eligibility_fails_
         spec_msg = raw_hello(srv, "r1", choices_of(pol))
         assert spec_msg.type == P.SPEC and spec_msg.header["info"]["status"] == "restricted"
         assert spec_msg.header["info"]["usage_reasons"] == ["decision"]
+        decision = {"decided_by": "user", "at": "2026-11-10T21:10+09:00", "text": "fixture decision"}
+        write_catalog(cat, {"r1": {**e, "usage": "execution", "execution_eligible": True,
+                                   "execution_decision": decision}})
+        srv.reload_catalog()
+        info = welcome(srv)["policies"]["r1"]["info"]
+        assert info["execution_eligible"] is True and info["execution_decision"] == decision
+        assert srv._current_info(srv.policies["r1"])["execution_eligible"] is True  # what SPEC publishes
+        write_catalog(cat, {"r1": {**e, "status": "restricted", "reasons": ["x"], "usage": "execution",
+                                   "execution_eligible": True, "execution_decision": decision}})
+        assert srv.reload_catalog() is None  # refused by the validator: the current (eligible deployable) table stays
+        assert welcome(srv)["policies"]["r1"]["info"]["status"] == "deployable"
 
 
 def _blocking_loads(monkeypatch, gate: threading.Event, started: threading.Event):
@@ -1514,6 +1525,7 @@ def test_reaper_and_withdrawal_release_models_and_labels(staged, tmp_path):
         assert sp.retired and sp.sessions  # live session kept on the retired object
         info = srv._current_info(sp)
         assert info["status"] == "withdrawn" and info["execution_eligible"] is False and info["usage"] == "none"
+        assert info["execution_decision"] is None
         write_catalog(cat, {"r2": e})  # entry restored (deployable, no reasons): re-enabled, labels refreshed
         srv.reload_catalog()
         assert not sp.retired and srv._current_info(sp)["reasons"] == [] and srv._current_info(sp)["status"] == \

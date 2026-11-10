@@ -151,6 +151,7 @@ class CatalogEntry:
                "seed": e.get("seed"), "run": e.get("run"), "status": self.status, "flags": list(e.get("flags", [])),
                "checkpoint_sha256": e.get("sha256"), "usage": e.get("usage", "dry_run_replay_only"),
                "execution_eligible": e.get("execution_eligible") is True,
+               "execution_decision": e.get("execution_decision") if e.get("execution_eligible") is True else None,
                "usage_reasons": list(e.get("usage_reasons", [])), "criteria": e.get("criteria", {}),
                "reasons": list(self.reasons)}
         return out
@@ -511,6 +512,7 @@ class PolicyServer:
                         continue
                     sp.retired = True
                     sp.withdrawn = {"status": "withdrawn", "usage": "none", "execution_eligible": False,
+                                    "execution_decision": None,
                                     "usage_reasons": ["withdrawn from the catalog: finish or end this session"],
                                     "reasons": ["removed from the catalog"] if e is None else
                                     [f"catalog entry changed ({e.status})", *e.reasons]}
