@@ -1,0 +1,29 @@
+{
+  "recorded_local": "2026-11-10T23:05:08.853235+09:00",
+  "job_id": "rwcal-20261110-nativedepth-mvp3d-drawer-open",
+  "attempt": 1,
+  "container": "s4d-rwcal-20261110-nativedepth-mvp3d-drawer-open-a1",
+  "gpu": "GPU-ca65e1b7-c0ac-6757-7d3f-816c3119a4c1",
+  "reason": "container missing from confirmed snapshot",
+  "launch_attempt_age_seconds": 928.7,
+  "remote_output_dir": "/home/compu/kaist/sunho/runs/rwcal-20261110-nativedepth-mvp3d-drawer-open",
+  "accepted_release_dir": "/home/compu/kaist/sunho/releases/6c3b9ec0077f50cce7133f54a72910b38b942a23/code",
+  "checks": [
+    {
+      "containers_with_name": 0,
+      "remote_output": "absent",
+      "accepted_release_dir": "exists",
+      "remote_time_utc": "2026-11-10T14:05:03Z"
+    },
+    {
+      "containers_with_name": 0,
+      "remote_output": "absent",
+      "accepted_release_dir": "exists",
+      "remote_time_utc": "2026-11-10T14:05:08Z"
+    }
+  ],
+  "output_rule": "directory absent",
+  "launch_error": "Remote operation exited 1:",
+  "tool": "Claude-run equivalent of reconcile_unlaunched_remote.py (native-depth stage: outputs only under runs/<id>/; role release 6c3b9ec lacks scripts/realworld_native_depth.py)",
+  "conclusion": "launch refused before docker run; deterministic container never existed"
+}

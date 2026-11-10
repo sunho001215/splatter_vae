@@ -299,7 +299,7 @@
     },
     {
       "name": "mvp3d-native-chain-hold-20261110",
-      "active": true,
+      "active": false,
       "since": "2026-11-10T22:58:00+0900",
       "by": "coordinator per user directive 2026-11-10 ~22:55",
       "reason": "USER: 'Do not resume paused experiments or launch additional training' -> hold the native-depth 3D-MVP chain (stage launches also failed: role release 6c3b9ec lacks scripts/realworld_native_depth.py) until the user confirms.",
@@ -307,7 +307,9 @@
         "rwcal-20261110-nativedepth-",
         "rwcal-20261110-mvp3d-",
         "rwcal-20261110-fqldata-mvp3d_"
-      ]
+      ],
+      "lifted": "2026-11-10T23:07:00+0900",
+      "lift_reason": "USER 23:0x: proceed with the native-depth 3D-MVP chain (instruction only meant the local server); failed launch reconciled; role release -> ed0c5a3"
     }
   ]
 }
