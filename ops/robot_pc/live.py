@@ -52,7 +52,9 @@ class LiveSink(_BaseLiveSink):
             raise ExecutionRefused("LiveSink requires executor setpoints with command expiry")
         outcome = {"arm": "not sent", "gripper": "not queued"}
         try:
-            self.link.send_flange_pose(item.pose7)
+            if self.link.send_flange_pose(item.pose7, item.expires_ns) is False:
+                outcome["arm"] = "expired at send (not sent)"  # checked under the transport lock
+                return outcome
             outcome["arm"] = "sent"
         except Exception as exc:
             outcome["arm"] = f"{type(exc).__name__}: {exc}"
@@ -274,7 +276,7 @@ class LiveSession:
                         if self.stop_event.is_set():
                             break
                         outcome = self.sink.send(sp)
-                        sent = self.sent
+                        sent = self.sent and (not isinstance(outcome, dict) or outcome.get("arm") == "sent")
                         detail = json.dumps(outcome) if outcome is not None else ""
                     except Exception as exc:  # noqa: BLE001 - a failed send ends the session
                         detail = str(exc)
@@ -335,12 +337,13 @@ class LiveSession:
         for t, st in [x for x in list(getattr(g, "samples", ())) if x[0] > self._rec_grip_t]:
             self.recorder.gripper(t, int(st.position), dict(st.__dict__))
             self._rec_grip_t = t
-        for t, register in [x for x in list(getattr(g, "sent", ())) if x[0] > self._rec_write_t]:
-            self.recorder.event(t, "gripper_write " + json.dumps({"write_monotonic_ns": t, "target_register": register}))
+        # A physical hold is also in sent: record each serial transaction exactly once.
+        writes = list(getattr(g, "sent", ()))
+        holds = {(t, register): reason for t, register, reason in list(getattr(g, "holds", ()))}
+        for t, register in [x for x in writes if x[0] > self._rec_write_t]:
+            reason = holds.get((t, register))
+            self.recorder.gripper_command(t, register, "hold" if reason is not None else "target", reason or "")
             self._rec_write_t = t
-        for t, register, reason in [x for x in list(getattr(g, "holds", ())) if x[0] > self._rec_hold_t]:
-            self.recorder.event(t, "gripper_hold " + json.dumps({"t_ns": t, "register": register, "reason": reason}))
-            self._rec_hold_t = t
 
     # ------------------------------------------------------------------------------------------------ main loop
     def run(self, *, steps: int | None = None, duration_s: float | None = None) -> list:
@@ -373,9 +376,13 @@ class LiveSession:
                         acquire = max(acquire, (cap["arrival_ns"] - t) / 1e6)
                         if self.recorder is not None:
                             if "native_rgb" in cap:
-                                self.recorder.frame(cam, cap["frame_id"], t, cap["native_rgb"], None, None,
-                                                    cap.get("metadata"))
-                            self.recorder.observation(cam, cap["frame_id"], t, cap["rgb"], cap.get("depth"))
+                                self.recorder.frame(
+                                    cam, (cap.get("metadata") or {}).get("color_frame_number", cap["frame_id"]),
+                                    t, cap["native_rgb"], cap.get("native_depth"),
+                                    cap.get("depth_scale_m"), cap.get("metadata"))
+                            self.recorder.observation(
+                                cam, (cap.get("metadata") or {}).get("color_frame_number", cap["frame_id"]),
+                                t, cap["rgb"], cap.get("depth"))
                         if cam == self.cams[0]:
                             newest = ({cam: cap["frame_id"]}, t, f"{cam}:{cap['frame_id']}")
                 self._record_streams()
@@ -390,8 +397,6 @@ class LiveSession:
                 self.rows.append(row)
                 if self.recorder is not None:
                     self.recorder.step(row)
-                    if row.get("command"):
-                        self.recorder.command(row["command"])
                 # policy-server / route failures only (no answer): a validation rejection just sends nothing
                 failed = 0 if row.get("status") == "ok" else failed + 1
                 if self.on_status is not None:

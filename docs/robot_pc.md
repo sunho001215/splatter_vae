@@ -48,7 +48,7 @@ existing index of that prefix, created exclusively, never reused):
 
 | file | content |
 |---|---|
-| `inference.h5` (`.partial` while recording) | camera frames (native RGB; native depth only if the policy needs it; never IR) + the policy's 128x128 observations, robot state at ~1 kHz (q, dq, tau_ext, flange + controller-ee poses, sequence), gripper measured status 50 Hz (+ every write / hold as events), policy steps (latency, actions, binding), validated commands, executed 500 Hz setpoints with the real send outcome, events (engage, stop reason, release outcome, loop rates), metadata |
+| `inference.h5` (`.partial` while recording) | format version 2: `/robot` (q, dq, tau_ext, flange + controller-ee poses, sequence), `/gripper` (separate numeric status columns), `/gripper_commands` (actual target / hold writes), `/cameras/<name>` (native RGB, optional supplied depth, RealSense frame_number, calibration), `/observations/<name>` (policy RGB + optional depth), `/action` (500 Hz setpoints, closure, u1 send outcome), `/policy` (one row per step with validated command, goal, closure and latency), `/events`; host CLOCK_MONOTONIC seconds `t` + int64 `t_ns` throughout, resolved config + camera mapping in root attributes |
 | `<camera name>.mp4` | one per camera (`left.mp4` ...): native RGB, frame k = the H5 row k |
 | `config.json` | resolved experiment: policy id, task, method, seed, mode, cameras (name + serial), camera mapping, catalog info, input contract, gripper speed/force, full config, argv |
 | `summary.json` | status (complete / stopped / error) + reason, counts, drops, video status |

@@ -155,14 +155,18 @@ class HardwareTest:
             for t, s in [x for x in list(self.state.gripper.samples) if x[0] > self._rec_grip_t]:
                 self.recorder.gripper(t, int(s.position), dict(s.__dict__))
                 self._rec_grip_t = t
-            for t, register in [x for x in list(self.state.gripper.sent) if x[0] > self._rec_write_t]:
-                self.event("gripper_write " + json.dumps({"write_monotonic_ns": t, "target_register": register}))
+            writes = list(self.state.gripper.sent)
+            holds = {(t, register): reason for t, register, reason in list(self.state.gripper.holds)}
+            for t, register in [x for x in writes if x[0] > self._rec_write_t]:
+                reason = holds.get((t, register))
+                self.recorder.gripper_command(t, register, "hold" if reason is not None else "target", reason or "")
                 self._rec_write_t = t
         if self.cameras is not None:
             for cam in self.cams:
                 for cap in self.cameras.drain(cam):
                     if self.recorder is not None:
-                        self.recorder.frame(cam, cap["frame_id"], cap["capture_ns"], cap["native_rgb"],
+                        self.recorder.frame(cam, (cap.get("metadata") or {}).get("color_frame_number", cap["frame_id"]),
+                                            cap["capture_ns"], cap["native_rgb"],
                                             None, None, cap.get("metadata"))
 
     def run(self):
@@ -292,7 +296,8 @@ class HardwareTest:
         if not accepted:
             raise RuntimeError("hold command refused by executor")
         if self.recorder is not None:
-            self.recorder.command(cmd.to_json())
+            self.recorder.step({"t_step_ns": now, "observation_time_ns": cmd.observation_time_ns,
+                                "status": "ok", "command": cmd.to_json()})
 
     def _executor_loop(self):
         try:
@@ -332,7 +337,7 @@ class HardwareTest:
                     if self.stop_event.is_set():
                         break
                     outcome = self.sink.send(sp)
-                    sent = self.sent
+                    sent = self.sent and (not isinstance(outcome, dict) or outcome.get("arm") == "sent")
                     detail = json.dumps(outcome) if outcome is not None else ""
                 except Exception as exc:
                     detail = str(exc)

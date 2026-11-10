@@ -47,41 +47,41 @@ def run_python(source: str, *args: str) -> subprocess.CompletedProcess:
 
 
 def test_round_trip_every_stream_exact_values_and_summary(tmp_path):
-    meta = {"policy_id": "fixture", "checkpoint_sha256": "012abc", "catalog": {"eligible": True},
-            "task": "drawer-open", "config": {"rate": 15}, "code_commit": "abcdef", "route": "local fixture",
-            "mode": "dry_run", "operator_notes": "original timestamps; 눈"}
-    rows = [
-        {"t_step_ns": 400, "observation_time_ns": 300, "reference_id": "r0", "end_ids": {"rgbd": 10},
-         "bound_state": {"pose7": POSE, "gripper_origin": "measured: fixture register", "gripper_register": 123},
-         "action_norm": [0.1] * 7, "flange_pose": POSE, "execution_flange_pose": POSE, "gripper_closure": 0.5,
-         "validation": {"accepted": True}, "timings": {"validation_ms": 0.125}, "status": "ok", "code": None},
-        {"t_step_ns": 390, "observation_time_ns": 299, "reference_id": "r1", "status": "skipped",
-         "code": "no_state", "gripper_origin": "measured: fixture register"},
-    ]
-    commands = [{"t_ns": 401, "reference_id": "r0", "observation_time_ns": 300, "goal_pose7": POSE,
-                 "gripper_closure": 0.5}, {"reference_id": "r1", "observation_time_ns": 299}]
+    from ops.robot_pc.switch_controller import T_FLANGE_EE
+
+    meta = {"policy": "fixture", "mode": "dry_run", "config": {"rate": 15}, "notes": "눈"}
+    resolved = {**meta, "task": "drawer-open"}
+    names = {"rgbd": "left", "rgb": "right", "empty": "unused"}
+    command = {"reference_id": "r0", "observation_time_ns": 300, "goal_pose7": POSE, "gripper_closure": 0.5}
+    rows = [{"t_step_ns": 400, "observation_time_ns": 300, "reference_id": "r0", "status": "ok", "code": None,
+             "command": command, "client_ms": {"e2e_ms": 2.5}, "server_ms": {"total_ms": 1.5}},
+            {"t_step_ns": 390, "observation_time_ns": 299, "reference_id": "r1", "status": "skipped",
+             "code": "no_state"}]
     native = [rgb(i * 10) for i in range(3)]
     depth = [np.full(HW, 1000 + i, np.uint16) for i in range(3)]
-    obs = [rgb(i * 10, (8, 8)) for i in range(3)]
-    obs_depth = [np.full((8, 8), 0.125 * i, np.float32) for i in range(3)]
-    times, ids, scales = [300, 300, 290], [10, 10, 8], [0.001, None, 0.002]
-    with SessionRecorder(tmp_path, meta=meta, cameras=cameras("rgbd", "rgb", "empty"),
-                         clock=lambda: 9001, video=False) as rec:
-        for i, (t, frame_id) in enumerate(zip(times, ids)):
-            rec.frame("rgbd", frame_id, t, native[i], depth[i] if i != 1 else None, scales[i],
-                      {"device_timestamp": 1.25 + i} if i != 1 else None)
-            rec.frame("rgb", frame_id, t, native[i], None, None, None)
-            rec.observation("rgbd", frame_id, t, obs[i], obs_depth[i] if i != 0 else None)
-            rec.observation("rgb", frame_id, t, obs[i], None)
+    obs = [rgb(i * 10, (128, 128)) for i in range(3)]
+    obs_depth = [np.full((128, 128), 0.125 * i, np.float32) for i in range(3)]
+    times, ids = [300, 300, 290], [10, 10, 8]
+    statuses = [{"pos_request_echo": 100 + i, "current": i + 1, "object": i, "fault": i,
+                 "status": 3, "activated": 1} for i in range(3)]
+    with SessionRecorder(tmp_path, meta=meta, cameras=cameras(*names), camera_names=names,
+                         files={"config.json": resolved}, clock=lambda: 9001, video=False) as rec:
+        for i, (t, number) in enumerate(zip(times, ids)):
+            # The capture's local id deliberately differs: RealSense metadata is authoritative.
+            rec.frame("rgbd", i, t, native[i], depth[i] if i != 1 else None,
+                      [0.001, None, 0.002][i], {"color_frame_number": number})
+            rec.frame("rgb", i, t, native[i], None, None, {"color_frame_number": number})
+            rec.observation("rgbd", number, t, obs[i], obs_depth[i] if i else None)
+            rec.observation("rgb", number, t, obs[i], None)
             rec.robot_state(t, [7, 7, 5][i], np.arange(7) + i / 8, np.arange(7) - i / 8,
                             -np.arange(7) - i / 8, np.asarray(POSE) + i / 8, np.asarray(POSE) - i / 8)
-            rec.gripper(t, 123 + i, {"moving": bool(i % 2), "fault": i})
-            rec.executed(t, "track", np.asarray(POSE) + i / 8, None if i == 0 else i / 8,
-                         i == 2, f"{'sent' if i == 2 else 'dry run'} {i}")
+            rec.gripper(t, 123 + i, statuses[i])
+            rec.executed(t, "track", np.asarray(POSE) + i / 8, None if i == 0 else i / 8, i == 2, f"detail {i}")
             rec.event(t, f"event {i}: 눈")
-        for row, cmd in zip(rows, commands):
+        rec.gripper_command(401, 117, "target")
+        rec.gripper_command(402, 123, "hold", "stop")
+        for row in rows:
             rec.step(row)
-            rec.command(cmd)
     result = rec.close()
     assert result == summary_file(rec)
     assert re.fullmatch(r"inference_\d{8}_\d{6}", rec.session_dir.name)
@@ -89,100 +89,92 @@ def test_round_trip_every_stream_exact_values_and_summary(tmp_path):
     assert not (rec.session_dir / "inference.h5.partial").exists()
     assert not (rec.session_dir / "summary.json.tmp").exists()
     assert result["status"] == "complete" and result["error"] is None
-    assert result["meta"] == meta
-    assert result["start_unix"] <= result["end_unix"]
+    assert result["meta"] == meta and result["start_unix"] <= result["end_unix"]
     assert result["start_monotonic_ns"] == result["end_monotonic_ns"] == 9001
     assert result["h5_size_bytes"] == (rec.session_dir / "inference.h5").stat().st_size > 0
-    assert not any(result["dropped"].values())
-    assert result["video"] == "disabled"
+    assert not any(result["dropped"].values()) and result["video"] == "disabled"
     with h5py.File(rec.session_dir / "inference.h5", "r") as f:
-        assert f.attrs["format"] == "s4d_robot_pc_inference_session"
-        assert f.attrs["format_version"] == 1
-        assert f.attrs["created_unix"] == result["start_unix"]
+        assert set(f) == {"robot", "gripper", "gripper_commands", "cameras", "observations", "action", "policy", "events"}
+        assert f.attrs["format"] == "s4d_robot_pc_inference" and f.attrs["format_version"] == 2
+        assert f.attrs["created_unix"] == result["start_unix"] and f.attrs["created_monotonic"] == 9001 / 1e9
         assert f.attrs["status"] == "complete" and f.attrs["error"] == ""
-        assert json.loads(f.attrs["meta_json"]) == meta
-        for serial in ("rgbd", "rgb"):
-            g = f[f"cameras/{serial}"]
-            np.testing.assert_array_equal(g["t_ns"], times)
-            np.testing.assert_array_equal(g["frame_id"], ids)
-            np.testing.assert_array_equal(g["rgb"], native)
+        assert json.loads(f.attrs["config_json"]) == json.loads((rec.session_dir / "config.json").read_text()) == resolved
+        assert json.loads(f.attrs["camera_mapping_json"]) == names
+        np.testing.assert_array_equal(f["robot"].attrs["T_flange_controller_ee"], T_FLANGE_EE)
+        for serial, name in (("rgbd", "left"), ("rgb", "right")):
+            g, o = f[f"cameras/{name}"], f[f"observations/{name}"]
+            assert g.attrs["serial"] == serial
             np.testing.assert_array_equal(g.attrs["K_native"], K)
             assert json.loads(g.attrs["calibration_json"]) == cameras(serial)[serial]["calibration"]
-            assert g["rgb"].compression == "lzf"
-            assert g["rgb"].chunks == (1, *HW, 3)
-            assert g["rgb"].dtype == np.uint8
-            assert g["t_ns"].dtype == g["frame_id"].dtype == np.int64
-            assert g["t_ns"].maxshape == (None,)
-            assert result["counts"][f"cameras/{serial}"] == len(g["rgb"]) == 3
-            o = f[f"observations/{serial}"]
-            np.testing.assert_array_equal(o["t_ns"], times)
-            np.testing.assert_array_equal(o["frame_id"], ids)
-            np.testing.assert_array_equal(o["rgb"], obs)
-            assert o["rgb"].chunks == (1, 8, 8, 3)
-            assert o["rgb"].compression == "gzip" and o["rgb"].compression_opts == 1
-            assert result["counts"][f"observations/{serial}"] == 3
-        assert [json.loads(s) for s in f["cameras/rgbd/meta_json"].asstr()[:]] == [
-            {"device_timestamp": 1.25}, None, {"device_timestamp": 3.25}]
-        assert list(f["cameras/rgb/meta_json"].asstr()[:]) == ["null"] * 3
-        g, o = f["cameras/rgbd"], f["observations/rgbd"]
+            for group, images in ((g, native), (o, obs)):
+                np.testing.assert_array_equal(group["t_ns"], times)
+                np.testing.assert_array_equal(group["frame_number"], ids)
+                np.testing.assert_array_equal(group["rgb"], images)
+                assert group["rgb"].dtype == np.uint8
+                assert result["counts"][group.name.lstrip("/")] == 3
+            assert g["rgb"].compression == "lzf" and g["rgb"].chunks == (1, *HW, 3)
+            assert o["rgb"].compression == "gzip" and o["rgb"].chunks == (1, 128, 128, 3)
+            assert [json.loads(x) for x in g["meta_json"].asstr()[:]] == [{"color_frame_number": n} for n in ids]
+        g, o = f["cameras/left"], f["observations/left"]
         np.testing.assert_array_equal(g["depth"], [depth[0], depth[2]])
         np.testing.assert_array_equal(g["depth_frame_index"], [0, 2])
         np.testing.assert_array_equal(g["depth_scale_m"], [0.001, 0.002])
-        assert g.attrs["depth_scale_m"] == 0.001
-        assert g["depth"].dtype == np.uint16 and g["depth"].chunks == (1, *HW)
-        assert g["depth"].compression == "gzip" and g["depth"].compression_opts == 1
+        assert g.attrs["depth_scale_m"] == 0.001 and g["depth"].dtype == np.uint16
         np.testing.assert_array_equal(o["depth"], obs_depth[1:])
         np.testing.assert_array_equal(o["depth_frame_index"], [1, 2])
         assert o["depth"].dtype == np.float32
-        assert "depth" not in f["cameras/rgb"] and "depth" not in f["observations/rgb"]
-        np.testing.assert_array_equal(f["robot/t_ns"], times)
+        assert "depth" not in f["cameras/right"] and "depth" not in f["observations/right"]
+        assert "depth" not in f["cameras/unused"]
+        assert f["observations/unused/rgb"].shape == (0, 0, 0, 3)
         np.testing.assert_array_equal(f["robot/seq"], [7, 7, 5])
-        for name, expected in {
-            "q": [np.arange(7) + i / 8 for i in range(3)],
-            "dq": [np.arange(7) - i / 8 for i in range(3)],
-            "tau_ext": [-np.arange(7) - i / 8 for i in range(3)],
-            "flange_pose": [np.asarray(POSE) + i / 8 for i in range(3)],
-            "ee_pose": [np.asarray(POSE) - i / 8 for i in range(3)],
-        }.items():
-            np.testing.assert_array_equal(f[f"robot/{name}"], expected)
-        np.testing.assert_array_equal(f["gripper/t_ns"], times)
+        for field, expected in {"q": [np.arange(7) + i / 8 for i in range(3)],
+                                "dq": [np.arange(7) - i / 8 for i in range(3)],
+                                "tau_ext": [-np.arange(7) - i / 8 for i in range(3)],
+                                "flange_pose": [np.asarray(POSE) + i / 8 for i in range(3)],
+                                "ee_pose": [np.asarray(POSE) - i / 8 for i in range(3)]}.items():
+            np.testing.assert_array_equal(f[f"robot/{field}"], expected)
+        assert "status_json" not in f["gripper"]
         np.testing.assert_array_equal(f["gripper/position"], [123, 124, 125])
-        assert [json.loads(s) for s in f["gripper/status_json"].asstr()[:]] == [
-            {"moving": bool(i % 2), "fault": i} for i in range(3)]
-        np.testing.assert_array_equal(f["steps/t_step_ns"], [400, 390])
-        np.testing.assert_array_equal(f["steps/observation_time_ns"], [300, 299])
-        assert list(f["steps/status"].asstr()[:]) == ["ok", "no_state"]
-        assert [json.loads(s) for s in f["steps/json"].asstr()[:]] == rows
-        np.testing.assert_array_equal(f["commands/t_ns"], [401, 9001])
-        assert [json.loads(s) for s in f["commands/json"].asstr()[:]] == commands
-        np.testing.assert_array_equal(f["executed/t_ns"], times)
-        assert list(f["executed/kind"].asstr()[:]) == ["track"] * 3
-        np.testing.assert_array_equal(f["executed/pose7"], [np.asarray(POSE) + i / 8 for i in range(3)])
-        np.testing.assert_array_equal(f["executed/gripper_closure"], [np.nan, 0.125, 0.25])
-        np.testing.assert_array_equal(f["executed/sent"], [False, False, True])
-        assert f["executed/sent"].dtype == np.bool_
-        assert list(f["executed/detail"].asstr()[:]) == ["dry run 0", "dry run 1", "sent 2"]
-        np.testing.assert_array_equal(f["events/t_ns"], times)
+        for field in statuses[0]:
+            np.testing.assert_array_equal(f[f"gripper/{field}"], [s[field] for s in statuses])
+        np.testing.assert_array_equal(f["gripper_commands/t_ns"], [401, 402])
+        np.testing.assert_array_equal(f["gripper_commands/register"], [117, 123])
+        assert list(f["gripper_commands/kind"].asstr()[:]) == ["target", "hold"]
+        assert list(f["gripper_commands/reason"].asstr()[:]) == ["", "stop"]
+        np.testing.assert_array_equal(f["policy/t_ns"], [400, 390])
+        np.testing.assert_array_equal(f["policy/t_obs_ns"], [300, 299])
+        assert list(f["policy/status"].asstr()[:]) == ["ok", "no_state"]
+        np.testing.assert_array_equal(f["policy/command"], [1, 0])
+        assert f["policy/command"].dtype == np.uint8
+        np.testing.assert_array_equal(f["policy/goal_flange_pose"], [POSE, [np.nan] * 7])
+        np.testing.assert_array_equal(f["policy/gripper"], [0.5, np.nan])
+        assert [json.loads(x) for x in f["policy/row_json"].asstr()[:]] == rows
+        assert json.loads(f["policy/latency_json"].asstr()[0]) == {"client_ms": rows[0]["client_ms"],
+                                                                        "server_ms": rows[0]["server_ms"]}
+        np.testing.assert_array_equal(f["action/flange_pose"], [np.asarray(POSE) + i / 8 for i in range(3)])
+        np.testing.assert_array_equal(f["action/gripper"], [np.nan, 0.125, 0.25])
+        np.testing.assert_array_equal(f["action/sent"], [0, 0, 1])
+        assert f["action/sent"].dtype == np.uint8
+        assert list(f["action/detail"].asstr()[:]) == [f"detail {i}" for i in range(3)]
         assert list(f["events/text"].asstr()[:]) == [f"event {i}: 눈" for i in range(3)]
-        for stream in ("robot", "gripper", "executed", "events"):
-            assert result["counts"][stream] == 3
-        assert result["counts"]["steps"] == result["counts"]["commands"] == 2
-        assert result["counts"]["cameras/empty"] == result["counts"]["observations/empty"] == 0
-        assert f["cameras/empty/rgb"].shape == (0, *HW, 3)
-        assert f["observations/empty/rgb"].shape == (0, 0, 0, 3)
-        assert f["observations/empty/rgb"].chunks == (1, 128, 128, 3)
-        for stream in ("robot", "executed", "gripper", "steps", "commands", "events"):
-            for ds in f[stream].values():
-                assert ds.chunks == (1024, *ds.shape[1:])
+        for stream, count in result["counts"].items():
+            group = f[stream]
+            assert len(group["t_ns"]) == count and group["t_ns"].dtype == np.int64
+            assert group["t"].dtype == np.float64
+            np.testing.assert_array_equal(group["t"], group["t_ns"][:].astype(np.float64) / 1e9)
+            if "/" not in stream:
+                for ds in group.values():
+                    assert ds.chunks == (1024, *ds.shape[1:])
+        np.testing.assert_array_equal(f["policy/t_obs"], f["policy/t_obs_ns"][:].astype(np.float64) / 1e9)
 
 
 def test_empty_streams_and_idempotent_close(tmp_path):
     rec = SessionRecorder(tmp_path, meta={}, cameras=cameras("rgbd"), video=False)
     assert len(rec._slots["robot"]) == 65536
-    assert len(rec._slots["cameras/rgbd"]) == 256
-    assert len(rec._slots["steps"]) == 8192
-    assert rec._slots["robot"] is rec._slots["executed"] is rec._slots["gripper"]
-    assert rec._slots["steps"] is rec._slots["commands"] is rec._slots["events"]
+    assert len(rec._slots["cameras/cam_rgbd"]) == 256
+    assert len(rec._slots["policy"]) == 8192
+    assert rec._slots["robot"] is rec._slots["action"] is rec._slots["gripper"]
+    assert rec._slots["policy"] is rec._slots["gripper_commands"] is rec._slots["events"]
     result = rec.close("stopped", "operator stopped")
     path = rec.session_dir / "summary.json"
     stamp = path.stat().st_mtime_ns
@@ -198,8 +190,8 @@ def test_empty_streams_and_idempotent_close(tmp_path):
         lengths = []
         f.visititems(lambda _, value: lengths.append(len(value)) if isinstance(value, h5py.Dataset) else None)
         assert lengths and not any(lengths)
-        assert f["cameras/rgbd/depth"].shape == (0, *HW)
-        assert "depth" not in f["observations/rgbd"]
+        assert "depth" not in f["cameras/cam_rgbd"]
+        assert "depth" not in f["observations/cam_rgbd"]
 
 
 def test_nonblocking_full_queue_counts_each_stream(tmp_path, monkeypatch):
@@ -226,7 +218,7 @@ def test_nonblocking_full_queue_counts_each_stream(tmp_path, monkeypatch):
             rec.robot_state(3, 1, POSE, POSE, POSE, POSE, POSE)
             rec.gripper(3, 20, {})
             rec.step({"t_step_ns": 3, "observation_time_ns": 3, "status": "ok"})
-            rec.command({"t_ns": 3})
+            rec.gripper_command(3, 20, "target")
             rec.executed(3, "track", POSE, None, False, "dry run")
             rec.event(3, "dropped")
         assert time.monotonic() - before < 0.5
@@ -236,7 +228,7 @@ def test_nonblocking_full_queue_counts_each_stream(tmp_path, monkeypatch):
         result = rec.close()
     assert result["status"] == "complete"
     assert result["counts"]["events"] == 2
-    assert result["counts"]["robot"] == result["counts"]["cameras/rgbd"] == 1
+    assert result["counts"]["robot"] == result["counts"]["cameras/cam_rgbd"] == 1
     assert sum(result["counts"].values()) == 4
     assert result["dropped"] == dict(rec.dropped)
     with h5py.File(rec.session_dir / "inference.h5", "r") as f:
@@ -264,8 +256,8 @@ def test_enqueued_inputs_are_snapshots(tmp_path, monkeypatch):
         assert entered.wait(5)
         rec.frame("rgbd", 1, 2, image, z, 0.001, metadata)
         rec.robot_state(2, 1, q, dq, tau, POSE, POSE)
+        step["command"] = command
         rec.step(step)
-        rec.command(command)
         image.fill(0)
         z.fill(0)
         q.fill(-1)
@@ -279,13 +271,13 @@ def test_enqueued_inputs_are_snapshots(tmp_path, monkeypatch):
         release.set()
         rec.close()
     with h5py.File(rec.session_dir / "inference.h5", "r") as f:
-        np.testing.assert_array_equal(f["cameras/rgbd/rgb"][0], rgb(3))
-        np.testing.assert_array_equal(f["cameras/rgbd/depth"][0], np.full(HW, 123, np.uint16))
-        assert json.loads(f["cameras/rgbd/meta_json"].asstr()[0]) == {"nested": [1, 2]}
+        np.testing.assert_array_equal(f["cameras/cam_rgbd/rgb"][0], rgb(3))
+        np.testing.assert_array_equal(f["cameras/cam_rgbd/depth"][0], np.full(HW, 123, np.uint16))
+        assert json.loads(f["cameras/cam_rgbd/meta_json"].asstr()[0]) == {"nested": [1, 2]}
         for field in ("q", "dq", "tau_ext"):
             np.testing.assert_array_equal(f[f"robot/{field}"][0], np.arange(7))
-        assert json.loads(f["steps/json"].asstr()[0])["nested"] == [1, 2]
-        assert json.loads(f["commands/json"].asstr()[0])["nested"] == [1, 2]
+        assert json.loads(f["policy/row_json"].asstr()[0])["nested"] == [1, 2]
+        assert json.loads(f["policy/row_json"].asstr()[0])["command"]["nested"] == [1, 2]
 
 
 def test_writer_exception_finalizes_and_counts_unwritten_rows(tmp_path, monkeypatch):
@@ -391,13 +383,13 @@ def test_cv2_blocked_continues_h5_in_subprocess(tmp_path):
         result = rec.close()
         assert result['status'] == 'complete'
         assert result['video'].startswith('unavailable:') and 'cv2' in result['video']
-        assert result['videos']['one']['frames'] == 0
-        assert result['videos']['one']['file'] is None
-        assert result['counts']['cameras/one'] == 3
+        assert result['videos']['cam_one']['frames'] == 0
+        assert result['videos']['cam_one']['file'] is None
+        assert result['counts']['cameras/cam_one'] == 3
     """, str(tmp_path))
     path = next((tmp_path / "inference_outputs").glob("*/inference.h5"))
     with h5py.File(path, "r") as f:
-        assert len(f["cameras/one/rgb"]) == 3
+        assert len(f["cameras/cam_one/rgb"]) == 3
         assert f.attrs["status"] == "complete"
 
 
@@ -441,13 +433,14 @@ def test_video_writer_contract_and_row_mapping(tmp_path, monkeypatch):
     with h5py.File(rec.session_dir / "inference.h5", "r") as f:
         for serial, writer in zip(("one", "two"), writers):
             assert writer.released and writer.wh == HW[::-1] and writer.fps == 12.5 and writer.fourcc == 1234
-            assert Path(writer.path).name == f"camera_{serial}.mp4"
-            assert result["videos"][serial]["frames"] == len(writer.frames) == len(f[f"cameras/{serial}/rgb"]) == 4
-            assert result["videos"][serial]["mapping"] == f"MP4 frame k = cameras/{serial}/rgb[k]"
+            assert Path(writer.path).name == f"cam_{serial}.mp4"
+            assert result["videos"][f"cam_{serial}"]["frames"] == len(writer.frames) == 4
+            assert len(f[f"cameras/cam_{serial}/rgb"]) == 4
+            assert result["videos"][f"cam_{serial}"]["mapping"] == f"MP4 frame k = cameras/cam_{serial}/rgb[k]"
             for i, frame in enumerate(writer.frames):
-                np.testing.assert_array_equal(frame, f[f"cameras/{serial}/rgb"][i][..., ::-1])
-    assert result["videos"]["unused"]["frames"] == 0
-    assert not (rec.session_dir / "camera_unused.mp4").exists()
+                np.testing.assert_array_equal(frame, f[f"cameras/cam_{serial}/rgb"][i][..., ::-1])
+    assert result["videos"]["cam_unused"]["frames"] == 0
+    assert not (rec.session_dir / "cam_unused.mp4").exists()
 
 
 def test_mp4_frame_count_or_documented_unavailable_path(tmp_path, monkeypatch):
@@ -462,15 +455,15 @@ def test_mp4_frame_count_or_documented_unavailable_path(tmp_path, monkeypatch):
     result = rec.close()
     assert result["status"] == "complete"
     with h5py.File(rec.session_dir / "inference.h5", "r") as f:
-        rows = len(f["cameras/one/rgb"])
+        rows = len(f["cameras/cam_one/rgb"])
     assert rows == 5
     if cv2 is None:
         assert result["video"].startswith("unavailable:") and "cv2" in result["video"]
-        assert result["videos"]["one"]["frames"] == 0
+        assert result["videos"]["cam_one"]["frames"] == 0
         print("OpenCV absent in this venv: exercised documented video-unavailable path; HDF5 complete.")
     else:
         assert result["video"] == "available"
-        reader = cv2.VideoCapture(result["videos"]["one"]["file"])  # decode a local file, never a device
+        reader = cv2.VideoCapture(result["videos"]["cam_one"]["file"])  # decode a local file, never a device
         try:
             assert reader.isOpened()
             decoded = 0
@@ -482,7 +475,7 @@ def test_mp4_frame_count_or_documented_unavailable_path(tmp_path, monkeypatch):
                 decoded += 1
         finally:
             reader.release()
-        assert decoded == result["videos"]["one"]["frames"] == rows
+        assert decoded == result["videos"]["cam_one"]["frames"] == rows
 
 
 def test_sigterm_during_close_with_full_queue_does_not_deadlock(tmp_path):
@@ -547,12 +540,12 @@ def test_stream_batches_resize_and_write_each_column_once(tmp_path, monkeypatch)
         original_batch(self, f, stream, items)
 
     def resize(ds, *args, **kwargs):
-        if ds.name.startswith(("/robot/", "/executed/")):
+        if ds.name.startswith(("/robot/", "/action/")):
             resizes[ds.name] = resizes.get(ds.name, 0) + 1
         return original_resize(ds, *args, **kwargs)
 
     def write(ds, key, value):
-        if ds.name.startswith(("/robot/", "/executed/")):
+        if ds.name.startswith(("/robot/", "/action/")):
             assert isinstance(key, slice) and key.start == 0
             assert key.stop == (257 if ds.name.startswith("/robot/") else 129)
             writes[ds.name] = writes.get(ds.name, 0) + 1
@@ -573,11 +566,11 @@ def test_stream_batches_resize_and_write_each_column_once(tmp_path, monkeypatch)
         release.set()
         result = rec.close()
     assert result["status"] == "complete" and not any(result["dropped"].values())
-    assert len(resizes) == len(writes) == 13
+    assert len(resizes) == len(writes) == 15
     assert set(resizes.values()) == set(writes.values()) == {1}
     with h5py.File(rec.session_dir / "inference.h5", "r") as f:
         np.testing.assert_array_equal(f["robot/t_ns"], np.arange(257))
-        np.testing.assert_array_equal(f["executed/t_ns"], np.arange(0, 257, 2))
+        np.testing.assert_array_equal(f["action/t_ns"], np.arange(0, 257, 2))
 
 
 def test_high_rate_and_image_overflow_cannot_starve_low_rate_streams(tmp_path, monkeypatch):
@@ -603,24 +596,24 @@ def test_high_rate_and_image_overflow_cannot_starve_low_rate_streams(tmp_path, m
             rec.observation("one", i, i, rgb(1, (8, 8)), None)
         for i in range(7):
             rec.step({"t_step_ns": i, "observation_time_ns": i, "status": "ok"})
-            rec.command({"t_ns": i})
+            rec.gripper_command(i, 20, "target")
         rec.event(1, "reserved event")
     finally:
         release.set()
         result = rec.close()
     assert result["status"] == "complete"
-    assert result["counts"]["steps"] == result["counts"]["commands"] == 7
+    assert result["counts"]["policy"] == result["counts"]["gripper_commands"] == 7
     assert result["counts"]["events"] == 2
-    assert all(result["dropped"][s] == 0 for s in ("steps", "commands", "events"))
-    assert sum(result["counts"][s] for s in ("robot", "executed", "gripper")) == 16
-    assert sum(result["dropped"][s] for s in ("robot", "executed", "gripper")) == 3 * 64 - 16
-    assert sum(result["counts"][s] for s in ("cameras/one", "observations/one")) == 16
-    assert sum(result["dropped"][s] for s in ("cameras/one", "observations/one")) == 2 * 64 - 16
+    assert all(result["dropped"][s] == 0 for s in ("policy", "gripper_commands", "events"))
+    assert sum(result["counts"][s] for s in ("robot", "action", "gripper")) == 16
+    assert sum(result["dropped"][s] for s in ("robot", "action", "gripper")) == 3 * 64 - 16
+    assert sum(result["counts"][s] for s in ("cameras/cam_one", "observations/cam_one")) == 16
+    assert sum(result["dropped"][s] for s in ("cameras/cam_one", "observations/cam_one")) == 2 * 64 - 16
     assert result["dropped"] == summary_file(rec)["dropped"]
 
 
-@pytest.mark.parametrize("stream,field", [("robot", "dq"), ("cameras/rgbd", "meta_json"),
-                                         ("observations/rgbd", "depth")])
+@pytest.mark.parametrize("stream,field", [("robot", "dq"), ("cameras/cam_rgbd", "meta_json"),
+                                         ("observations/cam_rgbd", "depth")])
 def test_mid_batch_failure_rolls_back_all_fields_and_counts_pending_rows(tmp_path, monkeypatch, stream, field):
     written, entered, release = threading.Event(), threading.Event(), threading.Event()
     original_batch, original_write = SessionRecorder._write_batch, h5py.Dataset.__setitem__
@@ -659,14 +652,14 @@ def test_mid_batch_failure_rolls_back_all_fields_and_counts_pending_rows(tmp_pat
         assert entered.wait(5)
         for i in range(1, 6):
             enqueue(i)
-        rec.command({"t_ns": 6})  # already drained into another stream's pending batch at failure
+        rec.gripper_command(6, 20, "target")  # already drained into another stream's pending batch at failure
     finally:
         release.set()
         result = rec.close()
     assert failed == [5]
     assert result["status"] == "error" and "partial batch write" in result["error"]
     assert result["counts"][stream] == 1 and result["dropped"][stream] == 5
-    assert result["counts"]["commands"] == 0 and result["dropped"]["commands"] == 1
+    assert result["counts"]["gripper_commands"] == 0 and result["dropped"]["gripper_commands"] == 1
     assert sum(result["dropped"].values()) == 6
     assert result == summary_file(rec)
     with h5py.File(rec.session_dir / "inference.h5", "r") as f:
@@ -702,7 +695,7 @@ def test_five_second_live_throughput_and_producer_latency(tmp_path):
                 calibration.frame(serial, i, i, native[serial][i % 4], None, None, {})
                 calibration.observation(serial, i, i, observations[serial], None)
             calibration.step({"t_step_ns": i, "observation_time_ns": i, "status": "ok"})
-            calibration.command({"t_ns": i})
+            calibration.gripper_command(i, 20, "target")
     calibration_seconds = time.perf_counter() - calibration_start
     assert calibration.close()["status"] == "complete"
     assert not any(calibration.dropped.values())
@@ -749,7 +742,7 @@ def test_five_second_live_throughput_and_producer_latency(tmp_path):
         for i in range(policy_rows):
             t_ns = pace(i, policy_rate)
             rec.step({"t_step_ns": t_ns, "observation_time_ns": t_ns, "status": "ok", "action": POSE})
-            rec.command({"t_ns": t_ns, "goal_pose7": POSE, "gripper_closure": 0.5})
+            rec.gripper_command(t_ns, 117, "target")
             rec.event(t_ns, f"step {i}")
 
     def producer(work):
@@ -782,10 +775,10 @@ def test_five_second_live_throughput_and_producer_latency(tmp_path):
         close_seconds = time.perf_counter() - close_start
 
     expected = dict.fromkeys(result["counts"], 0)
-    expected.update(robot=robot_rows, executed=robot_rows // 2,
-                    steps=policy_rows, commands=policy_rows, events=policy_rows)
+    expected.update(robot=robot_rows, action=robot_rows // 2,
+                    policy=policy_rows, gripper_commands=policy_rows, events=policy_rows)
     for serial in configs:
-        expected[f"cameras/{serial}"] = expected[f"observations/{serial}"] = policy_rows
+        expected[f"cameras/cam_{serial}"] = expected[f"observations/cam_{serial}"] = policy_rows
     p99_us = float(np.percentile(latencies, 99)) / 1000
     print(f"Recorder throughput: calibration={calibration_seconds:.3f}s, "
           f"robot={robot_rate}/s, executed={robot_rate // 2}/s, "
@@ -811,8 +804,90 @@ def test_five_second_live_throughput_and_producer_latency(tmp_path):
         np.testing.assert_array_equal(f["robot/q"][:, 0], np.arange(robot_rows))
         for serial in configs:
             for kind in ("cameras", "observations"):
-                np.testing.assert_array_equal(f[f"{kind}/{serial}/frame_id"], np.arange(policy_rows))
-                np.testing.assert_array_equal(f[f"{kind}/{serial}/rgb"][:, 0, 0, 0],
+                np.testing.assert_array_equal(f[f"{kind}/cam_{serial}/frame_number"], np.arange(policy_rows))
+                np.testing.assert_array_equal(f[f"{kind}/cam_{serial}/rgb"][:, 0, 0, 0],
                                               np.arange(policy_rows) % 256)
-            if result["videos"][serial]["status"] == "available":
-                assert result["videos"][serial]["frames"] == policy_rows
+            if result["videos"][f"cam_{serial}"]["status"] == "available":
+                assert result["videos"][f"cam_{serial}"]["frames"] == policy_rows
+
+
+@pytest.mark.parametrize("damage", [None, "seconds", "policy_goal", "video_count", "frame_gap", "frame_reverse"])
+def test_v2_named_camera_policy_round_trip_verifier(tmp_path, monkeypatch, damage):
+    from ops.robot_pc import switch_controller as sc
+    from ops.robot_pc.gripper import closure_to_position
+    from scripts.robot_pc.verify_session import verify
+
+    # Exercise encoder/decoder row mapping even on CPU environments without OpenCV.
+    # The optional real-codec test above independently decodes a real MP4 when cv2 is installed.
+    videos = {}
+    class Writer:
+        def __init__(self, path, *args):
+            self.frames = videos.setdefault(path, [])
+            Path(path).touch()
+
+        def isOpened(self):
+            return True
+
+        def write(self, frame):
+            self.frames.append(frame.copy())
+
+        def release(self):
+            pass
+
+    class Capture:
+        def __init__(self, path):
+            self.frames = iter(videos.get(path, []))
+
+        def read(self):
+            frame = next(self.frames, None)
+            return frame is not None, frame
+
+        def release(self):
+            pass
+
+    monkeypatch.setitem(sys.modules, "cv2", SimpleNamespace(VideoWriter=Writer, VideoCapture=Capture,
+                                                          VideoWriter_fourcc=lambda *args: 0))
+    meta = {"policy": "fixture", "mode": "dry_run", "config": {"executor": {"rate_hz": 500}}}
+    cmd = {"reference_id": "r", "observation_time_ns": 1_060_000_000, "goal_pose7": POSE,
+           "measured_pose7": POSE, "gripper_closure": 0.5, "gripper_register": closure_to_position(0.5),
+           "translation_m": 0.0, "rotation_deg": 0.0}
+    with SessionRecorder(tmp_path, meta=meta, cameras=cameras("device"), camera_names={"device": "left"}) as rec:
+        for i in range(200):
+            rec.robot_state(10**9 + i * 10**6, i, np.ones(7), np.zeros(7), np.zeros(7), POSE, sc.ee_from_flange(POSE))
+        for i in range(10):
+            rec.gripper(10**9 + i * 20_000_000, 117, {"fault": 0, "status": 3, "activated": 1})
+        for i in range(3):
+            t = 10**9 + i * 66_666_667
+            rec.frame("device", i, t, rgb(20), None, None, {"color_frame_number": 42 + i})
+            rec.observation("device", 42 + i, t, rgb(20, (128, 128)), None)
+        rec.step({"t_step_ns": 1_070_000_000, "observation_time_ns": 1_060_000_000, "status": "ok",
+                  "command": cmd, "execution_flange_pose": POSE,
+                  "client_ms": {"e2e_ms": 10}, "server_ms": {"total_ms": 5}})
+        rec.executed(1_070_000_000, "track", POSE, 0.5, False, "dry run")
+        rec.executed(1_072_000_000, "track", POSE, 0.5, False, "dry run")
+        rec.gripper_command(1_070_000_000, 117, "target")
+        rec.gripper_command(1_080_000_000, 117, "hold", "stop")
+    if damage == "video_count":
+        summary = summary_file(rec)
+        summary["videos"]["left"]["frames"] += 1
+        (rec.session_dir / "summary.json").write_text(json.dumps(summary))
+    elif damage:
+        with h5py.File(rec.session_dir / "inference.h5", "r+") as f:
+            if damage == "seconds":
+                f["policy/t_obs"][0] += 0.001
+            elif damage == "policy_goal":
+                f["policy/goal_flange_pose"][0, 0] += 0.01
+            else:
+                f["cameras/left/frame_number"][2] = 51 if damage == "frame_gap" else 35
+    report = verify(rec.session_dir)
+    assert report["ok"] is (damage is None), report["failures"]
+    camera = report["checks"]["cameras_video"]["per_camera"]["left"]
+    assert camera["serial"] == "device"
+    assert camera["frame_number_gap_max"] == (8 if damage in ("frame_gap", "frame_reverse") else 1)
+    if damage is None:
+        assert camera["frames"] == camera["mp4_frames"] == 3
+        assert report["checks"]["executed"]["sent_true"] == 0
+    else:
+        expected = {"seconds": "time_columns", "policy_goal": "policy_columns", "video_count": "cameras_video",
+                    "frame_gap": "cameras_video", "frame_reverse": "cameras_video"}[damage]
+        assert expected in report["failures"]

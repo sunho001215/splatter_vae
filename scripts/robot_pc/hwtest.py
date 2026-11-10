@@ -186,6 +186,8 @@ def main(argv=None, *, operator_input=input) -> int:
             meta = {"mode": f"hwtest-{args.test}" + ("-rehearsal" if args.rehearse else ""), "test": args.test,
                     "parameters": parameters, "config": cfg, "gripper_origin": gripper.origin, "cameras": cams}
             recorder = SessionRecorder(Path(cfg["root"]), meta=meta,
+                                       camera_names={c: next((n for n, s in camera_names(cfg).items() if s == c),
+                                                             f"cam_{c}") for c in cams},
                                        cameras={c: {"native_hw": list(hw), "depth": False,
                                                     "K_native": K[c].tolist()} for c in cams})
             opened.append(close_recorder)

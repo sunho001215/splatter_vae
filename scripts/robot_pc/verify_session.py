@@ -58,7 +58,9 @@ def verify(session: Path, *, max_setpoints: int = 2000) -> dict:
           files={p.name: p.stat().st_size for p in sorted(session.iterdir())})
     check("drops", sum(summary["dropped"].values()) == 0, dropped=summary["dropped"])
     with h5py.File(h5p, "r") as h:
-        meta = json.loads(h.attrs["meta_json"])
+        meta = json.loads(h.attrs["config_json"])
+        check("format", h.attrs["format"] == "s4d_robot_pc_inference" and h.attrs["format_version"] == 2)
+        check("config", meta == json.loads((session / "config.json").read_text()))
         mode = meta.get("mode")
         out["mode"], out["policy"] = mode, meta.get("policy")
         check("status", h.attrs["status"] == summary["status"], h5_status=str(h.attrs["status"]),
@@ -76,18 +78,44 @@ def verify(session: Path, *, max_setpoints: int = 2000) -> dict:
                 if isinstance(v, h5py.Group):
                     walk(v, f"{path}/{k}" if path else k)
         walk(h)
-        counts_ok = all(len(h[f"{s}/t_ns"] if f"{s}/t_ns" in h else h[f"{s}/t_step_ns"]) == n
+        counts_ok = all(len(h[f"{s}/t_ns"]) == n
                         for s, n in summary["counts"].items())
         check("group_lengths", not mism and counts_ok, mismatched=mism, counts=summary["counts"])
         # ---- monotonic timestamps
         mono = {}
         for s in summary["counts"]:
-            if s == "events":  # events carry their source times (e.g. a gripper write), recorded in arrival order
+            if s == "events":  # source times, recorded in arrival order
                 continue
-            col = f"{s}/t_ns" if f"{s}/t_ns" in h else f"{s}/t_step_ns"
+            col = f"{s}/t_ns"
             t = h[col][()]
             mono[s] = bool(len(t) < 2 or np.all(np.diff(t) >= 0))
         check("monotonic", all(mono.values()), per_stream=mono)
+        seconds = {}
+        for stream in summary["counts"]:
+            g = h[stream]
+            for name, ns in (("t", "t_ns"), ("t_obs", "t_obs_ns")):
+                if ns in g:
+                    seconds[f"{stream}/{name}"] = (g[name].dtype == np.float64 and g[ns].dtype == np.int64 and
+                        np.array_equal(g[name][()], g[ns][()].astype(np.float64) / 1e9))
+        check("time_columns", all(seconds.values()), per_column=seconds)
+        mapping = json.loads(h.attrs["camera_mapping_json"])
+        check("camera_mapping", mapping == {str(g.attrs["serial"]): name for name, g in h["cameras"].items()})
+        steps = [json.loads(x) for x in h["policy/row_json"][()]]
+        pg = h["policy"]
+        policy_ok = pg["command"].dtype == np.uint8
+        for i, row in enumerate(steps):
+            cmd = row.get("command") or {}
+            goal = cmd.get("goal_pose7", [np.nan] * 7)
+            closure = cmd.get("gripper_closure", row.get("gripper_closure", np.nan))
+            policy_ok &= (pg["t_ns"][i] == row["t_step_ns"] and
+                          pg["t_obs_ns"][i] == row["observation_time_ns"] and
+                          pg["status"].asstr()[i] == str(row.get("code") or row["status"]) and
+                          pg["command"][i] == bool(cmd) and
+                          np.array_equal(pg["goal_flange_pose"][i], goal, equal_nan=True) and
+                          np.array_equal(pg["gripper"][i], closure, equal_nan=True) and
+                          json.loads(pg["latency_json"].asstr()[i]) ==
+                          {k: row[k] for k in ("client_ms", "server_ms", "timings") if k in row})
+        check("policy_columns", policy_ok, rows=len(steps))
         # ---- robot state
         rt, seq = h["robot/t_ns"][()], h["robot/seq"][()]
         if len(rt) > 1:
@@ -104,7 +132,7 @@ def verify(session: Path, *, max_setpoints: int = 2000) -> dict:
             # streaming window = from the first executed setpoint (the executor's state-age check is what matters:
             # a receipt gap > state_timeout_s latches a stop); gaps before it (preflight: camera / gripper / policy
             # start-up starving the reader) are reported separately
-            ex_t = h["executed/t_ns"][()]
+            ex_t = h["action/t_ns"][()]
             stale_ms = 1e3 * float(meta.get("config", {}).get("executor", {}).get("state_timeout_s", 0.05))
             if not len(ex_t):  # no setpoints (gripper test): the window starts at the test's "start" event
                 ev_t = h["events/t_ns"][()]
@@ -127,10 +155,10 @@ def verify(session: Path, *, max_setpoints: int = 2000) -> dict:
         gt = h["gripper/t_ns"][()]
         gpos = h["gripper/position"][()]
         if len(gt) > 1:
-            st = [json.loads(x) for x in h["gripper/status_json"][()]]
             check("gripper", (len(gt) - 1) / ((gt[-1] - gt[0]) / 1e9) > 40, n=int(len(gt)),
                   rate_hz=float((len(gt) - 1) / ((gt[-1] - gt[0]) / 1e9)), positions=sorted(set(gpos.tolist())),
-                  faults=sorted({s.get("fault") for s in st}), status=sorted({s.get("status") for s in st}))
+                  faults=np.unique(h["gripper/fault"][()]).tolist(),
+                  status=np.unique(h["gripper/status"][()]).tolist())
         else:
             check("gripper", meta.get("gripper_origin", "").startswith("static"), n=int(len(gt)),
                   origin=meta.get("gripper_origin"))
@@ -139,15 +167,16 @@ def verify(session: Path, *, max_setpoints: int = 2000) -> dict:
         for serial in h["cameras"]:
             g = h[f"cameras/{serial}"]
             t = g["t_ns"][()]
-            fn = [json.loads(m).get("color_frame_number") for m in g["meta_json"][()]]
-            fn = [x for x in fn if x is not None]
+            fn = g["frame_number"][()]
             ci = {"frames": int(len(t)),
                   "fps": float((len(t) - 1) / ((t[-1] - t[0]) / 1e9)) if len(t) > 1 else None,
                   "interval_ms": _pct(np.diff(t) / 1e6) if len(t) > 1 else None,
                   "frame_number_gaps": int((np.diff(fn) != 1).sum()) if len(fn) > 1 else None,
-                  "frame_number_missing": int((np.diff(fn) - 1).clip(0).sum()) if len(fn) > 1 else None}
+                  "frame_number_missing": int((np.diff(fn) - 1).clip(0).sum()) if len(fn) > 1 else None,
+                  "frame_number_gap_max": int(np.abs(np.diff(fn)).max()) if len(fn) > 1 else None,
+                  "serial": str(g.attrs["serial"])}
             vfile = (summary.get("videos") or {}).get(serial, {}).get("file")  # <camera name>.mp4 (directive K)
-            vid = session / Path(vfile).name if vfile else session / f"camera_{serial}.mp4"
+            vid = session / Path(vfile).name if vfile else session / f"{serial}.mp4"
             try:
                 import cv2
 
@@ -170,16 +199,15 @@ def verify(session: Path, *, max_setpoints: int = 2000) -> dict:
             except ImportError:
                 ci["mp4_ok"] = None
             cam_info[serial] = ci
-        check("cameras_video", all(c.get("mp4_ok") is not False and (c["frame_number_missing"] or 0) == 0
+        check("cameras_video", all(c.get("mp4_ok") is not False and (c["frame_number_gaps"] or 0) == 0
                                    for c in cam_info.values()), per_camera=cam_info)
         if not str(mode).startswith("hwtest"):
             # ---- steps: latency, sync, transformations
-            steps = [json.loads(x) for x in h["steps/json"][()]]
             ok_steps = [s for s in steps if s.get("status") == "ok"]
-            lat = {k: _pct(s["client_ms"].get(k) for s in ok_steps)
+            lat = {k: _pct(s.get("client_ms", {}).get(k) for s in ok_steps)
                    for k in ("e2e_ms", "preprocess_ms", "rtt_ms", "network_ms", "acquire_ms", "capture_to_action_ms",
                              "capture_to_command_ms")}
-            lat["server_total_ms"] = _pct(s["server_ms"].get("total_ms") for s in ok_steps)
+            lat["server_total_ms"] = _pct(s.get("server_ms", {}).get("total_ms") for s in ok_steps)
             span = (steps[-1]["t_step_ns"] - steps[0]["t_step_ns"]) / 1e9 if len(steps) > 1 else None
             out["latency_ms"] = lat
             check("steps", len(ok_steps) > 0, steps=len(steps), ok_steps=len(ok_steps),
@@ -204,8 +232,9 @@ def verify(session: Path, *, max_setpoints: int = 2000) -> dict:
             for s in cmds:
                 c = s["command"]
                 g, m = np.asarray(c["goal_pose7"]), np.asarray(c["measured_pose7"])
-                ex = np.asarray(s["execution_flange_pose"])
-                errs = {"goal_vs_policy_m": float(np.linalg.norm(g[:3] - ex[:3])), "goal_vs_policy_rad": _q_angle(g[3:], ex[3:]),
+                ex = np.asarray(s.get("flange_pose", s.get("execution_flange_pose")))
+                errs = {"goal_vs_policy_m": float(np.linalg.norm(g[:3] - ex[:3])),
+                        "goal_vs_policy_rad": _q_angle(g[3:], ex[3:]),
                         "translation_m": abs(float(np.linalg.norm(g[:3] - m[:3])) - c["translation_m"]),
                         "rotation_deg": abs(np.degrees(_q_angle(g[3:], m[3:])) - c["rotation_deg"]),
                         "register": abs(closure_to_position(c["gripper_closure"]) - c["gripper_register"])}
@@ -220,9 +249,10 @@ def verify(session: Path, *, max_setpoints: int = 2000) -> dict:
                   max_translation_m=max((s["command"]["translation_m"] for s in cmds), default=None),
                   max_rotation_deg=max((s["command"]["rotation_deg"] for s in cmds), default=None))
         # executed setpoints
-        et, ep, sent = h["executed/t_ns"][()], h["executed/pose7"][()], h["executed/sent"][()]
+        et, ep, sent = h["action/t_ns"][()], h["action/flange_pose"][()], h["action/sent"][()]
         ex_cfg = meta.get("config", {}).get("executor", {})
         info = {"n": int(len(et)), "sent_true": int(sent.sum())}
+        sent_ok = h["action/sent"].dtype == np.uint8 and np.isin(sent, [0, 1]).all()
         preceding = np.searchsorted(rt, et, side="right") - 1
         good = preceding >= 0
         ages_ms = (et[good] - rt[preceding[good]]) / 1e6
@@ -239,11 +269,11 @@ def verify(session: Path, *, max_setpoints: int = 2000) -> dict:
                         max_speed_m_s=float(v.max()) if len(v) else 0.0,
                         max_ang_speed_rad_s=float(w.max()) if len(w) else 0.0)
             # the speed is per-tick distance / host tick interval: a late tick shows a lower speed, never higher
-            speed_ok = info["max_speed_m_s"] <= ex_cfg.get("max_linear_speed", 0.3) * 1.05 + 1e-6 and \
-                info["max_ang_speed_rad_s"] <= ex_cfg.get("max_angular_speed", 1.5) * 1.05 + 1e-6
+            speed_ok = info["max_speed_m_s"] <= ex_cfg.get("max_linear_speed", float("inf")) * 1.05 + 1e-6 and \
+                info["max_ang_speed_rad_s"] <= ex_cfg.get("max_angular_speed", float("inf")) * 1.05 + 1e-6
         else:
             speed_ok = True
-        check("executed", speed_ok and state_age_ok and
+        check("executed", sent_ok and speed_ok and state_age_ok and
               (not (mode == "dry_run" or str(mode).endswith("-rehearsal")) or info["sent_true"] == 0), **info)
         events = [x.decode() if isinstance(x, bytes) else x for x in h["events/text"][()]]
         out["events"] = events
@@ -259,7 +289,8 @@ def verify(session: Path, *, max_setpoints: int = 2000) -> dict:
                     malformed_releases.append(e)
         engaged = bool(sent.any()) or "engage" in events or any(r.get("idle") != "not requested" for r in releases)
         if mode in ("execute", "hwtest-hold") and engaged:
-            check("release", bool(releases) and not malformed_releases and releases[-1].get("idle") == "sent" and releases[-1].get("hold") == "sent",
+            check("release", bool(releases) and not malformed_releases and
+                  releases[-1].get("idle") == "sent" and releases[-1].get("hold") == "sent",
                   outcomes=releases, malformed=malformed_releases)
         if str(mode).startswith("hwtest"):
             verdicts, malformed = [], []

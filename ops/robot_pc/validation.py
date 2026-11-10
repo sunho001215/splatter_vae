@@ -105,7 +105,9 @@ def validate_action(result, request: BoundRequest, limits: ActionLimits, *, sess
     if float(o.get("measured_gripper_register", request.gripper_register)) != float(request.gripper_register):
         raise ActionRejected("binding", "the action is not bound to the gripper register sent with its observation")
     a = np.asarray(o.get("action_norm"), np.float64)
-    goal = np.asarray(o.get("execution_flange_pose", o.get("flange_pose")), np.float64)
+    # directive K: execute the policy's own decoded goal (flange_pose), NOT the server's lead-clamped
+    # execution_flange_pose (the training contract's 0.04 m / 20 deg lead around the measured pose)
+    goal = np.asarray(o.get("flange_pose", o.get("execution_flange_pose")), np.float64)
     c = float(o.get("gripper_closure", np.nan))
     if a.shape != (7,) or goal.shape != (7,) or not (np.isfinite(a).all() and np.isfinite(goal).all() and np.isfinite(c)):
         raise ActionRejected("non_finite", "action, goal or gripper not finite (or malformed)")

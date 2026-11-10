@@ -107,7 +107,7 @@ def test_run_folders_are_named_numbered_and_never_reused(tmp_path):
         d = Path(summary["session_dir"])
         assert json.loads((d / "config.json").read_text()) == {"policy": "p"}
         assert (d / "inference.h5").is_file() and (d / "summary.json").is_file()
-        video = summary["videos"]["135122073201"]
+        video = summary["videos"]["right"]
         assert video["status"] != "available" or Path(video["file"]).name == "right.mp4"
     assert dirs == [f"drawer-open_e2e_cnn_seed0_right_run{i:03d}" for i in (1, 2, 3)]
     (tmp_path / "inference_outputs/drawer-open_e2e_cnn_seed0_right_run007").mkdir()  # a gap: next is 1 + max
@@ -122,3 +122,89 @@ def test_infer_cli_refuses_conflicting_camera_flags(capsys):
     with pytest.raises(SystemExit) as exc:
         _infer().main(["--cameras", "left", "--camera", "135122070988", "--dry-run"])
     assert exc.value.code == 2 and "not both" in capsys.readouterr().err
+
+
+# ------------------------------------------------------------------------------------- review (robk-review) fixes
+def _cmd(goal, t_obs=0, age_ms=1e6):
+    from ops.robot_pc.validation import Command
+
+    return Command("r", "s", int(t_obs), int(t_obs + age_ms * 1e6), tuple(POSE), tuple(goal), 0.0, 3, 0.0, 0.0)
+
+
+POSE = (0.45, 0.0, 0.55, 1.0, 0.0, 0.0, 0.0)
+
+
+def test_reengagement_after_a_pause_starts_from_the_measured_pose_not_an_old_setpoint():
+    from ops.robot_pc import executor, sinks
+
+    ex = executor.HighRateExecutor(sinks.MockSink())
+    ex.accept(_cmd([POSE[0] + 0.15, *POSE[1:]]))
+    t = 0
+    for k in range(25):  # 50 ms of interpolation toward +0.15 m (last setpoint ~ +0.11 m)
+        t += 2_000_000
+        ex.tick(t, POSE, state_t_ns=t, signature=bytes([k]))
+    t += 100_000_000  # no send for 100 ms (> target_dt): the controller now holds the MEASURED pose
+    assert ex.accept(_cmd([POSE[0] + 0.02, *POSE[1:]], t_obs=1))
+    sp = ex.tick(t, POSE, state_t_ns=t, signature=b"new")
+    assert sp.pose7[0] == POSE[0]  # starts at the measured pose, never re-sends the obsolete +0.11 m target
+
+
+def test_log6_small_angle_is_finite_and_the_guard_still_holds():
+    from ops.robot_pc import executor, sinks
+    from ops.robot_pc.poses import rotate_left
+
+    far = [POSE[0] + 0.4, *POSE[1:3], *rotate_left(np.array(POSE[3:]), np.array([0.0, 0.0, 2e-9]))]
+    m, r = executor.log6_norms(far, POSE)
+    assert np.isfinite(m) and abs(m - 0.4) < 1e-9 and r < 1e-8
+    ex = executor.HighRateExecutor(sinks.MockSink(), interpolation_s=1e-9)  # jump straight to the goal
+    ex.accept(_cmd(far))
+    assert ex.tick(2_000_000, POSE, state_t_ns=2_000_000, signature=b"a").pose7 == POSE  # segment start = measured
+    assert ex.tick(4_000_000, POSE, state_t_ns=4_000_000, signature=b"b") is None  # 0.4 m: never sent
+    assert ex.counts["controller_guard"] == 1
+
+
+def test_expired_setpoint_is_dropped_under_the_transport_lock():
+    import time
+
+    from ops.robot_pc import controller, live, safety
+
+    sent = []
+
+    class Sock:
+        def send(self, data, flags=0):
+            sent.append(data)
+
+    link = object.__new__(controller.ControllerLink)
+    import threading
+
+    link._send_lock, link._streaming, link.socks, link.actions_sent, link.expired_at_send = \
+        threading.Lock(), True, {"action": Sock()}, 0, 0
+    link.msg, link.zmq, link.target_dt = __import__("types").SimpleNamespace(encode=lambda m: b"x"), \
+        __import__("types").SimpleNamespace(NOBLOCK=1), 0.05
+    controller.sc.robot_action = lambda *a: "msg"
+    assert link.send_flange_pose(POSE, time.monotonic_ns() - 1) is False and not sent and link.expired_at_send == 1
+    assert link.send_flange_pose(POSE, time.monotonic_ns() + 10**9) is True and len(sent) == 1
+    auth = safety.authorize_execution(cli_execute=True, operator_start=True, policy_info={"execution_eligible": True})
+    sink = live.LiveSink(auth, link, None)
+    sp = live.LiveSetpoint(0, "track", POSE, 0.0, "r", time.monotonic_ns() - 1)
+    assert sink.send(sp)["arm"].startswith("expired at send") and len(sent) == 1
+
+
+def test_validation_executes_the_raw_policy_goal_not_the_lead_clamped_one():
+    import inspect
+
+    from ops.robot_pc import validation
+
+    src = inspect.getsource(validation.validate_action)
+    assert 'o.get("flange_pose", o.get("execution_flange_pose"))' in src
+
+
+def test_dry_run_selection_reaches_restricted_policies():
+    from ops.robot_pc import selection
+
+    offered = {"dynamo-drawer-open-s0": {"info": {"task": "drawer-open", "condition": "dynamo", "seed": 0,
+                                                  "status": "restricted"}, "input_spec": {}}}
+    with pytest.raises(selection.SelectionError):
+        selection.select_policy(offered, condition="dynamo", task="drawer-open", seed=0)
+    assert selection.select_policy(offered, condition="dynamo", task="drawer-open", seed=0,
+                                   allow_restricted=True) == "dynamo-drawer-open-s0"

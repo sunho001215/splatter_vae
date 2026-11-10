@@ -49,6 +49,50 @@ POSE = (0.45, 0.0, 0.55, 1.0, 0.0, 0.0, 0.0)
 
 
 # ------------------------------------------------------------------------------------------------ fixtures
+@pytest.fixture(autouse=True)
+def stop_fake_background_resources(monkeypatch):
+    """No worker, acquisition or shutdown thread may escape a test, even when it asserts early."""
+    from ops.robot_pc import gripper, live
+
+    resources = {"workers": [], "readers": [], "cameras": [], "sessions": []}
+    for cls, kind in ((gripper.GripperWorker, "workers"), (sc.LiveStateReader, "readers"),
+                      (LiveCameras, "cameras"), (live.LiveSession, "sessions")):
+        original = cls.__init__
+        def tracked(self, *args, _original=original, _kind=kind, **kwargs):
+            _original(self, *args, **kwargs)
+            resources[_kind].append(self)
+        monkeypatch.setattr(cls, "__init__", tracked)
+    yield
+    for session in resources["sessions"]:
+        if session._exec_thread is not None or session.shutdown._thread is not None:
+            session.stop_event.set()
+            session.shutdown.finish()
+            live.LiveSession.join_executor(session, 5)
+            assert session._exec_thread is None or not session._exec_thread.is_alive()
+            assert not session.shutdown._thread.is_alive()
+    for worker in resources["workers"]:
+        worker.stop(join_timeout=5)
+        assert not worker.is_alive()
+    for camera in resources["cameras"]:
+        camera.close()
+        assert all(not t.is_alive() for t in camera._threads)
+    for reader in resources["readers"]:
+        reader.close()
+        reader._thread.join(5)
+        assert not reader._thread.is_alive()
+
+
+def _wait_until(predicate, timeout=3):
+    """Wait for a completed worker state transition, rather than guessing its scheduler delay."""
+    import threading
+    import time
+
+    deadline = time.monotonic() + timeout
+    while not predicate():
+        assert time.monotonic() < deadline, "worker did not complete the expected transition"
+        threading.Event().wait(0.002)
+
+
 def _png(a) -> np.ndarray:
     buf = io.BytesIO()
     Image.fromarray(a).save(buf, format="PNG")
@@ -907,7 +951,7 @@ def test_switch_controller_frames_and_action_format():
 def test_live_sink_sends_setpoints_through_the_link_and_the_gripper():
     auth = safety.authorize_execution(cli_execute=True, operator_start=True, policy_info={"execution_eligible": True})
     sent, closures = [], []
-    link = SimpleNamespace(send_flange_pose=lambda p: sent.append(p))
+    link = SimpleNamespace(send_flange_pose=lambda p, *a: sent.append(p))
     grip = SimpleNamespace(set_closure=lambda c: closures.append(c))
     live_sink = sinks.LiveSink(auth, link, grip)
     with pytest.raises(safety.ExecutionRefused, match="setpoints"):
@@ -1069,7 +1113,9 @@ def test_live_state_reader_is_a_read_only_subscriber(monkeypatch):
             calls.append(("connect", ep))
 
         def poll(self, ms):
-            return 0
+            import threading
+
+            return threading.Event().wait(ms / 1000)
 
         def close(self, *a):
             calls.append(("close",))
@@ -1354,8 +1400,14 @@ class _SubOnly:
     SUB, LINGER, CONFLATE, SUBSCRIBE = "SUB", 1, 2, 3
 
     class Context:
+        @staticmethod
+        def poll(ms):
+            import threading
+
+            return threading.Event().wait(ms / 1000)
+
         def socket(self, kind):
-            return SimpleNamespace(setsockopt=lambda *a: None, connect=lambda ep: None, poll=lambda ms: 0,
+            return SimpleNamespace(setsockopt=lambda *a: None, connect=lambda ep: None, poll=self.poll,
                                    close=lambda *a: None)
 
         def term(self):
@@ -1432,10 +1484,11 @@ def test_live_session_dry_run_full_chain_with_recording_calls(policies):
 
     box = {}
 
-    _th.Thread(target=feed, daemon=True).start()
+    feeder = _th.Thread(target=feed, name="fake-state-feeder", daemon=True)
+    feeder.start()
     calls = collections.Counter()
     rec = SimpleNamespace(**{n: (lambda *a, n=n, **k: calls.update([n])) for n in
-                             ("frame", "observation", "robot_state", "gripper", "step", "command", "executed", "event")})
+                             ("frame", "observation", "robot_state", "gripper", "step", "gripper_command", "executed", "event")})
     sink = sinks.DryRunSink()
     try:
         with serve({"reviwo-x": policies["reviwo"]}) as srv:
@@ -1452,6 +1505,8 @@ def test_live_session_dry_run_full_chain_with_recording_calls(policies):
             client.close()
     finally:
         stop_feed.set()
+        feeder.join(5)
+        assert not feeder.is_alive()
         reader.close()
     assert session.stop_reason == "budget reached" and len(rows) == 12
     ok = [r for r in rows if r["status"] == "ok"]  # the first frame may predate the state stream (binding refused)
@@ -1652,15 +1707,19 @@ def test_gripper_expiry_inhibits_keepalive_and_stop_joins():
         read_status=lambda: G.GripperStatus(time.monotonic_ns(), 1, 1, 3, 0, 0, 3, 3, 0),  # gOBJ 0: moving
         write=lambda *a: (writes.append(a), first_write.set()), close=lambda: None)
     worker = G.GripperWorker(lambda: dev, read_only=False)
-    worker.set_closure(1, time.monotonic_ns() + 100_000_000)
+    worker.set_closure(1, time.monotonic_ns() + 5_000_000_000)
     worker.start()
     try:
         assert first_write.wait(1)
-        time.sleep(0.15)
+        with worker._target_lock:
+            worker._expires_ns = time.monotonic_ns() + 50_000_000
+        _wait_until(lambda: len(worker.holds) == 1)
         worker._last_write = 0  # make the next cycle a would-be keepalive
-        time.sleep(0.05)
+        samples = len(worker.samples)
+        _wait_until(lambda: len(worker.samples) >= samples + 3)
         assert len(writes) == 2 and writes[-1][0] == 3
         assert len(worker.holds) == 1 and worker.holds[0][2] == "expiry"
+        worker.stop()  # the reader must not overwrite the explicitly stale status during this assertion
         worker.latest = dataclasses.replace(worker.latest, t_ns=time.monotonic_ns() - 100_000_001)
         assert not worker.healthy()
     finally:
@@ -1687,7 +1746,7 @@ def _unit_session(*, sent=False, recorder=None, gripper=None, link=None, sink=No
 
 def _session_recorder(**overrides):
     return SimpleNamespace(**{**{name: lambda *a, **kw: None for name in
-                                 ("frame", "observation", "robot_state", "gripper", "step", "command",
+                                 ("frame", "observation", "robot_state", "gripper", "step", "gripper_command",
                                   "executed", "event")}, **overrides})
 
 
@@ -1731,7 +1790,7 @@ def test_live_sink_propagates_command_expiry_and_json_is_additive():
 
     targets = []
     auth = safety.authorize_execution(cli_execute=True, operator_start=True, policy_info={"execution_eligible": True})
-    sink = live.LiveSink(auth, SimpleNamespace(send_flange_pose=lambda p: None),
+    sink = live.LiveSink(auth, SimpleNamespace(send_flange_pose=lambda p, *a: None),
                          SimpleNamespace(set_closure=lambda *a: targets.append(a)))
     base = executor.Setpoint(1, "track", POSE, 0.4, "r")
     sp = live.LiveSetpoint(1, "track", POSE, 0.4, "r", time.monotonic_ns() + 1_000_000)
@@ -1751,7 +1810,7 @@ def test_execution_peer_and_gripper_health_stops_are_latched(problem):
 
     released = threading.Event()
     link = SimpleNamespace(peers_ok=lambda: problem != "disconnect", release=lambda *a, **kw: released.set(),
-                           send_flange_pose=lambda p: pytest.fail("must not send"))
+                           send_flange_pose=lambda p, *a: pytest.fail("must not send"))
     grip = G.GripperWorker(lambda: pytest.fail("no hardware"), read_only=False)
     grip.latest = G.GripperStatus(time.monotonic_ns() - (210_000_000 if problem == "comm_loss" else 0),
                                   1, 1, 3, 3, 9 if problem == "fault" else 0, 3, 3, 0)
@@ -1812,7 +1871,7 @@ def test_release_proceeds_after_executor_join_timeout_when_recorder_is_blocked(c
         recording.set()
         assert unblock_recording.wait(3)
 
-    link = SimpleNamespace(peers_ok=lambda: True, send_flange_pose=lambda p: None,
+    link = SimpleNamespace(peers_ok=lambda: True, send_flange_pose=lambda p, *a: None,
                            release=lambda *a, **kw: released.set())
     session = _unit_session(sent=True, link=link, recorder=_session_recorder(executed=executed))
     session.executor.command = SimpleNamespace(reference_id="r", expires_ns=time.monotonic_ns() + 2_000_000_000)
@@ -2240,7 +2299,7 @@ def test_blocked_serial_never_blocks_executor_target_update_or_arm_release(block
     worker.start()
     assert blocked.wait(1)
     auth = safety.authorize_execution(cli_execute=True, operator_start=True, policy_info={"execution_eligible": True})
-    link = SimpleNamespace(send_flange_pose=lambda p: None,
+    link = SimpleNamespace(send_flange_pose=lambda p, *a: None,
                            release=lambda *a, **kw: (order.append("release"), released.set()) and
                            {"hold": "sent", "still": True, "idle": "sent"})
     sink = live.LiveSink(auth, link, worker)
@@ -2311,8 +2370,11 @@ def test_gripper_physical_hold_once_per_event_at_latest_measured_position(event,
                 if worker._target is not None:
                     worker._expires_ns = time.monotonic_ns() - 1
         if status == "healthy":
-            assert held.wait(0.5)
-        time.sleep(0.06)
+            assert held.wait(3)
+            _wait_until(lambda: len(worker.holds) == 1)
+        if event != "stop":
+            samples = len(worker.samples)
+            _wait_until(lambda: len(worker.samples) >= samples + 3)
         assert len(worker.holds) == (1 if status == "healthy" else 0)
         if worker.holds:
             t, register, reason = worker.holds[0]
@@ -2385,8 +2447,11 @@ def test_gripper_failed_physical_hold_is_attempted_only_once(event):
         else:
             with worker._target_lock:
                 worker._expires_ns = time.monotonic_ns() - 1
-        assert hold.wait(0.5)
-        time.sleep(0.06)
+        assert hold.wait(3)
+        _wait_until(lambda: len(worker.hold_failures) == 1)
+        if event != "stop":
+            samples = len(worker.samples)
+            _wait_until(lambda: len(worker.samples) >= samples + 3)
         assert writes == [230, 81] and not worker.holds
     finally:
         worker.stop()
@@ -2520,11 +2585,15 @@ def test_gripper_expiry_hold_skipped_when_stationary_or_in_contact():
         read_status=lambda: G.GripperStatus(time.monotonic_ns(), 1, 1, 3, 2, 0, 120, 110, 0),  # gOBJ 2: contact
         write=lambda *a: (writes.append(a), first_write.set()), close=lambda: None)
     worker = G.GripperWorker(lambda: dev, read_only=False)
-    worker.set_closure(0.5, time.monotonic_ns() + 100_000_000)
+    worker.set_closure(0.5, time.monotonic_ns() + 5_000_000_000)
     worker.start()
     try:
         assert first_write.wait(1)
-        time.sleep(0.25)
+        with worker._target_lock:
+            worker._expires_ns = time.monotonic_ns() - 1
+        _wait_until(lambda: worker._target is None)
+        samples = len(worker.samples)
+        _wait_until(lambda: len(worker.samples) >= samples + 3)
         assert len(writes) == 1 and not worker.holds  # expiry in contact: never relax the grasp
     finally:
         worker.stop()

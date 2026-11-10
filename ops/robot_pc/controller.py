@@ -52,6 +52,7 @@ class ControllerLink:
         self.mode_requested: int | None = None
         self.actions_sent = 0
         self.mode_requests_sent = 0
+        self.expired_at_send = 0
         self._disconnected = False
         try:
             for name, ep in (("command", command_bind), ("action", action_bind)):
@@ -124,13 +125,19 @@ class ControllerLink:
             else:
                 cancel.wait(min(0.1, remaining))
 
-    def send_flange_pose(self, flange_pose7) -> None:
+    def send_flange_pose(self, flange_pose7, expires_ns: int | None = None) -> bool:
+        """Publish one target; False (nothing sent) if its command expired by now - checked under the transport lock,
+        immediately before publication, so a scheduling delay can never send an expired action."""
         with self._send_lock:
             if not self._streaming:
                 raise ExecutionRefused("controller streaming has been released")
+            if expires_ns is not None and time.monotonic_ns() > int(expires_ns):
+                self.expired_at_send += 1
+                return False
             self.socks["action"].send(self.msg.encode(sc.robot_action(self.msg, flange_pose7, self.target_dt)),
                                       self.zmq.NOBLOCK)
             self.actions_sent += 1
+            return True
 
     def _send_measured_ee_hold(self, measured_ee_pose7) -> None:
         """The collector's disengage hold (app.py:360-361): the MEASURED controller-ee pose exactly as received

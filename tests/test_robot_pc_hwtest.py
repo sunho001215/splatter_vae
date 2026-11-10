@@ -92,6 +92,7 @@ def hw_env(monkeypatch, tmp_path):
             assert approved is True
             self.rows = collections.deque(maxlen=4096)
             self.seq = 0
+            self.closed = False
             self._sample_lock = threading.Lock()
 
         @property
@@ -105,26 +106,30 @@ def hw_env(monkeypatch, tmp_path):
             active = env.started is not None and (now - env.started) > 80_000_000
             if env.problem == "stale" and active:
                 return self.rows
-            last = int((now - epoch) // 1_000_000)
-            while self.seq < last:
-                self.seq += 1
-                p = list(env.pose)
-                dq = np.zeros(7)
-                if active and env.problem == "drift":
-                    p[0] += 0.006
-                if active and env.problem == "rotation":
-                    a = np.deg2rad(3) / 2
-                    p[3:] = [0, 0, np.sin(a), np.cos(a)]
-                if active and env.problem == "dq":
-                    dq[0] = 0.06
-                q = np.ones(7) + self.seq * 1e-12
-                signature = b"frozen" if active and env.problem == "frozen" else q.tobytes()
-                self.rows.append({"t_ns": epoch + self.seq * 1_000_000, "seq": self.seq, "q": q, "dq": dq,
-                                  "tau": np.zeros(7), "flange_pose7": np.array(p),
-                                  "ee_pose7": sc.ee_from_flange(p), "signature": signature})
+            # The fake has a continuous 1 kHz measurement clock, independent of Python scheduling.
+            # Compute a pose once per batch: doing two pose transforms per historical row made the
+            # newest row >50/100 ms old before preflight could check it under host load.
+            p, dq = np.array(env.pose), np.zeros(7)
+            if active and env.problem == "drift":
+                p[0] += 0.006
+            if active and env.problem == "rotation":
+                a = np.deg2rad(3) / 2
+                p[3:] = [0, 0, np.sin(a), np.cos(a)]
+            if active and env.problem == "dq":
+                dq[0] = 0.06
+            ee = sc.ee_from_flange(p)
+            last = int((time.monotonic_ns() - epoch) // 1_000_000)
+            for seq in range(max(self.seq + 1, last - self.rows.maxlen + 1), last + 1):
+                q = np.full(7, 1 + seq * 1e-12)
+                signature = b"frozen" if active and env.problem == "frozen" else seq.to_bytes(8, "little")
+                self.rows.append({"t_ns": epoch + seq * 1_000_000, "seq": seq, "q": q, "dq": dq,
+                                  "tau": np.zeros(7), "flange_pose7": p,
+                                  "ee_pose7": ee, "signature": signature})
+            self.seq = last
             return self.rows
 
         def close(self):
+            self.closed = True
             env.order.append("reader close")
 
     class Serial:
@@ -211,11 +216,12 @@ def hw_env(monkeypatch, tmp_path):
     class Recorder:
         session_dir = tmp_path
 
-        def __init__(self, root, *, meta, cameras):
+        def __init__(self, root, *, meta, cameras, **kw):
             assert root == tmp_path
             self.meta, self.cameras, self.events = meta, cameras, []
             self.executions, self.commands, self.robot, self.grip, self.frames = [], [], [], [], []
             self.status = self.error = None
+            self.gripper_commands = []
             env.recorders.append(self)
 
         def event(self, t, text):
@@ -226,8 +232,11 @@ def hw_env(monkeypatch, tmp_path):
         def executed(self, *a):
             self.executions.append(a)
 
-        def command(self, cmd):
-            self.commands.append(cmd)
+        def step(self, row):
+            self.commands.append(row["command"])
+
+        def gripper_command(self, *a):
+            self.gripper_commands.append(a)
 
         def robot_state(self, *a):
             self.robot.append(a)
@@ -238,7 +247,7 @@ def hw_env(monkeypatch, tmp_path):
         def frame(self, *a):
             self.frames.append(a)
 
-        observation = step = forbidden
+        observation = forbidden
 
         def close(self, status, error):
             assert all(not s._exec_thread or not s._exec_thread.is_alive() for s in env.sessions)
@@ -296,10 +305,10 @@ def hw_env(monkeypatch, tmp_path):
             env.order.append("released")
             return outcome
 
-        def send(pose):
+        def send(pose, expires_ns=None):
             if env.problem == "send_failure" and link.actions_sent >= 2:
                 raise OSError("fake send failure")
-            send_original(pose)
+            return send_original(pose, expires_ns)
 
         link.wait_subscribers, link.engage, link.release, link.send_flange_pose = wait, engage, release, send
         env.links.append(link)
@@ -360,12 +369,28 @@ def hw_env(monkeypatch, tmp_path):
 
     monkeypatch.setattr(live, "LiveSink", make_sink)
     env.invoke, env.forbid = invoke, forbidden
-    return env
+    yield env
+    # Always tear down while all physical transports are still patched, including assertion failures.
+    for session in env.sessions:
+        session.stop_event.set()
+        session.shutdown.finish()
+        session.join_executor(5)
+        assert session._exec_thread is None or not session._exec_thread.is_alive()
+        assert session.shutdown._thread is None or not session.shutdown._thread.is_alive()
+    for worker in env.workers:
+        worker.stop(join_timeout=5)
+        assert not worker.is_alive()
+    for link in env.links:
+        link.close()
+    for rec in env.recorders:
+        if rec.status is None:
+            rec.close("stopped", "fixture teardown")
 
 
 def _verdict(env):
     import json
 
+    assert env.recorders, env.messages
     texts = [e for e in env.recorders[0].events if e.startswith("verdict ")]
     assert len(texts) == 1
     return json.loads(texts[0][len("verdict "):])
@@ -455,7 +480,7 @@ def test_hold_real_streams_start_pose_then_releases_before_close(hw_env):
 
     from ops.robot_pc import switch_controller as sc
 
-    assert hw_env.invoke("hold", "--camera", "scene") == 0
+    assert hw_env.invoke("hold", "--camera", "scene") == 0, hw_env.messages
     v, rec, order = _verdict(hw_env), hw_env.recorders[0], hw_env.order
     assert v["pass"] and v["duration_held_s"] >= 1 and v["max_drift_mm"] == v["max_abs_dq"] == 0
     assert v["loop_stats"]["executor_nominal_hz"] == 500 and v["executor_counts"]["track"] > 100
@@ -594,13 +619,15 @@ def test_hwtest_real_recording_verifies_with_fake_hardware(hw_env, monkeypatch, 
         return r
 
     monkeypatch.setattr(recorder, "SessionRecorder", record)
-    assert hw_env.invoke(test) == 0
+    assert hw_env.invoke(test) == 0, hw_env.messages
     r = recorded[0]
     report = verify(r.session_dir)
     assert report["ok"], report["failures"]
     with h5py.File(r.session_dir / "inference.h5", "r") as h:
-        assert len(h["steps/json"]) == 0
-        executed = len(h["executed/t_ns"])
+        assert len(h["policy/row_json"]) > 0 if test == "hold" else len(h["policy/row_json"]) == 0
+        assert len(h["gripper_commands/t_ns"]) == len(hw_env.workers[0].sent)
+        assert list(h["gripper_commands/kind"].asstr()[:]).count("hold") == len(hw_env.workers[0].holds)
+        executed = len(h["action/t_ns"])
         assert executed > 100 if test == "hold" else executed == 0
 
 

@@ -219,7 +219,8 @@ def main(argv=None, *, operator_input=input) -> int:
             recorder = SessionRecorder(root, meta=experiment, run_prefix=prefix,
                                        camera_names={c: _name(names, c) for c in cams},
                                        files={"config.json": experiment},
-                                       cameras={c: {"native_hw": list(hw), "depth": False, "K_native": K[c].tolist(),
+                                       cameras={c: {"native_hw": list(hw), "depth": "depth" in spec["modalities"],
+                                                    "K_native": K[c].tolist(),
                                                     "calibration": choices.get("calibration", {}).get(c)}
                                                 for c in cams})
             def close_recorder():

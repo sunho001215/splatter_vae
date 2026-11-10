@@ -103,10 +103,10 @@ def _next_run_dir(parent: Path, prefix: str) -> Path:
 class SessionRecorder:
     """One session under ``root/inference_outputs/inference_YYYYMMDD_HHMMSS``.
 
-    ``dropped`` uses HDF5 group paths, e.g. ``cameras/123``, ``observations/123``, ``robot``. Queue overflow
+    ``dropped`` uses HDF5 group paths, e.g. ``cameras/left``, ``observations/left``, ``robot``. Queue overflow
     drops the incoming item. A writer error also counts queued items it cannot write, then finalizes automatically.
-    Timestamp columns retain input nanoseconds; commands without ``t_ns`` use the recorder's enqueue clock,
-    explicitly labelled in the HDF5. All file access, compression and video conversion belongs to one thread.
+    Timestamp columns retain input nanoseconds alongside float64 host CLOCK_MONOTONIC seconds.
+    All file access, compression and video conversion belongs to one thread.
     Independent queue budgets reserve 65536 high-rate, 256 image and 8192 low-rate slots by default.
     ``queue_size`` caps each pool independently, so an explicit small value can exercise overflow behavior.
     """
@@ -117,8 +117,9 @@ class SessionRecorder:
                  camera_names: dict | None = None, files: dict | None = None):
         """``run_prefix`` (e.g. ``drawer-open_e2e_cnn_seed0_right``): the session folder is
         ``inference_outputs/<run_prefix>_runNNN`` with NNN the next free index (exclusive mkdir, never reused);
-        without it ``inference_YYYYMMDD_HHMMSS``. ``camera_names`` {serial: name}: the MP4 of a camera is
-        ``<name>.mp4``. ``files`` {filename: JSON-able}: written into the folder at start (resolved config, mapping)."""
+        without it ``inference_YYYYMMDD_HHMMSS``. ``camera_names`` {serial: name} names HDF5 camera groups
+        and ``<name>.mp4`` (default name: ``cam_<serial>``). ``files`` {filename: JSON-able}: written into
+        the folder at start (resolved config, mapping)."""
         if not isinstance(queue_size, int) or queue_size <= 0:
             raise ValueError("queue_size must be a positive integer")
         if not math.isfinite(video_fps) or video_fps <= 0:
@@ -138,7 +139,11 @@ class SessionRecorder:
         self._start_unix, self._start_ns = time.time(), int(clock())
         parent = Path(root).expanduser().resolve() / "inference_outputs"
         parent.mkdir(parents=True, exist_ok=True)
-        self.camera_names = {str(k): str(v) for k, v in (camera_names or {}).items()}
+        self.camera_names = {s: str((camera_names or {}).get(s, f"cam_{s}")) for s in self.cameras}
+        if len(set(self.camera_names.values())) != len(self.camera_names):
+            raise ValueError("camera names must be unique")
+        self.config = copy.deepcopy((files or {}).get("config.json", self.meta))
+        _json(self.config)
         for v in self.camera_names.values():
             if not v or any(c in v for c in "/\\\x00") or v in (".", ".."):
                 raise ValueError(f"invalid camera name {v!r}")
@@ -150,14 +155,15 @@ class SessionRecorder:
             if not run_prefix or any(c in run_prefix for c in "/\\\x00") or run_prefix.startswith("."):
                 raise ValueError(f"invalid run prefix {run_prefix!r}")
             self.session_dir = _next_run_dir(parent, run_prefix)
-        for fname, obj in (files or {}).items():
+        for fname, obj in {"config.json": self.config, **(files or {})}.items():
             if "/" in fname or fname.startswith("."):
                 raise ValueError(f"invalid file name {fname!r}")
             (self.session_dir / fname).write_text(json.dumps(obj, indent=1, ensure_ascii=False, default=str) + "\n")
         self._partial = self.session_dir / "inference.h5.partial"
         self._h5_path = self.session_dir / "inference.h5"
-        streams = ["robot", "gripper", "steps", "commands", "executed", "events"]
-        streams += [f"{kind}/{serial}" for kind in ("cameras", "observations") for serial in self.cameras]
+        streams = ["robot", "gripper", "gripper_commands", "policy", "action", "events"]
+        streams += [f"{kind}/{name}" for kind in ("cameras", "observations")
+                    for name in self.camera_names.values()]
         self.dropped: Counter = Counter(dict.fromkeys(streams, 0))
         self._counts = dict.fromkeys(streams, 0)
         # SimpleQueue's C put is reentrant, unlike Queue's mutex. Atomic deque reservations bound its capacity
@@ -166,7 +172,7 @@ class SessionRecorder:
         high = deque([None] * queue_size)
         images = deque([None] * min(queue_size, 256))
         low = deque([None] * min(queue_size, 8192))
-        self._slots = {stream: images if "/" in stream else high if stream in ("robot", "executed", "gripper")
+        self._slots = {stream: images if "/" in stream else high if stream in ("robot", "action", "gripper")
                        else low for stream in streams}
         self._accepting = True
         self._requests: dict = {}
@@ -176,7 +182,7 @@ class SessionRecorder:
         self._video_enabled, self._cv2 = bool(video), None
         self._videos = {s: {"file": None, "frames": 0, "fps": self.video_fps,
                             "mapping": f"MP4 frame k = cameras/{s}/rgb[k]", "status": "empty" if video else "disabled"}
-                        for s in self.cameras}
+                        for s in self.camera_names.values()}
         self._video_writers: dict = {}
         self._thread = threading.Thread(target=self._run, name="session-recorder", daemon=True)
         self._thread.start()
@@ -203,12 +209,12 @@ class SessionRecorder:
     def frame(self, serial: str, frame_id: int, t_ns: int, rgb: np.ndarray, depth: np.ndarray | None,
               depth_scale_m: float | None, meta: dict | None) -> None:
         """Record native RGB and optional aligned z16 depth; never acquire or synthesize a frame."""
-        self._enqueue(f"cameras/{serial}", (frame_id, t_ns, rgb, depth, depth_scale_m, meta))
+        self._enqueue(f"cameras/{self.camera_names[serial]}", (frame_id, t_ns, rgb, depth, depth_scale_m, meta))
 
     def observation(self, serial: str, frame_id: int, t_ns: int, rgb128: np.ndarray,
                     depth128: np.ndarray | None) -> None:
         """Record precisely the square RGB/float-depth observation supplied to the policy."""
-        self._enqueue(f"observations/{serial}", (frame_id, t_ns, rgb128, depth128))
+        self._enqueue(f"observations/{self.camera_names[serial]}", (frame_id, t_ns, rgb128, depth128))
 
     def robot_state(self, t_ns: int, seq: int, q7: ArrayLike, dq7: ArrayLike, tau7: ArrayLike,
                     flange_pose7: ArrayLike, ee_pose7: ArrayLike) -> None:
@@ -221,16 +227,18 @@ class SessionRecorder:
 
     def step(self, row: dict) -> None:
         """Record a complete policy row with its original step/observation times and status code."""
-        self._enqueue("steps", row)
+        self._enqueue("policy", row)
 
-    def command(self, cmd: dict) -> None:
-        """Record a validated command; absent command time means enqueue time, never observation time."""
-        self._enqueue("commands", (cmd["t_ns"] if "t_ns" in cmd else int(self.clock()), cmd))
+    def gripper_command(self, t_ns: int, register: int, kind: str, reason: str = "") -> None:
+        """Record an actual serial write, classifying physical holds separately from targets."""
+        if kind not in ("target", "hold"):
+            raise ValueError("gripper command kind must be target or hold")
+        self._enqueue("gripper_commands", (t_ns, register, kind, reason))
 
     def executed(self, t_ns: int, kind: str, pose7: ArrayLike, gripper_closure: float | None,
                  sent: bool, detail: str) -> None:
         """Record an executor setpoint and whether it actually reached the controller transport."""
-        self._enqueue("executed", (t_ns, kind, pose7, gripper_closure, sent, detail))
+        self._enqueue("action", (t_ns, kind, pose7, gripper_closure, sent, detail))
 
     def event(self, t_ns: int, text: str) -> None:
         """Record an event with its caller-supplied timestamp."""
@@ -259,62 +267,72 @@ class SessionRecorder:
         return False
 
     def _initialize(self, f: Any, string: Any) -> None:
-        f.attrs.update(format="s4d_robot_pc_inference_session", format_version=1, created_unix=self._start_unix,
-                       meta_json=_json(self.meta), status="recording", error="")
+        from ops.robot_pc.switch_controller import T_FLANGE_EE
+
+        f.attrs.update(format="s4d_robot_pc_inference", format_version=2, created_unix=self._start_unix,
+                       created_monotonic=self._start_ns / 1e9, config_json=_json(self.config),
+                       camera_mapping_json=_json(self.camera_names), meta_json=_json(self.meta),
+                       status="recording", error="")
         f.create_group("cameras")
         f.create_group("observations")
         for serial, config in self.cameras.items():
-            g = f.create_group(f"cameras/{serial}")
+            name = self.camera_names[serial]
+            g = f.create_group(f"cameras/{name}")
             hw = tuple(config["native_hw"])
-            g.attrs.update(K_native=np.asarray(config["K_native"], np.float64),
+            g.attrs.update(serial=serial, K_native=np.asarray(config["K_native"], np.float64),
                            calibration_json=_json(config.get("calibration")), depth_scale_m=np.nan)
-            for name in ("t_ns", "frame_id"):
-                _dataset(g, name, np.int64)
+            for col in ("t_ns", "frame_number"):
+                _dataset(g, col, np.int64)
+            _dataset(g, "t", np.float64)
             _dataset(g, "rgb", np.uint8, (*hw, 3), image=True, native_rgb=True)
             _dataset(g, "meta_json", string)
-            if config["depth"]:
-                _dataset(g, "depth", np.uint16, hw, image=True)
-                _dataset(g, "depth_frame_index", np.int64)
-                _dataset(g, "depth_scale_m", np.float64)
-            obs = f.create_group(f"observations/{serial}")
-            for name in ("t_ns", "frame_id"):
-                _dataset(obs, name, np.int64)
+            obs = f.create_group(f"observations/{name}")
+            obs.attrs["serial"] = serial
+            for col in ("t_ns", "frame_number"):
+                _dataset(obs, col, np.int64)
+            _dataset(obs, "t", np.float64)
             obs.create_dataset("rgb", shape=(0, 0, 0, 3), maxshape=(None, None, None, 3), dtype=np.uint8,
                                chunks=(1, 128, 128, 3), compression="gzip", compression_opts=1)
         schema = {
             "robot": {"t_ns": np.int64, "seq": np.int64,
                       **{k: (np.float64, (7,)) for k in ("q", "dq", "tau_ext", "flange_pose", "ee_pose")}},
-            "gripper": {"t_ns": np.int64, "position": np.int64, "status_json": string},
-            "steps": {"t_step_ns": np.int64, "observation_time_ns": np.int64, "status": string, "json": string},
-            "commands": {"t_ns": np.int64, "json": string},
-            "executed": {"t_ns": np.int64, "kind": string, "pose7": (np.float64, (7,)),
-                         "gripper_closure": np.float64, "sent": np.bool_, "detail": string},
+            "gripper": {"t_ns": np.int64, **{k: np.int64 for k in (
+                "position", "pos_request_echo", "current", "object", "fault", "status", "activated")}},
+            "gripper_commands": {"t_ns": np.int64, "register": np.int64, "kind": string, "reason": string},
+            "policy": {"t_ns": np.int64, "t_obs_ns": np.int64, "t_obs": np.float64, "status": string,
+                       "command": np.uint8, "goal_flange_pose": (np.float64, (7,)), "gripper": np.float64,
+                       "latency_json": string, "row_json": string},
+            "action": {"t_ns": np.int64, "kind": string, "flange_pose": (np.float64, (7,)),
+                       "gripper": np.float64, "sent": np.uint8, "detail": string},
             "events": {"t_ns": np.int64, "text": string},
         }
         for path, fields in schema.items():
             group = f.create_group(path)
-            for key, spec in fields.items():
+            for key, spec in {"t": np.float64, **fields}.items():
                 dtype, shape = spec if isinstance(spec, tuple) else (spec, ())
                 _dataset(group, key, dtype, shape)
-        f["commands/t_ns"].attrs["source"] = "cmd.t_ns when supplied; otherwise recorder enqueue clock"
-        f["steps/status"].attrs["source"] = "row.code when non-null; otherwise row.status (text)"
+        f["robot"].attrs["T_flange_controller_ee"] = T_FLANGE_EE
+        f["robot/t"].attrs["source"] = "host CLOCK_MONOTONIC receipt time; t_ns / 1e9"
+        f["policy/status"].attrs["source"] = "row.code when non-null; otherwise row.status (text)"
 
     def _write_batch(self, f: Any, stream: str, items: list) -> None:
         """Writer-only dispatch: one append per stream, preserving its enqueue order."""
         g = f[stream]
         if stream.startswith("cameras/"):
-            fields = {key: [] for key in ("t_ns", "frame_id", "rgb", "meta_json")}
+            fields = {key: [] for key in ("t_ns", "frame_number", "rgb", "meta_json")}
             depth_fields = {key: [] for key in ("depth", "depth_frame_index", "depth_scale_m")}
             rgb_shape, start, first_scale = g["rgb"].shape[1:], len(g["rgb"]), None
-            for offset, (frame_id, t_ns, rgb, depth, scale, meta) in enumerate(items):
+            for offset, (frame_number, t_ns, rgb, depth, scale, meta) in enumerate(items):
                 rgb = _image(rgb, np.uint8, rgb_shape)
                 fields["t_ns"].append(t_ns)
-                fields["frame_id"].append(frame_id)
+                fields["frame_number"].append((meta or {}).get("color_frame_number", frame_number))
                 fields["rgb"].append(rgb)
                 fields["meta_json"].append(_json(meta))
                 if depth is not None:
                     if "depth" not in g:
-                        raise ValueError(f"depth supplied for RGB-only {stream}")
+                        _dataset(g, "depth", np.uint16, rgb_shape[:2], image=True)
+                        _dataset(g, "depth_frame_index", np.int64)
+                        _dataset(g, "depth_scale_m", np.float64)
                     depth_fields["depth"].append(_image(depth, np.uint16, rgb.shape[:2]))
                     depth_fields["depth_frame_index"].append(start + offset)
                     depth_fields["depth_scale_m"].append(np.nan if scale is None else scale)
@@ -322,6 +340,7 @@ class SessionRecorder:
                     first_scale = float(scale)
             if depth_fields["depth"]:
                 fields.update(depth_fields)
+            fields["t"] = np.asarray(fields["t_ns"], np.float64) / 1e9
             _append(g, fields)
             self._counts[stream] += len(items)
             if first_scale is not None and math.isnan(g.attrs["depth_scale_m"]):
@@ -330,11 +349,11 @@ class SessionRecorder:
                 self._write_video(stream.split("/", 1)[1], rgb)
             return
         elif stream.startswith("observations/"):
-            fields = {key: [] for key in ("t_ns", "frame_id", "rgb")}
+            fields = {key: [] for key in ("t_ns", "frame_number", "rgb")}
             depth_fields = {key: [] for key in ("depth", "depth_frame_index")}
             start = len(g["rgb"])
             rgb_shape = g["rgb"].shape[1:]
-            for offset, (frame_id, t_ns, rgb, depth) in enumerate(items):
+            for offset, (frame_number, t_ns, rgb, depth) in enumerate(items):
                 if rgb.ndim != 3 or rgb.shape[0] != rgb.shape[1] or rgb.shape[0] == 0:
                     raise ValueError("observation RGB must be a nonempty square HxWx3 image")
                 rgb = _image(rgb, np.uint8, (rgb.shape[0], rgb.shape[0], 3))
@@ -342,7 +361,7 @@ class SessionRecorder:
                     rgb_shape = rgb.shape
                 _image(rgb, np.uint8, rgb_shape)
                 fields["t_ns"].append(t_ns)
-                fields["frame_id"].append(frame_id)
+                fields["frame_number"].append(frame_number)
                 fields["rgb"].append(rgb)
                 if depth is not None:
                     depth_fields["depth"].append(_image(depth, np.float32, rgb.shape[:2]))
@@ -355,27 +374,38 @@ class SessionRecorder:
                     _dataset(g, "depth", np.float32, rgb_shape[:2], image=True)
                     _dataset(g, "depth_frame_index", np.int64)
                 fields.update(depth_fields)
-            _append(g, fields)
         elif stream == "robot":
-            _append(g, dict(zip(("t_ns", "seq", "q", "dq", "tau_ext", "flange_pose", "ee_pose"), zip(*items))))
+            fields = dict(zip(("t_ns", "seq", "q", "dq", "tau_ext", "flange_pose", "ee_pose"), zip(*items)))
         elif stream == "gripper":
             times, registers, statuses = zip(*items)
-            _append(g, {"t_ns": times, "position": registers, "status_json": [_json(s) for s in statuses]})
-        elif stream == "steps":
-            _append(g, {"t_step_ns": [row["t_step_ns"] for row in items],
-                        "observation_time_ns": [row["observation_time_ns"] for row in items],
-                        "status": [str(row["status"] if row.get("code") is None else row["code"]) for row in items],
-                        "json": [_json(row) for row in items]})
-        elif stream == "commands":
-            _append(g, {"t_ns": [item[0] for item in items], "json": [_json(item[1]) for item in items]})
-        elif stream == "executed":
+            fields = {"t_ns": times, "position": registers}
+            # -1 marks a field absent from a partial offline status, never a fabricated healthy value.
+            fields.update({key: [s.get(key, -1) for s in statuses] for key in (
+                "pos_request_echo", "current", "object", "fault", "status", "activated")})
+        elif stream == "gripper_commands":
+            fields = dict(zip(("t_ns", "register", "kind", "reason"), zip(*items)))
+        elif stream == "policy":
+            fields = {"t_ns": [row["t_step_ns"] for row in items],
+                      "t_obs_ns": [row["observation_time_ns"] for row in items],
+                      "status": [str(row["status"] if row.get("code") is None else row["code"]) for row in items],
+                      "command": [bool(row.get("command")) for row in items],
+                      "goal_flange_pose": [(row.get("command") or {}).get("goal_pose7", [np.nan] * 7)
+                                           for row in items],
+                      "gripper": [(row.get("command") or {}).get("gripper_closure", row.get("gripper_closure", np.nan))
+                                  for row in items],
+                      "latency_json": [_json({k: row[k] for k in ("client_ms", "server_ms", "timings") if k in row})
+                                       for row in items],
+                      "row_json": [_json(row) for row in items]}
+            fields["t_obs"] = np.asarray(fields["t_obs_ns"], np.float64) / 1e9
+        elif stream == "action":
             times, kinds, poses, closures, sent, details = zip(*items)
-            _append(g, {"t_ns": times, "kind": kinds, "pose7": poses,
-                        "gripper_closure": [np.nan if c is None else c for c in closures],
-                        "sent": sent, "detail": details})
+            fields = {"t_ns": times, "kind": kinds, "flange_pose": poses,
+                      "gripper": [np.nan if c is None else c for c in closures], "sent": sent, "detail": details}
         elif stream == "events":
             times, texts = zip(*items)
-            _append(g, {"t_ns": times, "text": texts})
+            fields = {"t_ns": times, "text": texts}
+        fields["t"] = np.asarray(fields["t_ns"], np.float64) / 1e9
+        _append(g, fields)
         self._counts[stream] += len(items)
 
     def _write_video(self, serial: str, rgb: np.ndarray) -> None:
@@ -394,8 +424,7 @@ class SessionRecorder:
                     return
                 self._cv2 = cv2
             if serial not in self._video_writers:
-                path = self.session_dir / (f"{self.camera_names[serial]}.mp4" if serial in self.camera_names
-                                           else f"camera_{serial}.mp4")
+                path = self.session_dir / f"{serial}.mp4"
                 writer = self._cv2.VideoWriter(str(path), self._cv2.VideoWriter_fourcc(*"mp4v"), self.video_fps,
                                                (rgb.shape[1], rgb.shape[0]))
                 self._video_writers[serial] = writer
@@ -446,7 +475,10 @@ class SessionRecorder:
                         if remaining <= 0:
                             break
                         try:
-                            stream, item = self._queue.get(timeout=0 if "close" in self._requests else remaining)
+                            if "close" in self._requests:
+                                stream, item = self._queue.get_nowait()
+                            else:
+                                stream, item = self._queue.get(timeout=remaining)
                         except queue.Empty:
                             break
                         self._slots[stream].append(None)

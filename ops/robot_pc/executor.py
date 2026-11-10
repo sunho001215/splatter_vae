@@ -32,6 +32,7 @@ from ops.robot_pc.validation import Command
 
 CONTROLLER_REJECT_M, CONTROLLER_REJECT_RAD = 0.2, 0.5  # action_manager_base.cpp:207 (log6 norms, per ee)
 CONTROLLER_MARGIN = 0.95
+TARGET_DT_S = 0.05  # RobotAction target_dt (switch_controller.TARGET_DT_S): without a fresher action it holds
 
 
 @dataclass(frozen=True)
@@ -55,12 +56,12 @@ def log6_norms(desired7, current7) -> tuple[float, float]:
     w = R_d.T @ q_rel_vec  # rotation of desired^-1 current, in the desired frame
     p = R_d.T @ (c[:3] - d[:3])
     th = float(np.linalg.norm(w))
-    if th < 1e-9:
-        v = p
+    W = np.array([[0, -w[2], w[1]], [w[2], 0, -w[0]], [-w[1], w[0], 0]])
+    if th < 1e-3:  # series of (1 - th sin th / (2 (1 - cos th))) / th^2: no cancellation near 0
+        c = 1.0 / 12.0 + th ** 2 / 720.0
     else:
-        W = np.array([[0, -w[2], w[1]], [w[2], 0, -w[0]], [-w[1], w[0], 0]])
-        V_inv = np.eye(3) - 0.5 * W + (1.0 / th ** 2) * (1 - (th * np.sin(th)) / (2 * (1 - np.cos(th)))) * (W @ W)
-        v = V_inv @ p
+        c = (1.0 - (th * np.sin(th)) / (2.0 * (1.0 - np.cos(th)))) / th ** 2
+    v = (np.eye(3) - 0.5 * W + c * (W @ W)) @ p
     return float(np.linalg.norm(v)), th
 
 
@@ -86,6 +87,8 @@ class HighRateExecutor:
         self._from: np.ndarray | None = None  # start pose of the current interpolation segment
         self._seg_t0: int | None = None
         self._t_last: int | None = None
+        self._sent_t: int | None = None  # time of the last emitted setpoint
+        self.controller_hold_ns = int(TARGET_DT_S * 1e9)  # switch_controller holds the measured pose after this
         self._sig, self._sig_t, self._state_t = None, None, None
         self.counts = {"accepted": 0, "refused_older": 0, "track": 0, "expired": 0, "stopped": 0,
                        "controller_guard": 0}
@@ -103,6 +106,7 @@ class HighRateExecutor:
     def rearm(self) -> None:
         """Explicitly clear a latched stop; a NEW command is required."""
         self.stopped, self.command, self._setpoint, self._from, self._seg_t0 = None, None, None, None, None
+        self._sent_t = None
         self._t_last, self._sig, self._sig_t, self._state_t = None, None, None, None
 
     def _state_problem(self, now: int, state_t_ns, signature) -> str | None:
@@ -150,16 +154,20 @@ class HighRateExecutor:
             self.counts["expired"] += 1
             return None
         if self._from is None:
-            self._from = self._setpoint if self._setpoint is not None else measured
+            # continue from the last SENT setpoint only while the controller still tracks it (sent within its
+            # target_dt): after a pause (guard skips, expiry) it holds the MEASURED pose, so restart from there
+            recent = self._sent_t is not None and now - self._sent_t <= self.controller_hold_ns
+            self._from = self._setpoint if (self._setpoint is not None and recent) else measured
             self._seg_t0 = now
         goal = as_pose7(cmd.goal_pose7)
         a = 1.0 if self.interp_ns <= 0 else min(1.0, max(0.0, (now - self._seg_t0) / self.interp_ns))
         nxt = np.concatenate([self._from[:3] + a * (goal[:3] - self._from[:3]), slerp(self._from[3:], goal[3:], a)])
         dm, dr = log6_norms(nxt, measured)
-        if dm > CONTROLLER_MARGIN * CONTROLLER_REJECT_M or dr > CONTROLLER_MARGIN * CONTROLLER_REJECT_RAD:
+        if not (np.isfinite(dm) and np.isfinite(dr)) or dm > CONTROLLER_MARGIN * CONTROLLER_REJECT_M or \
+                dr > CONTROLLER_MARGIN * CONTROLLER_REJECT_RAD:
             self.counts["controller_guard"] += 1  # switch_controller would reject it and reset: never sent
             return None
-        self._setpoint = nxt
+        self._setpoint, self._sent_t = nxt, now
         sp = Setpoint(now, "track", tuple(nxt.tolist()), cmd.gripper_closure, cmd.reference_id)
         self.counts["track"] += 1
         self.sink.send(sp)
