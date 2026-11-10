@@ -100,7 +100,7 @@ class MotionShutdown:
         if self.session is not None:
             phases.append(self.session.join_executor)
         if self.gripper is not None:
-            phases.append(self.gripper.clear_target)
+            phases.append(getattr(self.gripper, "freeze", self.gripper.clear_target))
         if self.link is not None:
             def release():
                 self.release_outcome = self.link.release(self.state.latest, still=lambda: still(self.state))
@@ -176,6 +176,8 @@ class LiveSession:
         spec = getattr(client, "spec", None) or {}
         if len(cams) != 1 or spec.get("views", 1) > 1 or len(spec.get("camera_ids", ())) > 1:
             raise ExecutionRefused("live multiview sync sets are not implemented; select a single-camera policy")
+        if not sent and isinstance(sink, _BaseLiveSink):
+            raise ExecutionRefused("a LiveSink sends to the robot: construct the session with sent=True (authorized)")
         if sent:
             authorization = getattr(sink, "authorization", None)
             if not isinstance(authorization, ExecutionAuthorization) or authorization.hardware_test is not None:
@@ -198,7 +200,7 @@ class LiveSession:
         self.stop_reason: str | None = None
         self.rows: list = []
         self._exec_thread: threading.Thread | None = None
-        self._rec_robot_t = self._rec_grip_t = 0
+        self._rec_robot_t = self._rec_grip_t = self._rec_write_t = self._rec_hold_t = 0
         self.tick_periods_ns: list = []  # measured executor loop periods (local control rate evidence)
         self._gripper_health = None
         self._not_following_since_ns = None
@@ -347,6 +349,12 @@ class LiveSession:
         for t, st in [x for x in list(getattr(g, "samples", ())) if x[0] > self._rec_grip_t]:
             self.recorder.gripper(t, int(st.position), dict(st.__dict__))
             self._rec_grip_t = t
+        for t, register in [x for x in list(getattr(g, "sent", ())) if x[0] > self._rec_write_t]:
+            self.recorder.event(t, "gripper_write " + json.dumps({"write_monotonic_ns": t, "target_register": register}))
+            self._rec_write_t = t
+        for t, register, reason in [x for x in list(getattr(g, "holds", ())) if x[0] > self._rec_hold_t]:
+            self.recorder.event(t, "gripper_hold " + json.dumps({"t_ns": t, "register": register, "reason": reason}))
+            self._rec_hold_t = t
 
     # ------------------------------------------------------------------------------------------------ main loop
     def run(self, *, steps: int | None = None, duration_s: float | None = None) -> list:

@@ -301,8 +301,15 @@ def main(argv=None, *, operator_input=input) -> int:
         say(f"STOPPED: {session.stop_reason}; {len(rows)} steps, executor {executor.counts}")
         say(f"loop rates: {session.loop_stats()}")
         recording_status = "complete" if session.stop_reason in ("budget reached", "operator key",
-                                                                 "operator Ctrl-C") else "stopped"
+                                                                 "operator Ctrl-C", "operator Ctrl-C (SIGINT)") \
+            else "stopped"
         failure["error"] = session.stop_reason
+        rel = shutdown.release_outcome if sent else None
+        if sent and not (isinstance(rel, dict) and rel.get("hold") == "sent" and rel.get("idle") == "sent"):
+            recording_status = "error"  # an engaged run whose release did not hold + IDLE is never "complete"
+            failure["error"] = f"{session.stop_reason}; release incomplete: {rel}"
+            say(f"WARNING: release incomplete: {rel} (operator: check the controller UI / e-stop)")
+            return 4
         return 0
     except Cancelled:
         failure["error"] = "cancelled during startup"

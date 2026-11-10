@@ -220,6 +220,8 @@ class GripperWorker(threading.Thread):
         self.error_latched = False
         self._bad_replies = 0
         self._halt = threading.Event()
+        self._frozen = False
+        self.hold_failures: list = []  # (t_ns, reason, error) of failed physical holds (kept for the verdict)
         self.unverifiable = 0
         self._last_sent, self._last_write = None, 0.0
         self.origin = "measured: Robotiq gPO register (Modbus status read by this process)"
@@ -228,10 +230,17 @@ class GripperWorker(threading.Thread):
         if self.read_only:
             raise PermissionError("gripper worker is read-only (dry run)")
         with self._target_lock:
-            if not self._halt.is_set():
-                self._target = closure_to_position(closure)
-                self._expires_ns = int(expires_monotonic_ns)
-                self._generation += 1
+            if not self._halt.is_set() and not self._frozen:
+                target, expires = closure_to_position(closure), int(expires_monotonic_ns)
+                if target != self._target:
+                    self._generation += 1  # a new target (an expiry renewal alone keeps the pending write cycle)
+                self._target, self._expires_ns = target, expires
+
+    def freeze(self) -> None:
+        """Session shutdown: clear the target and refuse every later set_closure (a late executor tick included)."""
+        with self._target_lock:
+            self._frozen = True
+        self.clear_target()
 
     def clear_target(self) -> None:
         with self._target_lock:
@@ -262,12 +271,15 @@ class GripperWorker(threading.Thread):
                 not 0 <= time.monotonic_ns() - s.t_ns < 100_000_000 or \
                 s.activated != 1 or s.status != 3 or s.fault != 0:
             return
+        if reason == "expiry" and s.object != 0:
+            return  # expiry while stationary / in contact (gOBJ 1-3): holding at gPO could relax a grasp
         # One FC16 only. The worker owns all I/O; an already-started transaction finishes before this hold.
         try:
             device.write(s.position, self.speed, self.force)
         except Exception as exc:
             # The request may have reached the device: never retry this stop/expiry event.
             self.error = f"physical hold failed: {type(exc).__name__}: {exc}"
+            self.hold_failures.append((time.monotonic_ns(), reason, self.error))
             self._check_bad_replies(device)
             log.exception("gripper physical hold failed")
             return

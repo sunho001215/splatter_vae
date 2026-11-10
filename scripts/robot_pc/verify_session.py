@@ -256,7 +256,7 @@ def verify(session: Path, *, max_setpoints: int = 2000) -> dict:
                     malformed_releases.append(e)
         engaged = bool(sent.any()) or "engage" in events or any(r.get("idle") != "not requested" for r in releases)
         if mode in ("execute", "hwtest-hold") and engaged:
-            check("release", bool(releases) and not malformed_releases and releases[-1].get("idle") == "sent",
+            check("release", bool(releases) and not malformed_releases and releases[-1].get("idle") == "sent" and releases[-1].get("hold") == "sent",
                   outcomes=releases, malformed=malformed_releases)
         if str(mode).startswith("hwtest"):
             verdicts, malformed = [], []

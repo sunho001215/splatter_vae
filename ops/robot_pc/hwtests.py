@@ -90,6 +90,15 @@ class HardwareTest:
         if not g.healthy():
             raise ExecutionRefused(f"gripper unhealthy: {g.error or 'no fresh activated status'}")
 
+    def _gripper_not_fatal(self):
+        """Hold test (gripper read-only, never commanded): LiveSession's rule - a single missed / bad status reply
+        is tolerated; no status for 200 ms, a fault or a deactivated gripper aborts."""
+        g = self.state.gripper
+        s = g.latest
+        if s is None or time.monotonic_ns() - s.t_ns >= 200_000_000 or s.fault != 0 or s.status != 3 or \
+                s.activated != 1 or getattr(g, "error_latched", False):
+            raise ExecutionRefused(f"gripper unhealthy: {g.error or 'no fresh activated status'}")
+
     def prepare(self):
         """Measured preconditions, before the operator is offered START."""
         self.checkpoint()
@@ -264,7 +273,7 @@ class HardwareTest:
 
     def _feed_hold(self, n):
         self.checkpoint()
-        self._healthy_gripper()
+        self._gripper_not_fatal()
         s = self.state.latest()
         distance, angle = self._measure_hold(s)
         register = int(self.state.gripper.latest.position)
@@ -298,7 +307,7 @@ class HardwareTest:
             if self.sent and not self.link.peers_ok():
                 self.abort("controller subscriber disconnected")
                 break
-            self._healthy_gripper()
+            self._gripper_not_fatal()
             s = self.state.latest()
             self._measure_hold(s)
             measured = s["flange_pose7"]
@@ -346,9 +355,12 @@ class HardwareTest:
         clean = self.completed and not self.abort_reasons
         if self.test == "gripper":
             reached = len(self.targets) == len(self.parameters["closures"]) and all(r["reached"] for r in self.targets)
+            holds = [list(h) for h in getattr(g, "holds", [])]
+            hold_failures = [list(h) for h in getattr(g, "hold_failures", [])]
             verdict.update(targets=self.targets, writes=len(g.sent), status_reads=len(g.samples), all_reached=reached,
+                           holds=holds, hold_failures=hold_failures,
                            # A rehearsal verifies read-only operation; it cannot demonstrate finger motion.
-                           **{"pass": clean and (len(g.sent) == 0 if self.rehearse else reached)})
+                           **{"pass": clean and not hold_failures and (len(g.sent) == 0 if self.rehearse else reached)})
             if self.rehearse:
                 verdict["verdict"] = f"rehearsal: {len(g.samples)} status reads, {len(g.sent)} writes"
         else:

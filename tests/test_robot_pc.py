@@ -1657,7 +1657,7 @@ def test_gripper_expiry_inhibits_keepalive_and_stop_joins():
     first_write = threading.Event()
     writes = []
     dev = SimpleNamespace(
-        read_status=lambda: G.GripperStatus(time.monotonic_ns(), 1, 1, 3, 3, 0, 3, 3, 0),
+        read_status=lambda: G.GripperStatus(time.monotonic_ns(), 1, 1, 3, 0, 0, 3, 3, 0),  # gOBJ 0: moving
         write=lambda *a: (writes.append(a), first_write.set()), close=lambda: None)
     worker = G.GripperWorker(lambda: dev, read_only=False)
     worker.set_closure(1, time.monotonic_ns() + 100_000_000)
@@ -2086,7 +2086,7 @@ def test_launcher_cancellation_checkpoints_and_resource_order(checkpoint, monkey
             if sessions and sessions[0]._exec_thread is not None:
                 assert not sessions[0]._exec_thread.is_alive()
             order.append("release")
-            release_original(*a, **kw)
+            return release_original(*a, **kw)
 
         link.wait_subscribers, link.engage, link.release = wait, engage, release
         if checkpoint == "constructed":
@@ -2306,7 +2306,7 @@ def test_gripper_physical_hold_once_per_event_at_latest_measured_position(event,
     class Device:
         def read_status(self):
             return G.GripperStatus(time.monotonic_ns() - (101_000_000 if wrote.is_set() and status == "stale" else 0),
-                                   1, 1, 0 if wrote.is_set() and status == "inactive" else 3, 3,
+                                   1, 1, 0 if wrote.is_set() and status == "inactive" else 3, 0,  # gOBJ 0: moving
                                    5 if wrote.is_set() and status == "fault" else 0, 230, 83, 0)
 
         def write(self, position, speed, force):
@@ -2400,7 +2400,7 @@ def test_gripper_failed_physical_hold_is_attempted_only_once(event):
         first.set()
 
     worker = G.GripperWorker(lambda: SimpleNamespace(write=write, close=lambda: None, read_status=lambda:
-        G.GripperStatus(time.monotonic_ns(), 1, 1, 3, 3, 0, 230, 81, 0)), read_only=False)
+        G.GripperStatus(time.monotonic_ns(), 1, 1, 3, 0, 0, 230, 81, 0)), read_only=False)  # gOBJ 0: moving
     worker.set_closure(1, time.monotonic_ns() + 5_000_000_000)
     worker.start()
     try:
@@ -2576,3 +2576,34 @@ def test_policy_following_detection_continuous_threshold_in_executor_path(follow
     else:
         assert session.stop_reason == "robot not following the command (controller mode not accepted?)"
         assert stop.t == (2_300_000_000 if following == "recovers" else 1_200_000_000)
+
+
+def test_gripper_expiry_hold_skipped_when_stationary_or_in_contact():
+    import threading
+    import time
+
+    from ops.robot_pc import gripper as G
+
+    first_write = threading.Event()
+    writes = []
+    dev = SimpleNamespace(
+        read_status=lambda: G.GripperStatus(time.monotonic_ns(), 1, 1, 3, 2, 0, 120, 110, 0),  # gOBJ 2: contact
+        write=lambda *a: (writes.append(a), first_write.set()), close=lambda: None)
+    worker = G.GripperWorker(lambda: dev, read_only=False)
+    worker.set_closure(0.5, time.monotonic_ns() + 100_000_000)
+    worker.start()
+    try:
+        assert first_write.wait(1)
+        time.sleep(0.25)
+        assert len(writes) == 1 and not worker.holds  # expiry in contact: never relax the grasp
+    finally:
+        worker.stop()
+
+
+def test_gripper_freeze_refuses_late_targets():
+    from ops.robot_pc import gripper as G
+
+    worker = G.GripperWorker(lambda: None, read_only=False)
+    worker.freeze()
+    worker.set_closure(0.4, 10**19)
+    assert worker._target is None
