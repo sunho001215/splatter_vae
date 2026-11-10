@@ -50,6 +50,12 @@ def extract_stream(chunks, staging: Path, kinds, episodes=None, should_stop=lamb
     zstd = subprocess.Popen(["zstd", "-dc", "-T1", "-q"], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                             stderr=subprocess.PIPE)
     feed_error = []
+    stderr_tail = bytearray()
+
+    def drain_stderr():  # concurrently, so a chatty zstd can never block on a full stderr pipe
+        for line in iter(zstd.stderr.readline, b""):
+            stderr_tail.extend(line)
+            del stderr_tail[:-4096]
 
     def feed():
         try:
@@ -68,7 +74,9 @@ def extract_stream(chunks, staging: Path, kinds, episodes=None, should_stop=lamb
                 pass
 
     feeder = threading.Thread(target=feed, daemon=True)
+    stderr_reader = threading.Thread(target=drain_stderr, daemon=True)
     feeder.start()
+    stderr_reader.start()
     failed = True
     try:
         report = extract_members(zstd.stdout, staging, kinds=tuple(kinds), episodes=episodes, allow_truncated=True)
@@ -76,10 +84,13 @@ def extract_stream(chunks, staging: Path, kinds, episodes=None, should_stop=lamb
     finally:
         if failed or feed_error:
             zstd.kill()
-            zstd.stdout.read()  # unblock a feeder that is still writing into the dead pipe
+        # tar stops at its end marker; whatever follows (record padding) is drained so zstd can finish writing
+        while zstd.stdout.read(1 << 20):
+            pass
         feeder.join()
-        stderr = zstd.stderr.read().decode(errors="replace")
         code = zstd.wait()
+        stderr_reader.join()
+        stderr = stderr_tail.decode(errors="replace")
         zstd.stdout.close()
         zstd.stderr.close()
     if "stopped" in feed_error:
@@ -163,24 +174,48 @@ def verify_depth(staging: Path, flow_episodes: set[str] | None) -> dict:
     return out
 
 
+def _fsync(path: Path) -> None:
+    fd = os.open(path, os.O_RDONLY)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
 def publish(staging: Path, kind: str, final_root: Path) -> int:
-    """Rename every staged member of ``kind`` into ``final_root/kind`` (same file system: each rename is atomic);
-    idempotent after an interruption. Returns the number moved."""
+    """Make every staged member of ``kind`` durable (fsync), then rename it into ``final_root/kind`` (same file
+    system: each rename is atomic) and fsync both directories. Idempotent after an interruption: the caller records
+    a ``publishing`` state first and resumes with this function instead of extracting again. Returns the number
+    moved."""
     source, target = staging / kind, final_root / kind
     target.mkdir(parents=True, exist_ok=True)
     moved = 0
     if source.is_dir():
-        for path in sorted(source.iterdir()):
-            if path.name.endswith(".partial"):
-                continue
+        paths = sorted(p for p in source.iterdir() if not p.name.endswith(".partial"))
+        for path in paths:
+            _fsync(path)
+        for path in paths:
             os.replace(path, target / path.name)
             moved += 1
-        fd = os.open(target, os.O_RDONLY)
-        try:
-            os.fsync(fd)
-        finally:
-            os.close(fd)
+        _fsync(source)
+        _fsync(target)
     return moved
+
+
+def verify_published(final_root: Path, kind: str, names, expected_bytes: int | None) -> dict:
+    """After a resumed publication: every expected member is in the published tree (and, without a selection, the
+    shard's bytes add up)."""
+    folder = final_root / kind
+    sizes = {}
+    for name in names:
+        path = folder / name
+        if not path.is_file():
+            raise ExtractionError(f"published member missing: {name}")
+        sizes[name] = path.stat().st_size
+    total = sum(sizes.values())
+    if expected_bytes is not None and total != expected_bytes:
+        raise ExtractionError(f"published bytes {total} != {expected_bytes}")
+    return {"members": len(sizes), "bytes": total}
 
 
 def clear_staging(staging: Path) -> None:

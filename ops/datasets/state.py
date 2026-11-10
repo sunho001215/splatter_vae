@@ -16,7 +16,7 @@ import threading
 import time
 from pathlib import Path
 
-STATUSES = ("pending", "downloading", "downloaded", "extracted", "done", "failed", "blocked")
+STATUSES = ("pending", "downloading", "downloaded", "publishing", "extracted", "done", "failed", "blocked")
 FINISHED = ("done", "extracted")
 
 

@@ -24,8 +24,15 @@ import time
 from pathlib import Path
 
 from ops.datasets import catalog, storage
-from ops.datasets.runner import DEFAULT_CONFIG, Runner, load_config, resolve_selection, temp_path
-from ops.datasets.state import OwnerLock, StateStore, read_json, write_json_atomic
+from ops.datasets.runner import (
+    DEFAULT_CONFIG,
+    Runner,
+    load_config,
+    resolve_selection,
+    selection_fingerprint,
+    temp_path,
+)
+from ops.datasets.state import OwnerLock, StateStore, fsync_dir, read_json, write_json_atomic
 from ops.datasets.transfer import hash_file
 
 DEFAULT_ROOT = "/data_8T/kaist/sunho/datasets"
@@ -109,6 +116,13 @@ def cmd_configure(args) -> int:
         if getattr(args, key) is not None:
             config["controller"][key] = getattr(args, key)
     state = read_json(sd / "state.json", {}) or {}
+    frozen = (state.get("sections") or {}).get("selection_lock")
+    if frozen and args.pointworld_selection is not None:
+        wanted = selection_fingerprint(resolve_selection(config["pointworld_selection"], plan, root))
+        if wanted != frozen["fingerprint"]:
+            emit({"error": "refused: extraction already started with another pointworld_selection",
+                  "frozen": frozen})
+            return 2
     report = storage_report(root, plan, config, state.get("items"))
     if not report["enabled"]["final_fits"] and config["pointworld_selection"] != "pending":
         emit({"error": "refused: the final footprint of the enabled groups would cross the margin",
@@ -197,6 +211,8 @@ def cmd_stop(args) -> int:
 
 
 def cmd_adopt(args) -> int:
+    """Install a verified copy of an existing file (the source is never moved or modified); holds the owner lock
+    for the whole mutation, so no owner can run meanwhile."""
     root = Path(args.root)
     sd = state_dir(root)
     plan = read_json(sd / "plan.json")
@@ -204,44 +220,64 @@ def cmd_adopt(args) -> int:
     if item is None or "archive" in item:
         emit({"adopted": False, "reason": "unknown item or an archive (only plain files are adopted)"})
         return 2
-    if owner_summary(root)["lock_held"]:
+    lock = OwnerLock(sd)
+    if not lock.acquire(role="cli-adopt"):
         emit({"adopted": False, "reason": "stop the owner first (single owner of the state)"})
         return 1
-    source = Path(args.source)
-    if source.stat().st_size != int(item["size"]) or not hash_file(source, item["checksum"], int(item["size"])):
-        emit({"adopted": False, "reason": "size or official checksum mismatch"})
-        return 2
-    temp = temp_path(root, item)
-    temp.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(source, temp)  # the source is never moved or modified
-    if not hash_file(temp, item["checksum"], int(item["size"])):
-        temp.unlink()
-        emit({"adopted": False, "reason": "copy failed verification"})
-        return 2
-    final = root / item["dest"]
-    final.parent.mkdir(parents=True, exist_ok=True)
-    os.replace(temp, final)
-    store = StateStore(sd / "state.json", [i["id"] for i in plan["items"]])
-    store.update(item["id"], status="done", verified=item["checksum"], adopted_from=str(source), error=None)
-    store.save(force=True)
-    emit({"adopted": True, "item": item["id"], "dest": str(final)})
-    return 0
+    try:
+        source, size = Path(args.source), int(item["size"])
+        usage = storage.fs_usage(root)
+        if usage["avail"] - size < storage.margin_bytes(usage["size"], load_config(sd)["margin_fraction"]):
+            emit({"adopted": False, "reason": "would cross the free-space margin"})
+            return 2
+        if source.stat().st_size != size or not hash_file(source, item["checksum"], size):
+            emit({"adopted": False, "reason": "size or official checksum mismatch"})
+            return 2
+        temp = temp_path(root, item)
+        temp.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source, temp)
+        with open(temp, "rb") as handle:
+            os.fsync(handle.fileno())
+        if not hash_file(temp, item["checksum"], size):
+            temp.unlink()
+            emit({"adopted": False, "reason": "copy failed verification"})
+            return 2
+        final = root / item["dest"]
+        final.parent.mkdir(parents=True, exist_ok=True)
+        os.replace(temp, final)
+        fsync_dir(final.parent)
+        store = StateStore(sd / "state.json", [i["id"] for i in plan["items"]])
+        store.update(item["id"], status="done", verified=item["checksum"], adopted_from=str(source), error=None)
+        store.save(force=True)
+        emit({"adopted": True, "item": item["id"], "dest": str(final)})
+        return 0
+    finally:
+        lock.release()
 
 
 def cmd_retry(args) -> int:
+    """Failed items (and a failed depth stream) back to pending, under the owner lock."""
     root = Path(args.root)
     sd = state_dir(root)
-    if owner_summary(root)["lock_held"]:
+    lock = OwnerLock(sd)
+    if not lock.acquire(role="cli-retry"):
         emit({"reset": 0, "reason": "stop the owner first"})
         return 1
-    plan = read_json(sd / "plan.json")
-    store = StateStore(sd / "state.json", [i["id"] for i in plan["items"]])
-    failed = store.by_status("failed")
-    for item_id in failed:
-        store.update(item_id, status="pending", attempts=0, extract_attempts=0, not_before=0)
-    store.save(force=True)
-    emit({"reset": len(failed)})
-    return 0
+    try:
+        plan = read_json(sd / "plan.json")
+        store = StateStore(sd / "state.json", [i["id"] for i in plan["items"]])
+        failed = store.by_status("failed")
+        for item_id in failed:
+            store.update(item_id, status="pending", attempts=0, extract_attempts=0, not_before=0)
+        stream = store.section("stream")
+        stream_reset = stream.get("status") == "failed"
+        if stream_reset:
+            store.set_section("stream", {})
+        store.save(force=True)
+        emit({"reset": len(failed), "stream_reset": stream_reset})
+        return 0
+    finally:
+        lock.release()
 
 
 def parser() -> argparse.ArgumentParser:

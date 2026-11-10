@@ -27,17 +27,27 @@ Layout (`root` = `/data_8T/kaist/sunho/datasets`): `droid/1.0.1/` (`data.rlds_da
 
 ## Verification and publication
 
-- Downloads: temp file -> size + official checksum (md5 / sha256 / git blob id / LFS pointer blob id) -> fsync ->
-  atomic rename. Partials resume by byte range (re-hashed first); a server that ignores the range restarts the file.
-  Bounded attempts (8) with exponential backoff (30 s .. 15 min); then `failed` (`retry` resets).
+- Downloads (https only, also for redirects; a token goes only to huggingface.co): temp file -> size + official
+  checksum (md5 / sha256 / git blob id / LFS pointer blob id) -> fsync -> atomic rename. Partials resume by byte range
+  (re-hashed first); a server that ignores the range restarts the file. Bounded attempts (8) with exponential backoff
+  (30 s .. 15 min); then `failed` (`retry` resets). A refused token is retried only after the token file changes.
 - Flow shards: download -> extract into `.staging/pw_flows/<shard>` -> members must equal the shard's manifest list
-  and `raw_member_bytes`, HDF5 signature on every file -> rename into the tree -> state `extracted` -> delete archive.
+  and `raw_member_bytes`, HDF5 signature on every file -> state `publishing` (saved) -> fsync + rename into the tree
+  -> state `extracted` (saved) -> delete archive. A restart in `publishing` finishes the renames (no re-extraction).
 - Depth: the parts stay until the whole stream is extracted (no index; a restart re-decompresses from part 0 and skips
-  staged members) -> HDF5 signature on every member, member set compared with the flow episodes -> publish -> delete
-  parts.
-- Space: before every download/extraction the claim of all admitted unfinished steps plus the new one must leave
-  `margin_fraction` x file-system size available (default 0.15). The flow group is additionally refused while the
-  final footprint of the enabled groups would cross the margin.
+  staged members) -> HDF5 signature on every member, member set compared with the flow episodes -> `publishing` ->
+  publish -> `published` -> delete parts. A part that exhausts its attempts fails the stream (`retry` resets both).
+- The episode selection is frozen once the first flow shard or the depth stream is extracted (`configure` refuses
+  another one; the owner gates both groups if the config is edited by hand).
+- Space: every download is admitted only if the claims of all admitted unfinished work plus its own leave
+  `margin_fraction` x file-system size available (default 0.15). Claims are upper bounds: a shard archive claims its
+  full expansion; the depth stream claims, from its first part on, every remaining part plus its whole expansion. The
+  flow group is refused while the final footprint of the enabled groups would cross the margin. Extraction stops
+  while free space is below the margin, and all transfers pause (partials kept) while free space cannot cover the
+  margin plus the outstanding claims (another writer); they resume by themselves.
+- Restarts: `reconcile` restores unfinished records whose destination already verifies (crash between rename and
+  state save), returns missing finished files to pending and deletes archives whose content was published. The
+  owner keeps its lock until every worker and lane has stopped; `adopt` and `retry` hold the same lock.
 
 ## Concurrency and health
 

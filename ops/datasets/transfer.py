@@ -30,7 +30,7 @@ CHUNK = 1 << 20
 CONNECT_TIMEOUT = 30.0
 READ_TIMEOUT = 60.0  # a stalled socket raises after this many seconds without data
 MAX_REDIRECTS = 8
-AUTH_SCHEMES = ("https",)  # a token never travels over plain http
+SECURE_SCHEMES = ("https",)  # every request and redirect; tests add "http" for their local server
 LFS_POINTER = "version https://git-lfs.github.com/spec/v1\noid sha256:{sha256}\nsize {size}\n"
 
 
@@ -130,15 +130,22 @@ def _connection(url: urllib.parse.SplitResult, timeout: float):
     raise TransferError(f"unsupported URL scheme {url.scheme!r}")
 
 
+def _check_scheme(url: urllib.parse.SplitResult) -> None:
+    if url.scheme not in SECURE_SCHEMES:
+        raise TransferError(f"refused non-https URL scheme {url.scheme!r}")
+
+
 def open_url(url: str, *, headers: dict | None = None, auth: tuple[str, str] | None = None,
              timeout: float = READ_TIMEOUT):
-    """GET with manual redirects; ``auth`` = (host, header value) is sent only to that exact host. Returns
-    (connection, response); the caller closes the connection."""
+    """GET with manual redirects (https only); ``auth`` = (host, header value) is sent only to that exact host.
+    Returns (connection, response); the caller closes the connection. Header/URL validation errors are reported
+    without their content (they may contain the token)."""
     headers = dict(headers or {})
     for _ in range(MAX_REDIRECTS + 1):
         parts = urllib.parse.urlsplit(url)
+        _check_scheme(parts)
         request_headers = {"User-Agent": USER_AGENT, "Accept-Encoding": "identity", **headers}
-        if auth and parts.hostname == auth[0] and parts.scheme in AUTH_SCHEMES:
+        if auth and parts.hostname == auth[0]:
             request_headers["Authorization"] = auth[1]
         connection = _connection(parts, CONNECT_TIMEOUT)
         try:
@@ -150,6 +157,9 @@ def open_url(url: str, *, headers: dict | None = None, auth: tuple[str, str] | N
         except (OSError, http.client.HTTPException) as error:
             connection.close()
             raise TransferError(f"{type(error).__name__}: {error}") from error
+        except (ValueError, TypeError):
+            connection.close()
+            raise TransferError("request rejected: invalid header or URL (details withheld)") from None
         if response.status in (301, 302, 303, 307, 308):
             location = response.getheader("Location")
             response.read()
@@ -218,10 +228,11 @@ def _content_range_start(response) -> tuple[int, int] | None:
         return None
 
 
-def download(item: dict, temp_path, *, limiter: RateLimiter, on_bytes, should_stop, auth=None) -> int:
+def download(item: dict, temp_path, *, limiter: RateLimiter, on_progress, should_stop, auth=None) -> int:
     """Download (or continue) ``item`` into ``temp_path`` and verify size and checksum. Returns the number of bytes
-    fetched by this call. Raises Interrupted (partial kept), AuthRequired or TransferError (a corrupt file is
-    removed so the next attempt starts clean)."""
+    fetched by this call. ``on_progress(fetched_delta, bytes_on_disk)`` reports absolute temp-file progress (reset to
+    0 when a server ignores the range). Raises Interrupted (partial kept), AuthRequired or TransferError (a corrupt
+    file is removed so the next attempt starts clean). The temp file is fsynced before returning."""
     size = int(item["size"])
     verifier = Verifier(item["checksum"], size)
     have = os.path.getsize(temp_path) if os.path.exists(temp_path) else 0
@@ -242,6 +253,7 @@ def download(item: dict, temp_path, *, limiter: RateLimiter, on_bytes, should_st
             if have and response.status == 200:  # the server ignored the range: start over
                 verifier = Verifier(item["checksum"], size)
                 have = 0
+                on_progress(0, 0)
             elif have and response.status == 206:
                 span = _content_range_start(response)
                 if span != (have, size):
@@ -272,11 +284,17 @@ def download(item: dict, temp_path, *, limiter: RateLimiter, on_bytes, should_st
                     verifier.update(block)
                     have += len(block)
                     fetched += len(block)
-                    on_bytes(len(block))
+                    on_progress(len(block), have)
                 out.flush()
                 os.fsync(out.fileno())
         finally:
             connection.close()
+    else:  # complete from an earlier run: make sure its bytes are durable before the caller publishes it
+        fd = os.open(temp_path, os.O_RDONLY)
+        try:
+            os.fsync(fd)
+        finally:
+            os.close(fd)
     if not verifier.matches():
         os.unlink(temp_path)
         raise TransferError(f"checksum mismatch ({verifier.kind}): got {verifier.value()}, expected {verifier.expected}")

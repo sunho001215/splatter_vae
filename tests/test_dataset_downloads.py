@@ -77,7 +77,8 @@ class Server:
 
 
 @pytest.fixture
-def server():
+def server(monkeypatch):
+    monkeypatch.setattr(transfer, "SECURE_SCHEMES", ("https", "http"))  # the local test server speaks http
     srv = Server()
     yield srv
     srv.httpd.shutdown()
@@ -92,9 +93,9 @@ def item_for(srv: Server, name: str, data: bytes, **extra) -> dict:
     return {"id": f"t/{name}", "url": srv.url(name), "size": len(data), "checksum": md5(data), **extra}
 
 
-def fetch(item, temp, stop=lambda: False, auth=None):
-    return transfer.download(item, temp, limiter=transfer.RateLimiter(None), on_bytes=lambda n: None,
-                             should_stop=stop, auth=auth)
+def fetch(item, temp, stop=lambda: False, auth=None, progress=None):
+    return transfer.download(item, temp, limiter=transfer.RateLimiter(None),
+                             on_progress=progress or (lambda delta, on_disk: None), should_stop=stop, auth=auth)
 
 
 # ---- transfer --------------------------------------------------------------------------------------------------
@@ -129,7 +130,9 @@ def test_server_ignoring_the_range_restarts_from_zero(server, tmp_path):
     server.ignore_range.add("b.bin")
     temp = tmp_path / "b.part"
     temp.write_bytes(data[:500])
-    assert fetch(item, temp) == len(data) and temp.read_bytes() == data
+    progress = []
+    assert fetch(item, temp, progress=lambda d, n: progress.append(n)) == len(data) and temp.read_bytes() == data
+    assert progress[0] == 0 and progress[-1] == len(data)  # absolute progress restarts with the file
 
 
 def test_checksum_mismatch_removes_the_file_and_interrupt_keeps_it(server, tmp_path):
@@ -147,13 +150,21 @@ def test_checksum_mismatch_removes_the_file_and_interrupt_keeps_it(server, tmp_p
     assert (tmp_path / "d.part").read_bytes() == data
 
 
-def test_authorization_goes_only_to_its_host(server, tmp_path, monkeypatch):
+def test_plain_http_and_bad_headers_are_refused_without_leaking(server, tmp_path, monkeypatch):
     data = b"x" * 1000
-    plain = {"id": "p", "url": server.url("e.bin"), "size": len(data), "checksum": md5(data)}
     server.files["e.bin"] = data
-    fetch(plain, tmp_path / "p.part", auth=("127.0.0.1", "Bearer secret"))
-    assert "Authorization" not in server.requests[-1]["headers"]  # never over plain http
-    monkeypatch.setattr(transfer, "AUTH_SCHEMES", ("https", "http"))  # the test server speaks http
+    plain = {"id": "p", "url": server.url("e.bin"), "size": len(data), "checksum": md5(data)}
+    monkeypatch.setattr(transfer, "SECURE_SCHEMES", ("https",))
+    with pytest.raises(transfer.TransferError, match="non-https"):
+        fetch(plain, tmp_path / "p.part", auth=("127.0.0.1", "Bearer secret"))
+    monkeypatch.setattr(transfer, "SECURE_SCHEMES", ("https", "http"))
+    with pytest.raises(transfer.TransferError) as error:
+        fetch(plain, tmp_path / "p.part", auth=("127.0.0.1", "Bearer sec\nret"))
+    assert "sec" not in str(error.value) and "details withheld" in str(error.value)
+
+
+def test_authorization_goes_only_to_its_host(server, tmp_path):
+    data = b"x" * 1000
     server.files["e.bin"] = data
     item = {"id": "e", "url": server.url("redirect/e.bin"), "size": len(data), "checksum": md5(data)}
     fetch(item, tmp_path / "e.part", auth=("127.0.0.1", "Bearer secret"))
@@ -505,7 +516,6 @@ def wait_for(predicate, timeout=60.0):
 
 def test_owner_downloads_gates_extracts_and_publishes(server, tmp_path, monkeypatch):
     monkeypatch.setattr(runner, "HF_HOST", "127.0.0.1")
-    monkeypatch.setattr(transfer, "AUTH_SCHEMES", ("https", "http"))
     root = tmp_path / "datasets"
     build_world(server, root)
     config = {**runner.DEFAULT_CONFIG, "margin_fraction": 0.0, "controller": {"interval_s": 0.2}}
@@ -539,6 +549,15 @@ def test_owner_downloads_gates_extracts_and_publishes(server, tmp_path, monkeypa
     assert "secret-token" not in (root / ".state" / "progress.jsonl").read_text()
     assert json.loads((root / ".state" / "status.json").read_text())["stopped"] is True
     assert not state.OwnerLock(root / ".state").held_by_other()
+    # the selection is frozen once extraction has begun
+    assert owner.state.section("selection_lock")["fingerprint"] == "all"
+    subset = root / "subset.txt"
+    subset.write_text(EPISODES[0] + "\n")
+    assert cli.main(["configure", "--root", str(root), "--pointworld-selection", str(subset)]) == 2
+    state.write_json_atomic(root / ".state" / "config.json", {**config, "pointworld_selection": str(subset)})
+    again = runner.Runner(root, probe=FakeProbe())
+    again.reload_config()
+    assert again.gates["pw_flows"].startswith("selection differs") and "pw_depth_extract" in again.gates
 
 
 def test_space_admission_and_reconciliation(server, tmp_path, monkeypatch):
@@ -548,11 +567,21 @@ def test_space_admission_and_reconciliation(server, tmp_path, monkeypatch):
     owner = runner.Runner(root, probe=FakeProbe())
     owner.reload_config()
     monkeypatch.setattr(storage, "fs_usage", lambda path: {"size": 10**9, "avail": 100})
-    assert owner.next_item() is None
-    assert json.loads((root / ".state" / "progress.jsonl").read_text().splitlines()[-1])["event"] == "space_wait"
+    # the cameras archive (small group, first) does not fit; the 11-byte calibration file behind it does
+    admitted = [owner.next_item() for _ in range(3)]
+    assert [i and i["id"] for i in admitted] == ["droid3d/x", "t/rlds/info.json", None]  # 11 and 2 bytes fit
+    wait = json.loads((root / ".state" / "progress.jsonl").read_text().splitlines()[-1])
+    assert wait["event"] == "space_wait" and wait["item"] == "t/pw/cams"
     monkeypatch.setattr(storage, "fs_usage", lambda path: {"size": 10**9, "avail": 10**9})
-    first = owner.next_item()  # small groups first
+    first = owner.next_item()
     assert first["id"] == "t/pw/cams" and owner.state.items["t/pw/cams"]["status"] == "downloading"
+    # the first depth part claims every remaining part plus the whole expansion; later parts claim nothing more
+    depth_claim = owner.growth(owner.by_id["t/pw/d0"])
+    assert depth_claim == sum(i["size"] + i["archive"]["expanded"] for i in owner.depth)
+    owner.state.update("t/pw/d0", status="downloaded")
+    assert owner.growth(owner.by_id["t/pw/d1"]) == 0
+    assert owner.outstanding() >= owner.by_id["t/pw/d1"]["size"] + 2 * owner.by_id["t/pw/d1"]["archive"]["expanded"]
+    owner.state.update("t/pw/d0", status="pending")
     # a crash leaves "downloading" and an archive whose content was already published
     leftover = root / plan["items"][5]["dest"]
     leftover.parent.mkdir(parents=True)
@@ -560,10 +589,15 @@ def test_space_admission_and_reconciliation(server, tmp_path, monkeypatch):
     owner.state.update("t/pw/f0", status="extracted")
     owner.state.update("t/rlds/shard0", status="done")
     owner.state.save(force=True)
+    # a crash between the rename and the state save: the published file verifies and is kept
+    published = root / plan["items"][1]["dest"]
+    published.parent.mkdir(parents=True, exist_ok=True)
+    published.write_bytes(b"{}")
     again = runner.Runner(root, probe=FakeProbe())
     report = again.reconcile()
-    assert report["downloading_to_pending"] == 1 and report["leftover_archive_deleted"] == 1
+    assert report["downloading_to_pending"] == 2 and report["leftover_archive_deleted"] == 1
     assert report["missing_to_pending"] == 1 and not leftover.exists()
+    assert report["published_file_restored"] == 1 and again.state.items["t/rlds/info.json"]["status"] == "done"
 
 
 # ---- command line and deployment ---------------------------------------------------------------------------------
@@ -588,6 +622,9 @@ def test_cli_configure_refuses_to_cross_the_margin_and_adopt_verifies(server, tm
     lock = state.OwnerLock(root / ".state")
     assert lock.acquire()
     try:
+        capsys.readouterr()
+        assert cli.main(["adopt", *args, "--item", "droid3d/x", "--source", str(source)]) == 1  # lock held
+        assert cli.main(["retry", *args]) == 1
         capsys.readouterr()
         assert cli.main(["start", *args]) == 0  # this process is the live owner: no second start
         out = json.loads(capsys.readouterr().out)
@@ -648,3 +685,126 @@ def test_deploy_command_unpacks_verifies_and_is_idempotent(tmp_path, monkeypatch
     assert control.fresh_ssh_args(args) == ["sshpass", "-e", "ssh", "-o", "ConnectTimeout=15", "-o",
                                             "ControlMaster=no", "-o", "ControlPath=none"]
     assert control.remote_command(sha, ["status", "--full"])[3:] == ["status", "--root", control.DATA_ROOT, "--full"]
+
+
+# ---- review fixes (CODEX review 2026-11-10) ------------------------------------------------------------------------
+def test_tar_padding_after_the_end_marker_does_not_block_zstd(tmp_path):
+    raw = io.BytesIO()
+    with tarfile.open(fileobj=raw, mode="w") as tar:
+        data = HDF5 + b"x" * 100
+        info = tarfile.TarInfo(f"droid/depth_320x180/{EPISODES[0]}_depth.h5")
+        info.size = len(data)
+        tar.addfile(info, io.BytesIO(data))
+    blob = subprocess.run(["zstd", "-q", "-c"], input=raw.getvalue() + bytes(4 << 20), capture_output=True,
+                          check=True).stdout
+    (tmp_path / "a.zst").write_bytes(blob)
+    done = []
+    thread = threading.Thread(target=lambda: done.append(archives.extract_stream(
+        archives.file_chunks([tmp_path / "a.zst"]), tmp_path / "st", ["depth_320x180"])), daemon=True)
+    thread.start()
+    thread.join(timeout=60)
+    assert not thread.is_alive() and done[0]["written"] == 1
+
+
+def owner_with_selection(server, tmp_path, selection="all"):
+    root = tmp_path / "datasets"
+    plan = build_world(server, root)
+    state.write_json_atomic(root / ".state" / "config.json",
+                            {**runner.DEFAULT_CONFIG, "margin_fraction": 0.0, "pointworld_selection": selection,
+                             "groups": {"pw_flows": True}, "controller": {"interval_s": 0.2}})
+    owner = runner.Runner(root, probe=FakeProbe())
+    owner.reload_config()
+    return root, plan, owner
+
+
+def test_interrupted_publication_resumes_without_extracting_again(server, tmp_path):
+    root, plan, owner = owner_with_selection(server, tmp_path)
+    flows = owner.by_id["t/pw/f0"]
+    archive = root / flows["dest"]
+    archive.parent.mkdir(parents=True)
+    archive.write_bytes(server.files["pw/f0"])
+    owner.state.update("t/pw/f0", status="downloaded")
+    staging = root / ".staging" / "pw_flows" / "shard-000000"
+    archives.extract_stream(archives.file_chunks([archive]), staging, ["flows-fs-optimized"])
+    first = sorted((staging / "flows-fs-optimized").iterdir())[0]
+    target = owner.pointworld_root() / "flows-fs-optimized"
+    target.mkdir(parents=True)
+    os.replace(first, target / first.name)  # the crash happened after one rename
+    owner.state.update("t/pw/f0", status="publishing")
+    archive.write_bytes(b"not an archive any more")  # proves no second extraction happens
+    owner.extract_single(flows)
+    assert owner.state.items["t/pw/f0"]["status"] == "extracted" and not archive.exists()
+    assert sorted(p.name for p in target.iterdir()) == sorted(f"{e}_flows.h5" for e in EPISODES)
+    assert owner.state.items["t/pw/f0"]["extracted"]["bytes"] == flows["archive"]["expanded"]
+
+
+def test_failed_depth_part_fails_the_stream_and_retry_resets_it(server, tmp_path, capsys):
+    root, plan, owner = owner_with_selection(server, tmp_path)
+    d0 = owner.by_id["t/pw/d0"]
+    (root / d0["dest"]).parent.mkdir(parents=True)
+    (root / d0["dest"]).write_bytes(server.files["pw/d0"])
+    owner.state.update("t/pw/d0", status="downloaded")
+    owner.state.update("t/pw/d1", status="failed")
+    thread = threading.Thread(target=owner.stream_lane, daemon=True)
+    thread.start()
+    thread.join(timeout=60)
+    assert not thread.is_alive()
+    assert owner.state.section("stream")["status"] == "failed" and "failed to download" in \
+        owner.state.section("stream")["error"]
+    owner.state.save(force=True)
+    assert cli.main(["retry", "--root", str(root)]) == 0
+    assert json.loads(capsys.readouterr().out) == {"reset": 1, "stream_reset": True}
+
+
+def test_tokens_malformed_or_refused_are_not_retried_blindly(server, tmp_path):
+    root, plan, owner = owner_with_selection(server, tmp_path)
+    secret = root / ".state" / "secrets"
+    secret.mkdir()
+    token = secret / "hf_token"
+    token.write_text("hf_abc\nInjected: header")
+    token.chmod(0o600)
+    owner.reload_config()
+    assert owner.hf_token({}) is None and "malformed" in owner.gates["hf_token"]
+    token.write_text("hf_refused_token")
+    owner.state.update("droid3d/x", status="blocked", token=runner.token_fingerprint("hf_refused_token"))
+    owner.reload_config()
+    assert owner.state.items["droid3d/x"]["status"] == "blocked"  # same credential: not retried
+    token.write_text("hf_new_token_value")
+    owner.reload_config()
+    assert owner.state.items["droid3d/x"]["status"] == "pending"
+
+
+def test_pool_target_counts_only_running_workers_and_is_clamped(server, tmp_path):
+    root, plan, owner = owner_with_selection(server, tmp_path, selection="pending")
+    owner.state.update("droid3d/x", status="done")
+    for item in owner.items:
+        owner.state.update(item["id"], status="done")  # nothing to download: workers idle
+    owner.set_pool(3)
+    owner.set_pool(1)
+    owner.set_pool(2)
+    assert sum(not stop.is_set() for _, stop in owner.workers) == 2
+    state.write_json_atomic(root / ".state" / "config.json",
+                            {**runner.DEFAULT_CONFIG, "controller": {"pool_max": 1, "interval_s": 0.2}})
+    owner.control.pool = 3
+    owner.reload_config()
+    assert owner.control.pool == 1
+    owner.stop_event.set()
+    for thread, _ in owner.workers:
+        thread.join(timeout=10)
+
+
+def test_own_writes_pause_when_space_cannot_cover_margin_and_claims(server, tmp_path, monkeypatch):
+    root, plan, owner = owner_with_selection(server, tmp_path)
+    owner.state.update("t/pw/d0", status="downloaded")  # the depth stream claims its remaining parts + expansion
+    claims = owner.outstanding()
+    monkeypatch.setattr(storage, "fs_usage", lambda path: {"size": 10**9, "avail": claims - 1})
+    owner.set_pool(2)
+    owner.tick(FakeProbe(), {"wan_rtt_ms": 40.0}, 0)
+    assert owner.paused_for_space and owner.next_item() is None and owner.space_low() is False
+    assert sum(not stop.is_set() for _, stop in owner.workers) == 0
+    monkeypatch.setattr(storage, "fs_usage", lambda path: {"size": 10**9, "avail": 10 * claims})
+    owner.tick(FakeProbe(), {"wan_rtt_ms": 40.0}, 0)
+    assert not owner.paused_for_space and sum(not stop.is_set() for _, stop in owner.workers) == owner.control.pool
+    events = [json.loads(line)["event"] for line in (root / ".state" / "progress.jsonl").read_text().splitlines()]
+    assert events.count("space_pause") == events.count("space_resume") == 1
+    owner.stop_event.set()
