@@ -236,7 +236,7 @@ def test_feature_standardisation_numerics():
     z = FD.ObsEncoder(16, True, proj=8, feature_stats=stats)
     standardised = (x.float() - z.feat_mean) / z.feat_std
     np.testing.assert_allclose(standardised[:, :15].double().mean(0).numpy(), 0, atol=1e-4)
-    np.testing.assert_allclose(standardised[:, :15].double().std(0).numpy(), 1, atol=1e-4)
+    np.testing.assert_allclose(standardised[:, :15].double().std(0, correction=0).numpy(), 1, atol=1e-4)
     with pytest.raises(ValueError, match="two stored rows"):
         FD.fit_feature_standardization(x[:1])
     with pytest.raises(ValueError, match="constant"):
