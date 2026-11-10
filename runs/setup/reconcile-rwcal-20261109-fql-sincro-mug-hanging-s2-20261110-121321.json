@@ -1,0 +1,29 @@
+{
+  "recorded_local": "2026-11-10T12:13:21.840510+09:00",
+  "job_id": "rwcal-20261109-fql-sincro-mug-hanging-s2",
+  "attempt": 1,
+  "container": "s4d-rwcal-20261109-fql-sincro-mug-hanging-s2-a1",
+  "gpu": "GPU-9e9f1e97-b2ca-04e0-eb2a-8035398daa79",
+  "reason": "container missing from confirmed snapshot",
+  "launch_attempt_age_seconds": 7268.4,
+  "remote_output_dir": "/home/compu/kaist/sunho/runs/rwcal-20261109-fql-sincro-mug-hanging-s2",
+  "accepted_release_dir": "/home/compu/kaist/sunho/releases/6c3b9ec0077f50cce7133f54a72910b38b942a23/code",
+  "checks": [
+    {
+      "containers_with_name": 0,
+      "remote_output": "absent",
+      "accepted_release_dir": "exists",
+      "remote_time_utc": "2026-11-10T03:13:16Z"
+    },
+    {
+      "containers_with_name": 0,
+      "remote_output": "absent",
+      "accepted_release_dir": "exists",
+      "remote_time_utc": "2026-11-10T03:13:21Z"
+    }
+  ],
+  "output_rule": "directory absent",
+  "launch_error": "Remote operation exited 1: Foreign process on selected GPU",
+  "tool": "Claude-run equivalent of reconcile_unlaunched_remote.py (FQL output convention runs/<name>; released tool admits only train.py)",
+  "conclusion": "launch refused before docker run; deterministic container never existed"
+}
