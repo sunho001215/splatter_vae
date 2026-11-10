@@ -1,4 +1,4 @@
-"""Session recorder tests: synthetic arrays and local files only; no devices, sockets, GPU work or skips."""
+"""Session recorder tests: synthetic arrays and local files only; no devices, sockets or GPU work."""
 
 from __future__ import annotations
 
@@ -108,7 +108,7 @@ def test_round_trip_every_stream_exact_values_and_summary(tmp_path):
             np.testing.assert_array_equal(g["rgb"], native)
             np.testing.assert_array_equal(g.attrs["K_native"], K)
             assert json.loads(g.attrs["calibration_json"]) == cameras(serial)[serial]["calibration"]
-            assert g["rgb"].compression == "gzip" and g["rgb"].compression_opts == 1
+            assert g["rgb"].compression == "lzf"
             assert g["rgb"].chunks == (1, *HW, 3)
             assert g["rgb"].dtype == np.uint8
             assert g["t_ns"].dtype == g["frame_id"].dtype == np.int64
@@ -119,6 +119,7 @@ def test_round_trip_every_stream_exact_values_and_summary(tmp_path):
             np.testing.assert_array_equal(o["frame_id"], ids)
             np.testing.assert_array_equal(o["rgb"], obs)
             assert o["rgb"].chunks == (1, 8, 8, 3)
+            assert o["rgb"].compression == "gzip" and o["rgb"].compression_opts == 1
             assert result["counts"][f"observations/{serial}"] == 3
         assert [json.loads(s) for s in f["cameras/rgbd/meta_json"].asstr()[:]] == [
             {"device_timestamp": 1.25}, None, {"device_timestamp": 3.25}]
@@ -129,6 +130,7 @@ def test_round_trip_every_stream_exact_values_and_summary(tmp_path):
         np.testing.assert_array_equal(g["depth_scale_m"], [0.001, 0.002])
         assert g.attrs["depth_scale_m"] == 0.001
         assert g["depth"].dtype == np.uint16 and g["depth"].chunks == (1, *HW)
+        assert g["depth"].compression == "gzip" and g["depth"].compression_opts == 1
         np.testing.assert_array_equal(o["depth"], obs_depth[1:])
         np.testing.assert_array_equal(o["depth_frame_index"], [1, 2])
         assert o["depth"].dtype == np.float32
@@ -168,10 +170,19 @@ def test_round_trip_every_stream_exact_values_and_summary(tmp_path):
         assert result["counts"]["cameras/empty"] == result["counts"]["observations/empty"] == 0
         assert f["cameras/empty/rgb"].shape == (0, *HW, 3)
         assert f["observations/empty/rgb"].shape == (0, 0, 0, 3)
+        assert f["observations/empty/rgb"].chunks == (1, 128, 128, 3)
+        for stream in ("robot", "executed", "gripper", "steps", "commands", "events"):
+            for ds in f[stream].values():
+                assert ds.chunks == (1024, *ds.shape[1:])
 
 
 def test_empty_streams_and_idempotent_close(tmp_path):
     rec = SessionRecorder(tmp_path, meta={}, cameras=cameras("rgbd"), video=False)
+    assert len(rec._slots["robot"]) == 65536
+    assert len(rec._slots["cameras/rgbd"]) == 256
+    assert len(rec._slots["steps"]) == 8192
+    assert rec._slots["robot"] is rec._slots["executed"] is rec._slots["gripper"]
+    assert rec._slots["steps"] is rec._slots["commands"] is rec._slots["events"]
     result = rec.close("stopped", "operator stopped")
     path = rec.session_dir / "summary.json"
     stamp = path.stat().st_mtime_ns
@@ -193,19 +204,21 @@ def test_empty_streams_and_idempotent_close(tmp_path):
 
 def test_nonblocking_full_queue_counts_each_stream(tmp_path, monkeypatch):
     entered, release = threading.Event(), threading.Event()
-    original = SessionRecorder._write_item
+    original = SessionRecorder._write_batch
 
-    def slow(self, f, stream, item):
+    def slow(self, f, stream, items):
         entered.set()
         assert release.wait(5), "test did not release slow writer"
-        original(self, f, stream, item)
+        original(self, f, stream, items)
 
-    monkeypatch.setattr(SessionRecorder, "_write_item", slow)
+    monkeypatch.setattr(SessionRecorder, "_write_batch", slow)
     rec = SessionRecorder(tmp_path, meta={}, cameras=cameras("rgbd"), queue_size=1, video=False)
     try:
         rec.event(1, "in flight")
         assert entered.wait(5)
         rec.event(2, "queued")
+        rec.robot_state(2, 0, POSE, POSE, POSE, POSE, POSE)
+        rec.frame("rgbd", 0, 2, rgb(0), None, None, {})
         before = time.monotonic()
         for _ in range(4):
             rec.frame("rgbd", 1, 3, rgb(1), None, None, {})
@@ -223,7 +236,8 @@ def test_nonblocking_full_queue_counts_each_stream(tmp_path, monkeypatch):
         result = rec.close()
     assert result["status"] == "complete"
     assert result["counts"]["events"] == 2
-    assert sum(result["counts"].values()) == 2
+    assert result["counts"]["robot"] == result["counts"]["cameras/rgbd"] == 1
+    assert sum(result["counts"].values()) == 4
     assert result["dropped"] == dict(rec.dropped)
     with h5py.File(rec.session_dir / "inference.h5", "r") as f:
         assert list(f["events/text"].asstr()[:]) == ["in flight", "queued"]
@@ -231,23 +245,35 @@ def test_nonblocking_full_queue_counts_each_stream(tmp_path, monkeypatch):
 
 def test_enqueued_inputs_are_snapshots(tmp_path, monkeypatch):
     entered, release = threading.Event(), threading.Event()
-    original = SessionRecorder._write_item
+    original = SessionRecorder._write_batch
 
-    def slow(self, f, stream, item):
+    def slow(self, f, stream, items):
         entered.set()
         assert release.wait(5)
-        original(self, f, stream, item)
+        original(self, f, stream, items)
 
-    monkeypatch.setattr(SessionRecorder, "_write_item", slow)
+    monkeypatch.setattr(SessionRecorder, "_write_batch", slow)
     rec = SessionRecorder(tmp_path, meta={}, cameras=cameras("rgbd"), video=False)
     image, z = rgb(3), np.full(HW, 123, np.uint16)
     metadata = {"nested": [1, 2]}
+    q, dq, tau = np.arange(7.0), list(range(7)), tuple(np.array(i) for i in range(7))
+    step = {"t_step_ns": 3, "observation_time_ns": 2, "status": "ok", "nested": [1, 2]}
+    command = {"t_ns": 4, "nested": [1, 2]}
     try:
         rec.event(0, "gate")
         assert entered.wait(5)
         rec.frame("rgbd", 1, 2, image, z, 0.001, metadata)
+        rec.robot_state(2, 1, q, dq, tau, POSE, POSE)
+        rec.step(step)
+        rec.command(command)
         image.fill(0)
         z.fill(0)
+        q.fill(-1)
+        dq[:] = [-1] * 7
+        for value in tau:
+            value.fill(-1)
+        step["nested"].append(3)
+        command["nested"].append(3)
         metadata["nested"].append(3)
     finally:
         release.set()
@@ -256,23 +282,29 @@ def test_enqueued_inputs_are_snapshots(tmp_path, monkeypatch):
         np.testing.assert_array_equal(f["cameras/rgbd/rgb"][0], rgb(3))
         np.testing.assert_array_equal(f["cameras/rgbd/depth"][0], np.full(HW, 123, np.uint16))
         assert json.loads(f["cameras/rgbd/meta_json"].asstr()[0]) == {"nested": [1, 2]}
+        for field in ("q", "dq", "tau_ext"):
+            np.testing.assert_array_equal(f[f"robot/{field}"][0], np.arange(7))
+        assert json.loads(f["steps/json"].asstr()[0])["nested"] == [1, 2]
+        assert json.loads(f["commands/json"].asstr()[0])["nested"] == [1, 2]
 
 
 def test_writer_exception_finalizes_and_counts_unwritten_rows(tmp_path, monkeypatch):
-    entered, release = threading.Event(), threading.Event()
-    original = SessionRecorder._write_item
+    entered, release, preserved = threading.Event(), threading.Event(), threading.Event()
+    original = SessionRecorder._write_batch
 
-    def failing(self, f, stream, item):
-        if item[1] == "boom":
+    def failing(self, f, stream, items):
+        if any(item[1] == "boom" for item in items):
             entered.set()
             assert release.wait(5)
             raise RuntimeError("injected writer failure")
-        original(self, f, stream, item)
+        original(self, f, stream, items)
+        preserved.set()
 
-    monkeypatch.setattr(SessionRecorder, "_write_item", failing)
+    monkeypatch.setattr(SessionRecorder, "_write_batch", failing)
     rec = SessionRecorder(tmp_path, meta={}, cameras={}, video=False)
     try:
         rec.event(1, "preserved")
+        assert preserved.wait(5)
         rec.event(2, "boom")
         assert entered.wait(5)
         rec.event(3, "queued after failing item")
@@ -291,9 +323,18 @@ def test_writer_exception_finalizes_and_counts_unwritten_rows(tmp_path, monkeypa
         assert list(f["events/text"].asstr()[:]) == ["preserved"]
 
 
-def test_failed_row_is_rolled_back(tmp_path):
+def test_failed_row_is_rolled_back(tmp_path, monkeypatch):
+    written = threading.Event()
+    original = SessionRecorder._write_batch
+
+    def write(self, f, stream, items):
+        original(self, f, stream, items)
+        written.set()
+
+    monkeypatch.setattr(SessionRecorder, "_write_batch", write)
     rec = SessionRecorder(tmp_path, meta={}, cameras={}, video=False)
     rec.robot_state(1, 1, POSE, POSE, POSE, POSE, POSE)
+    assert written.wait(5)
     rec.robot_state(2, 2, POSE, [1.0], POSE, POSE, POSE)  # h5py would otherwise broadcast one value to seven
     result = rec.close()
     assert result["status"] == "error" and result["counts"]["robot"] == 1
@@ -452,12 +493,12 @@ def test_sigterm_during_close_with_full_queue_does_not_deadlock(tmp_path):
         import time
         from ops.robot_pc.recorder import SessionRecorder
         entered = threading.Event()
-        original = SessionRecorder._write_item
-        def slow(self, f, stream, item):
+        original = SessionRecorder._write_batch
+        def slow(self, f, stream, items):
             entered.set()
             time.sleep(0.15)
-            original(self, f, stream, item)
-        SessionRecorder._write_item = slow
+            original(self, f, stream, items)
+        SessionRecorder._write_batch = slow
         rec = SessionRecorder(sys.argv[1], meta={}, cameras={}, queue_size=1, video=False)
         rec.event(1, 'in flight')
         assert entered.wait(5)
@@ -491,3 +532,287 @@ def test_same_second_session_never_overwrites_existing_data(tmp_path, monkeypatc
         SessionRecorder(tmp_path, meta={}, cameras={}, video=False)
     with h5py.File(rec.session_dir / "inference.h5", "r") as f:
         assert list(f["events/text"].asstr()[:]) == ["original"]
+
+
+def test_stream_batches_resize_and_write_each_column_once(tmp_path, monkeypatch):
+    entered, release = threading.Event(), threading.Event()
+    original_batch = SessionRecorder._write_batch
+    original_resize, original_write = h5py.Dataset.resize, h5py.Dataset.__setitem__
+    resizes, writes = {}, {}
+
+    def gate(self, f, stream, items):
+        if stream == "events":
+            entered.set()
+            assert release.wait(5)
+        original_batch(self, f, stream, items)
+
+    def resize(ds, *args, **kwargs):
+        if ds.name.startswith(("/robot/", "/executed/")):
+            resizes[ds.name] = resizes.get(ds.name, 0) + 1
+        return original_resize(ds, *args, **kwargs)
+
+    def write(ds, key, value):
+        if ds.name.startswith(("/robot/", "/executed/")):
+            assert isinstance(key, slice) and key.start == 0
+            assert key.stop == (257 if ds.name.startswith("/robot/") else 129)
+            writes[ds.name] = writes.get(ds.name, 0) + 1
+        return original_write(ds, key, value)
+
+    monkeypatch.setattr(SessionRecorder, "_write_batch", gate)
+    monkeypatch.setattr(h5py.Dataset, "resize", resize)
+    monkeypatch.setattr(h5py.Dataset, "__setitem__", write)
+    rec = SessionRecorder(tmp_path, meta={}, cameras={}, video=False)
+    try:
+        rec.event(0, "gate")
+        assert entered.wait(5)
+        for i in range(257):
+            rec.robot_state(i, i, POSE, POSE, POSE, POSE, POSE)
+            if i % 2 == 0:
+                rec.executed(i, "track", POSE, None, False, "dry run")
+    finally:
+        release.set()
+        result = rec.close()
+    assert result["status"] == "complete" and not any(result["dropped"].values())
+    assert len(resizes) == len(writes) == 13
+    assert set(resizes.values()) == set(writes.values()) == {1}
+    with h5py.File(rec.session_dir / "inference.h5", "r") as f:
+        np.testing.assert_array_equal(f["robot/t_ns"], np.arange(257))
+        np.testing.assert_array_equal(f["executed/t_ns"], np.arange(0, 257, 2))
+
+
+def test_high_rate_and_image_overflow_cannot_starve_low_rate_streams(tmp_path, monkeypatch):
+    entered, release = threading.Event(), threading.Event()
+    original = SessionRecorder._write_batch
+
+    def gate(self, f, stream, items):
+        if stream == "events" and items[0][1] == "gate":
+            entered.set()
+            assert release.wait(5)
+        original(self, f, stream, items)
+
+    monkeypatch.setattr(SessionRecorder, "_write_batch", gate)
+    rec = SessionRecorder(tmp_path, meta={}, cameras=cameras("one"), queue_size=16, video=False)
+    try:
+        rec.event(0, "gate")
+        assert entered.wait(5)
+        for i in range(64):
+            rec.robot_state(i, i, POSE, POSE, POSE, POSE, POSE)
+            rec.executed(i, "track", POSE, None, False, "dry run")
+            rec.gripper(i, 100, {})
+            rec.frame("one", i, i, rgb(1), None, None, None)
+            rec.observation("one", i, i, rgb(1, (8, 8)), None)
+        for i in range(7):
+            rec.step({"t_step_ns": i, "observation_time_ns": i, "status": "ok"})
+            rec.command({"t_ns": i})
+        rec.event(1, "reserved event")
+    finally:
+        release.set()
+        result = rec.close()
+    assert result["status"] == "complete"
+    assert result["counts"]["steps"] == result["counts"]["commands"] == 7
+    assert result["counts"]["events"] == 2
+    assert all(result["dropped"][s] == 0 for s in ("steps", "commands", "events"))
+    assert sum(result["counts"][s] for s in ("robot", "executed", "gripper")) == 16
+    assert sum(result["dropped"][s] for s in ("robot", "executed", "gripper")) == 3 * 64 - 16
+    assert sum(result["counts"][s] for s in ("cameras/one", "observations/one")) == 16
+    assert sum(result["dropped"][s] for s in ("cameras/one", "observations/one")) == 2 * 64 - 16
+    assert result["dropped"] == summary_file(rec)["dropped"]
+
+
+@pytest.mark.parametrize("stream,field", [("robot", "dq"), ("cameras/rgbd", "meta_json"),
+                                         ("observations/rgbd", "depth")])
+def test_mid_batch_failure_rolls_back_all_fields_and_counts_pending_rows(tmp_path, monkeypatch, stream, field):
+    written, entered, release = threading.Event(), threading.Event(), threading.Event()
+    original_batch, original_write = SessionRecorder._write_batch, h5py.Dataset.__setitem__
+    failed = []
+
+    def gate(self, f, path, items):
+        if path == "events":
+            entered.set()
+            assert release.wait(5)
+        original_batch(self, f, path, items)
+        if path == stream:
+            written.set()
+
+    def write(ds, key, values):
+        original_write(ds, key, values)
+        if ds.name == f"/{stream}/{field}" and len(values) > 1:
+            failed.append(len(values))
+            raise OSError("injected failure after partial batch write")
+
+    monkeypatch.setattr(SessionRecorder, "_write_batch", gate)
+    monkeypatch.setattr(h5py.Dataset, "__setitem__", write)
+    rec = SessionRecorder(tmp_path, meta={}, cameras=cameras("rgbd"), video=False)
+
+    def enqueue(i):
+        if stream == "robot":
+            rec.robot_state(i, i, POSE, POSE, POSE, POSE, POSE)
+        elif stream.startswith("cameras/"):
+            rec.frame("rgbd", i, i, rgb(i), np.full(HW, i, np.uint16), 0.001, {})
+        else:
+            rec.observation("rgbd", i, i, rgb(i, (8, 8)), np.full((8, 8), i, np.float32))
+
+    try:
+        enqueue(0)
+        assert written.wait(5)
+        rec.event(0, "gate")
+        assert entered.wait(5)
+        for i in range(1, 6):
+            enqueue(i)
+        rec.command({"t_ns": 6})  # already drained into another stream's pending batch at failure
+    finally:
+        release.set()
+        result = rec.close()
+    assert failed == [5]
+    assert result["status"] == "error" and "partial batch write" in result["error"]
+    assert result["counts"][stream] == 1 and result["dropped"][stream] == 5
+    assert result["counts"]["commands"] == 0 and result["dropped"]["commands"] == 1
+    assert sum(result["dropped"].values()) == 6
+    assert result == summary_file(rec)
+    with h5py.File(rec.session_dir / "inference.h5", "r") as f:
+        assert {len(ds) for ds in f[stream].values()} == {1}
+        np.testing.assert_array_equal(f[f"{stream}/t_ns"], [0])
+        if stream != "robot":
+            np.testing.assert_array_equal(f[f"{stream}/depth_frame_index"], [0])
+
+
+def test_five_second_live_throughput_and_producer_latency(tmp_path):
+    """Three paced producers at 2x real load, including two noisy native cameras and optional MP4.
+
+    A burst of one second's 1x work calibrates the actual writer, storage and encoder on this CPU.
+    Only a slower machine reduces the multiplier, targeting 90% utilization and never going below 1x.
+    The live phase always lasts five seconds; the close tail is measured separately so a large queue
+    cannot disguise an unsustainable writer. Native images use random bytes, not easy-to-compress zeros.
+    """
+    native_hw, obs_hw = (480, 640), (128, 128)
+    configs = {s: {"native_hw": list(native_hw), "depth": False, "K_native": K} for s in ("one", "two")}
+    rng = np.random.default_rng(104)
+    # Cycle unrelated frames so an installed MP4 encoder also sees realistic motion/entropy.
+    native = {s: rng.integers(0, 256, (4, *native_hw, 3), dtype=np.uint8) for s in configs}
+    observations = {s: rng.integers(0, 256, (*obs_hw, 3), dtype=np.uint8) for s in configs}
+    pose = np.asarray(POSE)
+    calibration_start = time.perf_counter()
+    with SessionRecorder(tmp_path / "calibration", meta={}, cameras=configs) as calibration:
+        for i in range(1000):
+            calibration.robot_state(i, i, pose, pose, pose, pose, pose)
+            if i % 2 == 0:
+                calibration.executed(i, "track", pose, 0.5, False, "dry run")
+        for i in range(15):
+            for serial in configs:
+                calibration.frame(serial, i, i, native[serial][i % 4], None, None, {})
+                calibration.observation(serial, i, i, observations[serial], None)
+            calibration.step({"t_step_ns": i, "observation_time_ns": i, "status": "ok"})
+            calibration.command({"t_ns": i})
+    calibration_seconds = time.perf_counter() - calibration_start
+    assert calibration.close()["status"] == "complete"
+    assert not any(calibration.dropped.values())
+    factor = min(2.0, max(1.0, 0.9 / calibration_seconds))
+    robot_rate = 2 * int(1000 * factor / 2)
+    policy_rate = int(15 * factor)
+    duration = 5
+    robot_rows, policy_rows = duration * robot_rate, duration * policy_rate
+    rec = SessionRecorder(tmp_path / "live", meta={"load_multiplier": factor}, cameras=configs)
+    latencies, errors = [], []
+    stop, ready = threading.Event(), threading.Barrier(4)
+    start = time.perf_counter() + 0.1
+
+    def pace(i, rate):
+        delay = start + i / rate - time.perf_counter()
+        if delay > 0:
+            stop.wait(delay)
+        if stop.is_set():
+            raise RuntimeError("throughput producer timed out")
+        return int((start + i / rate) * 1e9)
+
+    def control():
+        joints = np.arange(7.0)
+        for i in range(robot_rows):
+            t_ns = pace(i, robot_rate)
+            joints[0] = i
+            before = time.perf_counter_ns()
+            rec.robot_state(t_ns, i, joints, joints, joints, joints, joints)
+            latencies.append(time.perf_counter_ns() - before)
+            if i % 2 == 0:
+                rec.executed(t_ns, "track", pose, 0.5, False, "dry run")
+
+    def images():
+        for i in range(policy_rows):
+            t_ns = pace(i, policy_rate)
+            for serial in configs:
+                frame = native[serial][i % 4]
+                frame[0, 0, 0] = i % 256
+                observations[serial][0, 0, 0] = i % 256
+                rec.frame(serial, i, t_ns, frame, None, None, {"device_timestamp": i})
+                rec.observation(serial, i, t_ns, observations[serial], None)
+
+    def policy():
+        for i in range(policy_rows):
+            t_ns = pace(i, policy_rate)
+            rec.step({"t_step_ns": t_ns, "observation_time_ns": t_ns, "status": "ok", "action": POSE})
+            rec.command({"t_ns": t_ns, "goal_pose7": POSE, "gripper_closure": 0.5})
+            rec.event(t_ns, f"step {i}")
+
+    def producer(work):
+        try:
+            ready.wait(timeout=5)
+            work()
+        except BaseException as exc:
+            errors.append(exc)
+
+    threads = [threading.Thread(target=producer, args=(work,), daemon=True) for work in (control, images, policy)]
+    try:
+        for thread in threads:
+            thread.start()
+        ready.wait(timeout=5)
+        for thread in threads:
+            thread.join(timeout=10)
+        assert not any(thread.is_alive() for thread in threads), "live workload did not finish in real time"
+        assert not errors, errors
+        # Hold the five-second window even though the final samples arrive just before its boundary.
+        remaining = start + duration - time.perf_counter()
+        if remaining > 0:
+            time.sleep(remaining)
+    finally:
+        stop.set()
+        for thread in threads:
+            if thread.ident is not None:
+                thread.join(timeout=5)
+        close_start = time.perf_counter()
+        result = rec.close()
+        close_seconds = time.perf_counter() - close_start
+
+    expected = dict.fromkeys(result["counts"], 0)
+    expected.update(robot=robot_rows, executed=robot_rows // 2,
+                    steps=policy_rows, commands=policy_rows, events=policy_rows)
+    for serial in configs:
+        expected[f"cameras/{serial}"] = expected[f"observations/{serial}"] = policy_rows
+    p99_us = float(np.percentile(latencies, 99)) / 1000
+    print(f"Recorder throughput: calibration={calibration_seconds:.3f}s, "
+          f"robot={robot_rate}/s, executed={robot_rate // 2}/s, "
+          f"native RGB={2 * policy_rate}/s (two cameras), observations={2 * policy_rate}/s, "
+          f"steps=commands={policy_rate}/s; drops={sum(result['dropped'].values())}; "
+          f"robot call p99={p99_us:.1f}us, max={max(latencies) / 1000:.1f}us; "
+          f"close={close_seconds:.3f}s; video={result['video']}")
+    assert result["status"] == "complete", result["error"]
+    assert result["counts"] == expected
+    assert not any(result["dropped"].values()), result["dropped"]
+    assert p99_us < 500
+    assert close_seconds < 2, "writer did not keep up with the live workload"
+    assert time.perf_counter() - calibration_start < 20
+    assert result == summary_file(rec)
+    with h5py.File(rec.session_dir / "inference.h5", "r") as f:
+        for stream, count in expected.items():
+            group = f[stream]
+            assert {len(ds) for ds in group.values()} == {count}
+            for name, ds in group.items():
+                if name.endswith("_ns"):
+                    assert np.all(np.diff(ds[:]) >= 0), f"nonmonotonic {stream}/{name}"
+        np.testing.assert_array_equal(f["robot/seq"], np.arange(robot_rows))
+        np.testing.assert_array_equal(f["robot/q"][:, 0], np.arange(robot_rows))
+        for serial in configs:
+            for kind in ("cameras", "observations"):
+                np.testing.assert_array_equal(f[f"{kind}/{serial}/frame_id"], np.arange(policy_rows))
+                np.testing.assert_array_equal(f[f"{kind}/{serial}/rgb"][:, 0, 0, 0],
+                                              np.arange(policy_rows) % 256)
+            if result["videos"][serial]["status"] == "available":
+                assert result["videos"][serial]["frames"] == policy_rows

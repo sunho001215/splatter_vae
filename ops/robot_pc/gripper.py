@@ -9,7 +9,8 @@ teleop_collector/gripper.py, read-only; ported, not imported): Modbus RTU 115200
 
 Single owner (no second Modbus master): ``open_exclusive`` refuses while any other process has the port open or a
 teleop collector / switch_controller-side gripper user runs (/proc scan), takes an advisory ``flock`` on a lock file
-and opens the port with ``exclusive=True`` (TIOCEXCL: later opens by anyone else fail with EBUSY). ``read_only=True``
+and opens the port with ``exclusive=True`` (advisory flock), then explicitly applies TIOCEXCL and rechecks holders.
+Unreadable process fds are counted as unverifiable ownership. ``read_only=True``
 (dry run / validation) sends ONLY status reads: no activation, no command - the fingers cannot move.
 """
 
@@ -17,7 +18,9 @@ from __future__ import annotations
 
 import collections
 import fcntl
+import logging
 import os
+import termios
 import threading
 import time
 from dataclasses import dataclass
@@ -30,6 +33,7 @@ DEADBAND = 2
 POS_OPEN, POS_CLOSED = 3, 230
 PORT = "/dev/ttyUSB0"
 LOCK = "/tmp/s4d-robot-pc-gripper.lock"
+log = logging.getLogger(__name__)
 
 
 def crc16_modbus(data: bytes) -> bytes:
@@ -81,9 +85,10 @@ class PortBusy(RuntimeError):
     pass
 
 
-def port_holders(port: str = PORT, proc_root: str = "/proc", self_pid: int | None = None) -> list:
-    """Other processes with ``port`` open (readable fds) - a second master would corrupt the RS-485 bus."""
+def port_holders(port: str = PORT, proc_root: str = "/proc", self_pid: int | None = None) -> dict:
+    """Known holders and a separate count of fd entries/directories we cannot verify."""
     me, real, out = os.getpid() if self_pid is None else self_pid, os.path.realpath(port), []
+    unverifiable = 0
     for d in Path(proc_root).iterdir():
         if not d.name.isdigit() or int(d.name) == me:
             continue
@@ -93,22 +98,33 @@ def port_holders(port: str = PORT, proc_root: str = "/proc", self_pid: int | Non
                     if os.path.realpath(os.readlink(fd)) == real:
                         out.append(int(d.name))
                         break
+                except PermissionError:
+                    unverifiable += 1
                 except OSError:
-                    continue
+                    continue  # process/fd may have exited
+        except PermissionError:
+            unverifiable += 1
         except OSError:
             continue
-    return out
+    return {"holders": out, "unverifiable": unverifiable}
 
 
 class RobotiqRTU:
     """One serial connection, opened exclusively (single Modbus master)."""
 
     def __init__(self, port: str = PORT, *, serial_module=None, lock_path: str = LOCK, timeout: float = 0.05,
-                 check_holders=port_holders):
+                 check_holders=port_holders, ioctl=fcntl.ioctl):
         from ops.robot_pc import devices
 
         busy = devices.scan(ipc_paths=())["recorders"]
-        holders = check_holders(port)
+        def scan_holders():
+            report = check_holders(port)
+            # List-returning probes remain usable by callers/tests.
+            return report if isinstance(report, dict) else {"holders": report, "unverifiable": 0}
+
+        ownership = scan_holders()
+        holders = ownership["holders"]
+        self.unverifiable = ownership["unverifiable"]
         if busy or holders:
             raise PortBusy(f"{port}: refusing a second Modbus master (holders {holders}, recorder/teleop {busy})")
         self._lock = open(lock_path, "a")
@@ -117,13 +133,25 @@ class RobotiqRTU:
         except OSError as exc:
             self._lock.close()
             raise PortBusy(f"{port}: another s4d gripper owner holds {lock_path}") from exc
-        if serial_module is None:
-            import serial as serial_module
         try:
+            if serial_module is None:
+                import serial as serial_module
             self.ser = serial_module.Serial(port, BAUDRATE, bytesize=8, parity="N", stopbits=1, timeout=timeout,
                                             exclusive=True)
+            ioctl(self.ser.fileno(), termios.TIOCEXCL)
+            ownership = scan_holders()  # TIOCEXCL doesn't evict pre-existing opens
+            self.unverifiable = max(self.unverifiable, ownership["unverifiable"])
+            if ownership["holders"]:
+                raise PortBusy(f"{port}: holders after TIOCEXCL: {ownership['holders']}")
+            if self.unverifiable:
+                log.warning("%s: ownership unverifiable for %d /proc fd entries/directories", port,
+                            self.unverifiable)
         except Exception:
-            self._release()
+            try:
+                if hasattr(self, "ser"):
+                    self.ser.close()
+            finally:
+                self._release()
             raise
 
     def _transact(self, request: bytes, reply_len: int) -> bytes:
@@ -132,7 +160,7 @@ class RobotiqRTU:
         reply = self.ser.read(reply_len)
         if len(reply) != reply_len or reply[0] != request[0] or reply[1] != request[1] or \
                 crc16_modbus(reply[:-2]) != reply[-2:]:
-            raise IOError(f"Robotiq: bad reply ({len(reply)}/{reply_len} bytes)")
+            raise OSError(f"Robotiq: bad reply ({len(reply)}/{reply_len} bytes)")
         return reply
 
     def read_status(self) -> GripperStatus:
@@ -168,17 +196,37 @@ class GripperWorker(threading.Thread):
         self.latest: GripperStatus | None = None
         self.error: str | None = "connecting"
         self._target: int | None = None
+        self._expires_ns = 0
+        self._target_lock = threading.Lock()
         self._halt = threading.Event()
+        self.unverifiable = 0
         self._last_sent, self._last_write = None, 0.0
         self.origin = "measured: Robotiq gPO register (Modbus status read by this process)"
 
-    def set_closure(self, closure: float) -> None:
+    def set_closure(self, closure: float, expires_monotonic_ns: int) -> None:
         if self.read_only:
             raise PermissionError("gripper worker is read-only (dry run)")
-        self._target = closure_to_position(closure)
+        with self._target_lock:
+            if not self._halt.is_set():
+                self._target = closure_to_position(closure)
+                self._expires_ns = int(expires_monotonic_ns)
 
-    def stop(self) -> None:
+    def clear_target(self) -> None:
+        with self._target_lock:
+            self._target, self._expires_ns = None, 0
+
+    def healthy(self) -> bool:
+        s = self.latest
+        return bool(s is not None and 0 <= time.monotonic_ns() - s.t_ns < 100_000_000 and
+                    s.activated == 1 and s.status == 3 and s.fault == 0 and self.error is None)
+
+    def stop(self, join_timeout: float = 1.0) -> None:
         self._halt.set()
+        self.clear_target()
+        if self.ident is not None and threading.current_thread() is not self:
+            self.join(timeout=join_timeout)
+            if self.is_alive():
+                log.error("gripper worker did not exit within %.3f s", join_timeout)
 
     def run(self) -> None:
         period = 1.0 / RATE_HZ
@@ -189,21 +237,27 @@ class GripperWorker(threading.Thread):
                 try:
                     if device is None:
                         device = self.factory()
-                        self.error = None
+                        self.unverifiable = getattr(device, "unverifiable", 0)
                     s = device.read_status()
                     self.latest = s
                     self.samples.append((s.t_ns, s))
-                    if s.fault:
-                        self.error = f"gripper fault 0x{s.fault:02X}"
-                    target = self._target
-                    if not self.read_only and target is not None and s.status == 3 and (
-                            self._last_sent is None or abs(target - self._last_sent) > DEADBAND or
-                            (target != self._last_sent and t0 - self._last_write > 0.2) or t0 - self._last_write > 1.0):
-                        device.write(target, self.speed, self.force)
-                        self._last_sent, self._last_write = target, t0
-                        self.sent.append((time.monotonic_ns(), target))
+                    self.error = f"gripper fault 0x{s.fault:02X}" if s.fault else None
+                    # Serialize invalidation with the physical write: after clear_target returns no old write starts.
+                    with self._target_lock:
+                        target = self._target
+                        if time.monotonic_ns() >= self._expires_ns:
+                            self._target, target = None, None
+                        if not self._halt.is_set() and not self.read_only and target is not None and \
+                                s.activated == 1 and s.status == 3 and s.fault == 0 and (
+                                self._last_sent is None or abs(target - self._last_sent) > DEADBAND or
+                                (target != self._last_sent and t0 - self._last_write > 0.2) or
+                                t0 - self._last_write > 1.0):
+                            device.write(target, self.speed, self.force)
+                            self._last_sent, self._last_write = target, t0
+                            self.sent.append((time.monotonic_ns(), target))
                 except Exception as exc:  # noqa: BLE001 - reported; retried after 1 s (never crashes the app)
                     self.error = f"{type(exc).__name__}: {exc}"
+                    self.clear_target()  # a recovered connection needs a NEW session command
                     if isinstance(exc, PortBusy):
                         return
                     if device is not None:

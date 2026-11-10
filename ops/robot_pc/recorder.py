@@ -7,6 +7,10 @@ SIGTERM handler may call it, including while another close is waiting. Install s
 Missing depth is not padded: ``depth_frame_index`` maps each depth row to its RGB row. Native depth scales are
 stored per depth row (NaN means unspecified); the attribute is the first supplied scale. Empty observation images
 have unknown spatial dimensions until the first observation. Existing session directories are never overwritten.
+
+Native camera RGB uses lossless LZF: gzip level 1 on noisy 480x640 frames consumes the writer's CPU budget
+before two 15 Hz cameras plus MP4 encoding have sufficient headroom. Depth and policy images retain gzip 1.
+Numeric columns use 1024-row chunks and all streams are appended in batches, coalesced for at most 10 ms.
 """
 
 from __future__ import annotations
@@ -30,26 +34,46 @@ def _json(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, allow_nan=False, separators=(",", ":"))
 
 
-def _dataset(group: Any, name: str, dtype: Any, shape: tuple = (), *, image: bool = False) -> Any:
-    options = {"compression": "gzip", "compression_opts": 1} if image else {}
+def _dataset(group: Any, name: str, dtype: Any, shape: tuple = (), *, image: bool = False,
+             native_rgb: bool = False) -> Any:
+    options = {"compression": "lzf"} if native_rgb else (
+        {"compression": "gzip", "compression_opts": 1} if image else {})
     return group.create_dataset(name, shape=(0, *shape), maxshape=(None, *shape), dtype=dtype,
-                                chunks=(1, *shape) if image else True, **options)
+                                chunks=(1, *shape) if image else (1024, *shape), **options)
 
 
 def _append(group: Any, values: dict) -> None:
-    """Append measured fields together, rolling back incomplete rows on a write failure."""
-    sizes = {key: len(group[key]) for key in values}
+    """Append column batches atomically, including sparse depth columns with their own row counts."""
+    datasets = {key: group[key] for key in values}
+    columns = {}
+    # Validate and stack before resizing; never let h5py broadcast a malformed row across its fields.
+    for key, rows in values.items():
+        ds = datasets[key]
+        column = np.asarray(rows, dtype=ds.dtype)
+        if column.shape != (len(rows), *ds.shape[1:]):
+            raise ValueError(f"{ds.name}: expected batch shape {(len(rows), *ds.shape[1:])}, got {column.shape}")
+        columns[key] = column
+    sizes = {key: len(ds) for key, ds in datasets.items()}
     try:
-        for key, value in values.items():
-            ds = group[key]
-            if np.shape(value) != ds.shape[1:]:
-                raise ValueError(f"{ds.name}: expected row shape {ds.shape[1:]}, got {np.shape(value)}")
-            ds.resize(sizes[key] + 1, axis=0)
-            ds[sizes[key]] = value
+        for key, column in columns.items():
+            ds, start = datasets[key], sizes[key]
+            ds.resize(start + len(column), axis=0)
+            ds[start:start + len(column)] = column
     except BaseException:
         for key, size in sizes.items():
-            group[key].resize(size, axis=0)
+            datasets[key].resize(size, axis=0)
         raise
+
+
+def _snapshot(value: Any) -> Any:
+    """Copy reusable buffers once; scalar sequences need no deepcopy traversal or memo table."""
+    if isinstance(value, np.ndarray):
+        return np.array(value, copy=True)
+    if isinstance(value, dict):
+        return copy.deepcopy(value)
+    if isinstance(value, (tuple, list)):
+        return type(value)(_snapshot(v) if isinstance(v, (np.ndarray, dict, tuple, list)) else v for v in value)
+    return value
 
 
 def _image(value: Any, dtype: Any, shape: tuple) -> np.ndarray:
@@ -66,10 +90,12 @@ class SessionRecorder:
     drops the incoming item. A writer error also counts queued items it cannot write, then finalizes automatically.
     Timestamp columns retain input nanoseconds; commands without ``t_ns`` use the recorder's enqueue clock,
     explicitly labelled in the HDF5. All file access, compression and video conversion belongs to one thread.
+    Independent queue budgets reserve 65536 high-rate, 256 image and 8192 low-rate slots by default.
+    ``queue_size`` caps each pool independently, so an explicit small value can exercise overflow behavior.
     """
 
     def __init__(self, root: str | Path, *, meta: dict, cameras: dict[str, dict],
-                 clock: Callable[[], int] = time.monotonic_ns, queue_size: int = 2048,
+                 clock: Callable[[], int] = time.monotonic_ns, queue_size: int = 65536,
                  video: bool = True, video_fps: float = 15.0):
         if not isinstance(queue_size, int) or queue_size <= 0:
             raise ValueError("queue_size must be a positive integer")
@@ -102,7 +128,11 @@ class SessionRecorder:
         # SimpleQueue's C put is reentrant, unlike Queue's mutex. Atomic deque reservations bound its capacity
         # without a producer lock that a signal-handler close could leave held while waiting for the writer.
         self._queue: queue.SimpleQueue = queue.SimpleQueue()
-        self._slots = deque([None] * queue_size)
+        high = deque([None] * queue_size)
+        images = deque([None] * min(queue_size, 256))
+        low = deque([None] * min(queue_size, 8192))
+        self._slots = {stream: images if "/" in stream else high if stream in ("robot", "executed", "gripper")
+                       else low for stream in streams}
         self._accepting = True
         self._requests: dict = {}
         self._failure: str | None = None
@@ -119,20 +149,21 @@ class SessionRecorder:
     def _enqueue(self, stream: str, payload: Any) -> None:
         if not self._accepting:
             return
+        slots = self._slots[stream]
         try:
-            self._slots.popleft()
+            slots.popleft()
         except IndexError:
             self.dropped.update((stream,))
             return
         try:
-            snapshot = copy.deepcopy(payload)
+            snapshot = _snapshot(payload)
             if self._accepting:
                 self._queue.put((stream, snapshot))
                 return
         except BaseException:
-            self._slots.append(None)
+            slots.append(None)
             raise
-        self._slots.append(None)
+        slots.append(None)
 
     def frame(self, serial: str, frame_id: int, t_ns: int, rgb: np.ndarray, depth: np.ndarray | None,
               depth_scale_m: float | None, meta: dict | None) -> None:
@@ -204,7 +235,7 @@ class SessionRecorder:
                            calibration_json=_json(config.get("calibration")), depth_scale_m=np.nan)
             for name in ("t_ns", "frame_id"):
                 _dataset(g, name, np.int64)
-            _dataset(g, "rgb", np.uint8, (*hw, 3), image=True)
+            _dataset(g, "rgb", np.uint8, (*hw, 3), image=True, native_rgb=True)
             _dataset(g, "meta_json", string)
             if config["depth"]:
                 _dataset(g, "depth", np.uint16, hw, image=True)
@@ -214,7 +245,7 @@ class SessionRecorder:
             for name in ("t_ns", "frame_id"):
                 _dataset(obs, name, np.int64)
             obs.create_dataset("rgb", shape=(0, 0, 0, 3), maxshape=(None, None, None, 3), dtype=np.uint8,
-                               chunks=(1, 1, 1, 3), compression="gzip", compression_opts=1)
+                               chunks=(1, 128, 128, 3), compression="gzip", compression_opts=1)
         schema = {
             "robot": {"t_ns": np.int64, "seq": np.int64,
                       **{k: (np.float64, (7,)) for k in ("q", "dq", "tau_ext", "flange_pose", "ee_pose")}},
@@ -233,57 +264,84 @@ class SessionRecorder:
         f["commands/t_ns"].attrs["source"] = "cmd.t_ns when supplied; otherwise recorder enqueue clock"
         f["steps/status"].attrs["source"] = "row.code when non-null; otherwise row.status (text)"
 
-    def _write_item(self, f: Any, stream: str, item: Any) -> None:
-        """Writer-only dispatch; kept separate for fault injection and slow-writer tests."""
+    def _write_batch(self, f: Any, stream: str, items: list) -> None:
+        """Writer-only dispatch: one append per stream, preserving its enqueue order."""
         g = f[stream]
         if stream.startswith("cameras/"):
-            frame_id, t_ns, rgb, depth, scale, meta = item
-            rgb = _image(rgb, np.uint8, g["rgb"].shape[1:])
-            fields = {"t_ns": t_ns, "frame_id": frame_id, "rgb": rgb, "meta_json": _json(meta)}
-            if depth is not None:
-                if "depth" not in g:
-                    raise ValueError(f"depth supplied for RGB-only {stream}")
-                fields.update(depth=_image(depth, np.uint16, rgb.shape[:2]), depth_frame_index=len(g["rgb"]),
-                              depth_scale_m=np.nan if scale is None else scale)
-            if scale is not None and math.isnan(g.attrs["depth_scale_m"]):
-                g.attrs["depth_scale_m"] = float(scale)
+            fields = {key: [] for key in ("t_ns", "frame_id", "rgb", "meta_json")}
+            depth_fields = {key: [] for key in ("depth", "depth_frame_index", "depth_scale_m")}
+            rgb_shape, start, first_scale = g["rgb"].shape[1:], len(g["rgb"]), None
+            for offset, (frame_id, t_ns, rgb, depth, scale, meta) in enumerate(items):
+                rgb = _image(rgb, np.uint8, rgb_shape)
+                fields["t_ns"].append(t_ns)
+                fields["frame_id"].append(frame_id)
+                fields["rgb"].append(rgb)
+                fields["meta_json"].append(_json(meta))
+                if depth is not None:
+                    if "depth" not in g:
+                        raise ValueError(f"depth supplied for RGB-only {stream}")
+                    depth_fields["depth"].append(_image(depth, np.uint16, rgb.shape[:2]))
+                    depth_fields["depth_frame_index"].append(start + offset)
+                    depth_fields["depth_scale_m"].append(np.nan if scale is None else scale)
+                if scale is not None and (first_scale is None or math.isnan(first_scale)):
+                    first_scale = float(scale)
+            if depth_fields["depth"]:
+                fields.update(depth_fields)
             _append(g, fields)
-            self._write_video(stream.split("/", 1)[1], rgb)
+            self._counts[stream] += len(items)
+            if first_scale is not None and math.isnan(g.attrs["depth_scale_m"]):
+                g.attrs["depth_scale_m"] = first_scale
+            for rgb in fields["rgb"]:
+                self._write_video(stream.split("/", 1)[1], rgb)
+            return
         elif stream.startswith("observations/"):
-            frame_id, t_ns, rgb, depth = item
-            if rgb.ndim != 3 or rgb.shape[0] != rgb.shape[1] or rgb.shape[0] == 0:
-                raise ValueError("observation RGB must be a nonempty square HxWx3 image")
-            rgb = _image(rgb, np.uint8, (rgb.shape[0], rgb.shape[0], 3))
+            fields = {key: [] for key in ("t_ns", "frame_id", "rgb")}
+            depth_fields = {key: [] for key in ("depth", "depth_frame_index")}
+            start = len(g["rgb"])
+            rgb_shape = g["rgb"].shape[1:]
+            for offset, (frame_id, t_ns, rgb, depth) in enumerate(items):
+                if rgb.ndim != 3 or rgb.shape[0] != rgb.shape[1] or rgb.shape[0] == 0:
+                    raise ValueError("observation RGB must be a nonempty square HxWx3 image")
+                rgb = _image(rgb, np.uint8, (rgb.shape[0], rgb.shape[0], 3))
+                if rgb_shape[0] == 0:
+                    rgb_shape = rgb.shape
+                _image(rgb, np.uint8, rgb_shape)
+                fields["t_ns"].append(t_ns)
+                fields["frame_id"].append(frame_id)
+                fields["rgb"].append(rgb)
+                if depth is not None:
+                    depth_fields["depth"].append(_image(depth, np.float32, rgb.shape[:2]))
+                    depth_fields["depth_frame_index"].append(start + offset)
             if g["rgb"].shape[1] == 0:
                 del g["rgb"]
-                _dataset(g, "rgb", np.uint8, rgb.shape, image=True)
-            _image(rgb, np.uint8, g["rgb"].shape[1:])
-            fields = {"t_ns": t_ns, "frame_id": frame_id, "rgb": rgb}
-            if depth is not None:
-                depth = _image(depth, np.float32, rgb.shape[:2])
+                _dataset(g, "rgb", np.uint8, rgb_shape, image=True)
+            if depth_fields["depth"]:
                 if "depth" not in g:
-                    _dataset(g, "depth", np.float32, depth.shape, image=True)
+                    _dataset(g, "depth", np.float32, rgb_shape[:2], image=True)
                     _dataset(g, "depth_frame_index", np.int64)
-                fields.update(depth=depth, depth_frame_index=len(g["rgb"]))
+                fields.update(depth_fields)
             _append(g, fields)
         elif stream == "robot":
-            _append(g, dict(zip(("t_ns", "seq", "q", "dq", "tau_ext", "flange_pose", "ee_pose"), item)))
+            _append(g, dict(zip(("t_ns", "seq", "q", "dq", "tau_ext", "flange_pose", "ee_pose"), zip(*items))))
         elif stream == "gripper":
-            t_ns, register, status = item
-            _append(g, {"t_ns": t_ns, "position": register, "status_json": _json(status)})
+            times, registers, statuses = zip(*items)
+            _append(g, {"t_ns": times, "position": registers, "status_json": [_json(s) for s in statuses]})
         elif stream == "steps":
-            code = item.get("code")
-            _append(g, {"t_step_ns": item["t_step_ns"], "observation_time_ns": item["observation_time_ns"],
-                        "status": str(item["status"] if code is None else code), "json": _json(item)})
+            _append(g, {"t_step_ns": [row["t_step_ns"] for row in items],
+                        "observation_time_ns": [row["observation_time_ns"] for row in items],
+                        "status": [str(row["status"] if row.get("code") is None else row["code"]) for row in items],
+                        "json": [_json(row) for row in items]})
         elif stream == "commands":
-            _append(g, {"t_ns": item[0], "json": _json(item[1])})
+            _append(g, {"t_ns": [item[0] for item in items], "json": [_json(item[1]) for item in items]})
         elif stream == "executed":
-            t_ns, kind, pose, closure, sent, detail = item
-            _append(g, {"t_ns": t_ns, "kind": kind, "pose7": pose,
-                        "gripper_closure": np.nan if closure is None else closure, "sent": sent, "detail": detail})
+            times, kinds, poses, closures, sent, details = zip(*items)
+            _append(g, {"t_ns": times, "kind": kinds, "pose7": poses,
+                        "gripper_closure": [np.nan if c is None else c for c in closures],
+                        "sent": sent, "detail": details})
         elif stream == "events":
-            _append(g, {"t_ns": item[0], "text": item[1]})
-        self._counts[stream] += 1
+            times, texts = zip(*items)
+            _append(g, {"t_ns": times, "text": texts})
+        self._counts[stream] += len(items)
 
     def _write_video(self, serial: str, rgb: np.ndarray) -> None:
         info = self._videos[serial]
@@ -327,6 +385,7 @@ class SessionRecorder:
 
     def _run(self) -> None:
         f = None
+        pending: dict[str, list] = {}
         try:
             import h5py
 
@@ -340,12 +399,32 @@ class SessionRecorder:
                     if "close" in self._requests:
                         break
                 else:
-                    self._slots.append(None)
-                    try:
-                        self._write_item(f, stream, item)
-                    except BaseException:
-                        self.dropped.update((stream,))
-                        raise
+                    self._slots[stream].append(None)
+                    pending[stream] = [item]
+                    # Bound both work and image memory. Waiting here coalesces sparse arrivals without
+                    # slowing producers; close drains the available queue immediately instead.
+                    deadline = time.monotonic() + 0.01
+                    size, images = 1, int("/" in stream)
+                    while size < 4096 and images < 16:
+                        remaining = deadline - time.monotonic()
+                        if remaining <= 0:
+                            break
+                        try:
+                            stream, item = self._queue.get(timeout=0 if "close" in self._requests else remaining)
+                        except queue.Empty:
+                            break
+                        self._slots[stream].append(None)
+                        pending.setdefault(stream, []).append(item)
+                        size += 1
+                        images += int("/" in stream)
+                    for stream in list(pending):
+                        items = pending.pop(stream)
+                        before = self._counts[stream]
+                        try:
+                            self._write_batch(f, stream, items)
+                        except BaseException:
+                            self.dropped.update({stream: len(items) - (self._counts[stream] - before)})
+                            raise
                 if time.monotonic() - last_flush >= 1.0:
                     f.flush()
                     last_flush = time.monotonic()
@@ -353,9 +432,12 @@ class SessionRecorder:
             self._fail(exc)
         finally:
             self._accepting = False
+            for stream, items in pending.items():
+                self.dropped.update({stream: len(items)})
+            pending.clear()
             while not self._queue.empty():
                 stream, _ = self._queue.get_nowait()
-                self._slots.append(None)
+                self._slots[stream].append(None)
                 self.dropped.update((stream,))
             for writer in self._video_writers.values():
                 try:

@@ -8,7 +8,12 @@ hardware e-stop). ONE arm/start action and an immediate stop:
 * stop: Ctrl-C / ``s`` / SIGTERM / any failure (stale / frozen state, communication, controller) -> the loop stops
   streaming, sends a hold at the measured pose and requests IDLE, as the teleop collector does (docs/robot_pc.md).
 
-Setup, tests, recorded replay, dry run and the benchmark never call ``authorize_execution``. Standard library only.
+* ``authorize_hardware_test(test=..., cli_flag=True, operator_start=True)``: the controlled hardware tests of
+  scripts/robot_pc/hwtest.py (P3) that run NO policy: ``gripper`` (Robotiq open/close to fixed small targets) and
+  ``hold`` (zero-motion: the measured start pose streamed through the executor). Policy rollouts can only be
+  authorized by ``authorize_execution`` (execution eligibility is never bypassed).
+
+Setup, tests, recorded replay, dry run and the benchmark never call either function. Standard library only.
 """
 
 from __future__ import annotations
@@ -36,12 +41,16 @@ class Unbound(RuntimeError):
     """A robot-side interface that is not available (not approved, or no read-only source exists); nothing connects."""
 
 
+HARDWARE_TESTS = ("gripper", "hold")
+
+
 @dataclass(frozen=True)
 class ExecutionAuthorization:
     mode: Mode
     granted_monotonic_ns: int
     reasons: tuple = ()
     _token: object = field(default=None, repr=False, compare=False)
+    hardware_test: str | None = None  # set only by authorize_hardware_test (no policy may be executed with it)
 
     def __post_init__(self):
         if self._token is not _TOKEN or self.mode is not Mode.EXECUTE:
@@ -92,3 +101,19 @@ def authorize_execution(*, cli_execute: bool, operator_start: bool, policy_info:
         raise ExecutionRefused("execution mode NOT selected; missing: " + "; ".join(missing))
     return ExecutionAuthorization(Mode.EXECUTE, time.monotonic_ns(),
                                   ("cli --execute", "operator start", "policy execution_eligible"), _TOKEN)
+
+
+def authorize_hardware_test(*, test: str, cli_flag: bool, operator_start: bool) -> ExecutionAuthorization:
+    """A policy-free controlled hardware test (``HARDWARE_TESTS``): the test's explicit CLI selection + the operator's
+    start key. The returned authorization names the test; policy execution checks ``hardware_test is None``."""
+    missing = []
+    if test not in HARDWARE_TESTS:
+        missing.append(f"a known hardware test (got {test!r}; known {HARDWARE_TESTS})")
+    if cli_flag is not True:
+        missing.append("the test's explicit command line selection")
+    if operator_start is not True:
+        missing.append("the operator's start key")
+    if missing:
+        raise ExecutionRefused("hardware test NOT authorized; missing: " + "; ".join(missing))
+    return ExecutionAuthorization(Mode.EXECUTE, time.monotonic_ns(), (f"hardware test {test}", "operator start"),
+                                  _TOKEN, hardware_test=test)

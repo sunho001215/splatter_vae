@@ -202,26 +202,47 @@ the live joints (2e-15 m, 2e-13 deg); `state_blockers` empty (`realworld-ops/ser
   health rules gate bindings and the executor.
 * **Gripper (measured + command, no second Modbus master)**: `ops/robot_pc/gripper.py` ports the collector's Robotiq
   RTU protocol and 50 Hz worker into OUR process, which becomes the single master only while the collector is NOT
-  running: it refuses when any other process holds the port or a teleop collector runs, takes an exclusive `flock` and
-  opens the port with `exclusive=True` (TIOCEXCL: any later open, e.g. a collector started meanwhile, fails). Dry run /
+  running: it refuses known port holders or a teleop collector, takes the lock-file `flock`, opens with pyserial
+  `exclusive=True` (an advisory flock), explicitly applies `ioctl(TIOCEXCL)`, then rechecks existing holders and closes
+  if any are found. Unreadable `/proc/<pid>/fd` entries/directories are counted as `unverifiable` and exposed in
+  status/logs; that count alone does not refuse ownership. TIOCEXCL blocks later unprivileged opens; privileged
+  processes can bypass it, and inaccessible root fds prevent proving exclusive ownership. Dry run /
   validation = status reads ONLY (no activation, no command: fingers cannot move); execution additionally sends the
   closure command (deadband / keepalive as the collector) and NEVER activates (an unactivated gripper is reported and
-  commands are withheld - activation stays the operator's / collector's action). Measured samples (gPO with host time)
+  commands are withheld - activation stays the operator's / collector's action). Targets carry the accepted command's
+  monotonic expiry; expired/cleared targets cannot be written or replayed on reconnect, including keepalives. Faults
+  inhibit writes. Execution preflight requires activated gSTA=3, fault=0, no communication error and a status <100 ms
+  old; it waits up to 1 s for readiness (initial idle-bus fault 0x09 can clear). Execution stops on a fault/inactive
+  status or no fresh status for 200 ms; dry run logs/records health only. Measured samples (gPO with host time)
   feed the binding; commands are recorded separately and can never be read back as state (`gripper_origin` guard).
   Blocker found: `/dev/ttyUSB0` is root:dialout 0660 and the robot-PC user is not in `dialout` (the collector reaches it
   from docker): user decision (group membership, or a container with `--device`).
 * **Commander**: `ops/robot_pc/controller.py` binds the two PUBs exactly as the collector (so the collector and this
-  launcher can never command at the same time: the second bind fails), waits for SC's subscribers, requests mode 3,
-  settles 0.5 s, streams RobotAction setpoints from the executor (500 Hz), final hold at the measured pose and IDLE on
-  stop, like the collector.
+  launcher can never command at the same time: the second bind fails), waits for SC's subscriber TCP connections
+  (monitor ACCEPTED), and repeats mode 3 requests every ~100 ms during the 0.5 s settle (send count logged). This
+  recovers requests dropped during subscription propagation; TCP connection and PUB send do not prove subscription
+  readiness or mode acceptance. RobotState has **no mode field**: the operator confirms acceptance on the controller
+  UI. The executor's existing leash/rate-conflict latch detects non-following. Either subscriber DISCONNECTED event
+  latches a session stop, even if reconnected before the next tick. Release sends one hold at the measured ee pose as
+  received only with a finite sample <50 ms old, waits at least target_dt=50 ms and at most 1 s for fresh |dq|<0.02,
+  then requests IDLE + 50 ms sleep whenever a mode was requested. Hold/wait failures cannot skip IDLE; close always runs.
 * **Safety** (simplified, directive item 4): one arm/start action (`--execute`, then ENTER) and an immediate stop
   (Ctrl-C, `s`, SIGTERM, or any failure); the hardware e-stop stays the operator's. Kept: the collector's rate / lead
   limits, task workspace boxes, stale / frozen / invalid state stop, expired action -> nothing sent (SC holds),
-  communication failure -> stop, controller-compatibility checks (state live, subscribers connected, mode 3), and
-  execution only for policies the catalog marks `execution_eligible`.
-* **Acquisition**: RealSense RGB (+ native depth aligned to RGB only when the policy needs it); never IR.
+  communication failure -> stop, controller-compatibility checks (state live, subscribers connected; mode acceptance
+  confirmed on the UI), and execution only for policies the catalog marks `execution_eligible`. One cancellation
+  event covers startup and streaming, checked before engagement, after ENTER, after subscriber wait, after engage,
+  and before streaming; release is registered immediately on link construction. The idempotent stop path runs on a
+  separate shutdown thread: stop/join the executor (timeout logged), clear gripper target and stop/join its worker,
+  then controller release. Only afterwards close recorder, client, cameras and state reader. Release does not depend
+  on an outstanding policy call or recorder/disk progress. Worker exceptions latch a stop; main-loop exceptions stop
+  then propagate. Consecutive failures count steps without an accepted command, including validation rejection.
+* **Acquisition**: RealSense RGB (+ native depth aligned to RGB only when the policy needs it); never IR. LiveSession
+  and the launcher refuse policies needing multiple cameras: live multiview sync sets are not implemented.
 * **Recording**: `inference_outputs/inference_YYYYMMDD_HHMMSS/{inference.h5, camera_<serial>.mp4, summary.json}`
-  (`ops/robot_pc/recorder.py`), non-blocking writer thread, `.partial` + rename on finalize.
+  (`ops/robot_pc/recorder.py`), non-blocking writer thread, `.partial` + rename on finalize. Executed rows mark
+  `sent=True` only when the execution sink returns successfully; detail distinguishes the arm send from gripper
+  target queueing and includes either component's error. Gripper queueing does not attest a serial write.
 
 ## Live robot state and measured gripper: UNRESOLVED interfaces
 
