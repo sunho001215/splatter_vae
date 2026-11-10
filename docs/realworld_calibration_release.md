@@ -103,14 +103,21 @@ part only (scale is common-mode thermal), it computes:
 - the step of each period's median versus the base period, i.e. the period that dominates the shared solve. The step
   needs a permutation test p < 0.001, a size >= 0.10 px, and estimator A in agreement.
 
-`split-periods` refuses to write anything when any of these holds:
+`split-periods` always refuses a step camera when:
 
-- within-period movement;
-- an inconclusive step;
-- a camera-specific scale flag;
-- a step above `MAX_PERIOD_ROT_DEG` = 0.035 deg (1/10 of the tolerance).
+- its step lacks the recorded evidence (D >= 0.10 px, p < 0.001, estimator A agreeing);
+- its omega does not reproduce;
+- its step is above `MAX_PERIOD_ROT_DEG` = 0.035 deg (1/10 of the tolerance);
+- it has a camera-specific scale flag.
 
-Each of these cases goes to the user. Otherwise every period document is the published document with these changes:
+It also refuses on the open problems of the pre-registered rule, unless the user's decision is passed as
+`--user-override` (recorded with the problems in every period document):
+
+- within-period movement of any camera;
+- an inconclusive step or an unresolved scale flag of any camera;
+- a missing decision table, or one that does not allow the split (`split_periods`, `period_pose_cameras`).
+
+Otherwise every period document is the published document with these changes:
 
 - only its period's episodes (`episodes`, G5b `fixedness_evidence`, `pool_frames`);
 - a `period` block (base document name and sha256, evidence with sha256, decision);
@@ -124,9 +131,13 @@ before splitting. The format is still `s4d.realworld.rig_calibration/1`, so the 
 - Rig mode rejects every episode of another period, because the document has no G5b evidence for it.
 - Phase B selects each episode's period document in its calibrate config.
 - `calib.release plan --rig <task>=<period A> --rig <task>=<period B>` checks the following and fails closed:
-  - the documents derive from one published document;
-  - their periods partition the task's valid episodes;
-  - each episode's calibrate record was built with its own period's document.
+  - the documents come from ONE split-periods run of one published document (identical `period` blocks with a source
+    name and sha256);
+  - every period pose re-verifies, and every other camera carries the base pose;
+  - each document's episodes and G5b evidence equal its period;
+  - the periods partition exactly the task's valid recordings;
+  - each recording is matched by its own episode id (`<task>-<index>`); its calibrate outputs must be that
+    episode's, and its calibrate record must have been built with its period's document.
 - The records name the period (`metrics.period`).
 
 ## 4. Per-camera depth scale (single source of truth = the accepted calibration record)
