@@ -97,10 +97,14 @@ cd /home/ws/ws/splatter4d/.worktrees/rwdeploy3   # or the merged main checkout
 #   -> /home/ws/ws/realworld-ops/serving/rob-bench/<label>-<YYYYmmdd-HHMMSS>/{summary.json,table.md,<policy>.json}
 ```
 
-Direct route for later (needs a robot-PC credential for irsl@143.248.142.98, a user decision; TCP connect robot PC
--> 143.248.142.98:22 measured 1.45 ms by the coordinator): on robotpc
-`ssh -N -L 127.0.0.1:47100:<shkim_rw container IP>:47100 irsl@143.248.142.98` (container IP from
-`docker inspect -f '{{.NetworkSettings.IPAddress}}' shkim_rw` on the 5090; 172.17.0.2 so far), then the same commands.
+**Direct route (live since 2026-11-10 14:50; the LOCAL relay is removed).** A dedicated robot-PC key
+(`secrets/ssh_5090_ed25519`, 0600) whose 5090 authorized_keys entry is
+`restrict,port-forwarding,permitopen="172.17.0.2:47100",command="/bin/echo tunnel-only"` (set up by the coordinator;
+pinned host keys `secrets/known_hosts_5090`). `scripts/robot_pc/tunnel.py start|stop|status` manages exactly the
+verified command (`ops/robot_pc/tunnel.py`): status = pid alive + listener + WELCOME; start refuses if the key / host
+keys are missing, the key is not 0600, 127.0.0.1:47100 is already bound or a tunnel pid is live, and stops ssh again
+if the listener / WELCOME does not come up; stop signals only the pid from `logs/tunnel-direct-<port>.pid` after
+checking its command line (never `pkill -f`). If the shkim_rw IP changes, the permitopen entry must be updated first.
 
 ## Modules
 
@@ -115,9 +119,11 @@ Direct route for later (needs a robot-PC credential for irsl@143.248.142.98, a u
 | `ops/robot_pc/selection.py` | WELCOME -> policy, cameras, HELLO choices (rig document, native depth correction) |
 | `ops/robot_pc/loop.py`, `replay.py`, `dryrun.py` | one step (bind -> server -> validate -> sink) + latency summary; drivers |
 | `ops/robot_pc/config.py`, `cli.py` | `configs/robot_pc/robot_pc.yaml` reader; entry-point plumbing |
+| `ops/robot_pc/switch_controller.py` | the robot PC's controller interface: frames, RobotAction format, approval-gated read-only RobotState reader + the collector's state-health rules |
+| `ops/robot_pc/tunnel.py` | the direct robot PC -> 5090 `ssh -N -L` (start / stop / status by pid file) |
 | `s4d/rwlearn/deploy/m5_live.py` | live M5: `SurfaceMotion`, `StateTimeline`, `LiveSets`, `LiveM5`, `export_surface` |
 
-## What is inferred from the recordings (READ-ONLY evidence; the robot PC's code was never seen)
+## Evidence: recordings and the robot PC's code (READ-ONLY)
 
 All from `/home/ws/data/real_world/{drawer-open,mug-hanging}/episode_*.h5` attrs / datasets (200 episodes, identical
 configs: software 2.0.0, host irsl-MS-7C79) and `s4d/realworld/adapters/panda_teleop.py`:
@@ -169,6 +175,27 @@ up to input rounding), and `LiveStateReader` (read-only SUB, `approved=True` req
 cannot detect a frozen publisher). Not connected in this directive. `LiveSink` formats executor setpoints as these
 RobotActions for a caller-supplied publisher, but is refused (`EXECUTION_PERMITTED = False`) and no publisher exists.
 
+## Live robot state and measured gripper: UNRESOLVED interfaces
+
+**Robot state (switch_controller RobotState).** Known from the code (read-only): PUB bound by switch_controller on
+`tcp://*:28400` (~1 kHz), robot_msg protocol 2 (`robot-msg-irsl==0.4.0`), consumers connect a CONFLATE SUB; fields
+sequence, q, dq, tau_ext, base_wrench_ext, joint_frames, ee_frames (switch_controller ee = flange rotated -90 deg about
+z), metadata.send_time (unix serialization time, not a measurement age). `switch_controller.LiveStateReader` implements
+that reader (never binds, never publishes; drops non-increasing sequences; refuses bindings when the state is older than
+50 ms, invalid, or frozen > 0.25 s - the collector's rules) and is constructed only with `approved=True`.
+**Not verified** (needs a RUNNING switch_controller and explicit user approval, never done here): that a SUB connection
+cannot alter the controller in practice (ZeroMQ SUB->PUB carries only subscription frames, per the protocol), the real
+message rate and receive latency, the frozen-state behaviour after STOP, the decode of a real frame, and coexistence
+with the collector's own SUB (per-peer HWM 1). The dry run refuses `--state live` before anything connects.
+
+**Measured gripper state.** No read-only source exists today: the Robotiq 2F-85 is driven AND read over Modbus RTU on
+`/dev/ttyUSB0` by the teleop collector's gripper thread, and nothing publishes the register; a second reader would
+have to send Modbus requests to the gripper (not allowed). The policy's gripper input must be the MEASURED register
+(training proprio = `gripper/position`), never the commanded closure (`action/gripper`): every `BoundState` carries a
+`gripper_origin`, `robot_state.require_measured_gripper` refuses anything that is not "measured ..." (the labelled
+static latency-only state is the one explicit exception) and `PolicyLoop` applies it before every request
+(`test_policy_gripper_input_is_the_measured_register_never_the_command`).
+
 ## Control path design (no actuation)
 
 1. **Binding** (training rule, checked by the client and the server): pose = latest robot sample at or before the
@@ -212,23 +239,33 @@ test covers both cases against the authoritative functions). The early-finality 
 interpolation uses nanosecond times (the adapter used the recorder's float seconds): bitwise on both episodes, not
 guaranteed bitwise in general (relative weight differences ~1e-9). Through the client path on the real multi-view
 3D-MVP checkpoint (local CPU server): 179/179 sets, displacements == store (max diff 0.0)
-(`evidence/rob-mv-local-replay-m5-20261110.json`). Evidence: `realworld-ops/serving/evidence/
+(`evidence/rob-mv-local-replay-m5-20261110.json`).
+
+Negative cases (`scripts/robot_pc/m5_asset.py negative`, evidence `evidence/m5-live-negative-20261110.json`): the two
+release episodes perturbed IN MEMORY (files untouched) - fast joint motion (143 / 203 sets rejected > 5 mm), a camera
+shifted by 0.45 / 0.55 periods, every 5th frame of a camera dropped (36 / 42 non-mutual incomplete sets), a 0.5 s robot
+state gap (8 sets without valid state), the state stream ending at 70 % (53 / 62) or starting at 20 % (36 / 41), joints
+frozen for 1 s, NaN joints (3): helper frames, inf pattern and 5 mm decisions == the training rule in every case
+(finite |diff| 0.0 m); a repeated state time is refused. Frozen state is decision-equal by design (the M5 rule has no
+freshness notion): stale / frozen state is refused by the state reader and the executor, not by M5.
+**Validated**: the M5 rule (sets, states, displacement, decisions) on 2 release episodes + these perturbations.
+**Not validated**: live 3-camera arrival on the robot PC (no multi-view policy is deployable), more release episodes. Evidence: `realworld-ops/serving/evidence/
 m5-live-validation-20261110.json`.
 
 ## Latency
 
 Numbers, routes and GPU snapshots: `realworld-ops/serving/ROB-BENCH.md` (+ `rob-bench/<label>-<time>/`,
-`rob-dryrun/`). Measured 2026-11-10 ON the robot PC through the relay route (robot PC -> reverse forward over the
-robotpc ssh master -> LOCAL -> irsl ssh master -> shkim_rw), GPU CONTENDED (another user's training at 97 %):
-* live camera dry run (real D435i, static latency-only state): 15.0 Hz sustained, preprocessing -> action p50 40-47 ms,
-  capture -> validated command p50 105-109 ms of which ~63-66 ms is the camera's own device-stamp -> host latency
-  (recordings: 65 ms), transport 7.2 ms, server 31-38 ms (contended); every capture -> command exceeds 66.7 ms by
-  construction of the camera path;
-* recorded replay at 15 Hz (one per condition x task): preprocessing -> action p50 40-79 ms; DynaMo / SinCro exceed
-  66.7 ms under contention (server 56-70 ms); PING robot PC -> server 1.6 ms (LOCAL -> server 0.8 ms).
+`rob-dryrun*/`). All measured ON the robot PC (robot-PC monotonic clock), dry run / replay only.
 
-**Not yet measured**: the UNCONTENDED repeat (one command: `scripts/robot_pc/route_bench.py --label uncontended`),
-the direct robot PC -> 5090 route (needs a robot-PC credential for the 5090: user decision), live multi-view / RGB-D
-(no deployable multi-view or 3D-MVP policy; native rs.align cost on the robot PC therefore unmeasured), live
-robot-state age (no read-only gripper source), setup.sh run as one script on the robot PC (its steps were run
-individually; the single-script remote execution was refused by the permission policy).
+* UNCONTENDED, direct route (GPU-9bcf38b6 idle, no foreign process before/after), 2026-11-10 14:39-14:45:
+  * live camera dry run: 15.0 Hz; preprocessing -> action p50 / p95 / p99 10.3 / 11.6 / 12.0 ms (reviwo) and 8.8 / 9.9 /
+    10.4 ms (e2e_cnn), 0 misses of 66.7 ms; capture -> validated command 72.0 / 73.2 / 73.8 and 73.8 / 74.8 / 75.9 ms:
+    ALL miss 66.7 ms because the camera's own device-stamp -> host latency is 62.7-66.0 ms (recordings: 65 ms);
+  * recorded replay (6 policies): preprocessing -> action p50 8.5-10.7 ms, p99 <= 22.7 ms, 0 misses; max rate 77-93 Hz;
+    transport 5.6-6.2 ms per 50 KB request (PING 0.7 ms); server 1.5-3.9 ms.
+* CONTENDED (another user's training at 97 %), relay route (earlier): preprocessing -> action p50 40-79 ms, server
+  31-76 ms, DynaMo / SinCro over 66.7 ms; transport 7.3 ms.
+
+**Not yet measured**: live multi-view / RGB-D (no deployable multi-view or 3D-MVP policy; native rs.align cost on the
+robot PC unmeasured), live robot-state age (live state refused), setup.sh executed as one script on the robot PC
+(its steps were run individually; the single-script remote execution was refused by the permission policy).

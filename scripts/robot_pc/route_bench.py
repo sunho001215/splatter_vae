@@ -29,8 +29,10 @@ sys.dont_write_bytecode = True
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
 
-ROUTE = ("robotpc 127.0.0.1:47100 -> reverse forward over the robotpc ssh master -> LOCAL 127.0.0.1:47100 -> irsl ssh "
-         "master -> shkim_rw:47100 (RTX 5090 GPU-9bcf38b6)")
+ROUTE = ("direct robotpc->5090 ssh -L: robotpc 127.0.0.1:47100 -> ssh (dedicated restricted key) irsl@143.248.142.98 "
+         "-> shkim_rw 172.17.0.2:47100 (RTX 5090 GPU-9bcf38b6)")
+RELAY_ROUTE = ("relay: robotpc 127.0.0.1:47100 -> reverse forward over the robotpc ssh master -> LOCAL 127.0.0.1:47100 "
+               "-> irsl ssh master -> shkim_rw:47100 (RTX 5090 GPU-9bcf38b6)")  # used until 2026-11-10 14:50
 GPU = "GPU-9bcf38b6-8240-e910-6548-ca715643dc11"
 ROBOT_ROOT = "/home/irsl/workspace/s4d-robot-pc"
 DATA = "/home/irsl/workspace/panda-teleop/teleop_collector/data"
@@ -120,6 +122,7 @@ def main(argv=None) -> int:
     ap.add_argument("--warmup", type=int, default=10)
     ap.add_argument("--pings", type=int, default=30)
     ap.add_argument("--out-dir", type=Path, default=None)
+    ap.add_argument("--route", default=ROUTE, help="route label (default: the direct robotpc->5090 ssh -L)")
     args = ap.parse_args(argv)
     out = args.out_dir or Path("/home/ws/ws/realworld-ops/serving/rob-bench") / \
         f"{args.label}-{time.strftime('%Y%m%d-%H%M%S')}"
@@ -132,7 +135,7 @@ def main(argv=None) -> int:
 
     welcome = cli.welcome(C.load(root=REPO), argparse.Namespace(host=None, port=None))
     policies = args.policies.split(",") if args.policies else default_policies(welcome["policies"])
-    summary = {"label": args.label, "route": ROUTE, "robot_commands_sent": 0, "policies": policies,
+    summary = {"label": args.label, "route": args.route, "robot_commands_sent": 0, "policies": policies,
                "gpu_before": gpu_snapshot(), "runs": {}}
     first = welcome["policies"][policies[0]]["info"]
     summary["local_ping_ms"] = local_pings(policies[0], first["task"], args.pings)
@@ -141,7 +144,7 @@ def main(argv=None) -> int:
         task = (welcome["policies"][pid].get("info") or {}).get("task")
         cmd = (f"cd {ROBOT_ROOT} && nice -n 10 venv/bin/python -I src/scripts/robot_pc/bench.py "
                f"--episode {shlex.quote(EPISODES[task])} --policy {shlex.quote(pid)} --task {shlex.quote(task)} "
-               f"--steps {args.steps} --warmup {args.warmup} --pings {args.pings} --route {shlex.quote(ROUTE)}")
+               f"--steps {args.steps} --warmup {args.warmup} --pings {args.pings} --route {shlex.quote(args.route)}")
         t0 = time.time()
         try:
             text = ssh("robotpc", cmd, 1800)
@@ -154,7 +157,7 @@ def main(argv=None) -> int:
     summary["gpu_after"] = gpu_snapshot()
     if args.label == "uncontended" and (summary["gpu_before"]["foreign_processes"] or
                                         summary["gpu_after"]["foreign_processes"]):
-        summary["label_check"] = "WARNING: foreign GPU processes present: these results are CONTENDED"
+        summary["label_check"] = "INVALID as uncontended: foreign GPU processes present (repeat later)"
     (out / "summary.json").write_text(json.dumps(summary, indent=1) + "\n")
     (out / "table.md").write_text(table(summary) + "\n")
     print(out)

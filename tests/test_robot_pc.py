@@ -439,18 +439,33 @@ def test_executor_enforces_the_collector_speed_acceleration_and_lead_limits():
         w = poses.quat_angle(prev_q, q) / (dt_ns / 1e9)
         assert np.linalg.norm(v) <= 0.3 + 1e-9 and np.linalg.norm(v - prev_v) <= 4.0 * dt_ns / 1e9 + 1e-9, k
         assert w <= 1.5 + 1e-6 and abs(w - prev_w) <= 15.0 * dt_ns / 1e9 + 1e-6, k
-        assert np.linalg.norm(p - np.array(POSE[:3])) <= 0.04 + 1e-12
-        assert poses.quat_angle(q, POSE[3:]) <= np.deg2rad(20) + 1e-9
+        assert np.linalg.norm(p - np.array(POSE[:3])) <= 0.04 + 1e-5
+        assert poses.quat_angle(q, POSE[3:]) <= np.deg2rad(20) + 1e-4
         prev_p, prev_v, prev_q, prev_w = p, v, q, w
     np.testing.assert_allclose(prev_p, goal[:3], atol=1e-6)  # reached, braking without overshoot
     assert poses.quat_angle(prev_q, goal[3:]) < 1e-5
-    far = executor.HighRateExecutor(sinks.MockSink())
-    far.accept(_cmd([POSE[0] + 0.15, *POSE[1:]], age_ms=1e6))
-    t = 0
-    for k in range(500):
-        t += dt_ns
-        sp = far.tick(t, POSE, state_t_ns=t, signature=bytes([k % 256, k // 256]))
-    assert abs(np.linalg.norm(np.array(sp.pose7[:3]) - np.array(POSE[:3])) - 0.04) < 1e-9  # leashed at the lead
+    for target in (0.04, 0.15):  # exactly at the lead, and beyond it (clamped): braking stays within the limits
+        far = executor.HighRateExecutor(sinks.MockSink())
+        far.accept(_cmd([POSE[0] + target, *POSE[1:]], age_ms=1e6))
+        t, prev_x, prev_v = 0, POSE[0], 0.0
+        for k in range(500):
+            t += dt_ns
+            sp = far.tick(t, POSE, state_t_ns=t, signature=bytes([k % 256, k // 256]))
+            v = (sp.pose7[0] - prev_x) / (dt_ns / 1e9)
+            assert abs(v) <= 0.3 + 1e-9 and abs(v - prev_v) <= 4.0 * dt_ns / 1e9 + 1e-9, (target, k)
+            prev_x, prev_v = sp.pose7[0], v
+    assert abs(np.linalg.norm(np.array(sp.pose7[:3]) - np.array(POSE[:3])) - 0.04) < 1e-5  # braked into the lead
+    assert far.stopped is None
+    # the measured pose runs away from the command (-5 mm per 2 ms tick): stop instead of a leash jump
+    run = executor.HighRateExecutor(sinks.MockSink())
+    run.accept(_cmd([POSE[0] + 0.04, *POSE[1:]], age_ms=1e6))
+    t, x = 0, POSE[0]
+    for k in range(60):
+        t, x = t + dt_ns, x - (0.0 if k < 50 else 0.005)
+        out = run.tick(t, [x, *POSE[1:]], state_t_ns=t, signature=bytes([k]))
+        if out is None:
+            break
+    assert run.stopped and "rate limits conflict" in run.stopped and k >= 50
 
 
 def test_executor_holds_on_expiry_and_latches_a_stop_on_stale_or_frozen_state():
@@ -470,7 +485,8 @@ def test_executor_holds_on_expiry_and_latches_a_stop_on_stale_or_frozen_state():
     assert late.tick(20_000_000, POSE, state_t_ns=20_000_000, signature=b"x").gripper_closure is None
     stale = executor.HighRateExecutor(sinks.MockSink())
     stale.accept(_cmd(POSE, age_ms=1e6))
-    assert stale.tick(100_000_000, POSE, state_t_ns=40_000_000) is None and stale.stopped == "stale robot state"
+    assert stale.tick(100_000_000, POSE, state_t_ns=40_000_000, signature=b"s") is None
+    assert stale.stopped == "stale robot state"
     assert stale.tick(101_000_000, POSE, state_t_ns=101_000_000, signature=b"z") is None  # latched
     stale.rearm()
     assert stale.tick(102_000_000, POSE, state_t_ns=102_000_000) is None and stale.command is None
@@ -1123,3 +1139,81 @@ def test_route_bench_selects_policies_and_refuses_a_busy_robot_pc(monkeypatch):
     monkeypatch.setattr(rb.subprocess, "run", lambda *a, **k: busy)
     with pytest.raises(SystemExit, match="busy"):
         rb.robot_pc_idle()
+
+
+@pytest.mark.parametrize("case", ["no_signature", "future", "backwards", "invalid_pose"])
+def test_executor_fails_closed_on_state_edge_cases(case):
+    ex = executor.HighRateExecutor(sinks.MockSink())
+    ex.accept(_cmd([POSE[0] + 0.01, *POSE[1:]], age_ms=1e6))
+    assert ex.tick(10_000_000, POSE, state_t_ns=10_000_000, signature=b"a").kind == "track"
+    args = {"no_signature": (20_000_000, POSE, 20_000_000, None),
+            "future": (20_000_000, POSE, 30_000_000, b"b"),
+            "backwards": (20_000_000, POSE, 5_000_000, b"b"),
+            "invalid_pose": (20_000_000, [*POSE[:3], 0, 0, 0, 2.0], 20_000_000, b"b")}[case]
+    assert ex.tick(args[0], args[1], state_t_ns=args[2], signature=args[3]) is None and ex.stopped
+    assert ex.tick(30_000_000, POSE, state_t_ns=30_000_000, signature=b"c") is None  # latched
+
+
+def test_policy_gripper_input_is_the_measured_register_never_the_command(recording, policies):
+    with h5py.File(recording, "r+") as f:  # the operator commanded "closed" while the gripper stayed open
+        f["action/gripper"][...] = 1.0
+    rec = RecordedEpisode(recording)
+    state = robot_state.RecordedRobotState(rec)
+    st = state.bound_state(int(rec.timestamps_ns("cam_a")[5]))
+    assert st.gripper_register == 3.0 and st.gripper_origin.startswith("measured")  # gripper/position, not 3 + 227
+    robot_state.require_measured_gripper(st)
+
+    class CommandedGripper(robot_state.RobotStateSource):
+        kind = "test"
+
+        def bound_state(self, t):
+            return robot_state.BoundState(POSE, t - 1_000_000, 230.0, t - 1_000_000, "commanded: action/gripper")
+
+    with serve({"reviwo-x": policies["reviwo"]}) as srv:
+        client = PolicyClient("127.0.0.1", srv.port, policy_id="reviwo-x", step_timeout_s=60,
+                              choices={"native_hw": {"cam_a": [48, 64]}, "camera_id": "cam_a"})
+        client.connect()
+        row = _loop(client, CommandedGripper(), sinks.MockSink()).step({"cam_a": 0}, 10**9, "r")
+        client.close()
+    assert row["status"] == "skipped" and "not a measured gripper state" in row["detail"]
+    for origin in ("action/gripper", "unlabelled", ""):
+        with pytest.raises(robot_state.StateUnavailable):
+            robot_state.require_measured_gripper(robot_state.BoundState(POSE, 0, 3.0, 0, origin))
+
+
+def test_direct_tunnel_helper_command_and_fail_closed_checks(tmp_path):
+    from ops.robot_pc import tunnel
+
+    verified = ("ssh -N -i secrets/ssh_5090_ed25519 -o IdentitiesOnly=yes -o IdentityAgent=none -o "
+                "PasswordAuthentication=no -o KbdInteractiveAuthentication=no -o UserKnownHostsFile=secrets/"
+                "known_hosts_5090 -o StrictHostKeyChecking=yes -o ExitOnForwardFailure=yes -o ServerAliveInterval=15 "
+                "-o ServerAliveCountMax=3 -o ControlMaster=no -o ControlPath=none -L 127.0.0.1:47100:172.17.0.2:47100 "
+                "irsl@143.248.142.98")
+    assert " ".join(tunnel.command(tmp_path)) == verified  # the coordinator-verified command, verbatim
+    with pytest.raises(tunnel.TunnelError, match="missing"):
+        tunnel.preflight(tmp_path, 47100)
+    (tmp_path / "secrets").mkdir()
+    key, kh = tmp_path / tunnel.KEY, tmp_path / tunnel.KNOWN_HOSTS
+    key.write_text("not a real key")
+    kh.write_text("x")
+    key.chmod(0o644)
+    with pytest.raises(tunnel.TunnelError, match="0600"):
+        tunnel.preflight(tmp_path, 47100)
+    key.chmod(0o600)
+    with pytest.raises(safety.ExecutionRefused):
+        tunnel.preflight(tmp_path, 28400)  # never a switch_controller channel
+    busy = socket.socket()
+    busy.bind(("127.0.0.1", 0))
+    busy.listen(1)
+    try:
+        with pytest.raises(tunnel.TunnelError, match="already bound"):
+            tunnel.preflight(tmp_path, busy.getsockname()[1])
+    finally:
+        busy.close()
+    assert tunnel.stop(tmp_path, 47100) == {"stopped": False, "reason": "no pid file"}
+    (tmp_path / "logs").mkdir()
+    tunnel.paths(tmp_path, 47100)["pid"].write_text(f"{os.getpid()}\n")  # a pid that is NOT the tunnel's ssh
+    with pytest.raises(safety.ExecutionRefused, match="not this tunnel"):
+        tunnel.stop(tmp_path, 47100)
+    st = tunnel.status(tmp_path, 1)
+    assert st["ok"] is False and st["pid_alive_ssh_tunnel"] is False

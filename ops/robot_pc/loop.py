@@ -14,7 +14,7 @@ import time
 
 import numpy as np
 
-from ops.robot_pc.robot_state import StateUnavailable
+from ops.robot_pc.robot_state import StateUnavailable, require_measured_gripper
 from ops.robot_pc.validation import ActionRejected, BoundRequest, validate_action
 
 BUDGET_MS = 1000.0 / 15.0  # one policy step at the trained 15 Hz
@@ -36,9 +36,11 @@ class PolicyLoop:
                "t_step_ns": time.monotonic_ns(), "state_source": self.state.kind, "sent_to_robot": False}
         try:
             st = self.state.bound_state(observation_time_ns)
+            require_measured_gripper(st)
         except StateUnavailable as exc:
             self.counts["no_state"] += 1
             return {**row, "status": "skipped", "code": "no_state", "detail": str(exc)}
+        row["gripper_origin"] = st.gripper_origin
         req = BoundRequest(reference_id, dict(end_ids), int(observation_time_ns), st.pose7, st.pose_time_ns,
                            st.gripper_register, st.gripper_time_ns)
         try:

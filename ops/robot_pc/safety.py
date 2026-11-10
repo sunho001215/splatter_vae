@@ -68,8 +68,9 @@ def safe_output(path) -> "Path":
     from pathlib import Path
 
     p = Path(path).expanduser()
-    absolute = Path(os.path.abspath(p))
-    if str(absolute).startswith(DEVICE_PREFIXES) or p.is_symlink() or (p.exists() and not p.is_file()):
+    absolute, resolved = os.path.abspath(p), os.path.realpath(p)  # realpath: parent symlinks too
+    if absolute.startswith(DEVICE_PREFIXES) or resolved.startswith(DEVICE_PREFIXES) or p.is_symlink() or \
+            (p.exists() and not p.is_file()):
         raise ExecutionRefused(f"refusing to write {path}: not a regular file outside /dev, /proc, /sys")
     return p
 

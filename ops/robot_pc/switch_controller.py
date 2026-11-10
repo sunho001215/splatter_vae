@@ -196,7 +196,8 @@ class LiveStateReader(RobotStateSource):
             raise StateUnavailable("gripper register: no read-only source (the teleop collector owns the Robotiq "
                                    "serial port and publishes no gripper state)")
         g = self.gripper.at_or_before(t_obs_ns)
-        return BoundState(tuple(rows[-1]["flange_pose7"].tolist()), rows[-1]["t_ns"], g[1], g[0])
+        return BoundState(tuple(rows[-1]["flange_pose7"].tolist()), rows[-1]["t_ns"], g[1], g[0],
+                          str(getattr(self.gripper, "origin", "unlabelled")))
 
     def rows(self, after_ns: int, up_to_ns: int) -> tuple[list, list]:
         robot = [(s["t_ns"], s["q"]) for s in list(self.samples) if after_ns < s["t_ns"] <= up_to_ns]

@@ -33,6 +33,20 @@ class BoundState:
     pose_time_ns: int
     gripper_register: float
     gripper_time_ns: int
+    gripper_origin: str  # where the register came from: "measured: ..." or "static latency-only ..."; never a command
+
+
+MEASURED_GRIPPER = "measured: Robotiq position register (gripper/position semantics)"
+COMMANDED_PREFIXES = ("command", "action")  # a commanded / sent gripper value is never a measurement
+
+
+def require_measured_gripper(state: BoundState) -> None:
+    """Guard: the register fed to the policy is the MEASURED gripper (training proprio: gripper/position), never the
+    commanded one (action/gripper), and never an unlabelled value; the labelled static latency-only state is the one
+    explicit exception (its actions are meaningless and only logged)."""
+    origin = str(state.gripper_origin or "")
+    if origin.startswith(COMMANDED_PREFIXES) or not (origin.startswith("measured") or origin.startswith("static")):
+        raise StateUnavailable(f"gripper register of origin {origin!r} is not a measured gripper state")
 
 
 class RobotStateSource:
@@ -77,7 +91,8 @@ class RecordedRobotState(RobotStateSource):
         i, j = _latest(self.t, t_obs_ns), _latest(self.gt, t_obs_ns)
         if i < 0 or j < 0:
             raise StateUnavailable("no robot or gripper sample at or before the observation time")
-        return BoundState(tuple(self.pose[i].tolist()), int(self.t[i]), float(self.gp[j]), int(self.gt[j]))
+        return BoundState(tuple(self.pose[i].tolist()), int(self.t[i]), float(self.gp[j]), int(self.gt[j]),
+                          f"{MEASURED_GRIPPER}, recorded")
 
     def rows(self, after_ns: int, up_to_ns: int) -> tuple[list, list]:
         r = slice(_latest(self.t, after_ns) + 1, _latest(self.t, up_to_ns) + 1)
@@ -98,7 +113,8 @@ class StaticLatencyState(RobotStateSource):
         self.register = float(gripper_register)
 
     def bound_state(self, t_obs_ns: int) -> BoundState:
-        return BoundState(self.pose7, int(t_obs_ns) - 1_000_000, self.register, int(t_obs_ns) - 10_000_000)
+        return BoundState(self.pose7, int(t_obs_ns) - 1_000_000, self.register, int(t_obs_ns) - 10_000_000,
+                          "static latency-only (fixed config value, not measured)")
 
     def rows(self, after_ns: int, up_to_ns: int) -> tuple[list, list]:
         robot = [(t, self.q7) for t in range((int(after_ns) // 1_000_000 + 1) * 1_000_000, int(up_to_ns) + 1,
