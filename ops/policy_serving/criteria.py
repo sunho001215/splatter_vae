@@ -417,9 +417,21 @@ def criteria_summary(condition: str, checks: dict) -> dict:
     """Per-criterion PASS / FAIL with the measured values and thresholds (catalog ``criteria``; nothing is
     re-interpreted: a failed gate is published as failed)."""
     out = {}
-    for k in ("a", "b", "c", "d"):
-        if k in checks:
-            out[k] = {"pass": checks[k]["pass"]}
+    a, b, c, d = (checks.get(k) for k in ("a", "b", "c", "d"))
+    if a is not None:
+        out["a_pretraining_complete"] = {"pass": a["pass"], "kind": a.get("kind"), "budget": a.get("budget"),
+                                         "done": a.get("done")}
+    if b is not None:
+        out["b_fql_complete"] = {"pass": b["pass"], "steps": b.get("steps"), "budget": b.get("budget"),
+                                 "checkpoint_step": b.get("checkpoint_step"),
+                                 "synced_artifact": b.get("synced_artifact", False)}
+    if c is not None:
+        shas = c.get("export_sha256") or {}
+        out["c_export_chain_and_load"] = {"pass": c["pass"], "export_sha256": next(iter(set(shas.values())), None)
+                                          if len(set(shas.values())) == 1 else shas,
+                                          "deploy_load_cpu": c.get("deploy_load_cpu", False)}
+    if d is not None:
+        out["d_deploy_contract"] = {"pass": d["pass"], "sidecar_sha256": d.get("sha256")}
     e1 = checks.get("e1")
     if condition != "e2e_cnn" and e1 is not None and "offset_to_signal" in e1:
         out["e1_offset_to_signal"] = {"pass": e1["offset_pass"], "value": _r(e1["offset_to_signal"]),

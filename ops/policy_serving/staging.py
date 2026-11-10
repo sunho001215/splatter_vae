@@ -659,14 +659,19 @@ def _evaluated(a, runs: list[str] | None = None) -> dict:
 
 
 def cmd_inventory(a) -> int:
-    inv = _evaluated(a)
+    if a.from_json:  # refresh the annotations of an already evaluated inventory (no re-evaluation)
+        inv = json.loads(a.from_json.read_text())
+        for r in inv["fql"]:
+            r.pop("host_catalog", None)
+    else:
+        inv = _evaluated(a)
     if a.host_catalog:  # read-only: which runs the inference host's catalog serves (id + status)
         cat = read_host_catalog(Host(ssh=a.ssh)).get("policies") or {}
         for r in inv["fql"]:
             e = cat.get(r["policy_id"])
             if e is not None and e.get("run") == r["run"]:
-                r["host_catalog"] = f"{r['policy_id']} ({e['status']})"
-    crit = sha256_file(a.criteria) if a.criteria.is_file() else None
+                r["host_catalog"] = f"{r['policy_id']} ({e['status']}, {e.get('usage', 'dry_run_replay_only')})"
+    crit = inv.get("criteria_sha256") if a.from_json else (sha256_file(a.criteria) if a.criteria.is_file() else None)
     inv["criteria_sha256"] = crit
     if a.out_json:
         a.out_json.write_text(json.dumps(inv, indent=1, default=str) + "\n")
@@ -815,6 +820,7 @@ def main(argv=None) -> int:
     i.add_argument("--out-json", type=Path)
     i.add_argument("--out-md", type=Path)
     i.add_argument("--host-catalog", action="store_true", help="annotate rows served by the inference host's catalog")
+    i.add_argument("--from-json", type=Path, help="re-annotate this evaluated inventory instead of evaluating")
     i.add_argument("--ssh", default="irsl")
     for name in ("stage", "hook"):
         s = sub.add_parser(name)

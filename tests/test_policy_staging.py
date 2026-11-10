@@ -166,6 +166,15 @@ def test_classification_rules():
                                                               samples=192)})
     assert summary["e1_layernorm_spread"] == {"pass": False, "value": 0.33, "threshold": ">= 0.5"}
     assert summary["e1_offset_to_signal"]["pass"] is True and summary["e2_visual_sensitivity"]["pass"] is True
+    full = C.criteria_summary("dynamo", {"a": C.check(True, kind="epochs", budget=40, done=40),
+                                         "b": C.check(True, steps=1000, budget=1000, checkpoint_step=1000,
+                                                      synced_artifact=True),
+                                         "c": C.check(True, export_sha256={"policy_meta": "e", "dataset": "e",
+                                                                           "pretrain_encoder": "e"},
+                                                      deploy_load_cpu=True),
+                                         "d": C.check(True, sha256="s")})
+    assert full["a_pretraining_complete"]["done"] == 40 and full["b_fql_complete"]["checkpoint_step"] == 1000
+    assert full["c_export_chain_and_load"]["export_sha256"] == "e" and full["d_deploy_contract"]["sidecar_sha256"] == "s"
     ln_e2_fail = {**ln, "e2": C.check(False, d_vis=0.0, action_spread=0.3, d_noise=0.2)}
     assert C.classify("dynamo", ln_e2_fail)["status"] == "quarantined"  # LN failure + no visual use: quarantined
     off = C.classify("mvp3d_single", _passing(e1=C.check(False, offset_to_signal=120, ln_unit_std_raw=0.01,
@@ -434,7 +443,7 @@ def test_stage_publishes_idempotently_repairs_partial_publication_and_withdraws(
     assert S.cmd_stage(args, hook=True) == 3
     entry = json.loads(host.copies["host"])["policies"]["e2e_cnn-t-s0"]
     assert entry["status"] == "quarantined" and entry["usage"] == "none" and "f: q_mean runaway" in entry["reasons"]
-    assert entry["criteria"] == {"d": {"pass": True}}  # the re-evaluation's results, not the stale ones
+    assert entry["criteria"]["d_deploy_contract"]["pass"] is True  # the re-evaluation's results, not stale ones
 
 
 def test_stage_refuses_inputs_changed_since_the_evaluation(tmp_path, monkeypatch):
