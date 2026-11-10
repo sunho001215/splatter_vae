@@ -97,10 +97,33 @@ def export_chain(meta: dict, dataset_attrs: dict | None, encoder_sha256: str | N
 
 
 # ------------------------------------------------------------------------------------------------ e1
-def feature_conditioning(dataset_path, train_episodes: list[str]) -> dict:
+def feature_norm_of(payload: dict) -> tuple[np.ndarray, np.ndarray] | None:
+    """The input standardisation a checkpoint persists (meta ``feature_norm`` + the encoder buffers ``feat_mean`` /
+    ``feat_std``, fitted on the training split), or None. POL-STATUS amendment A1: e1 is computed on the features as
+    the FQL head sees them."""
+    if not (payload.get("meta") or {}).get("feature_norm"):
+        return None
+    found = {}
+
+    def walk(d):
+        for k, v in d.items():
+            if isinstance(v, dict):
+                walk(v)
+            elif isinstance(k, str) and k.rsplit(".", 1)[-1] in ("feat_mean", "feat_std"):
+                found.setdefault(k.rsplit(".", 1)[-1], v)
+
+    walk(payload.get("agent") or {})
+    if set(found) != {"feat_mean", "feat_std"}:
+        raise ValueError("checkpoint declares feature_norm but carries no feat_mean / feat_std buffers")
+    return tuple(np.asarray(found[k].detach().cpu().numpy() if hasattr(found[k], "detach") else found[k],
+                            np.float64).reshape(-1) for k in ("feat_mean", "feat_std"))
+
+
+def feature_conditioning(dataset_path, train_episodes: list[str], norm=None) -> dict:
     """e1 = ``serving/tools/fql_feature_check.py`` (coordinator, 2026-11-09): offset_to_signal = ||mean|| /
     sqrt(sum var) over the training split, LayerNorm unit std after a random xavier projection of <= 20 rows per
-    timeline. Same arithmetic and the same ``default_rng(0)`` stream, so the numbers equal that tool's evidence."""
+    timeline. Same arithmetic and the same ``default_rng(0)`` stream, so the numbers equal that tool's evidence.
+    ``norm``: (mean, std) persisted with the policy (``feature_norm_of``), applied to every row first."""
     import h5py
 
     rng = np.random.default_rng(0)
@@ -109,6 +132,8 @@ def feature_conditioning(dataset_path, train_episodes: list[str]) -> dict:
         for ep in train_episodes:
             for _, g in f["episodes"][ep].items():
                 x = g["features"][:].astype(np.float64)
+                if norm is not None:
+                    x = (x - norm[0]) / norm[1]
                 if s1 is None:
                     s1, s2 = np.zeros(x.shape[1]), np.zeros(x.shape[1])
                 n += len(x)
@@ -125,7 +150,7 @@ def feature_conditioning(dataset_path, train_episodes: list[str]) -> dict:
     ln = float(L.std(0).mean())
     return check(offset <= E1_OFFSET_MAX and ln >= E1_LN_UNIT_STD_MIN, rows=int(n), dim=int(sub.shape[1]),
                  offset_to_signal=offset, ln_unit_std_raw=ln, offset_pass=offset <= E1_OFFSET_MAX,
-                 ln_pass=ln >= E1_LN_UNIT_STD_MIN)
+                 ln_pass=ln >= E1_LN_UNIT_STD_MIN, normalized=norm is not None)
 
 
 # ------------------------------------------------------------------------------------------------ e2

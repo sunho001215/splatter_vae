@@ -306,12 +306,14 @@ def evaluate(src: Sources, rows: list[dict], pre_rows: dict[str, dict], *, sidec
             candidates.append(r)
     sidecars = write_sidecars(src, [r["run"] for r in candidates], sidecar_dir) if candidates else {}
     samples: dict[tuple, list] = {}
-    e1_cache: dict[Path, dict] = {}
+    e1_cache: dict[tuple, dict] = {}
     for r in candidates:
         run, checks = r["run"], out[r["run"]]
         log(f"[evaluate] {run}")
         ck = src.runs / run / "policy.pt"
-        meta = torch.load(ck, map_location="cpu", weights_only=False)["meta"]
+        payload = torch.load(ck, map_location="cpu", weights_only=False)
+        meta, norm = payload["meta"], C.feature_norm_of(payload)
+        del payload
         ds = src.runs / Path(meta["dataset"]).parent.name / "dataset.h5"
         attrs = _dataset_attrs(ds)
         enc = None
@@ -327,10 +329,11 @@ def evaluate(src: Sources, rows: list[dict], pre_rows: dict[str, dict], *, sidec
         metrics = [json.loads(x) for x in (src.runs / run / "metrics.jsonl").read_text().splitlines() if x.strip()]
         checks["f"] = C.stability(metrics, int(r["budget_steps"]))
         if r["condition"] != "e2e_cnn":
-            if ds not in e1_cache:
-                e1_cache[ds] = C.feature_conditioning(ds, src.split(r["task"])["train"]) if ds.is_file() else \
-                    C.check(None, reason=f"dataset {ds} not local")
-            checks["e1"] = {**e1_cache[ds], "dataset": str(ds.relative_to(src.data_root))}
+            key = (ds, None if norm is None else hashlib.sha256(norm[0].tobytes() + norm[1].tobytes()).hexdigest())
+            if key not in e1_cache:
+                e1_cache[key] = C.feature_conditioning(ds, src.split(r["task"])["train"], norm) if ds.is_file() \
+                    else C.check(None, reason=f"dataset {ds} not local")
+            checks["e1"] = {**e1_cache[key], "dataset": str(ds.relative_to(src.data_root))}
         if r["quarantine_decision"]:
             checks["e2"] = C.check(None, reason="not run: quarantined by decision (MVP3D-FQL-DIAG.md probe)")
         elif probe and checks["c"]["pass"] and checks["d"]["pass"]:

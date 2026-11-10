@@ -71,7 +71,19 @@ def test_feature_conditioning_separates_an_offset_dominated_readout(tmp_path):
     bad = C.feature_conditioning(tmp_path / "off.h5", eps)
     assert not bad["pass"] and not bad["offset_pass"] and bad["offset_to_signal"] > C.E1_OFFSET_MAX
     again = C.feature_conditioning(tmp_path / "ok.h5", eps)  # fixed random stream: reproducible evidence
-    assert again == good
+    assert again == good and not good["normalized"]
+    # amendment A1: a policy persisting a training-split standardisation is checked on what its head sees
+    import torch
+
+    payload = {"meta": {"feature_norm": {"kind": "train_standardize"}},
+               "agent": {"modules": {"critic": {"encoder.feat_mean": torch.full((32,), 50.0),
+                                                "encoder.feat_std": torch.ones(32)}}}}
+    norm = C.feature_norm_of(payload)
+    fixed = C.feature_conditioning(tmp_path / "off.h5", eps, norm)
+    assert fixed["normalized"] and fixed["pass"] and fixed["offset_to_signal"] < 1
+    assert C.feature_norm_of({"meta": {}, "agent": {}}) is None
+    with pytest.raises(ValueError):
+        C.feature_norm_of({"meta": {"feature_norm": {"kind": "x"}}, "agent": {}})
 
 
 # ------------------------------------------------------------------------------------------------ e2
