@@ -36,14 +36,18 @@ def test_camera_names_file_is_the_rig_geometry_mapping(tmp_path):
         _infer().camera_names(cfg)
 
 
-def test_rig_documents_put_left_at_plus_y_middle_at_zero_right_at_minus_y():
-    docs = sorted((REPO / "assets").rglob("rig-loma-*.json")) if (REPO / "assets").is_dir() else []
-    if not docs:
-        pytest.skip("rig documents ship with the bundle (assets/rig), not the repo")
-    for doc in docs:
-        cams = json.loads(doc.read_text())["cameras"]
-        y = {k.split("/")[0]: np.linalg.inv(np.array(v["T_cam_base"]).reshape(4, 4))[1, 3] for k, v in cams.items()}
-        assert y[NAMES["left"]] > 0.3 and abs(y[NAMES["middle"]]) < 0.05 and y[NAMES["right"]] < -0.3
+def test_rig_geometry_puts_left_at_plus_y_middle_at_zero_right_at_minus_y():
+    """Camera positions in the robot base frame from the released rig documents (calrel-6c3b9ec drawer-open; the
+    documents ship with the robot-PC bundle, the robot-PC selfcheck re-checks them there): base +y = robot's left."""
+    released = {"135122070988": (1.210, 0.421, 0.839), "135122076054": (1.193, 0.000, 0.837),
+                "135122073201": (1.186, -0.431, 0.841)}
+    cams = {}
+    for serial, p in released.items():
+        T_base_cam = np.eye(4)
+        T_base_cam[:3, 3] = p
+        cams[f"{serial}/color"] = {"T_cam_base": np.linalg.inv(T_base_cam).reshape(-1).tolist()}
+    y = {k.split("/")[0]: np.linalg.inv(np.array(v["T_cam_base"]).reshape(4, 4))[1, 3] for k, v in cams.items()}
+    assert y[NAMES["left"]] > 0.3 and abs(y[NAMES["middle"]]) < 0.05 and y[NAMES["right"]] < -0.3
 
 
 def test_resolve_cameras_names_count_and_training_contract():
