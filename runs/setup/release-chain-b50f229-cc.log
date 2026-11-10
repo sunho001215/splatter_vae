@@ -1,0 +1,42 @@
+00:56:31 /home/ws/ws/splatter4d/.worktrees/rel-k/s4d/remote_access.py sync-code b50f229e083e035927b359a013e26bfff6cc626a -> 0 /home/compu/kaist/sunho/releases/b50f229e083e035927b359a013e26bfff6cc626a/code 
+00:56:31 /home/compu/kaist/sunho/releases/b50f229e083e035927b359a013e26bfff6cc626a/code
+00:56:38 sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a --tag cc -> 0 /home/ws/ws/splatter4d/runs/remote/verification/native-b50f229-cc-queue.yaml 
+00:57:32 remote co-tenants: 3 known, 136 GB RAM not yet in use charged; GPU-9e9f1e97 3 (72.0 GB charged, 23.6 GB free after pending reservations)
+00:57:32 launched verify-native-b50f229-cc on remote/GPU-ca65e1b7-c0ac-6757-7d3f-816c3119a4c1 (s4d-verify-native-b50f229-cc-a1, attempt 1)
+00:57:32 wait {'verify-native-b50f229-cc': 'running'}
+00:59:14 remote co-tenants: 3 known, 136 GB RAM not yet in use charged; GPU-9e9f1e97 3 (72.0 GB charged, 23.6 GB free after pending reservations)
+00:59:15 wait {'verify-native-b50f229-cc': 'running'}
+01:00:53 remote co-tenants: 3 known, 133 GB RAM not yet in use charged; GPU-9e9f1e97 3 (72.0 GB charged, 21.9 GB free after pending reservations)
+01:00:54 wait {'verify-native-b50f229-cc': 'running'}
+01:05:01 rwcal-20261110-nativedepth-mvp3d-mug-hanging: local backup checksum verified; done
+01:05:01 verify-native-b50f229-cc: live result sync unavailable; job remains running
+01:05:01 remote co-tenants: 3 known, 128 GB RAM not yet in use charged; GPU-9e9f1e97 3 (72.0 GB charged, 23.2 GB free after pending reservations)
+01:05:01 wait {'verify-native-b50f229-cc': 'running'}
+01:08:19 remote co-tenants: 3 known, 127 GB RAM not yet in use charged; GPU-9e9f1e97 3 (72.0 GB charged, 23.5 GB free after pending reservations)
+01:08:20 wait {'verify-native-b50f229-cc': 'running'}
+01:09:39 remote co-tenants: 1 known, 42 GB RAM not yet in use charged; GPU-9e9f1e97 1 (24.0 GB charged, 71.6 GB free after pending reservations)
+01:09:39 wait {'verify-native-b50f229-cc': 'running'}
+01:11:19 wait {'verify-native-b50f229-cc': 'running'}
+01:12:38 verify-native-b50f229-cc: live result sync unavailable; job remains running
+01:12:39 wait {'verify-native-b50f229-cc': 'running'}
+01:14:20 remote co-tenants: 3 known, 142 GB RAM not yet in use charged; GPU-9e9f1e97 3 (72.0 GB charged, 22.5 GB free after pending reservations)
+01:14:21 wait {'verify-native-b50f229-cc': 'running'}
+01:18:27 verify-native-b50f229-cc: live result sync unavailable; job remains running
+01:18:27 remote co-tenants: 3 known, 136 GB RAM not yet in use charged; GPU-9e9f1e97 3 (72.0 GB charged, 23.6 GB free after pending reservations)
+01:18:28 wait {'verify-native-b50f229-cc': 'running'}
+01:24:33 verify-native-b50f229-cc exited with 0 on remote; results checksum verified
+01:24:33 remote co-tenants: 3 known, 136 GB RAM not yet in use charged; GPU-9e9f1e97 3 (72.0 GB charged, 23.6 GB free after pending reservations)
+01:24:33 done {'verify-native-b50f229-cc': 'done'}
+01:24:33 {"exit_code": 0, "counts": {"passed": 2869, "error": 0, "failed": 0, "skipped": 0}, "full_suite_passed": true}
+01:24:41 sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a --tag cc -> 0 /home/ws/ws/splatter4d/runs/remote/verification/isolation-b50f229-cc-queue.yaml 
+01:27:30 remote co-tenants: 3 known, 136 GB RAM not yet in use charged; GPU-9e9f1e97 3 (72.0 GB charged, 23.6 GB free after pending reservations)
+01:27:30 launched verify-isolation-0-b50f229-cc on remote/GPU-4391fcee-537f-d408-d138-10d8a3866eea (s4d-verify-isolation-0-b50f229-cc-a1, attempt 1)
+01:27:30 launched verify-isolation-1-b50f229-cc on remote/GPU-6122c7a9-eaa6-b539-6005-f20e339da4ea (s4d-verify-isolation-1-b50f229-cc-a1, attempt 1)
+01:27:30 launched verify-isolation-2-b50f229-cc on remote/GPU-9e9f1e97-b2ca-04e0-eb2a-8035398daa79 (s4d-verify-isolation-2-b50f229-cc-a1, attempt 1)
+01:27:30 launched verify-isolation-3-b50f229-cc on remote/GPU-ca65e1b7-c0ac-6757-7d3f-816c3119a4c1 (s4d-verify-isolation-3-b50f229-cc-a1, attempt 1)
+01:27:31 wait {'verify-isolation-0-b50f229-cc': 'running', 'verify-isolation-1-b50f229-cc': 'running', 'verify-isolation-2-b50f229-cc': 'running', 'verify-isolation-3-b50f229-cc': 'running'}
+01:28:52 verify-isolation-3-b50f229-cc exited with 0 on remote; results checksum verified
+01:28:52 remote co-tenants: 3 known, 127 GB RAM not yet in use charged; GPU-9e9f1e97 3 (72.0 GB charged, 23.5 GB free after pending reservations)
+01:28:53 done {'verify-isolation-0-b50f229-cc': 'done', 'verify-isolation-1-b50f229-cc': 'done', 'verify-isolation-2-b50f229-cc': 'done', 'verify-isolation-3-b50f229-cc': 'done'}
+01:28:54 sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a --tag cc -> 0 ACCEPTED /home/ws/ws/splatter4d/runs/remote/acceptance/b50f229-cc/manifest.json e464d2f0265244eb422b7cda3670debd44519679fe6c74ca723f81c0fe65031c 56bd8ce9c59e 
+01:28:54 ACCEPTED /home/ws/ws/splatter4d/runs/remote/acceptance/b50f229-cc/manifest.json e464d2f0265244eb422b7cda3670debd44519679fe6c74ca723f81c0fe65031c 56bd8ce9c59e
