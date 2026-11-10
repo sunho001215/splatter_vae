@@ -159,7 +159,15 @@ bitwise (CPU vs the dataset's GPU), action <= 1.4e-3. SinCro, SNeRL and ours: la
 * 3D-MVP: frozen features have a large constant offset (|f| mean ~70, max ~440, per-dim temporal std ~0.45) and the
   trained FQL policies ignore them (zeroed or time-shuffled features change the action by <= 6e-6, vs 0.23-0.52 for
   DynaMo / ReViWo). The depth-source difference is therefore numerically irrelevant for these checkpoints, but the
-  3D-MVP baseline's use of vision needs a separate review (out of scope here).
+  3D-MVP baseline's use of vision needs a separate review (out of scope here). Resolved for the reruns by the
+  frozen-feature standardisation (`docs/realworld_fql.md`); the old 3D-MVP policies stay quarantined.
+* 3D-MVP with standardised features USES vision, so the depth source matters (local CPU, recorded
+  mug-hanging-000001 / drawer-open-000000, 60k-step pilots, `serving/evidence/mvpfix/depthswap.json`): native-vs-FS
+  feature difference 1.06-1.28 training sd (rms per dim) - larger than consecutive frames (0.79-0.99) and about a
+  replacement by a window half an episode away (1.09-1.44); action change median 0.09-0.13 normalised (17-23 mm
+  translation; p95 up to 0.35), 30-45 % of that replacement's (0.21-0.43; 44-62 mm). The FS-trained policy is
+  therefore NOT validated on native depth; a native-depth train/deploy mismatch remains an open user decision
+  (options: accept and evaluate on the robot, train on native depth, or FS online).
 * Live multi-view M5 needs the robot-surface motion across each set (URDF FK of the joint states at the frame times);
   replay takes it from the store. The client/server helper for live runs is open.
 * drawer-open has no local released store: its multi-view evidence windows use a labelled flange-motion PROXY for M5.

@@ -415,7 +415,12 @@ def test_feature_standardisation_is_applied_by_the_deploy_path(tmp_path):
         return ObsEncoder(d, False, proj=8, feature_stats={**record, "mean": mean, "std": std})
 
     agent = FQLAgent.create(1, enc().out_dim, 7, {"actor_hidden_dims": (8,), "value_hidden_dims": (8,)}, encoder=enc)
-    torch.save({"meta": {**meta, "feature_norm": record}, "agent": agent.state_dict()}, tmp_path / "norm.pt")
+    fixture_meta = {**meta, "feature_norm": record,
+                    "observation_contract": {**meta["observation_contract"], "feature_norm": record}}
+    torch.save({"meta": {**meta, "feature_norm": record}, "agent": agent.state_dict()}, tmp_path / "stale.pt")
+    with pytest.raises(ValueError, match="feature_norm"):  # embedded fixture contract without the record
+        DeployPolicy(tmp_path / "stale.pt", export_path=tmp_path / "raw" / "encoder.pt")
+    torch.save({"meta": fixture_meta, "agent": agent.state_dict()}, tmp_path / "norm.pt")
     policy = DeployPolicy(tmp_path / "norm.pt", export_path=tmp_path / "raw" / "encoder.pt")
     window = synthetic_window(policy.reset_session(**session_choices(policy, "norm")))
     pose = [0.4, 0.0, 0.3, 0.0, 0.0, 0.0, 1.0]

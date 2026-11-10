@@ -219,6 +219,30 @@ def test_default_adapter_input_is_unchanged():
             FD.ObsEncoder(12, False, proj=8, feature_stats=bad)
 
 
+def test_feature_standardisation_numerics():
+    """The 3D-MVP regime (offset ~400, per-dim sd 0.05..2, float16 storage) is recovered to float32 precision; a
+    constant dimension is floored (no division by zero); fewer than two rows or all-constant features are refused."""
+    rng = np.random.default_rng(0)
+    offset = np.concatenate([np.full(8, 400.0), np.full(7, 10.0), [400.0]]) * rng.choice([-1, 1], 16)
+    sd = np.concatenate([rng.uniform(0.5, 2.0, 8), rng.uniform(0.05, 0.2, 7), [0.0]])
+    x64 = offset + rng.normal(size=(5000, 16)) * sd
+    x = torch.from_numpy(x64).half()
+    stats = FD.fit_feature_standardization(x, chunk=777)
+    ref = x.double().numpy()
+    floor = FD.STD_FLOOR_REL * ref.std(0).max()
+    np.testing.assert_allclose(stats["mean"], ref.mean(0), rtol=1e-7)
+    np.testing.assert_allclose(stats["std"], np.maximum(ref.std(0), floor), rtol=1e-6)
+    assert stats["floored_dims"] == 1 and stats["std"][-1] == np.float32(floor)
+    z = FD.ObsEncoder(16, True, proj=8, feature_stats=stats)
+    standardised = (x.float() - z.feat_mean) / z.feat_std
+    np.testing.assert_allclose(standardised[:, :15].double().mean(0).numpy(), 0, atol=1e-4)
+    np.testing.assert_allclose(standardised[:, :15].double().std(0).numpy(), 1, atol=1e-4)
+    with pytest.raises(ValueError, match="two stored rows"):
+        FD.fit_feature_standardization(x[:1])
+    with pytest.raises(ValueError, match="constant"):
+        FD.fit_feature_standardization(torch.ones(10, 4).half())
+
+
 @pytest.mark.parametrize("condition", ["dynamo", "sincro", "mvp3d_single", "mvp3d_multiview"])
 def test_feature_standardisation_is_fitted_on_the_given_rows_and_travels_with_the_policy(tmp_path, exports,
                                                                                          condition):
@@ -284,6 +308,11 @@ def test_feature_standardisation_is_fitted_on_the_given_rows_and_travels_with_th
     torch.save(payload, tmp_path / "unrecorded.pt")
     with pytest.raises(RuntimeError, match="Unexpected key"):  # buffers without the meta record never load silently
         OfflinePolicy(tmp_path / "unrecorded.pt")
+    payload = checkpoint_payload(raw, data, condition, 0)
+    payload["meta"]["feature_norm"] = record
+    torch.save(payload, tmp_path / "unbuffered.pt")
+    with pytest.raises(RuntimeError, match="Missing key"):  # a meta record without the buffers neither
+        OfflinePolicy(tmp_path / "unbuffered.pt")
 
 
 def test_fql_build_preserves_raw_identity_across_pipeline_names(tmp_path):
@@ -389,6 +418,11 @@ def test_e2e_cnn_dataset_pixel_sampling_joint_training_and_policy(tmp_path):
     ckpt = tmp_path / "policy.pt"
     torch.save(checkpoint_payload(agent, data, "e2e_cnn", 2), ckpt)
     policy = OfflinePolicy(ckpt)
+    bad = torch.load(ckpt, map_location="cpu", weights_only=False)
+    bad["meta"]["feature_norm"] = {"kind": "train_standardize"}
+    torch.save(bad, tmp_path / "declared.pt")
+    with pytest.raises(ValueError, match="no frozen features"):  # never a declared but unapplied standardisation
+        OfflinePolicy(tmp_path / "declared.pt")
     assert policy.meta["encoder_config"]["stack_sizes"] == [16, 32, 32]
     with h5py.File(path, "r") as f:
         g = f["episodes"][ep][cam]

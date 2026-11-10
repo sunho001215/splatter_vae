@@ -146,6 +146,20 @@ Diagnosis: `/home/ws/ws/realworld-ops/serving/MVP3D-FQL-DIAG.md`; this fix and i
   `normalize_q_loss` false), every other condition, and the Meta-World DrM path (its 3D-MVP rows read the same
   read-out un-normalised; a user decision, MVP3D-FQL-DIAG.md §7).
 
+**Validation before the reruns** (2026-11-10, criteria fixed in advance; numbers and tools in
+`/home/ws/ws/realworld-ops/serving/MVP-STATUS.md`, evidence `serving/evidence/mvpfix/`):
+
+- Feature check on the standardised inputs (4 datasets): training split offset/signal <= 6e-6, LN unit std
+  0.988-0.995; held-out validation split 0.07-0.12 / 0.985-0.988 (raw: 84-136 / 0.007-0.011).
+- 60k-step local-CPU pilots (exact trainer loop; mvp3d_single mug s0 and mvp3d_multiview drawer s1, the originals'
+  worst seeds, + a raw control): Q stays feasible (q_mean -31..-15, q_max <= 0.30; finite everywhere). Replacing the
+  image/depth features by another held-out sample's changes the action by 0.18-0.32 (DynaMo 0.12-0.13, ReViWo
+  0.19-0.25 at 1M; raw 3D-MVP 3e-8 already at 20k-60k), the critic by 4-13; adapter LayerNorm unit std 0.98, no
+  dead units. Multi-view drawer's critic overfits the 90 training episodes (validation critic loss 1.4 -> 3.7 from
+  20k to 60k vs training 0.03; Q stays in range): watch it in the reruns.
+- Deployment: with vision in use the train (FoundationStereo) vs deploy (native RealSense) depth difference now
+  matters - see `docs/realworld_deployment.md` "Findings".
+
 Precedent: RVT-1's `rot_ver=1` path normalises the same pooled global feature with `BatchNorm1d` before its MLP
 (`third_party/rvt/rvt/mvt/mvt_single.py`, `feat_fc_init_bn`); a frozen read-out has no trainable bias that could absorb
 the offset, so it is removed with statistics of the training data.

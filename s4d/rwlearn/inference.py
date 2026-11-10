@@ -35,6 +35,9 @@ class OfflinePolicy:
         if self.condition == "e2e_cnn":  # no frozen encoder: the jointly trained CNNs are part of the agent
             from s4d.rwlearn.pixel import encoder_from_config
 
+            if self.meta.get("feature_norm") is not None:
+                raise ValueError("e2e_cnn has no frozen features to standardise")
+
             state, cfg = ckpt["agent"], self.meta["encoder_config"]
             self.agent = FQLAgent.create(0, state["obs_dim"], state["action_dim"], state["config"],
                                          device=self.device, encoder=lambda: encoder_from_config(cfg))

@@ -66,6 +66,8 @@ def read_training_contract(meta: dict, source=None) -> dict:
     standardisation: a sidecar must carry exactly the checkpoint's ``feature_norm`` record, or none for a checkpoint
     without one; the dataset predates the fit, so with it the checkpoint's record is taken as is)."""
     if meta.get("fixture") is True and meta.get("observation_contract") is not None:
+        if meta["observation_contract"].get("feature_norm") != meta.get("feature_norm"):
+            raise ValueError("training contract feature_norm differs from the checkpoint")
         return dict(meta["observation_contract"])  # labelled FIXTURE checkpoints only
     source = source if source is not None else meta.get("dataset")
     if source is None:
