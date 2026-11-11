@@ -79,7 +79,17 @@ def _mapped(value: str, remote_prefix: str = REMOTE_PREFIX) -> str | None:
 def _value(arg) -> str:
     text = str(arg)
     key, separator, value = text.partition("=")
-    return value if separator and "/" not in key else text
+    value = value if separator and "/" not in key else text
+    # The trainer parses each override value with yaml.safe_load (s4d/config.py apply_overrides). A quoted or escaped
+    # spelling of an input path would be read as a different string than the one checked here: fail closed.
+    try:
+        parsed = yaml.safe_load(value)
+    except yaml.YAMLError:
+        parsed = value
+    if isinstance(parsed, str) and parsed != value and ("/home/compu/" in parsed or parsed.startswith("runs/")
+                                                         or REMOTE_PREFIX in parsed):
+        raise LocalInputError(f"quoted or escaped input path is not supported for local launch: {text}")
+    return value
 
 
 def applies(job: dict, roles: dict, by_id: dict | None = None) -> bool:
@@ -96,7 +106,11 @@ def needed_inputs(job: dict, *, remote_prefix: str = REMOTE_PREFIX) -> dict:
         if relative is not None:
             mirror.add(relative)
         parts = PurePosixPath(value).parts
-        if len(parts) >= 3 and parts[0] == "runs" and parts[1] in job.get("deps", []):
+        if len(parts) >= 3 and parts[0] == "runs":
+            # every run output a local real-world row reads must be a dependency output, verified against the
+            # dependency's recorded checksums at launch
+            if parts[1] not in job.get("deps", []):
+                raise LocalInputError(f"run output {value} is not an output of a declared dependency")
             dependencies.add((parts[1], _rel("/".join(parts[2:]))))
     return {"mirror": sorted(mirror), "dependency_files": sorted(dependencies)}
 
@@ -263,6 +277,16 @@ def fetch(rels, client=None, priority="bulk", dry_run=False, *, mirror: Path = M
     mirror, manifest = Path(mirror), Path(manifest or Path(mirror) / "MANIFEST.json")
     spec = _manifest(manifest, remote_prefix)
     inventory = remote_plan(rels, client, remote_prefix=remote_prefix, mirror=mirror)
+    # Append-only mirror: a published entry is never replaced by different content (a launch verified against it may
+    # be reading it). A remote original that changed since it was mirrored is a conflict for the coordinator (new
+    # learning-input release path), never an in-place update.
+    changed = sorted(r for r, item in inventory.items()
+                     if spec["files"].get("_remote/" + r if item["kind"] == "localized" else r, {}).get(
+                         "remote_sha256", item["sha256"]) != item["sha256"]
+                     or (item["kind"] == "localized" and spec["files"].get(r, {}).get(
+                         "remote_sha256", item["sha256"]) != item["sha256"]))
+    if changed:
+        raise LocalInputError(f"remote inputs changed since they were mirrored (append-only mirror): {changed[:5]}")
     groups, present, pending = {}, [], []
     for relative, item in inventory.items():
         target = mirror / ("_remote" if item["kind"] == "localized" else "") / relative
@@ -298,6 +322,7 @@ def fetch(rels, client=None, priority="bulk", dry_run=False, *, mirror: Path = M
         except LocalInputError:
             missing.append(relative)
             continue
+        os.chmod(target, 0o444)  # published copies are read-only (chmod keeps the mtime)
         stat = target.stat()
         entry = {"kind": "copy", "sha256": item["sha256"], "bytes": stat.st_size, "mtime_ns": stat.st_mtime_ns,
                  "remote_sha256": item["sha256"], "remote_bytes": item["bytes"], "fetched_at": stamp, "requires": []}
@@ -314,6 +339,7 @@ def fetch(rels, client=None, priority="bulk", dry_run=False, *, mirror: Path = M
             raise LocalInputError(f"symlink descriptor: {target}")
         if not target.is_file() or target.read_bytes() != data:
             _atomic(target, data)
+        os.chmod(target, 0o444)
         stat = target.stat()
         spec["files"][relative] = {"kind": "localized", "sha256": _hash(target), "bytes": stat.st_size,
                                   "mtime_ns": stat.st_mtime_ns, "remote_sha256": item["sha256"],
@@ -382,11 +408,12 @@ def _inputs(job: dict, state: dict, mirror: Path, manifest: Path, runs: Path,
     needed = needed_inputs(job, remote_prefix=remote_prefix)
     raw = manifest.read_bytes() if manifest.is_file() else None
     files, inputs, dependencies = _manifest(manifest, remote_prefix, raw=raw)["files"], {}, {}
+    closure: set = set()
     for arg in job.get("args", []):
         value = _value(arg)
         relative = _mapped(value, remote_prefix)
         if relative is not None:
-            inputs[value] = _check(relative, files, mirror, set(), remote_prefix=remote_prefix)
+            inputs[value] = _check(relative, files, mirror, closure, remote_prefix=remote_prefix)
     for dep, relative in needed["dependency_files"]:
         current = state.get(dep, {})
         if current.get("host") != "remote":
@@ -407,14 +434,15 @@ def _inputs(job: dict, state: dict, mirror: Path, manifest: Path, runs: Path,
         effective.append(str(arg)[:len(str(arg)) - len(value)] + str(mirror) + value[len(remote_prefix):]
                          if relative is not None else arg)
     return effective, {"input_map": {"from": remote_prefix, "to": str(mirror)}, "manifest_sha256": _sha(raw or b""),
-                       "inputs": inputs, "dependency_inputs": dependencies}
+                       "inputs": inputs, "dependency_inputs": dependencies,
+                       "input_closure": {name: files[name]["sha256"] for name in sorted(closure)}}
 
 
 def placement_scope(job: dict, *, root: Path = REPO) -> dict:
     """Prove a pinned release's import/config identity during placement, including repository files in arguments."""
     commit = job.get("planned_commit")
     if not commit:
-        return {"source_commit": None, "files": {}}
+        raise LocalInputError("no pinned release (planned_commit): local placement needs one")
     from ops.jobs import migration
     scope = migration.execution_scope([job["script"]], commit, root)
     if not scope["identical"]:
@@ -454,18 +482,25 @@ def localize(job: dict, state: dict, *, roles: dict, by_id=None, runs: Path | No
         effective, record = _inputs(job, state, mirror, manifest,
                                     Path(runs or root / "runs"), remote_prefix)
         owned = ownership if ownership is not None else host_roles.read_ownership()
-        scope = (owned.get(job["id"]) or {}).get("execution_scope")
-        if job.get("planned_commit"):
-            found = (source_identity or {}).get("source_sha256", {})
-            if not scope or scope.get("source_commit") != job["planned_commit"] or not scope.get("files"):
+        placed = owned.get(job["id"]) or {}
+        # Only rows moved by ``apply`` (locked, recorded, release scope proven) launch here: a row registered or
+        # edited onto the local host by any other path has no such record and waits.
+        if (not job.get("planned_commit") or placed.get("kind") != "role_placement"
+                or placed.get("owner_host") != "local" or placed.get("state") != "placed"):
+            raise LocalInputError("no explicit local placement record with a pinned release "
+                                  "(python -I ops/jobs/realworld_local.py place)")
+        scope = placed.get("execution_scope")
+        found = (source_identity or {}).get("source_sha256", {})
+        if (not isinstance(scope, dict) or scope.get("source_commit") != job["planned_commit"]
+                or not isinstance(scope.get("files"), dict) or not scope["files"]):
+            raise LocalInputError("local code differs from the release the row was placed with")
+        for name, digest in scope["files"].items():
+            current = found.get(name)
+            if current is None and "@" not in name and (root / name).is_file():
+                current = _hash(root / name)
+            if current != digest:
                 raise LocalInputError("local code differs from the release the row was placed with")
-            for name, digest in scope["files"].items():
-                current = found.get(name)
-                if current is None and "@" not in name and (root / name).is_file():
-                    current = _hash(root / name)
-                if current != digest:
-                    raise LocalInputError("local code differs from the release the row was placed with")
-        record["execution_scope"] = scope or {"source_commit": None, "files": {}}
+        record["execution_scope"] = scope
         return effective, record
     except (OSError, ValueError, KeyError, TypeError, yaml.YAMLError) as exc:
         raise LocalInputError(str(exc)) from exc
@@ -491,8 +526,15 @@ def _packing(queue: dict, state: dict, paused_fn=None) -> tuple[dict, float]:
             if gpu in slots:
                 slots[gpu]["jobs"] += 1
                 slots[gpu]["mem_gb"] += max(float(current.get("mem_gb", 0)), float(job.get("mem_gb", 0)))
+    def waiting(job):
+        current = state.get(job["id"])
+        if current is None:
+            return True
+        return current.get("status") == "pending" or (
+            current.get("status") == "crashed" and current.get("failures", 0) <= int(job.get("max_restarts", 1)))
+
     for job in queue["jobs"]:
-        if (job.get("host", "local") == "local" and job["id"] not in state
+        if (job.get("host", "local") == "local" and waiting(job)
                 and not (paused_fn is not None and _pause_names(paused_fn, job["id"]))
                 and all(state.get(dep, {}).get("status") == "done" for dep in job.get("deps", []))):
             queued_ram += float(job.get("ram_gb", 0)) * 2**30

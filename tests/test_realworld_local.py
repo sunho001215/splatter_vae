@@ -31,6 +31,27 @@ STORE = "learning_inputs/cal/task/store.yaml"
 SPLIT = "learning_inputs/cal/task/split_seed0.json"
 GATE = "learning_inputs/cal/task/gate_report.json"
 EPISODE = "processed/cal/task/train_data/episode"
+COMMIT = "a" * 40
+SCOPE = {"source_commit": COMMIT, "files": {"scripts/train_realworld_fql.py": "b" * 64}}
+IDENTITY = {"commit": "c", "source_sha256": {"scripts/train_realworld_fql.py": "b" * 64}}
+REAL_PLACEMENT_SCOPE = rw.placement_scope
+
+
+@pytest.fixture(autouse=True)
+def pinned_scope(monkeypatch):
+    """Placement proves the pinned release's execution scope with git reads; synthetic rows use a fixed scope (the
+    two tests of the real function call REAL_PLACEMENT_SCOPE)."""
+    def scope(job, *, root=rw.REPO):
+        if job.get("planned_commit") != COMMIT:
+            raise rw.LocalInputError("no pinned release (planned_commit): local placement needs one")
+        return copy.deepcopy(SCOPE)
+    monkeypatch.setattr(rw, "placement_scope", scope)
+
+
+def placed(job_id="fql", scope=None):
+    """The ownership record ``apply`` writes for a row it placed local."""
+    return {"job_id": job_id, "kind": "role_placement", "state": "placed", "owner_host": "local",
+            "execution_scope": copy.deepcopy(scope or SCOPE)}
 
 
 def sha(data):
@@ -43,7 +64,7 @@ def row(job_id="fql", **extra):
             "args": ["--config", "configs/realworld/fql/base.yaml", "--set", "data.dataset=runs/dataset/dataset.h5",
                      "data.split_manifest=" + PREFIX + "/" + SPLIT, "data.gate_report=" + PREFIX + "/" + GATE,
                      "data.store=" + PREFIX + "/" + STORE, "--name", job_id, "seed=0"],
-            "required_results": ["final.json"], "deps": ["dataset"], **extra}
+            "required_results": ["final.json"], "deps": ["dataset"], "planned_commit": COMMIT, **extra}
 
 
 class Client:
@@ -96,8 +117,11 @@ def mirrored(tmp_path):
 
 
 def localize(fixture, job=None, **kwargs):
-    return rw.localize(job or row(), fixture.state, roles=ROLES, mirror=fixture.mirror, manifest=fixture.manifest,
-                       runs=fixture.runs, ownership={}, root=fixture.root, **kwargs)
+    job = job or row()
+    kwargs.setdefault("ownership", {job["id"]: placed(job["id"])})
+    kwargs.setdefault("source_identity", IDENTITY)
+    return rw.localize(job, fixture.state, roles=ROLES, mirror=fixture.mirror, manifest=fixture.manifest,
+                       runs=fixture.runs, root=fixture.root, **kwargs)
 
 
 @pytest.mark.parametrize("script,role,local,remote,host", [
@@ -262,17 +286,17 @@ def test_pinned_scope_is_recorded_at_placement_and_compared_at_launch(mirrored, 
     monkeypatch.setattr(migration, "execution_scope", scope)
     monkeypatch.setattr(migration, "commit_reader", lambda root, commit: (lambda _: b"seed: 0\n", [
         "configs/realworld/fql/base.yaml"]))
-    placed = rw.placement_scope(job, root=f.root)
-    assert placed == {"source_commit": "a" * 40, "files": {
+    proven = REAL_PLACEMENT_SCOPE(job, root=f.root)
+    assert proven == {"source_commit": "a" * 40, "files": {
         "scripts/train_realworld_fql.py": "b" * 64, "third_party/x@commit": "c" * 40,
         "configs/realworld/fql/base.yaml": digest}}
     monkeypatch.setattr(migration, "execution_scope", lambda *a, **kw: pytest.fail("no git scope reads at launch"))
-    owned = {job["id"]: {"execution_scope": placed}}
-    identity = {"source_sha256": placed["files"]}
+    owned = {job["id"]: placed(job["id"], proven)}
+    identity = {"source_sha256": proven["files"]}
     effective, record = rw.localize(job, f.state, roles=ROLES, mirror=f.mirror, runs=f.runs, root=f.root,
                                     ownership=owned, source_identity=identity)
-    assert record["execution_scope"] == placed and len(calls) == 1
-    identity["source_sha256"] = {**placed["files"], "scripts/train_realworld_fql.py": "e" * 64}
+    assert record["execution_scope"] == proven and len(calls) == 1
+    identity["source_sha256"] = {**proven["files"], "scripts/train_realworld_fql.py": "e" * 64}
     with pytest.raises(rw.LocalInputError, match="local code differs from the release"):
         rw.localize(job, f.state, roles=ROLES, mirror=f.mirror, runs=f.runs, root=f.root,
                     ownership=owned, source_identity=identity)
@@ -283,12 +307,14 @@ def test_pinned_scope_is_recorded_at_placement_and_compared_at_launch(mirrored, 
 def test_placement_scope_refuses_changed_release_and_argument_file(mirrored, monkeypatch):
     monkeypatch.setattr(migration, "execution_scope", lambda *a: {"identical": False})
     with pytest.raises(rw.LocalInputError, match="local code differs"):
-        rw.placement_scope(row(planned_commit="a" * 40), root=mirrored.root)
+        REAL_PLACEMENT_SCOPE(row(planned_commit="a" * 40), root=mirrored.root)
     monkeypatch.setattr(migration, "execution_scope", lambda *a: {"identical": True, "files": {}})
     monkeypatch.setattr(migration, "commit_reader", lambda *a: (lambda _: b"old", ["config.json"]))
     (mirrored.root / "config.json").write_bytes(b"new")
     with pytest.raises(rw.LocalInputError, match="local code differs"):
-        rw.placement_scope(row(planned_commit="a" * 40, args=["config.json"]), root=mirrored.root)
+        REAL_PLACEMENT_SCOPE(row(planned_commit="a" * 40, args=["config.json"]), root=mirrored.root)
+    with pytest.raises(rw.LocalInputError, match="no pinned release"):
+        REAL_PLACEMENT_SCOPE({**row(), "planned_commit": None}, root=mirrored.root)
 
 
 @pytest.mark.parametrize("script,args,override", [
@@ -448,8 +474,11 @@ def tick(f, monkeypatch, rows, events=()):
         return 2**30
 
     monkeypatch.setattr(jobs, "launch", launch)
-    monkeypatch.setattr(jobs, "source_identity", lambda: {"commit": "c", "source_sha256": {}})
+    monkeypatch.setattr(jobs, "source_identity", lambda: copy.deepcopy(IDENTITY))
     monkeypatch.setattr(host_roles, "OWNERSHIP_DIR", f.root / "ownership")
+    for job in rows:
+        if job.get("host") == "local" and job["script"] == "scripts/train_realworld_fql.py" and not job.get("unplaced"):
+            host_roles.write_ownership(placed(job["id"]), f.root / "ownership")
     monkeypatch.setattr(host_roles, "EXCEPTIONS_PATH", f.root / "no-exceptions")
     monkeypatch.setattr(rw, "MIRROR", f.mirror)
     monkeypatch.setattr(rw, "MANIFEST", f.manifest)
@@ -618,3 +647,75 @@ def test_plan_reports_unmappable_inputs_without_aborting_other_decisions(mirrore
     decisions = planning(mirrored, [row("bad", args=["data.other=/home/compu/outside/input"]), row("good")])
     assert decisions[0]["decision"] == "waits" and "unmappable" in decisions[0]["reason"]
     assert decisions[1]["decision"] == "local"
+
+
+# ---------------------------------------------------------------------------------------------------- review round 1
+# (Codex read-only review 2026-11-11, findings 1-6; fixes by Claude)
+@pytest.mark.parametrize("arg,reason", [
+    ("data.dataset='runs/dataset/dataset.h5'", "quoted or escaped"),  # the trainer yaml-parses override values
+    ('data.split_manifest="' + PREFIX + "/" + SPLIT + '"', "quoted or escaped"),
+    ("data.other=runs/not-a-dependency/dataset.h5", "not an output of a declared dependency"),
+])
+def test_inputs_the_trainer_would_read_differently_fail_closed(mirrored, arg, reason):
+    with pytest.raises(rw.LocalInputError, match=reason):
+        localize(mirrored, row(args=["--set", arg]))
+
+
+@pytest.mark.parametrize("ownership,job", [
+    ({}, None),  # registered or edited onto local without the locked placement command
+    ({"fql": {**placed(), "kind": "migration"}}, None),
+    ({"fql": {**placed(), "owner_host": "remote"}}, None),
+    ({"fql": placed()}, {**row(), "planned_commit": None}),  # no pinned release
+    ({"fql": placed(scope={"source_commit": "f" * 40, "files": SCOPE["files"]})}, None),  # placed for another release
+])
+def test_local_launch_requires_the_explicit_placement_record(mirrored, ownership, job):
+    with pytest.raises(rw.LocalInputError, match="placement record|code differs"):
+        localize(mirrored, job, ownership=ownership)
+
+
+def test_rows_without_a_pinned_release_stay_remote_and_unplaced_local_rows_are_refused(mirrored, monkeypatch):
+    decision = planning(mirrored, [{**row(), "planned_commit": None}])[0]
+    assert decision["decision"] == "stay_remote" and "no pinned release" in decision["reason"]
+    job = row(host="local", pin_host="local", gpu="any", deps=[], args=[PREFIX + "/" + SPLIT], unplaced=True)
+    launches, messages, _ = tick(mirrored, monkeypatch, [job])
+    assert not launches and any("no explicit local placement record" in m for m in messages)
+
+
+def test_mirror_is_append_only_and_read_only(mirrored):
+    f = mirrored
+    published = f.mirror / SPLIT
+    before = published.read_bytes()
+    assert all(not (f.mirror / name).stat().st_mode & 0o222 for name in (SPLIT, STORE, "_remote/" + STORE))
+    (f.remote / SPLIT).write_bytes(b'{"train": ["other"]}\n')  # the remote original changed after mirroring
+    with pytest.raises(rw.LocalInputError, match="changed since they were mirrored"):
+        rw.fetch([SPLIT], f.client, mirror=f.mirror)
+    assert published.read_bytes() == before and localize(f, row(args=[PREFIX + "/" + SPLIT], deps=[]))
+
+
+def test_retry_identity_covers_the_transitive_input_closure(mirrored, monkeypatch):
+    f = mirrored
+    job = row(host="local", pin_host="local", gpu="any", deps=[], args=["data.store=" + PREFIX + "/" + STORE])
+    _, record = rw.localize(job, f.state, roles=ROLES, mirror=f.mirror, manifest=f.manifest, runs=f.runs,
+                            ownership={"fql": placed()}, source_identity=IDENTITY)
+    assert {EPISODE + "/episode.h5", EPISODE + "/_COMPLETE.json", "_remote/" + STORE} <= set(record["input_closure"])
+
+    def attempt(inputs):
+        return [{"event": "launched", "id": "fql", "host": "local", "attempt": 1, "gpu": LOCAL_GPU, "pid": 2**30,
+                 "inputs": inputs}, {"event": "exited", "id": "fql", "attempt": 1, "code": 1}]
+
+    launches, _, events = tick(f, monkeypatch, [job], attempt(record))
+    assert [i for i, _ in launches] == ["fql"] and events[-1]["inputs"]["input_closure"] == record["input_closure"]
+    changed = copy.deepcopy(record)
+    changed["input_closure"][EPISODE + "/episode.h5"] = "0" * 64  # an episode refetched under the same descriptor
+    (f.root / "registry.jsonl").write_text("")  # a fresh registry for the second scenario
+    launches, messages, _ = tick(f, monkeypatch, [job], attempt(changed))
+    assert not launches and "fql: retry inputs changed; admission held" in messages
+
+
+def test_ready_local_retries_reserve_capacity(mirrored):
+    f = mirrored
+    local = row("retry", host="local", pin_host="local", gpu="any", deps=[])
+    crashed = {**f.state, "retry": {"host": "local", "status": "crashed", "failures": 1, "attempts": 1}}
+    assert planning(f, [local, row()], state=crashed)[0]["reason"] == "local capacity"
+    exhausted = {**f.state, "retry": {"host": "local", "status": "crashed", "failures": 2, "attempts": 2}}
+    assert planning(f, [local, row()], state=exhausted)[0]["decision"] == "local"

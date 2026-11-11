@@ -1149,7 +1149,7 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
                     continue
                 previous_inputs = state.get(job["id"], {}).get("inputs")
                 if previous_inputs is not None and any(previous_inputs.get(key) != inputs[key]
-                                                       for key in ("inputs", "dependency_inputs")):
+                                                       for key in ("inputs", "dependency_inputs", "input_closure")):
                     messages.append(f"{job['id']}: retry inputs changed; admission held")
                     continue
                 pid = launch(job, gpu, attempt, runs, args=effective)
