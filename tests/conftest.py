@@ -16,6 +16,8 @@ GPU_MAPPING = enforce_allowed_gpus()
 import pytest  # noqa: E402
 import torch  # noqa: E402
 
+from remote_regime import _s4d_remote_regime  # noqa: E402,F401  (remote MIG migration 2026-11-11: tests/remote_regime.py)
+
 
 def pytest_configure(config):
     temp = os.environ.get("S4D_PYTEST_TMP") or config.option.basetemp or str(REPO / ".pytest_tmp")

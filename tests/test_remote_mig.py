@@ -212,6 +212,9 @@ def guard_copy(tmp_path, allowlist_doc):
                      "ops/resources/mig_inventory.py", "configs/hosts/local.yaml", "configs/hosts/remote.yaml"):
         (root / relative).parent.mkdir(parents=True, exist_ok=True)
         shutil.copy(REPO / relative, root / relative)
+    (root / "configs/hosts/remote.yaml").write_text(yaml.safe_dump(  # physical, whatever the checkout under test has
+        {"name": "remote", "gpu_uuids": list(PARENTS), "runtime_root": "/home/compu/kaist/sunho"}))
+    (root / inv.INVENTORY_RELATIVE).unlink(missing_ok=True)
     if allowlist_doc is not None:
         (root / inv.INVENTORY_RELATIVE).write_text(allowlist_doc if isinstance(allowlist_doc, str)
                                                    else yaml.safe_dump(allowlist_doc))
@@ -608,11 +611,12 @@ def test_unfinished_process_record_fails_inventory():
 
 def test_scheduler_central_remote_hold_and_quarantine(tmp_path, monkeypatch):
     from ops.jobs import scheduler as jobs
+    from ops.resources.gpu_guard import APPROVED_HOST_GPUS
 
     source = (REPO / "ops/jobs/scheduler.py").read_text()
     assert '(registry.parent.parent / "runs/setup/remote-hold-admissions").exists()' in source
     queue = {"hosts": {"local": {"enabled": False}, "remote": {"enabled": True, "limits": {
-        PARENTS[0]: {"max_jobs": 1, "max_mem_gb": 10}}}}, "jobs": []}
+        APPROVED_HOST_GPUS["remote"][0]: {"max_jobs": 1, "max_mem_gb": 10}}}}, "jobs": []}
     path = tmp_path / "queue.yaml"
     path.write_text(yaml.safe_dump(queue))
     assert jobs.load_queue(path)["hosts"]["remote"]["enabled"] is True

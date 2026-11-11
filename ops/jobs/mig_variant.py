@@ -35,6 +35,12 @@ from ops.jobs.release_repin import scope_comparison  # noqa: E402
 VARIANT_FILES = ("ops/resources/gpu_guard.py", "ops/resources/mig_inventory.py", "mujoco_mig_setup.py",
                  "ops/jobs/run_identity.py", "scripts/check_gpu_isolation.py")
 CONFIG_FILES = ("configs/hosts/remote.yaml", "configs/hosts/remote-mig.yaml")
+CONFTEST_MARKER = "from remote_regime import _s4d_remote_regime"
+# the base's own test suite keeps testing the physical launch-side regime it was written for (tests/remote_regime.py
+# from the MIG head; tests are outside every job's execution scope)
+CONFTEST_LINE = ("\nfrom remote_regime import _s4d_remote_regime  # noqa: E402,F401  "
+                 "(remote MIG variant: tests/remote_regime.py)\n")
+REGIME_FILE = "tests/remote_regime.py"
 
 
 class VariantError(RuntimeError):
@@ -74,6 +80,11 @@ def create(root: Path, base: str, mig_base: str, mig_head: str, configs: Path, s
         conflicted = git(tree, "diff", "--name-only", "--diff-filter=U").decode().split()
         if conflicted:
             raise VariantError(f"conflicts on {base[:7]}: {conflicted}")
+        conftest = tree / "tests/conftest.py"
+        if conftest.is_file() and CONFTEST_MARKER not in conftest.read_text():
+            (tree / REGIME_FILE).write_bytes(git(root, "show", f"{mig_head}:{REGIME_FILE}"))
+            conftest.write_text(conftest.read_text().rstrip("\n") + "\n" + CONFTEST_LINE)
+            git(tree, "add", "tests/conftest.py", REGIME_FILE)
         for name in CONFIG_FILES:
             (tree / name).parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(configs / name, tree / name)
