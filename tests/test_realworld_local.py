@@ -106,6 +106,9 @@ def mirrored(tmp_path):
         path.write_bytes(payload)
     client = Client(remote)
     result = rw.fetch([SPLIT, GATE, STORE], client, mirror=mirror)
+    config = tmp_path / "configs/realworld/fql/base.yaml"  # the trainer configuration the rows name (resolved at launch)
+    config.parent.mkdir(parents=True)
+    config.write_bytes((rw.REPO / "configs/realworld/fql/base.yaml").read_bytes())
     dataset = runs / "dataset/dataset.h5"
     dataset.parent.mkdir(parents=True)
     dataset.write_bytes(b"verified dataset")
@@ -237,12 +240,14 @@ def test_localize_refusals(mirrored, edit, reason):
     if edit == "missing":
         path.unlink()
     elif edit == "size":
+        os.chmod(path, 0o644)  # published mirror files are read-only; the corruption is deliberate
         path.write_bytes(path.read_bytes() + b" ")
     elif edit == "mtime":
         stat = path.stat()
         os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1000))
     elif edit == "hash":
         stat = path.stat()
+        os.chmod(path, 0o644)
         path.write_bytes(b"x" * stat.st_size)
         os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns))
         assert rw.verify(False, mirror=f.mirror) == []  # quick audit deliberately uses metadata
@@ -273,7 +278,7 @@ def test_localize_refusals(mirrored, edit, reason):
 def test_pinned_scope_is_recorded_at_placement_and_compared_at_launch(mirrored, monkeypatch):
     f, job = mirrored, row(planned_commit="a" * 40)
     config = f.root / "configs/realworld/fql/base.yaml"
-    config.parent.mkdir(parents=True)
+    config.parent.mkdir(parents=True, exist_ok=True)
     config.write_bytes(b"seed: 0\n")
     digest = sha(config.read_bytes())
     calls = []
@@ -563,6 +568,7 @@ def test_large_copy_uses_metadata_at_admission_and_full_audit_hashes_it(mirrored
     monkeypatch.setattr(rw, "SMALL_HASH_BYTES", 1)
     path = f.mirror / EPISODE / "episode.h5"
     stat = path.stat()
+    os.chmod(path, 0o644)
     path.write_bytes(b"x" * stat.st_size)
     os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns))
     localize(f)
@@ -582,6 +588,7 @@ def test_missing_byte_estimate_does_not_charge_an_intact_descriptor(mirrored):
 def test_localized_descriptor_must_match_its_remote_original(mirrored):
     f = mirrored
     path = f.mirror / STORE
+    os.chmod(path, 0o644)
     path.write_bytes(path.read_bytes() + b"# changed\n")
     spec = json.loads(f.manifest.read_text())
     spec["files"][STORE].update(bytes=path.stat().st_size, mtime_ns=path.stat().st_mtime_ns,
@@ -719,3 +726,46 @@ def test_ready_local_retries_reserve_capacity(mirrored):
     assert planning(f, [local, row()], state=crashed)[0]["reason"] == "local capacity"
     exhausted = {**f.state, "retry": {"host": "local", "status": "crashed", "failures": 2, "attempts": 2}}
     assert planning(f, [local, row()], state=exhausted)[0]["decision"] == "local"
+
+
+# ---------------------------------------------------------------------------------------------------- review round 2
+# (Codex read-only re-review 2026-11-11: config-resolved inputs, output options, concurrent fetches; fixes by Claude)
+@pytest.mark.parametrize("extra,reason", [
+    (["data={dataset: runs/dataset/other.h5}"], "not plain checked arguments"),  # a mapping override hides a path
+    (["data.extra=runs/elsewhere/file.h5"], "not an output of a declared dependency"),
+])
+def test_paths_resolved_by_the_trainer_must_be_checked_arguments(mirrored, extra, reason):
+    job = row()
+    job["args"] = job["args"][:job["args"].index("--name")] + extra + job["args"][job["args"].index("--name"):]
+    with pytest.raises(rw.LocalInputError, match=reason):
+        localize(mirrored, job)
+
+
+def test_paths_inside_the_config_file_must_be_checked_arguments(mirrored):
+    config = mirrored.root / "configs/realworld/fql/base.yaml"
+    config.write_text(config.read_text().replace("dataset: null", "dataset: runs/dataset/dataset.h5", 1))
+    job = row()
+    job["args"] = [a for a in job["args"] if not a.startswith("data.dataset=")]
+    with pytest.raises(rw.LocalInputError, match="not plain checked arguments"):
+        localize(mirrored, job)
+
+
+def test_output_options_are_not_inputs(mirrored):
+    job = row()
+    job["args"] += ["--output-root", "runs/realworld_fql/custom"]
+    assert rw.needed_inputs(job)["dependency_files"] == [("dataset", "dataset.h5")]
+    effective, _ = localize(mirrored, job)
+    assert effective[-2:] == ["--output-root", "runs/realworld_fql/custom"]
+
+
+def test_fetches_are_serialized(mirrored):
+    import threading
+
+    f, done = mirrored, threading.Event()
+    with open(f.mirror / ".fetch.lock", "a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        worker = threading.Thread(target=lambda: (rw.fetch([SPLIT], f.client, mirror=f.mirror), done.set()))
+        worker.start()
+        assert not done.wait(0.5)  # waits for the lock holder
+    worker.join(10)
+    assert done.is_set()

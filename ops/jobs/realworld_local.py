@@ -41,6 +41,7 @@ MIRROR = REPO / "runs/realworld-inputs"
 MANIFEST = MIRROR / "MANIFEST.json"
 FINISHED_DIR = REPO / "runs/setup/realworld-local-finished"
 SMALL_HASH_BYTES = 64 * 2**20
+OUTPUT_OPTIONS = ("--output-root", "--name")  # scripts/train_realworld_fql.py options naming outputs
 REMOTE_LOCK = REPO / "runs/setup/remote-driver.lock"
 
 
@@ -100,7 +101,10 @@ def applies(job: dict, roles: dict, by_id: dict | None = None) -> bool:
 
 def needed_inputs(job: dict, *, remote_prefix: str = REMOTE_PREFIX) -> dict:
     mirror, dependencies = set(), set()
-    for arg in job.get("args", []):
+    args = [str(a) for a in job.get("args", [])]
+    for i, arg in enumerate(args):
+        if i and args[i - 1] in OUTPUT_OPTIONS:
+            continue  # an output location or run name, never an input
         value = _value(arg)
         relative = _mapped(value, remote_prefix)
         if relative is not None:
@@ -275,6 +279,15 @@ def fetch(rels, client=None, priority="bulk", dry_run=False, *, mirror: Path = M
     """
     client = client or _fetch_client()
     mirror, manifest = Path(mirror), Path(manifest or Path(mirror) / "MANIFEST.json")
+    mirror.mkdir(parents=True, exist_ok=True)
+    # Serialize fetches (manifest read -> conflict check -> download -> publication): a concurrent fetch can neither
+    # lose another's manifest entries nor replace a file an admitted launch was verified against.
+    with open(mirror / ".fetch.lock", "a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        return _fetch_locked(rels, client, priority, dry_run, mirror, manifest, remote_prefix)
+
+
+def _fetch_locked(rels, client, priority, dry_run, mirror: Path, manifest: Path, remote_prefix: str) -> dict:
     spec = _manifest(manifest, remote_prefix)
     inventory = remote_plan(rels, client, remote_prefix=remote_prefix, mirror=mirror)
     # Append-only mirror: a published entry is never replaced by different content (a launch verified against it may
@@ -403,9 +416,47 @@ def verify(full=True, *, mirror: Path = MIRROR, manifest: Path | None = None,
     return problems
 
 
+def _resolved_paths(job: dict, root: Path, remote_prefix: str = REMOTE_PREFIX) -> set[str]:
+    """Every run-output or remote path string in the configuration the trainer resolves (``--config`` file(s) merged,
+    then ``--set`` overrides parsed as YAML: s4d/config.py load_config, the trainer's own call), including paths
+    inside mapping overrides (``data={dataset: ...}``) and inside the config files. A row without ``--config`` cannot
+    start the trainer (a required option) and reads nothing."""
+    import argparse
+
+    from s4d.config import load_config
+
+    args = [str(a) for a in job.get("args", [])]
+    if "--config" not in args and not any(a.startswith("--config=") for a in args):
+        return set()
+    parser = argparse.ArgumentParser(add_help=False, allow_abbrev=False, exit_on_error=False)
+    parser.add_argument("--config", required=True)
+    parser.add_argument("--set", nargs="*", default=[])
+    try:
+        known, _ = parser.parse_known_args(args)
+        config = Path(known.config)
+        cfg = load_config([config if config.is_absolute() else root / config], known.set)
+    except (argparse.ArgumentError, OSError, ValueError, yaml.YAMLError) as exc:
+        raise LocalInputError(f"cannot resolve the trainer configuration: {exc}") from exc
+    found, todo = set(), [cfg]
+    while todo:
+        node = todo.pop()
+        if isinstance(node, dict):
+            todo += list(node.values())
+        elif isinstance(node, list):
+            todo += node
+        elif isinstance(node, str) and (node.startswith(("runs/", "./runs/", "/home/compu/")) or remote_prefix in node):
+            found.add(node)
+    return found
+
+
 def _inputs(job: dict, state: dict, mirror: Path, manifest: Path, runs: Path,
-            remote_prefix: str = REMOTE_PREFIX) -> tuple[list, dict]:
+            remote_prefix: str = REMOTE_PREFIX, root: Path = REPO) -> tuple[list, dict]:
     needed = needed_inputs(job, remote_prefix=remote_prefix)
+    checked = {f"runs/{dep}/{relative}" for dep, relative in needed["dependency_files"]} | {
+        remote_prefix + ("" if relative == "." else "/" + relative) for relative in needed["mirror"]}
+    hidden = sorted(_resolved_paths(job, root, remote_prefix) - checked)
+    if hidden:
+        raise LocalInputError(f"input paths the trainer resolves are not plain checked arguments: {hidden[:3]}")
     raw = manifest.read_bytes() if manifest.is_file() else None
     files, inputs, dependencies = _manifest(manifest, remote_prefix, raw=raw)["files"], {}, {}
     closure: set = set()
@@ -480,7 +531,7 @@ def localize(job: dict, state: dict, *, roles: dict, by_id=None, runs: Path | No
         manifest = Path(manifest or (Path(mirror) / "MANIFEST.json" if mirror is not None else MANIFEST))
         mirror = Path(mirror or MIRROR)
         effective, record = _inputs(job, state, mirror, manifest,
-                                    Path(runs or root / "runs"), remote_prefix)
+                                    Path(runs or root / "runs"), remote_prefix, root)
         owned = ownership if ownership is not None else host_roles.read_ownership()
         placed = owned.get(job["id"]) or {}
         # Only rows moved by ``apply`` (locked, recorded, release scope proven) launch here: a row registered or
@@ -614,7 +665,7 @@ def plan(queue: dict, state: dict, roles: dict, *, paused_fn, allow_pauses=(), p
             decision, reason = "waits", "dependencies not done"
         else:
             try:
-                _inputs(job, state, mirror, manifest, runs, remote_prefix)
+                _inputs(job, state, mirror, manifest, runs, remote_prefix, root)
             except (OSError, ValueError, KeyError, TypeError, yaml.YAMLError) as exc:
                 decision, reason = "waits", str(exc)
                 try:
