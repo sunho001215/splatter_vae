@@ -135,3 +135,33 @@ def test_two_heads_larger_than_their_share_do_not_deadlock_an_empty_machine():
                    active=[row("a", "metaworld", ram=80, gpu="mig")], ram=150, used=80)
     assert later["admitted"] == [] or "b" not in later["admitted"]  # b still does not fit beside a (80 + 80 > 150)
     assert "a2" not in later["admitted"]  # metaworld is over its share and b's claimable guarantee is protected
+
+
+def test_a_family_below_its_share_cannot_keep_refilling_past_a_less_served_head():
+    """Codex review 2 (P1): Meta-World at 70/150 must not overshoot with another 10 while a real-world 80-unit head
+    waits; the head fits exactly in the 80 left and starts."""
+    active = [row(f"a{i}", ram=10, gpu="mig") for i in range(7)]
+    result = select([row("m-next", ram=10), row("rw", "realworld", ram=80)], active, ram=150, jobs=30, mem=300,
+                    used=70)
+    assert result["admitted"] == ["rw"] and result["blocked"] == {"metaworld": "m-next"}
+
+
+def test_selected_mig_instances_follow_the_scheduler_rule_and_blocked_heads_reserve_one():
+    """Codex review 2 (P1): the instance chosen here is dispatched with the row; a head blocked only by MIG packing
+    reserves the instance with the most free memory, so small rows cannot keep every instance fragmented."""
+    limits = {f"mig{i}": {"max_jobs": 3, "max_mem_gb": 22} for i in range(8)}
+    active = [row(f"a{i}", ram=1, mem=6, gpu=f"mig{i // 2}") for i in range(16)]  # 12 GB on mig0..mig7
+    rows = [row("big", "realworld", ram=1, mem=12)] + [row(f"s{i}", ram=1, mem=4) for i in range(4)]
+    result = fair.select(rows, active, limits, 1000, 16)
+    assert result["blocked"] == {"realworld": "big"} and result["reserved"] == {"mig0": "realworld"}
+    assert set(result["admitted"]) == {"s0", "s1", "s2", "s3"}
+    assert "mig0" not in {result["assigned"][i] for i in result["admitted"]}
+    assert [result["assigned"][i] for i in result["admitted"]] == ["mig1", "mig2", "mig3", "mig4"]  # least memory
+    freed = [a for a in active if a["id"] not in ("a0", "a1")]  # mig0 drains on a later pass
+    later = fair.select(rows[:1] + [row("s9", ram=1, mem=4)], freed, limits, 1000, 14)
+    assert later["admitted"][0] == "big" and later["assigned"]["big"] == "mig0"
+
+
+def test_driver_dispatches_the_selected_instance():
+    source = (Path(__file__).resolve().parents[1] / "ops/campaign/baseline_local_driver.py").read_text()
+    assert "'gpu': fair['assigned'][j['id']]}" in source

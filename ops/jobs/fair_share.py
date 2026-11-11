@@ -34,9 +34,12 @@ def permits(family: str, need: dict, usage: dict, capacity: dict, pending: dict,
         return False
     if dominant({k: usage[family].get(k, 0) + need.get(k, 0) for k in RESOURCES}, capacity) <= 1 / n + 1e-12:
         return True
-    if dominant(usage[family], capacity) < 1 / n - 1e-12:
-        # A family still below its guarantee may admit one indivisible row that overshoots it (otherwise two heads
-        # larger than 1/n would deadlock an empty machine); the overshoot is bounded by one row and the caps.
+    mine = dominant(usage[family], capacity)
+    if mine < 1 / n - 1e-12 and all(dominant(used, capacity) >= mine - 1e-12 for other, used in usage.items()
+                                    if other != family and any(pending.get(other, {}).values())):
+        # The least-served family, still below its guarantee, may admit one indivisible row that overshoots it
+        # (otherwise two heads larger than 1/n deadlock an empty machine). Only the least-served one: a family that
+        # is merely below its share must not keep refilling past it while a less-served family's head waits.
         return True
     return all(capacity[k] - after[k] + 1e-8 >= sum(
         min(max(0, capacity[k] / n - used.get(k, 0)), pending.get(other, {}).get(k, 0))
@@ -44,7 +47,8 @@ def permits(family: str, need: dict, usage: dict, capacity: dict, pending: dict,
 
 
 def select(candidates: list[dict], active: list[dict], limits: dict, ram_cap: float, ram_used: float) -> dict:
-    """Return admitted ids, per-family blocked trainer ids and a usage/guarantee report.
+    """Return admitted ids with their MIG instance (dispatched with the row), per-family blocked trainer ids, MIG
+    instances reserved for blocked heads, and a usage/guarantee report.
 
     Each row has id, family, ram_bytes, mem_gb, gpu (or any); candidates may mark evaluator, trainer and trainer_ready.
     The first non-fitting trainer reserves its family's turn; short evaluators may still fill capacity. Actual MIG
@@ -66,6 +70,32 @@ def select(candidates: list[dict], active: list[dict], limits: dict, ram_cap: fl
     total = {k: sum(u[k] for u in usage.values()) for k in RESOURCES}
     total["ram_bytes"] = max(float(ram_used), total["ram_bytes"])
     remaining, admitted, blocked = list(candidates), [], {}
+    assigned, reserved = {}, {}  # id -> MIG instance; MIG instance -> family whose blocked head reserves it
+
+    def choose(row, family):
+        """The scheduler's own rule (ops/jobs/scheduler.py choose_gpu: least memory after placement, first on ties),
+        skipping instances reserved for another family's blocked head. The choice is dispatched with the row."""
+        best = None
+        for gpu, slot in slots.items():
+            if (row.get("gpu", "any") in ("any", gpu) and reserved.get(gpu, family) == family
+                    and slot["jobs"] < int(slot["max_jobs"])
+                    and slot["mem_gb"] + float(row.get("mem_gb", 0)) <= float(slot["max_mem_gb"])):
+                memory = slot["mem_gb"] + float(row.get("mem_gb", 0))
+                if best is None or memory < best[0]:
+                    best = (memory, gpu)
+        return None if best is None else best[1]
+
+    def reserve_for(row, family):
+        """A head blocked only by MIG packing reserves the instance that will fit it soonest (most free memory among
+        those large enough), so later small rows cannot keep every instance fragmented."""
+        if any(owner == family for owner in reserved.values()):
+            return
+        fitting = [gpu for gpu, slot in slots.items() if row.get("gpu", "any") in ("any", gpu)
+                   and float(row.get("mem_gb", 0)) <= float(slot["max_mem_gb"]) and gpu not in reserved]
+        if fitting:
+            gpu = max(fitting, key=lambda g: (float(slots[g]["max_mem_gb"]) - slots[g]["mem_gb"],
+                                              int(slots[g]["max_jobs"]) - slots[g]["jobs"], -list(slots).index(g)))
+            reserved[gpu] = family
 
     def possible(row):
         # An intrinsically impossible head cannot claim borrowed capacity, nor can trainers behind that head.
@@ -100,15 +130,16 @@ def select(candidates: list[dict], active: list[dict], limits: dict, ram_cap: fl
                 continue
             for k, v in demand(waiting).items():
                 pending[waiting["family"]][k] += v
-        gpu = next((gpu for gpu, slot in slots.items() if row.get("gpu", "any") in ("any", gpu)
-                    and slot["jobs"] < int(slot["max_jobs"])
-                    and slot["mem_gb"] + float(row.get("mem_gb", 0)) <= float(slot["max_mem_gb"])), None)
+        gpu = choose(row, family)
         need = demand(row)
         if gpu is None or not permits(family, need, usage, capacity, pending, total):
             if not evaluator:
                 blocked[family] = row["id"]
+                if gpu is None and possible(row):
+                    reserve_for(row, family)
             continue
         admitted.append(row["id"])
+        assigned[row["id"]] = gpu
         remaining.remove(row)
         slots[gpu]["jobs"] += 1
         slots[gpu]["mem_gb"] += float(row.get("mem_gb", 0))
@@ -116,7 +147,8 @@ def select(candidates: list[dict], active: list[dict], limits: dict, ram_cap: fl
             usage[family][k] += v
             total[k] += v
     guarantee = {k: capacity[k] / len(families) for k in RESOURCES} if families else {}
-    return {"admitted": admitted, "blocked": blocked, "total_ram_bytes": total["ram_bytes"],
+    return {"admitted": admitted, "assigned": assigned, "reserved": reserved, "blocked": blocked,
+            "total_ram_bytes": total["ram_bytes"],
             "report": {"capacity": capacity, "families": {
                 f: {"usage": usage[f], "guarantee": guarantee, "dominant_share": dominant(usage[f], capacity)}
                 for f in families}}}

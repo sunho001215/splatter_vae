@@ -1099,7 +1099,8 @@ def test_dispatch_copy_keeps_a_dependency_derived_class(mirrored):
 
 def test_local_driver_stamps_roles_and_remote_driver_honours_queue_hold_and_local_pins():
     local = (rw.REPO / 'ops/campaign/baseline_local_driver.py').read_text()
-    assert 'dispatched = [host_roles.with_role(j, by_queue) for j in admitted]' in local
+    assert ("dispatched = [{**host_roles.with_role(j, by_queue), 'gpu': fair['assigned'][j['id']]} "
+            "for j in admitted]") in local
     assert "'jobs': json.loads(json.dumps(dispatched))" in local
     assert 'if _paused_now(job' in local  # an intentionally paused Stage 2 row never forces the baselines to yield
     remote = (rw.REPO / 'ops/campaign/remote_campaign_driver.py').read_text()

@@ -314,7 +314,9 @@ if admitted and not DRY:
     # Dispatch copies carry their class as an explicit role (host_roles.with_role, as the remote driver does): the
     # tick sees only the admitted rows, so an export classified through its real-world producer stays remote-resident
     # (localized at launch) instead of becoming a domain-free row.
-    dispatched = [host_roles.with_role(j, by_queue) for j in admitted]
+    # The MIG instance fair_share chose (the scheduler's own rule, honouring reservations for blocked heads) travels
+    # with the row, so the tick cannot fragment the instances differently (Codex review 2).
+    dispatched = [{**host_roles.with_role(j, by_queue), 'gpu': fair['assigned'][j['id']]} for j in admitted]
     with qpath.open('x') as stream:
         yaml.safe_dump({'hosts': {'local': copy.deepcopy(queue['hosts']['local'])},
                         'jobs': json.loads(json.dumps(dispatched))}, stream, sort_keys=False)
