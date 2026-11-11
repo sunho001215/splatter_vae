@@ -151,3 +151,59 @@ def test_stage_refuses_inventories_of_another_policy_id_rule(tmp_path, capsys, m
         inv.write_text(json.dumps(doc))
         assert S.cmd_stage(SimpleNamespace(**vars(args), inventory=inv)) == 2
         assert message in json.loads(capsys.readouterr().out)["error"]
+
+
+MVP_REASON = ("user decision 2026-11-12 ~00:20: 3D-MVP (single + multiview) stays NOT execution-eligible for the real "
+              "robot (dry run / replay only), although its native-depth reruns pass criteria a-f")
+
+
+def _entry(condition, setting=None, status="deployable"):
+    run = f"{'rwnq-1' if setting == 'a10nq' else 'rwa100-1' if setting == 'a100' else 'r'}-fql-{condition}-t-s0"
+    return S.catalog_entry({
+        "run": run, "condition": condition, "task": "t", "seed": 0, "fql_setting": setting,
+        "policy_id": S.policy_id(condition, "t", 0, setting), "policy": {"path": f"runs/{run}/policy.pt",
+                                                                       "sha256": "c" * 64},
+        "export": {"path": "runs/p/encoder.pt", "pretrain_run": "p", "sha256": "e" * 64},
+        "class": {"status": status, "reasons": [] if status == "deployable" else ["x"], "flags": []}})
+
+
+@pytest.mark.parametrize("condition", ["mvp3d_single", "mvp3d_multiview"])
+def test_3d_mvp_stays_ineligible_exactly_as_the_live_correction(condition):
+    """User decision 2026-11-12 ~00:20: a deployable 3D-MVP entry stays deployable but dry run / replay only, with the
+    fields of realworld-ops/serving/eligibility-20261112/mvp3d_ineligible.py (a re-stage must not flip it back)."""
+    e = _entry(condition)
+    assert e["status"] == "deployable" and e["usage"] == "dry_run_replay_only" and e["execution_eligible"] is False
+    assert "execution_decision" in e and e["execution_decision"] is None
+    assert e["usage_reasons"] == [MVP_REASON, S.NOT_ELIGIBLE] and S.INELIGIBLE_CONDITIONS[condition] == MVP_REASON
+    nq = _entry(condition, "a10nq")  # its rwnq variant: both reasons
+    assert nq["usage_reasons"] == [MVP_REASON, S.setting_reason("a10nq"), S.NOT_ELIGIBLE]
+    assert nq["execution_eligible"] is False and nq["execution_decision"] is None
+    validate_catalog(json.loads(json.dumps(S.build_catalog({"a": e, "b": nq}, aliases={}, criteria_sha256=None))))
+
+
+def test_new_setting_variants_default_to_not_eligible_and_alpha10_rules_are_unchanged():
+    nq = _entry("reviwo", "a10nq")
+    assert nq["status"] == "deployable" and nq["execution_eligible"] is False and nq["usage"] == "dry_run_replay_only"
+    assert nq["usage_reasons"] == ["new FQL setting a10nq: execution eligibility awaits a user decision",
+                                   S.NOT_ELIGIBLE] and nq["execution_decision"] is None
+    assert _entry("sincro", "a100")["usage_reasons"][0] == S.setting_reason("a100")
+    base = _entry("reviwo")  # the alpha-10 rule (user decision 2026-11-10 21:10) is unchanged
+    assert base["execution_eligible"] is True and base["usage"] == "execution" and base["execution_decision"]
+    dyn = _entry("dynamo", status="restricted")  # the DynaMo LN-spread restriction is unchanged
+    assert dyn["usage"] == "dry_run_replay_only" and dyn["usage_reasons"][0] == C.LN_SPREAD_DECISION
+    assert "execution_decision" not in dyn
+    q = _entry("mvp3d_single", status="quarantined")
+    assert q["usage"] == "none" and "execution_decision" not in q
+
+
+def test_bcflow_variants_of_ineligible_bases_stay_ineligible_even_with_a_decision():
+    decision = {"decided_by": "user", "at": "t", "text": "bc_flow may execute"}
+    for base in (_entry("mvp3d_multiview"), _entry("reviwo", "a10nq")):
+        pid, v = S.bcflow_variant("x-s0", base, decision=decision)
+        assert v["execution_eligible"] is False and v["usage"] == "dry_run_replay_only"
+        assert v["usage_reasons"][0] == S.BCFLOW_REASON and base["usage_reasons"][0] in v["usage_reasons"]
+        assert "execution_decision" not in v
+    _, ok = S.bcflow_variant("x-s0", _entry("reviwo"), decision=decision)  # eligible alpha-10 base: as before
+    assert ok["execution_eligible"] is True
+    synced = S.sync_bcflow_variants({"m-s0": _entry("mvp3d_single"), "m-s0+bcflow": {**ok, "condition": "mvp3d_single"}})
+    assert synced["m-s0+bcflow"]["execution_eligible"] is False  # a granted decision does not survive an ineligible base

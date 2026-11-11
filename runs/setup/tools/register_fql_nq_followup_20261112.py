@@ -3,7 +3,8 @@
 Same setting rule as runs/setup/tools/register_fql_nq_20261111.py (whose helpers this tool reuses): every frozen-encoder
 FQL row is ``rwnq-20261111-fql-<cond>-<task>-s<k>`` (``agent.alpha=10.0`` + ``agent.normalize_q_loss=true``) with a
 ``rwa100-20261111-fql-<cond>-<task>-s<k>`` comparison (``agent.alpha=100.0`` in place + ``agent.normalize_q_loss=false``,
-priority + 1); configs/realworld/fql/base.yaml is unchanged (E2E untouched). Tasks drawer-open, mug-hanging; seeds 0-2.
+the LOWEST queue priority ``A100_PRIORITY`` + the a100 hold, user 2026-11-12 ~00:20); configs/realworld/fql/base.yaml
+is unchanged (E2E untouched). Tasks drawer-open, mug-hanging; seeds 0-2.
 
 ``--group snerl`` (12 rows): DERIVED from the six never-launched alpha-10 rows ``rwcal-20261109-fql-snerl-<task>-s<k>``
 (paused: superseded by these rows), exactly as the phase-1 rows (same derivation, same field-by-field check). They
@@ -53,6 +54,10 @@ QUEUE, REGISTRY = P1.QUEUE, P1.REGISTRY
 SNERL_HOLD = 'fqlnq-snerl-feature-check-20261111'
 OURS_HOLD = 'fqlnq-ours-feature-check-20261112'
 A100_PAUSE = P1.PAUSES['a100']
+# User decision 2026-11-12 ~00:20 (coordinator): ours / a10nq rows before every a100 row; a100 never delays
+# preprocessing, pretraining or primary nq FQL -> a100 rows take the LOWEST priority used in the queue (4) and the a100
+# hold; the a10nq rows keep their template's priority (2).
+A100_PRIORITY = 4
 GROUPS = ('snerl', 'ours')
 STEM = 'rw-registration-fql-nq-{group}-20261112'
 OURS_PRE, OURS_EXPORT = 'rwcal-20261111-ours-{task}-pre', 'rwcal-20261111-ours-{task}-export'
@@ -105,6 +110,7 @@ def snerl_rows(by_id, release):
                 job = P1.new_id(setting, 'snerl', task, seed)
                 row = P1.derive(source, job, setting, 'snerl', task, seed)
                 P1.check_derived(row, source, setting)
+                row['priority'] = priority_of(setting, source)
                 P1.pin(row, release)
                 row['registration_tool'] = TOOL
                 rows.append(row)
@@ -165,7 +171,7 @@ def ours_fql_row(by_id, data_row, task, seed, setting, release):
                realworld_gate_sha256=data_row['realworld_gate_sha256'],
                realworld_manifest_sha256=data_row['realworld_manifest_sha256'], protocol_template=template_id,
                purpose=PURPOSE_OURS_FQL[setting])
-    _, alpha, normalize, offset = SETTINGS[setting]
+    _, alpha, normalize, _ = SETTINGS[setting]
     expected = list(template['args'])
     expected[expected.index('--name') + 1] = job
     for key, value in (('condition', 'ours'), ('data.dataset', f'runs/{data_row["id"]}/dataset.h5'),
@@ -173,13 +179,19 @@ def ours_fql_row(by_id, data_row, task, seed, setting, release):
         expected[indices(expected, key)[0]] = f'{key}={value}'
     expected.append(f'agent.normalize_q_loss={str(normalize).lower()}')
     require(row['args'] == expected, f'args differ from the template beyond the allowed changes: {job}')
-    require(row['priority'] == template['priority'] + offset and row['fql_setting'] == setting
+    row['priority'] = priority_of(setting, template)
+    require(row['fql_setting'] == setting
             and canonical(row['fql_budget']) == canonical({**template['fql_budget'], 'alpha': float(alpha),
                                                            'normalize_q_loss': normalize}), f'setting fields: {job}')
     check_other_fields(row, template, OURS_FQL_CHANGED)
     P1.pin(row, release)
     row['registration_tool'] = TOOL
     return row
+
+
+def priority_of(setting, source):
+    require(source['priority'] < A100_PRIORITY, f"a10nq priority {source['priority']} is not above the a100 rows")
+    return A100_PRIORITY if setting == 'a100' else source['priority']
 
 
 def check_other_fields(row, template, changed):

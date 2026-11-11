@@ -450,7 +450,7 @@ def catalog_entry(row: dict, input_spec: dict | None = None) -> dict:
            "flags": list(row["class"]["flags"]) + ([f"fql_setting_{row['fql_setting']}"]
                                                    if row.get("fql_setting") else []),
            "criteria": C.criteria_summary(row["condition"], row.get("checks") or {}),
-           **usage_of(status)}
+           **usage_of(status, row["condition"], row.get("fql_setting"))}
     if input_spec is not None:
         out["input_spec"] = input_spec
     return out
@@ -461,13 +461,32 @@ EXECUTION_DECISION = {"decided_by": "user", "at": "2026-11-10T21:10+09:00",
                               "by the coordinator: every catalog entry with status deployable, including future "
                               "deployable stagings; restricted DynaMo and quarantined 3D-MVP stay false)"}
 NOT_ELIGIBLE = "not execution-eligible: only deployable entries are (user decision 2026-11-10 21:10)"
+# User decision 2026-11-12 ~00:20 (relayed by the coordinator): 3D-MVP stays NOT execution-eligible even when deployable
+# (exactly the live catalog correction realworld-ops/serving/eligibility-20261112/mvp3d_ineligible.py), and entries of a
+# new FQL setting (FQLNQ rows: a10nq; the a100 comparison) default to NOT eligible until the user decides.
+INELIGIBLE_CONDITIONS = {
+    "mvp3d_single": "user decision 2026-11-12 ~00:20: 3D-MVP (single + multiview) stays NOT execution-eligible for the "
+                    "real robot (dry run / replay only), although its native-depth reruns pass criteria a-f"}
+INELIGIBLE_CONDITIONS["mvp3d_multiview"] = INELIGIBLE_CONDITIONS["mvp3d_single"]
 
 
-def usage_of(status: str) -> dict:
+def setting_reason(setting: str) -> str:
+    return f"new FQL setting {setting}: execution eligibility awaits a user decision"
+
+
+def usage_of(status: str, condition: str | None = None, setting: str | None = None) -> dict:
     """Usage restriction of a staged entry (user decision 2026-11-10 21:10): a ``deployable`` entry (every criterion
     passed) is execution-eligible with the recorded decision; ``restricted`` stays dry run / replay only, quarantined
     is not usable; anything else fails closed (a missing field means not eligible for every consumer). Execution on
-    the robot PC still needs its own explicit manual mode (flag, typed confirmation, armed config)."""
+    the robot PC still needs its own explicit manual mode (flag, typed confirmation, armed config).
+    Exceptions for a deployable entry (status unchanged; dry run / replay only, ``execution_decision`` None): a
+    3D-MVP condition (``INELIGIBLE_CONDITIONS``, user 2026-11-12 ~00:20) and any new FQL ``setting`` (rwnq / rwa100
+    rows: awaiting a user decision); both reasons are listed when both apply."""
+    held = ([INELIGIBLE_CONDITIONS[condition]] if condition in INELIGIBLE_CONDITIONS else []) + \
+        ([setting_reason(setting)] if setting else [])
+    if status == "deployable" and held:
+        return {"usage": "dry_run_replay_only", "execution_eligible": False, "execution_decision": None,
+                "usage_reasons": held + [NOT_ELIGIBLE]}
     if status == "deployable":
         return {"usage": "execution", "execution_eligible": True, "execution_decision": dict(EXECUTION_DECISION),
                 "usage_reasons": [f"user decision {EXECUTION_DECISION['at']}: deployable (all criteria passed) -> "
@@ -521,7 +540,7 @@ def bcflow_variant(base_id: str, base: dict, *, decision: dict | None = None) ->
     else:
         entry.update(status=base["status"], reasons=list(base.get("reasons", [])) or ([BCFLOW_REASON]
                      if base["status"] != "deployable" else []))
-        if decision is not None and base["status"] == "deployable" and \
+        if decision is not None and base["status"] == "deployable" and base.get("execution_eligible") is not False and \
                 decision.get("checkpoint_sha256", base["sha256"]) == base["sha256"]:
             if decision.get("decided_by") != "user" or "bc_flow" not in str(decision.get("text", "")):
                 raise ValueError("a bc_flow execution decision is a user decision whose text names bc_flow")
@@ -530,8 +549,10 @@ def bcflow_variant(base_id: str, base: dict, *, decision: dict | None = None) ->
                          execution_decision={**decision, "checkpoint_sha256": base["sha256"]},
                          usage_reasons=[f"user decision {decision.get('at')}: experimental bc_flow actor -> "
                                         "execution-eligible; robot-PC manual execution mode still required"])
-        else:
-            entry.update(usage="dry_run_replay_only", execution_eligible=False, usage_reasons=[BCFLOW_REASON])
+        else:  # an ineligible base (3D-MVP, new FQL setting, ...) keeps its variant ineligible with its reasons
+            held = [r for r in base.get("usage_reasons", []) if r != NOT_ELIGIBLE] \
+                if base.get("execution_eligible") is False and base["status"] == "deployable" else []
+            entry.update(usage="dry_run_replay_only", execution_eligible=False, usage_reasons=[BCFLOW_REASON, *held])
     return base_id + BCFLOW_SUFFIX, entry
 
 

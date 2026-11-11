@@ -122,10 +122,11 @@ def test_snerl_rows_equal_their_paused_alpha10_sources(repo):
     for row in record['jobs']:
         source = by_id[row['derived_from']]
         assert source['id'] == f"rwcal-20261109-fql-snerl-{row['realworld_target']}-s{row['fql_seed']}"
-        alpha, flag, prio = ('10.0', 'true', 2) if row['fql_setting'] == 'a10nq' else ('100.0', 'false', 3)
+        alpha, flag, prio = ('10.0', 'true', 2) if row['fql_setting'] == 'a10nq' else ('100.0', 'false', R.A100_PRIORITY)
         want = [row['id'] if a == source['id'] else ('agent.alpha=' + alpha if a.startswith('agent.alpha=') else a)
                 for a in source['args']] + ['agent.normalize_q_loss=' + flag]
         assert row['args'] == want and row['priority'] == prio and row['deps'] == source['deps']
+        assert R.A100_PRIORITY == 4  # the lowest priority used in the queue (user 2026-11-12 ~00:20)
         same = set(source) - R.P1.CHANGED
         assert {k: row[k] for k in same} == {k: source[k] for k in same}
         assert R.required_pauses(row) == PAUSES[row['id'].rsplit('-snerl-', 1)[0] + '-snerl-']
@@ -155,7 +156,7 @@ def test_ours_rows_follow_the_sincro_protocol_template(repo):
                 assert [a for a in row['args'] if a.startswith(('data.split', 'data.gate', 'train.'))] == \
                     [a for a in tmpl['args'] if a.startswith(('data.split', 'data.gate', 'train.'))]
                 assert row['args'][-1] == f"agent.normalize_q_loss={'true' if setting == 'a10nq' else 'false'}"
-                assert row['priority'] == (2 if setting == 'a10nq' else 3) and row['fql_setting'] == setting
+                assert row['priority'] == (2 if setting == 'a10nq' else R.A100_PRIORITY) and row['fql_setting'] == setting
                 assert (row['mem_gb'], row['ram_gb'], row['disk_gb']) == (tmpl['mem_gb'], tmpl['ram_gb'], tmpl['disk_gb'])
 
 
