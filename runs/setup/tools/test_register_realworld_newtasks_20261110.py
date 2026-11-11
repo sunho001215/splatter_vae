@@ -165,11 +165,13 @@ def directive_r_checks(task, rows, by_id, remote):
     assert all(r['args'][r['args'].index('--store') + 1] == store for r in mvp if R.kind(r) == 'dataset')
     assert all(r['args'][-1] == 'encoder.feature_norm=train_standardize' and 'feature check' in r['launch_gate']
                for r in mvp if R.kind(r) == 'fql')
-    hold = R.frozen_hold(rows, task)
-    held = set(hold['rows'])
+    frozen, feature = R.holds(rows, task)
+    held = set(frozen['rows'])
     fql = [r for r in rows if R.kind(r) == 'fql']
     assert held == {r['id'] for r in fql if r['fql_condition'] != 'e2e_cnn'} and len(held) == 18
     assert all(r['id'] not in held for r in fql if r['fql_condition'] == 'e2e_cnn')  # e2e_cnn + noaug may run
+    assert set(feature['rows']) == {r['id'] for r in fql if r.get('depth_source') == R.NATIVE_DEPTH} \
+        and len(feature['rows']) == 6
 
 
 def test_proposal_respects_each_consumer_gate_and_old_tasks_cannot_be_registered(tmp_path, monkeypatch):
@@ -177,8 +179,8 @@ def test_proposal_respects_each_consumer_gate_and_old_tasks_cannot_be_registered
     _, report = staged_inputs(tmp_path, geometry=False)  # calibration hold closed
     image = R.plan_task('covering', report, PIN, '/remote/covering', family='image', rig=RIG)
     assert len(image['jobs']) == 17 and not any(r['calibration_dependent'] for r in image['jobs'])
-    assert set(image['hold']['rows']) == {r['id'] for r in image['jobs']
-                                          if R.kind(r) == 'fql' and r['fql_condition'] in ('reviwo', 'dynamo')}
+    assert len(image['holds']) == 1 and set(image['holds'][0]['rows']) == {
+        r['id'] for r in image['jobs'] if R.kind(r) == 'fql' and r['fql_condition'] in ('reviwo', 'dynamo')}
     assert image['counts'] == IMAGE_COUNTS
     for family in ('geometry', 'all'):
         with pytest.raises(R.Refused, match='incomplete consumer family'):
@@ -307,7 +309,7 @@ def test_prepare_refuses_unmeasured_scene_but_can_prepare_image_rows(tmp_path, m
     monkeypatch.setattr(R, 'release_evidence', lambda *args: {'source_sha256': {}})
     prepared = R.prepare(tmp_path, 'covering', manifest_path, directory, '/remote/covering', family='image')
     assert len(prepared['jobs']) == 17 and prepared['status'] == 'dry-run' and not prepared['registered']
-    assert prepared['hold']['rows'] and prepared['hold']['active'] is True
+    assert prepared['holds'][0]['rows'] and prepared['holds'][0]['active'] is True
     assert prepared['release'] == PIN and not (tmp_path / 'experiments').exists()
     assert set(prepared['learning_inputs']['sha256']) == set(R.INPUT_NAMES)
     assert {r['planned_commit'] for r in prepared['jobs']} == {PIN['commit']}
@@ -344,3 +346,37 @@ def test_queue_candidate_preserves_existing_rows_and_comments(jobs):
     parsed = yaml.safe_load(before)
     assert yaml.safe_load(candidate) == {**parsed, 'jobs': parsed['jobs'] + rows}
     assert b'# comment' in candidate and b'# tail' in candidate and rows == saved
+
+
+def test_rig_document_must_be_this_tasks_validated_release(tmp_path):
+    """The native stage's rig document: a release of THIS task, every camera validated, with sensor_depth scales."""
+    from types import SimpleNamespace
+
+    import numpy as np
+
+    from s4d.realworld.calib.rig import FIXEDNESS_RULE_G5AB, FORMAT, publish_rig
+
+    cams = ['c0/color', 'c1/color']
+
+    def doc(task, status='validated', scales=('foundation_stereo_depth', 'sensor_depth')):
+        return {'format': FORMAT, 'name': f'rig-{task}', 'task': task, 'gate_version': 'g/1',
+                'fixedness_rule': FIXEDNESS_RULE_G5AB, 'fixedness_exception': {}, 'episodes': [],
+                'cameras': {c: {'status': status, 'held_by': [] if status == 'validated' else ['G1'],
+                                'depth_scale': dict.fromkeys(scales, 1.0), 'T_cam_base': np.eye(4).tolist()}
+                            for c in cams}}
+
+    arrays = {f"{c.replace('/', '__')}__{k}": np.zeros((2, 2)) for c in cams for k in ('grey', 'dynamic')}
+
+    def args(name, d, task='covering'):
+        path = tmp_path / name
+        publish_rig(path, d, arrays)
+        return SimpleNamespace(rig_document=path, rig_remote=f'/remote/rig/{name}', task=task)
+
+    good = R.rig_arg(args('a.json', doc('covering')))
+    assert good['task'] == 'covering' and len(good['sha256']) == 64
+    for name, d in (('b.json', doc('drawer-open')), ('c.json', doc('covering', status='held')),
+                    ('d.json', doc('covering', scales=('foundation_stereo_depth',)))):
+        with pytest.raises(R.Refused):
+            R.rig_arg(args(name, d))
+    with pytest.raises(R.Refused, match='same document'):
+        R.rig_arg(SimpleNamespace(rig_document=tmp_path / 'a.json', rig_remote='/remote/rig/x.json', task='covering'))

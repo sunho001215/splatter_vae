@@ -100,9 +100,14 @@ def release_pin(repo):
     return {k: release[k] for k in ('commit', 'image')}
 
 
-def source_paths(task):
-    """What the rows execute or were planned with (the scheduler-side role files are recorded by hash instead)."""
-    return ('s4d/rwlearn/tasks.py', 's4d/rwlearn/configs.py', 's4d/rwlearn/gate.py', 's4d/rwlearn/outcomes.py',
+NATIVE_RUNTIME = ('scripts/realworld_native_depth.py', 's4d/rwlearn/native_depth.py', 's4d/rwlearn/deploy/realsense.py')
+
+
+def source_paths(task, family='all'):
+    """What the rows execute or were planned with (the scheduler-side role files are recorded by hash instead); a
+    geometry plan also runs the native-depth stage."""
+    return (*(NATIVE_RUNTIME if family in ('all', 'geometry') else ()),
+            's4d/rwlearn/tasks.py', 's4d/rwlearn/configs.py', 's4d/rwlearn/gate.py', 's4d/rwlearn/outcomes.py',
             's4d/rwlearn/launch.py', 'ops/jobs/realworld_plan.py',
             's4d/rwlearn/identity.py', 's4d/rwlearn/store.py', 's4d/rwlearn/baseline_data.py',
             's4d/rwlearn/actions.py', 's4d/rwlearn/fql_data.py', 'configs/realworld/fql/base.yaml',
@@ -111,7 +116,7 @@ def source_paths(task):
             *(f'configs/realworld/baselines/{b}/{task}.yaml' for b in configs.BASELINES))
 
 
-def release_evidence(repo, task, release):
+def release_evidence(repo, task, release, family='all'):
     acceptance = repo / f"runs/remote/acceptance/{release['commit'][:7]}-cc/manifest.json"
     raw = acceptance.read_bytes()
     rec = json.loads(raw)
@@ -127,7 +132,7 @@ def release_evidence(repo, task, release):
         require(path.resolve().is_relative_to(acceptance.parent.resolve()) and path.is_file()
                 and sha(path.read_bytes()) == item.get('sha256'), 'missing/changed acceptance evidence')
     sources = {}
-    for name in source_paths(task):
+    for name in source_paths(task, family):
         current = (repo / name).read_bytes()
         pinned = subprocess.run(['git', '-C', str(repo), 'show', f"{release['commit']}:{name}"],
                                 capture_output=True, check=True).stdout
@@ -295,13 +300,22 @@ def native_mvp3d(rows, task, remote_inputs, rig):
     return ([native] if any(r.get('depth_source') == NATIVE_DEPTH for r in out) else []) + out
 
 
-def frozen_hold(rows, task):
-    """The admission pause that must be ACTIVE before the rows are published: every frozen-encoder FQL row."""
-    conds = sorted({r['fql_condition'] for r in rows if kind(r) == 'fql' and r.get('fql_condition') != 'e2e_cnn'})
-    prefixes = [f'{PREFIX}fql-{c}-{task}-' for c in conds]
-    held = sorted(r['id'] for r in rows if any(r['id'].startswith(p) for p in prefixes))
-    return {'name': f'newtasks-frozen-fql-hold-{task}-20261111', 'active': True, 'prefixes': prefixes,
-            'reason': FROZEN_HOLD_REASON, 'rows': held}
+def holds(rows, task):
+    """The admission pauses that must be ACTIVE (ops.jobs.lifecycle semantics) before the rows are published:
+    every frozen-encoder FQL row until the FQL setting is agreed, and, separately, the native 3D-MVP FQL rows until
+    their native fqldata passes the standardised feature check (lifted per cell, as the 2026-11-10 native chain)."""
+    def spec(name, conds, reason):
+        prefixes = [f'{PREFIX}fql-{c}-{task}-' for c in conds]
+        held = sorted(r['id'] for r in rows if any(r['id'].startswith(p) for p in prefixes))
+        return {'name': name, 'active': True, 'prefixes': prefixes, 'reason': reason, 'rows': held}
+
+    frozen = sorted({r['fql_condition'] for r in rows if kind(r) == 'fql' and r.get('fql_condition') != 'e2e_cnn'})
+    native = sorted({r['fql_condition'] for r in rows if kind(r) == 'fql' and r.get('depth_source') == NATIVE_DEPTH})
+    out = [spec(f'newtasks-frozen-fql-hold-{task}-20261111', frozen, FROZEN_HOLD_REASON)]
+    if native:
+        out.append(spec(f'newtasks-mvp3d-native-fql-feature-check-{task}-20261111', native,
+                        "held until the cell's native fqldata passes the standardised A1 feature check"))
+    return out
 
 
 def plan_task(task, report, release, remote_inputs, *, family='all', rig=None):
@@ -330,7 +344,7 @@ def plan_task(task, report, release, remote_inputs, *, family='all', rig=None):
     # never a partial family: rows registered now would collide with the rest of the family later
     require(counts == want, f'{task}/{family}: incomplete consumer family {counts} != {want}; planner refused '
             + json.dumps(result['refused'], sort_keys=True)[:1500])
-    return {'jobs': rows, 'plan_refused': result['refused'], 'counts': counts, 'hold': frozen_hold(rows, task)}
+    return {'jobs': rows, 'plan_refused': result['refused'], 'counts': counts, 'holds': holds(rows, task)}
 
 
 def prepare(repo, task, manifest_path, inputs_copy, remote_inputs, *, family='all', rig=None):
@@ -345,7 +359,7 @@ def prepare(repo, task, manifest_path, inputs_copy, remote_inputs, *, family='al
             section = cfg['data_interface'] if row['baseline'] == 'snerl' else cfg['render']
             require(all(section.get(k) is not None for k in configs.SCENE_KEYS[row['baseline']]),
                     f"{row['id']}: released config has unmeasured scene parameters")
-    release_proof = release_evidence(repo, task, release)
+    release_proof = release_evidence(repo, task, release, family)
     roles = host_roles.load_roles(repo / 'configs/hosts/roles.yaml')
     by_id = {r['id']: r for r in result['jobs']}
     for row in result['jobs']:
@@ -436,11 +450,13 @@ def publish(repo, options):
         require(not pending.exists() and not proof.exists(), 'pending transaction/proof exists; inspect/recover first')
         record = prepare(repo, options.task, options.manifest, options.inputs_copy, options.remote_inputs,
                          family=options.family, rig=rig_arg(options))
-        hold = record['hold']
-        pauses = json.loads((repo / 'runs/setup/admission-pauses.json').read_bytes())['pauses']
-        active = [p for p in pauses if p.get('active')]
-        require(all(any(row.startswith(tuple(p.get('prefixes') or [])) for p in active) for row in hold['rows']),
-                f"publish the ACTIVE admission pause {hold['name']} (prefixes {hold['prefixes']}) first")
+        from ops.jobs import lifecycle
+
+        active = lifecycle.load_pauses(repo / 'runs/setup/admission-pauses.json')
+        for hold in record['holds']:  # each hold must already be published, with the drivers' own matcher
+            covered = [p for p in active if p.get('name') == hold['name']]
+            require(covered and all(lifecycle.paused(row, covered) for row in hold['rows']),
+                    f"publish the ACTIVE admission pause {hold['name']} (prefixes {hold['prefixes']}) first")
         before = queue.read_bytes()
         current = scheduler.load_queue(queue)
         known = scheduler.read_registry(repo / 'experiments/registry.jsonl')
@@ -489,12 +505,22 @@ def recover(repo):
 
 
 def rig_arg(options):
-    """{'remote', 'sha256'} of the rig document the native-depth stage reads (None without --rig-document)."""
+    """{'remote', 'sha256'} of the rig document the native-depth stage reads (None without --rig-document). The
+    document must be a released calibration of THIS task with every camera effectively validated and a sensor_depth
+    scale (what load_rig_session requires), read with the rig reader's own document / reference hash check."""
     if not getattr(options, 'rig_document', None):
         return None
+    from s4d.realworld.calib.rig import load_rig, rig_camera_status
+
     require(options.rig_remote and Path(options.rig_remote).name == options.rig_document.name,
             '--rig-remote must name the same document as --rig-document')
-    return {'remote': options.rig_remote, 'sha256': sha(options.rig_document.read_bytes())}
+    doc, _, identity = load_rig(options.rig_document)
+    require(doc.get('task') == options.task and doc.get('gate_version'), f'rig document is not a release of {options.task}')
+    for cam, entry in doc['cameras'].items():
+        require(rig_camera_status(doc, cam)[0] == 'validated' and 'sensor_depth' in (entry.get('depth_scale') or {}),
+                f'rig camera {cam} is not validated with a sensor_depth scale')
+    return {'remote': options.rig_remote, 'sha256': identity['rig_calibration'], 'task': doc['task'],
+            'name': doc.get('name')}
 
 
 def main():
