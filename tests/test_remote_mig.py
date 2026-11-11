@@ -632,3 +632,31 @@ def test_outage_guard_lifts_only_its_exact_hold(tmp_path, monkeypatch):
     assert guard.guard_owns_hold(state)
     hold.write_text(f"{guard.GUARD_HOLD_PREFIX}x token 2\n")  # same prefix, different hold: not ours
     assert not guard.guard_owns_hold(state)
+
+
+def test_runtime_provenance_accepts_exactly_the_recorded_repin():
+    from ops.jobs import run_identity as ri
+
+    old = {"host": "remote", "campaign_eligible": True, "git_commit": C1, "image_digest": IMG, "data_id": "d" * 64,
+           "config_sha256": "e" * 64}
+    new = {**old, "git_commit": C2, "attempt": 2}
+    with pytest.raises(ri.RunIdentityError, match="git_commit"):
+        ri._check_previous(old, new)  # no recorded transition: refused as before
+    moved = {**new, "repinned_from": {"git_commit": C1, "image_digest": IMG}}
+    ri._check_previous(old, moved)
+    history = ri._release_history(old, moved)
+    assert len(history) == 1 and history[0]["from_commit"] == C1 and history[0]["to_commit"] == C2
+    for bad in ({**moved, "repinned_from": {"git_commit": "f" * 40, "image_digest": IMG}},  # not from this release
+                {**moved, "data_id": "0" * 64}, {**moved, "config_sha256": "0" * 64}):
+        with pytest.raises(ri.RunIdentityError):
+            ri._check_previous(old, bad)
+    # after the transition the run is on C2: a later attempt with the same record is an ordinary match
+    later = {**old, "git_commit": C2}
+    ri._check_previous(later, {**moved, "attempt": 3})
+    assert ri._release_history(later, {**moved, "attempt": 3}) == []
+
+
+def test_repin_scope_treats_run_identity_as_operational():
+    from ops.jobs import release_repin
+
+    assert "ops/jobs/run_identity.py" in release_repin.REPIN_OPERATIONAL

@@ -137,6 +137,14 @@ def validate_spec(spec: dict) -> dict:
         expected_labels.update({"s4d.verification_purpose": purpose, "s4d.campaign_eligible": "false"})
     if spec.get("labels") != expected_labels:
         raise ValueError("Container ownership labels differ from the job identity")
+    if "repinned_from" in spec:  # a recorded release re-pin (ops/jobs/release_repin.py) of a campaign run
+        source = spec["repinned_from"]
+        if (purpose is not None or not isinstance(source, dict) or set(source) != {"commit", "image_digest"}
+                or not isinstance(source["commit"], str) or not HEX40.fullmatch(source["commit"])
+                or not isinstance(source["image_digest"], str) or not source["image_digest"].startswith("sha256:")
+                or not HEX64.fullmatch(source["image_digest"][7:])
+                or (source["commit"], source["image_digest"]) == (commit, image)):
+            raise ValueError("Invalid release re-pin source")
     if not isinstance(spec.get("evidence"), dict):
         raise ValueError("Native acceptance evidence is required")
     result_files = spec.get("required_results")
@@ -342,6 +350,9 @@ def build_remote_command(spec: dict, data_identity: str, origin_commit: str, pro
         # oversubscribe the CPU (ReViWo measured ~130 busy cores each). Thread count is not a hyperparameter.
         **{name: str(spec["cpu_threads"]) for name in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS")},
     }
+    if "repinned_from" in spec:  # runtime provenance accepts exactly this transition (ops/jobs/run_identity.py)
+        environment.update(S4D_REPINNED_FROM_COMMIT=spec["repinned_from"]["commit"],
+                           S4D_REPINNED_FROM_IMAGE=spec["repinned_from"]["image_digest"])
     if purpose is not None:
         environment.update({
             "S4D_TEST_EVIDENCE_DIR": verification_output(purpose, spec["id"], spec["attempt"]),

@@ -34,7 +34,9 @@ from ops.jobs.migration import commit_reader, import_closure  # noqa: E402
 # the container (recorded in the event, not compared). Everything else in the scripts' import closure, the task / model
 # configuration trees and the environment pins must be byte-identical.
 REPIN_OPERATIONAL = frozenset({"ops/resources/gpu_guard.py", "ops/resources/mig_inventory.py", "mujoco_mig_setup.py",
-                               "configs/hosts/remote.yaml", "configs/hosts/remote-mig.yaml"})
+                               "configs/hosts/remote.yaml", "configs/hosts/remote-mig.yaml",
+                               # runtime provenance: accepts exactly the recorded re-pin transition (Codex #6)
+                               "ops/jobs/run_identity.py"})
 REPIN_CONFIG_SCOPE = ("configs/realworld/", "configs/metaworld/", "configs/rl/", "configs/baselines/")
 REPIN_ENVIRONMENT = ("uv.lock", "pyproject.toml")
 STOPPED = {"crashed", "pending", "failed"}

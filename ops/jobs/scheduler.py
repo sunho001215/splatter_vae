@@ -1248,6 +1248,10 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
                 continue
             if purpose is None:
                 check_guarded(job["script"])
+            if purpose is None and previous.get("repinned_from") and previous.get("commit") == host["commit"]:
+                # a recorded release re-pin: the next attempt's container carries the source release so that runtime
+                # provenance accepts exactly this transition (ops/jobs/run_identity.py)
+                job = {**job, "repinned_from": previous["repinned_from"]}
             path, spec = remote_backend.prepare(job, gpu, attempt, host, evidence)
             event = {"id": job["id"], "host": "remote", "gpu": gpu, "attempt": attempt,
                      "container": spec["container"], "commit": spec["commit"], "image_digest": spec["image_digest"],

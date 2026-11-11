@@ -1121,3 +1121,21 @@ def test_verification_cpu_budget_is_specific_to_purpose(purpose, threads, accept
     else:
         with pytest.raises(ValueError):
             validate_spec(spec)
+
+
+def test_release_repin_source_reaches_the_container_environment_only_when_recorded():
+    """Codex #6 (2026-11-11): a re-pinned attempt carries its source release so that runtime provenance accepts
+    exactly that transition; validation refuses malformed or no-op sources; other launches are unchanged."""
+    spec = job_spec()
+    plain = build_remote_command(spec, DATA_ID, "e" * 40, "f" * 64, {"tests.json": "1" * 64},
+                                 [(REMOTE_ROOT + "/data/metaworld/splatter4d_v1/hammer.hdf5", "d" * 64)])
+    assert "S4D_REPINNED_FROM" not in plain
+    spec["repinned_from"] = {"commit": "9" * 40, "image_digest": IMAGE}
+    validate_spec(spec)
+    command = build_remote_command(spec, DATA_ID, "e" * 40, "f" * 64, {"tests.json": "1" * 64},
+                                   [(REMOTE_ROOT + "/data/metaworld/splatter4d_v1/hammer.hdf5", "d" * 64)])
+    assert f"S4D_REPINNED_FROM_COMMIT={'9' * 40}" in command and f"S4D_REPINNED_FROM_IMAGE={IMAGE}" in command
+    for bad in ({"commit": COMMIT, "image_digest": IMAGE}, {"commit": "9" * 40}, {"commit": "x", "image_digest": IMAGE},
+                {"commit": "9" * 40, "image_digest": "sha256:zz"}, "9" * 40):
+        with pytest.raises(ValueError, match="re-pin"):
+            validate_spec({**spec, "repinned_from": bad})

@@ -102,6 +102,10 @@ def verify_remote_identity(repo: Path, env: Mapping[str, str] | None = None) -> 
         raise RunIdentityError("Remote entry requires authorized remote GPU UUIDs")
     commit = _required(env, "S4D_EXPECTED_COMMIT", COMMIT_RE)
     image_digest = _required(env, "S4D_IMAGE_DIGEST", IMAGE_RE)
+    repinned_from = None
+    if "S4D_REPINNED_FROM_COMMIT" in env or "S4D_REPINNED_FROM_IMAGE" in env:  # both or neither (launch.py)
+        repinned_from = {"git_commit": _required(env, "S4D_REPINNED_FROM_COMMIT", COMMIT_RE),
+                         "image_digest": _required(env, "S4D_REPINNED_FROM_IMAGE", IMAGE_RE)}
     data_id = _required(env, "S4D_DATA_ID", SHA256_RE)
     job_id = _required(env, "S4D_JOB_ID", JOB_RE)
     attempt = _required(env, "S4D_ATTEMPT", re.compile(r"[1-9][0-9]*"))
@@ -160,6 +164,7 @@ def verify_remote_identity(repo: Path, env: Mapping[str, str] | None = None) -> 
         "verified_origin_commit": origin_commit,
         "release_proof_sha256": hashlib.sha256(proof_bytes).hexdigest(),
         "host_config_sha256": _sha256_file(host_config),
+        **({"repinned_from": repinned_from} if repinned_from else {}),
     }
 
 
@@ -176,10 +181,34 @@ def numeric_config(cfg: dict) -> dict:
     return normalized
 
 
+def _repinned(previous: dict, identity: dict) -> bool:
+    """True when this launch moves the run from exactly its previous release to the one recorded by the scheduler's
+    ``release_repinned`` event (ops/jobs/release_repin.py: same execution scope except the GPU-allowlist files, user
+    authorization recorded): the container receives the source release as S4D_REPINNED_FROM_COMMIT/_IMAGE."""
+    source = identity.get("repinned_from")
+    return (isinstance(source, dict) and "git_commit" in previous and "image_digest" in previous
+            and previous["git_commit"] == source.get("git_commit")
+            and previous["image_digest"] == source.get("image_digest")
+            and (previous["git_commit"], previous["image_digest"]) != (identity.get("git_commit"),
+                                                                       identity.get("image_digest")))
+
+
 def _check_previous(previous: dict, identity: dict) -> None:
+    moved = _repinned(previous, identity)
     for key in ("host", "campaign_eligible", "git_commit", "image_digest", "data_id", "config_sha256"):
+        if moved and key in ("git_commit", "image_digest"):
+            continue  # the recorded re-pin transition (data, config, host and eligibility must still match)
         if key in previous and key in identity and previous[key] != identity[key]:
             raise RunIdentityError(f"Existing remote run has a different {key}")
+
+
+def _release_history(previous: dict, identity: dict) -> list:
+    history = list(previous.get("release_history", []))
+    if _repinned(previous, identity):
+        history.append({"from_commit": previous["git_commit"], "from_image_digest": previous["image_digest"],
+                        "to_commit": identity["git_commit"], "to_image_digest": identity["image_digest"],
+                        "attempt": identity.get("attempt"), "at": datetime.now(timezone.utc).isoformat()})
+    return history
 
 
 def _native_diagnostic_identity(repo: Path, run_dir: Path, steps: int | None) -> dict | None:
@@ -245,11 +274,13 @@ def record_run_identity(
         destinations.append(Path(repo) / "runs" / identity["job_id"] / "provenance.json")
     for path in dict.fromkeys(destinations):
         previous = json.loads(path.read_text()) if path.is_file() else {}
+        history = None
         if identity["host"] == "remote" and identity["campaign_eligible"]:
             _check_previous(previous, identity)
+            history = _release_history(previous, identity)
         elif previous.get("campaign_eligible") is True:
             raise RunIdentityError("A native diagnostic cannot overwrite campaign provenance")
-        _atomic_json(path, {**previous, **identity})
+        _atomic_json(path, {**previous, **identity, **({"release_history": history} if history else {})})
     return identity
 
 
@@ -259,11 +290,13 @@ def start_remote_run(repo: Path, identity: dict, script: str, arguments: list[st
     path = validate_runtime_path(Path(repo) / "runs" / identity["job_id"], repository=repo) / "provenance.json"
     previous = json.loads(path.read_text()) if path.is_file() else {}
     _check_previous(previous, identity)
+    history = _release_history(previous, identity)
     _atomic_json(
         path,
         {
             **previous,
             **identity,
+            **({"release_history": history} if history else {}),
             "script": script,
             "arguments": arguments,
             "started_at": datetime.now(timezone.utc).isoformat(),

@@ -870,6 +870,9 @@ class RemoteBackend:
             spec["role"] = classification.cls
         if "cpu_threads" in job:
             spec["cpu_threads"] = job["cpu_threads"]
+        if job.get("repinned_from"):  # set by the scheduler from the registry's release_repinned record
+            spec["repinned_from"] = {"commit": job["repinned_from"]["commit"],
+                                     "image_digest": job["repinned_from"]["image_digest"]}
         if purpose is not None:
             spec.update(verification_purpose=purpose, campaign_eligible=False,
                         verification_timeout_seconds=verification_resources(job, purpose))
