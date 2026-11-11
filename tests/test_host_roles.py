@@ -59,7 +59,8 @@ CONTEXT = {r["id"]: r for r in (DRM, DRM_EVAL, PRETRAIN, EXPORT, DROID_PRETRAIN,
 # ---------------------------------------------------------------------------------------------------- declaration
 def test_shipped_role_declaration():
     hosts = ROLES["hosts"]
-    assert hosts["local"]["admit"] == ["metaworld"] and hosts["local"]["unknown"] == "allow"
+    assert hosts["local"]["admit"] == ["metaworld", "realworld_fql"] and hosts["local"]["unknown"] == "allow"
+    assert hosts["local"]["scripts"] == {"realworld_fql": ["scripts/train_realworld_fql.py"]}
     assert set(hosts["remote"]["admit"]) == {"realworld_preprocess", "droid_preprocess", "realworld_pretrain",
                                              "droid_pretrain", "realworld_fql", "verification"}
     assert hosts["remote"]["unknown"] == "deny" and hosts["remote"]["drain_evaluators"] is True
@@ -71,6 +72,15 @@ def test_shipped_role_declaration():
 @pytest.mark.parametrize("edit", [
     lambda r: r["hosts"]["remote"]["admit"].append("metaworld"),  # one class, one host
     lambda r: r["hosts"]["local"]["admit"].append("verification"),
+    lambda r: r["hosts"]["local"]["admit"].append("realworld_preprocess"),
+    lambda r: r["hosts"]["local"]["admit"].append("droid_preprocess"),
+    lambda r: r["hosts"]["local"]["scripts"].update(realworld_pretrain=["scripts/train_sincro.py"]),
+    lambda r: r["hosts"]["local"].update(scripts={"realworld_fql": []}),
+    lambda r: r["hosts"]["local"].update(scripts={"realworld_fql": "scripts/train_realworld_fql.py"}),
+    lambda r: r["hosts"]["local"].update(scripts={"realworld_fql": ["../train_realworld_fql.py"]}),
+    lambda r: r["hosts"]["local"].update(scripts=None),
+    lambda r: r["hosts"]["local"].update(scripts={"realworld_fql": [7]}),
+    lambda r: r["hosts"]["inference"].update(scripts={}),
     lambda r: r["hosts"]["inference"].update(scheduler=True),
     lambda r: r["hosts"]["inference"]["admit"].append("realworld_preprocess"),
     lambda r: r["hosts"]["remote"].update(unknown="maybe"),
