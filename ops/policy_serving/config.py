@@ -50,11 +50,14 @@ CLIENT_DEFAULTS = {
     "ttl_ms": 100.0,
     "max_action_age_ms": 200.0,
 }
-POLICY_KEYS = {"checkpoint", "export", "dataset", "training_contract", "sha256", "condition", "task", "note", "actor"}
-# ``actor`` (default onestep = FQL's deployed policy): ``bc_flow`` serves the checkpoint's BC flow instead
-# (s4d.rwlearn.inference.ACTORS). EXPERIMENTAL (DIAG 2026-11-11): such an entry never replaces a policy id - it has its
-# own id ``<base id>+bcflow``, the flag ``experimental_bc_flow``, no alias points at it, and it is execution-eligible
-# only under a user decision that names bc_flow explicitly.
+POLICY_KEYS = {"checkpoint", "export", "dataset", "training_contract", "sha256", "condition", "task", "note"}
+# Catalog-only key ``actor`` (default onestep = FQL's deployed policy): ``bc_flow`` serves the checkpoint's BC flow
+# instead (s4d.rwlearn.inference.ACTORS). EXPERIMENTAL (DIAG 2026-11-11): such an entry never replaces a policy id - it
+# has its own id ``<base id>+bcflow``, the flag ``experimental_bc_flow``, the base entry's exact artefacts, no alias
+# points at it, its status follows the base (never servable without a servable base), and it is execution-eligible
+# only for a deployable base under a user decision that names bc_flow and is bound to the checkpoint sha256. Static
+# config entries cannot select an actor.
+BCFLOW_ARTEFACT_KEYS = ("checkpoint", "sha256", "export", "training_contract", "dataset", "condition", "task")
 BCFLOW_SUFFIX, BCFLOW_FLAG = "+bcflow", "experimental_bc_flow"
 ACTORS = ("onestep", "bc_flow")  # == s4d.rwlearn.inference.ACTORS (pinned by a test; no torch import here)
 
@@ -64,7 +67,7 @@ CATALOG_SCHEMA = "s4d-policy-catalog/1"
 CATALOG_TOP_KEYS = frozenset({"schema", "generated_utc", "criteria_sha256", "policies", "aliases", "note"})
 CATALOG_ENTRY_KEYS = frozenset(POLICY_KEYS | {"seed", "run", "status", "flags", "reasons", "input_spec", "criteria",
                                              "usage", "usage_reasons", "execution_eligible",
-                                             "execution_decision"})
+                                             "execution_decision", "actor"})
 CATALOG_REQUIRED_KEYS = frozenset({"checkpoint", "sha256", "condition", "task", "status"})
 CATALOG_STATUSES = ("deployable", "restricted", "quarantined")  # restricted: served, a criterion FAILED (see reasons)
 SERVABLE_STATUSES = ("deployable", "restricted")
@@ -149,10 +152,30 @@ def _check_actor(source, pid: str, entry: dict) -> None:
     if actor == "bc_flow":
         if BCFLOW_FLAG not in entry.get("flags", []):
             raise ValueError(f"{source}: policy {pid}: a bc_flow entry carries the flag {BCFLOW_FLAG!r}")
-        if entry.get("execution_eligible") is True and \
-                "bc_flow" not in str((entry.get("execution_decision") or {}).get("text", "")):
+        decision = entry.get("execution_decision") or {}
+        if entry.get("execution_eligible") is True and ("bc_flow" not in str(decision.get("text", ""))
+                                                         or decision.get("checkpoint_sha256") != entry.get("sha256")):
             raise ValueError(f"{source}: policy {pid}: an execution-eligible bc_flow entry needs a user decision "
-                             "naming bc_flow")
+                             "naming bc_flow, bound to its checkpoint_sha256")
+
+
+def _check_bcflow_base(source, pid: str, entry: dict, policies: dict) -> None:
+    """A bc_flow variant serves exactly its base entry's artefacts and never outlives / outranks it: base present,
+    same artefacts, servable only while the base is (restricted base -> restricted variant), eligible only on a
+    deployable base."""
+    base = policies.get(pid[:-len(BCFLOW_SUFFIX)])
+    if base is None or base.get("actor", "onestep") != "onestep":
+        if entry["status"] != "quarantined":
+            raise ValueError(f"{source}: policy {pid}: a bc_flow variant without its one-step base is quarantined")
+        return
+    if any(entry.get(k) != base.get(k) for k in BCFLOW_ARTEFACT_KEYS):
+        raise ValueError(f"{source}: policy {pid}: a bc_flow variant serves exactly its base entry's artefacts")
+    rank = {"deployable": 2, "restricted": 1, "quarantined": 0}
+    if rank[entry["status"]] > rank[base["status"]]:
+        raise ValueError(f"{source}: policy {pid}: a bc_flow variant cannot be {entry['status']} while its base is "
+                         f"{base['status']}")
+    if entry.get("execution_eligible") is True and base["status"] != "deployable":
+        raise ValueError(f"{source}: policy {pid}: a bc_flow variant is eligible only on a deployable base")
 
 
 def validate_catalog(raw: dict, source="catalog") -> dict:
@@ -199,6 +222,9 @@ def validate_catalog(raw: dict, source="catalog") -> dict:
         if not isinstance(entry.get("criteria", {}), dict):
             raise ValueError(f"{source}: policy {pid}: criteria must be an object")
         out["policies"][str(pid)] = copy.deepcopy(entry)
+    for pid, entry in out["policies"].items():
+        if entry.get("actor", "onestep") == "bc_flow":
+            _check_bcflow_base(source, pid, entry, out["policies"])
     aliases = raw.get("aliases") or {}
     if not isinstance(aliases, dict):
         raise ValueError(f"{source}: aliases must be an object")

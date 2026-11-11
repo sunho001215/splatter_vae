@@ -154,8 +154,11 @@ class DeployPolicy:
         agent = self.offline.agent
         actor = agent.actor_bc_flow if self.actor == "bc_flow" else agent.actor_onestep_flow
         encoder = actor.encoder if pixel else self.offline.adapter.backbone
+        hooked = [("encoder_ms", encoder), ("actor_ms", actor)]
+        if self.actor == "bc_flow" and not pixel:  # the BC flow encodes once (learned head) before its 10 forwards
+            hooked.append(("actor_ms", actor.encoder))
         handles = []
-        for name, module in (("encoder_ms", encoder), ("actor_ms", actor)):
+        for name, module in hooked:
             handles.extend([module.register_forward_pre_hook(pre(name)), module.register_forward_hook(post(name))])
         try:
             out = self.act(observation, pose, grip, noise=noise)

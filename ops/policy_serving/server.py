@@ -378,6 +378,9 @@ class PolicyServer:
         self.pinned_entries: dict[str, CatalogEntry] = {}
         now = time.monotonic()
         for pid, p in (policies or {}).items():
+            actor = getattr(p, "actor", "onestep")
+            if actor != "onestep":  # experimental actors only through validated catalog entries
+                raise ValueError(f"pre-loaded policy {pid}: actor {actor!r} must be served from a catalog entry")
             e = CatalogEntry(pid, {}, spec=spec_json(p.input_spec), source="preloaded")
             self.pinned_entries[pid] = e
             self.policies[pid] = ServedPolicy(pid, p, dict((info or {}).get(pid, {})), entry=e, pinned=True,

@@ -119,7 +119,8 @@ def test_catalog_bc_flow_entries_are_separate_flagged_and_explicitly_decided():
         with pytest.raises(ValueError, match=match):
             SC.validate_catalog(raw)
     vid, granted = ST.bcflow_variant("reviwo-t-s0", GOOD, decision=DECISION)
-    assert granted["execution_eligible"] is True and granted["execution_decision"] == DECISION
+    assert granted["execution_eligible"] is True
+    assert granted["execution_decision"] == {**DECISION, "checkpoint_sha256": GOOD["sha256"]}
     SC.validate_catalog(_cat({"reviwo-t-s0": GOOD, vid: granted}))
     with pytest.raises(ValueError, match="names bc_flow"):
         ST.bcflow_variant("reviwo-t-s0", GOOD, decision={**DECISION, "text": "yes"})
@@ -192,3 +193,61 @@ def test_robot_pc_selection_never_picks_a_bc_flow_variant_unless_asked():
         selection.select_policy(offered, "reviwo-t-s0", actor="bc_flow")
     old_server = {"reviwo-t-s0": {"input_spec": spec, "info": {"task": "t", "seed": 0}}}  # no actor label: onestep
     assert selection.select_policy(old_server, condition="reviwo", task="t", seed=0) == "reviwo-t-s0"
+
+
+def test_catalog_binds_variants_to_their_base_and_its_weights():
+    restricted = {**GOOD, "status": "restricted", "reasons": ["e1 LN-spread FAIL"]}
+    vid, v = ST.bcflow_variant("reviwo-t-s0", GOOD)
+    _, granted = ST.bcflow_variant("reviwo-t-s0", GOOD, decision=DECISION)
+    assert granted["execution_decision"]["checkpoint_sha256"] == GOOD["sha256"]
+    bad = (
+        (_cat({vid: v}), "without its one-step base"),  # orphan must be quarantined
+        (_cat({"reviwo-t-s0": GOOD, vid: {**v, "checkpoint": "b/policy.pt"}}), "exactly its base"),
+        (_cat({"reviwo-t-s0": restricted, vid: v}), "while its base is restricted"),
+        (_cat({"reviwo-t-s0": {**GOOD, "sha256": "1" * 64}, vid: {**granted, "sha256": "1" * 64}}),
+         "checkpoint_sha256"),
+    )
+    for raw, match in bad:
+        with pytest.raises(ValueError, match=match):
+            SC.validate_catalog(raw)
+    orphan = ST.sync_bcflow_variants({vid: granted})[vid]
+    assert orphan["status"] == "quarantined" and orphan["execution_eligible"] is False
+    SC.validate_catalog(_cat({vid: orphan}))
+    SC.validate_catalog(_cat({"reviwo-t-s0": restricted, vid: ST.bcflow_variant("reviwo-t-s0", restricted)[1]}))
+
+
+def test_a_grant_never_moves_to_other_weights_or_survives_withdrawal():
+    _, granted = ST.bcflow_variant("reviwo-t-s0", GOOD, decision=DECISION)
+    entries = {"reviwo-t-s0": GOOD, "reviwo-t-s0+bcflow": granted}
+    restaged = ST.sync_bcflow_variants({**entries, "reviwo-t-s0": {**GOOD, "sha256": "2" * 64}})
+    assert restaged["reviwo-t-s0+bcflow"]["execution_eligible"] is False  # new weights: no inherited grant
+    SC.validate_catalog(_cat(restaged))
+    withdrawn = ST.sync_bcflow_variants({**entries, "reviwo-t-s0": {**GOOD, "status": "quarantined",
+                                                                       "reasons": ["withdrawn"]}})
+    back = ST.sync_bcflow_variants({**withdrawn, "reviwo-t-s0": GOOD})  # same weights deployable again
+    assert back["reviwo-t-s0+bcflow"]["execution_eligible"] is False  # the grant does not come back by itself
+    assert back["reviwo-t-s0+bcflow"]["status"] == "deployable"
+
+
+def test_static_config_and_preloaded_objects_cannot_select_an_actor(tmp_path, fixtures):
+    from ops.policy_serving.server import PolicyServer
+
+    cfg = tmp_path / "c.yaml"
+    cfg.write_text("policies:\n  reviwo-t-s0:\n    checkpoint: a/policy.pt\n    actor: bc_flow\n")
+    with pytest.raises(ValueError, match="unknown keys"):
+        SC.load_config(cfg)
+    _, flow = fixtures["reviwo"]
+    with pytest.raises(ValueError, match="catalog entry"):
+        PolicyServer({"reviwo-t-s0": flow}, device="cpu", allow_fixture=True)
+
+
+def test_bc_flow_timing_includes_the_learned_encoder(fixtures, monkeypatch):
+    import time
+
+    _, flow = fixtures["reviwo"]
+    head = flow.offline.agent.actor_bc_flow.encoder
+    real = head.forward
+    monkeypatch.setattr(head, "forward", lambda *a, **k: (time.sleep(0.05), real(*a, **k))[1])
+    w, ids = _window(flow, "timing")
+    out = flow.infer(w, POSE, 107.5, ids, noise=np.zeros((1, 7), np.float32))
+    assert out["timings"]["fql_ms"] >= 50.0

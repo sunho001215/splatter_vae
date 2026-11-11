@@ -233,7 +233,11 @@ It never replaces a policy: the validator requires its own id `<base id>+bcflow`
 no alias pointing at it, and execution eligibility only under a user decision whose text names bc_flow (never on a
 restricted base). `staging.py bcflow-variant ID... [--decision-json F] [--execute]` derives such entries from staged
 one-step entries (no files copied); every staging transaction re-derives them from their current base, so a withdrawn
-base withdraws its variant. The robot-PC client selects a variant only with `--actor bc_flow` (or its explicit id).
+base withdraws its variant. The robot-PC client selects a variant only with `--actor bc_flow` (an explicit id also needs it:
+`--policy <id>+bcflow --actor bc_flow`). The validator also requires the variant to carry exactly its base entry's
+artefacts, a status no better than the base's (quarantined without a servable base), eligibility only on a deployable
+base, and a bc_flow decision bound to the checkpoint sha256 (a re-staged base drops the grant). Static config entries
+and pre-loaded objects cannot select an actor.
 
 ```bash
 .venv/bin/python -I ops/policy_serving/staging.py bcflow-variant reviwo-drawer-open-s0 [--decision-json D.json] [--execute]

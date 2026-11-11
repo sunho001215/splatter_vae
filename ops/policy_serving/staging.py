@@ -463,10 +463,13 @@ def bcflow_variant(base_id: str, base: dict, *, decision: dict | None = None) ->
     else:
         entry.update(status=base["status"], reasons=list(base.get("reasons", [])) or ([BCFLOW_REASON]
                      if base["status"] != "deployable" else []))
-        if decision is not None and base["status"] == "deployable":
+        if decision is not None and base["status"] == "deployable" and \
+                decision.get("checkpoint_sha256", base["sha256"]) == base["sha256"]:
             if decision.get("decided_by") != "user" or "bc_flow" not in str(decision.get("text", "")):
                 raise ValueError("a bc_flow execution decision is a user decision whose text names bc_flow")
-            entry.update(usage="execution", execution_eligible=True, execution_decision=dict(decision),
+            # the grant is bound to these weights: a re-staged base (other checkpoint) drops it
+            entry.update(usage="execution", execution_eligible=True,
+                         execution_decision={**decision, "checkpoint_sha256": base["sha256"]},
                          usage_reasons=[f"user decision {decision.get('at')}: experimental bc_flow actor -> "
                                         "execution-eligible; robot-PC manual execution mode still required"])
         else:
@@ -476,7 +479,8 @@ def bcflow_variant(base_id: str, base: dict, *, decision: dict | None = None) ->
 
 def sync_bcflow_variants(entries: dict[str, dict]) -> dict[str, dict]:
     """Re-derive every ``+bcflow`` entry from its CURRENT base (files, labels, withdrawal follow the base; a granted
-    bc_flow decision is kept only while the base stays deployable). Returns a new dict."""
+    bc_flow decision is kept only while the base stays deployable with the SAME checkpoint sha256, and is dropped for
+    good once the variant is withdrawn). Returns a new dict."""
     from ops.policy_serving.config import BCFLOW_SUFFIX
 
     out = dict(entries)
@@ -809,7 +813,7 @@ def cmd_stage(a, *, hook: bool = False) -> int:
         crit = sha256_file(a.criteria) if a.criteria.is_file() else None
 
         def publish(policies: dict) -> None:
-            policies = sync_bcflow_variants(policies)
+            policies.update(sync_bcflow_variants(policies))  # in place: later merge phases see the derived variants
             aliases = {k: v for k, v in {**(catalog.get("aliases") or {}), **legacy_aliases(policies)}.items()
                        if v in policies}
             unchanged = policies == (catalog.get("policies") or {}) and aliases == (catalog.get("aliases") or {})
@@ -871,6 +875,9 @@ def cmd_bcflow(a) -> int:
     import fcntl
 
     decision = json.loads(a.decision_json.read_text()) if a.decision_json else None
+    if decision is not None and len(a.policies) != 1:
+        print(json.dumps({"error": "a bc_flow execution decision is bound to ONE checkpoint: give one policy id"}))
+        return 2
     host = Host(ssh=a.ssh)
     a.lock_file.parent.mkdir(parents=True, exist_ok=True)
     with open(a.lock_file, "a") as lock:
@@ -881,6 +888,10 @@ def cmd_bcflow(a) -> int:
         for pid in a.policies:
             if pid not in entries:
                 print(json.dumps({"error": f"{pid} is not in the host catalog"}))
+                return 2
+            bound = (decision or {}).get("checkpoint_sha256")
+            if bound is not None and bound != entries[pid].get("sha256"):
+                print(json.dumps({"error": f"the decision is bound to {bound}, {pid} serves {entries[pid].get('sha256')}"}))
                 return 2
             vid, entry = bcflow_variant(pid, entries[pid], decision=decision)
             entries[vid] = entry
