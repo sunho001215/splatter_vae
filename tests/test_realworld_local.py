@@ -354,6 +354,27 @@ def test_pinned_real_launch_argv_and_wrapper(tmp_path, monkeypatch, script, args
     assert captured["stderr"] == subprocess.STDOUT
 
 
+def test_local_remote_resident_launch_bounds_thread_pools_like_the_container(tmp_path, monkeypatch):
+    """2026-11-12: local train_realworld_fql.py runs spanned ~95 cores of the shared host; launches of remote-resident
+    rows get OMP / MKL / OpenBLAS = cpu_threads (the remote container's quota); other launches keep their env."""
+    captured = []
+    monkeypatch.setattr(jobs.subprocess, "Popen", lambda argv, **kw: captured.append(kw["env"]) or SimpleNamespace(pid=1))
+    for name in jobs.THREAD_ENV:
+        monkeypatch.delenv(name, raising=False)
+    job = row("bounded", host="local")
+    jobs.launch(job, LOCAL_GPU, 1, tmp_path, args=job["args"], cpu_threads=8)
+    jobs.launch({**job, "id": "four"}, LOCAL_GPU, 1, tmp_path, args=job["args"], cpu_threads=4)
+    jobs.launch({**job, "id": "plain"}, LOCAL_GPU, 1, tmp_path)
+    assert [{k: e.get(k) for k in jobs.THREAD_ENV} for e in captured] == [
+        dict.fromkeys(jobs.THREAD_ENV, "8"), dict.fromkeys(jobs.THREAD_ENV, "4"), dict.fromkeys(jobs.THREAD_ENV)]
+    assert jobs.THREAD_ENV == ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS")
+    for bad in (0, -1, 2.0, "8", True):
+        with pytest.raises(ValueError, match="cpu_threads"):
+            jobs.launch({**job, "id": "bad"}, LOCAL_GPU, 1, tmp_path, cpu_threads=bad)
+    container = (jobs.REPO / "ops/containers/launch.py").read_text()  # the quota this mirrors
+    assert '("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS")' in container
+
+
 def queue_files(root, rows):
     queue, registry = root / "queue.yaml", root / "registry.jsonl"
     queue.write_text("# preserved header\n" + yaml.safe_dump({"hosts": {
@@ -500,7 +521,9 @@ def test_scheduler_mapped_launch_and_unchanged_metaworld_event(mirrored, monkeyp
     meta = row("meta", host="local", pin_host="local", gpu="any", role="metaworld", script="scripts/train_rl.py",
                args=["--task", "hammer"], deps=[])
     launches, messages, events = tick(f, monkeypatch, [job, meta])
-    assert launches == [("fql", {"args": ["data.split_manifest=" + str(f.mirror / SPLIT)]}), ("meta", {})]
+    # the remote-resident FQL row gets the remote container's thread quota; the Meta-World launch is unchanged
+    assert launches == [("fql", {"args": ["data.split_manifest=" + str(f.mirror / SPLIT)], "cpu_threads": 8}),
+                        ("meta", {})]
     assert events[0]["inputs"]["inputs"] == {PREFIX + "/" + SPLIT: sha(f.data[SPLIT])}
     assert "inputs" not in events[1] and any("launched fql" in m for m in messages)
 
@@ -1021,7 +1044,8 @@ def test_scheduler_localizes_every_resolvable_remote_resident_script(mirrored, m
     original_localize = rw.localize
     monkeypatch.setattr(rw, 'localize', lambda *args, **kwargs: original_localize(*args, **kwargs, root=f.root))
     launches, _, launched = tick(f, monkeypatch, [job], events)
-    assert launches == [(job['id'], {'args': [a.replace(PREFIX, str(f.mirror)) for a in job['args']]})]
+    assert launches == [(job['id'], {'args': [a.replace(PREFIX, str(f.mirror)) for a in job['args']],
+                                     'cpu_threads': 8})]  # the remote container's thread quota
     assert launched[-1]['inputs']['execution_scope'] == SCOPE
 
 
