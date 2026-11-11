@@ -219,6 +219,8 @@ def main(argv=None, *, operator_input=input) -> int:
             from ops.robot_pc.recorder import SessionRecorder
 
             method, seed = info.get("condition") or "policy", info.get("seed")
+            if info.get("actor", "onestep") != "onestep":  # EXPERIMENTAL variants never share a folder with FQL runs
+                method = f"{method}+{info['actor'].replace('_', '')}"
             experiment = {"policy": pid, "task": task, "method": method, "seed": seed,
                           "mode": "execute" if args.execute else "dry_run", "duration_s": args.duration_s,
                           "steps": args.steps, "cameras": [{"name": _name(names, c), "serial": c} for c in cams],

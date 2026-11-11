@@ -8,7 +8,7 @@ I/O; outputs only the JSON given by --out (or stdout). Subcommands:
               RGB / K / c2w / depth-resampling bit-exactness and the native-RealSense vs FoundationStereo depth gap.
   equality    real checkpoints on recorded observations (client path): DeployPolicy.infer == DeployPolicy.act (the
               OfflinePolicy methods with training-precision float16 features) bitwise with identical FQL noise; the
-              action difference to the unrounded OfflinePolicy.act; diagnostics vs the FQL training dataset (features,
+              action difference to unrounded float32 frozen features; diagnostics vs the FQL training dataset (features,
               proprio, action) and, with a training store, the train (FS depth) vs deploy (native depth) effect.
 
 Examples: docs/realworld_deployment.md.
@@ -252,7 +252,7 @@ def cmd_equality(args) -> dict:
               "rig_document": str(args.rig), "observations": "recorded episode through the client path "
               "(PIL-decoded JPEG; native z16 -> emulated rs.align -> colour-camera z -> x rig sensor_depth scale)",
               "comparison": "infer vs DeployPolicy.act (OfflinePolicy methods, float16-rounded frozen features as in "
-                            "training); unrounded OfflinePolicy.act reported separately", "runs": {}}
+                            "training); unrounded float32 features reported separately", "runs": {}}
     for run in args.runs:
         ckpt = args.runs_root / run / "policy.pt"
         meta = torch.load(ckpt, map_location="cpu", weights_only=False)["meta"]
@@ -286,7 +286,7 @@ def cmd_equality(args) -> dict:
             with torch.inference_mode():
                 direct = policy.act(obs, st["pose7"], st["gripper_register"], noise=noise)
                 again = policy.act(obs, st["pose7"], st["gripper_register"], noise=noise)
-                unrounded = policy.offline.act(obs, st["pose7"], st["gripper_register"], noise=noise)
+                unrounded = unrounded_act(policy, obs, st["pose7"], st["gripper_register"], noise=noise)
             deployed = policy.infer(w, st["pose7"], st["gripper_register"], ids, noise=noise)
             exact = all(np.array_equal(np.asarray(deployed[k]), np.asarray(direct[k])) for k in direct)
             row = {"frame_ids": w.frame_ids, "stream_index": info["stream_index"], "m5_source": info["m5"],
@@ -355,6 +355,17 @@ def _attr(path, key):
         v = f.attrs[key]
     return v.decode() if isinstance(v, bytes) else v
 
+
+
+def unrounded_act(policy, obs, pose7, gripper_register, *, noise):
+    """The deploy action computed from UNROUNDED float32 frozen features (training and ``OfflinePolicy.act`` round to
+    float16): the size of the rounding effect. The e2e CNN has no frozen features (identical to ``act``)."""
+    from s4d.rwlearn import actions as A
+
+    off = policy.offline
+    if off.condition == "e2e_cnn":
+        return off.act(obs, pose7, gripper_register, noise=noise)
+    return off.act_from_features(off.features(obs), A.measured_proprio(pose7, gripper_register), pose7, noise=noise)
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)

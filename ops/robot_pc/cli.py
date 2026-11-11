@@ -23,6 +23,9 @@ def add_common(ap: argparse.ArgumentParser) -> None:
     ap.add_argument("--policy", default=None, help="policy id offered by the server (or --condition/--seed)")
     ap.add_argument("--condition", default=None)
     ap.add_argument("--seed", type=int, default=None)
+    ap.add_argument("--actor", choices=("onestep", "bc_flow"), default="onestep",
+                    help="onestep = the FQL policy (default); bc_flow = the EXPERIMENTAL <id>+bcflow variant "
+                         "(the checkpoint's BC flow; offered only where the catalog stages one)")
     ap.add_argument("--task", default=None, help="task of the policy (default: the server's catalog info)")
     ap.add_argument("--camera", default=None, help="single-view camera serial (default: first trained camera)")
     ap.add_argument("--identity-depth", action="store_true",
@@ -66,7 +69,8 @@ def choose_policy(cfg: dict, args) -> tuple[str, str, dict, dict]:
     the catalog info unless given."""
     offered = welcome(cfg, args)["policies"]
     pid = selection.select_policy(offered, args.policy, condition=args.condition, task=args.task, seed=args.seed,
-                                  allow_restricted=bool(getattr(args, "dry_run", False)))  # dry run: any offered
+                                  allow_restricted=bool(getattr(args, "dry_run", False)),  # dry run: any offered
+                                  actor=getattr(args, "actor", "onestep"))
     task = args.task or (offered[pid].get("info") or {}).get("task")
     if task is None:
         raise SystemExit(f"{pid}: the server gives no task; pass --task")

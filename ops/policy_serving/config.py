@@ -50,7 +50,13 @@ CLIENT_DEFAULTS = {
     "ttl_ms": 100.0,
     "max_action_age_ms": 200.0,
 }
-POLICY_KEYS = {"checkpoint", "export", "dataset", "training_contract", "sha256", "condition", "task", "note"}
+POLICY_KEYS = {"checkpoint", "export", "dataset", "training_contract", "sha256", "condition", "task", "note", "actor"}
+# ``actor`` (default onestep = FQL's deployed policy): ``bc_flow`` serves the checkpoint's BC flow instead
+# (s4d.rwlearn.inference.ACTORS). EXPERIMENTAL (DIAG 2026-11-11): such an entry never replaces a policy id - it has its
+# own id ``<base id>+bcflow``, the flag ``experimental_bc_flow``, no alias points at it, and it is execution-eligible
+# only under a user decision that names bc_flow explicitly.
+BCFLOW_SUFFIX, BCFLOW_FLAG = "+bcflow", "experimental_bc_flow"
+ACTORS = ("onestep", "bc_flow")  # == s4d.rwlearn.inference.ACTORS (pinned by a test; no torch import here)
 
 # Staged policy catalog (written by the staging tool next to the staged files, read by the server at start, on SIGHUP
 # and when a HELLO names an unknown id). Paths are relative to the checkpoint root unless absolute.
@@ -131,6 +137,24 @@ def _check_eligibility(source, pid, entry: dict) -> None:
         raise ValueError(f"{source}: policy {pid}: an execution_decision on a non-eligible entry")
 
 
+def _check_actor(source, pid: str, entry: dict) -> None:
+    """``actor`` is onestep (default) or bc_flow; a bc_flow entry is a separately named experimental variant
+    (``BCFLOW_SUFFIX`` id, ``BCFLOW_FLAG``) and eligible only under a user decision whose text names bc_flow; a
+    onestep entry never carries the suffix (no silent replacement of a policy by its BC flow)."""
+    actor = entry.get("actor", "onestep")
+    if actor not in ACTORS:
+        raise ValueError(f"{source}: policy {pid}: actor {actor!r} not in {ACTORS}")
+    if (actor == "bc_flow") != str(pid).endswith(BCFLOW_SUFFIX):
+        raise ValueError(f"{source}: policy {pid}: a bc_flow entry (and only it) has an id ending in {BCFLOW_SUFFIX!r}")
+    if actor == "bc_flow":
+        if BCFLOW_FLAG not in entry.get("flags", []):
+            raise ValueError(f"{source}: policy {pid}: a bc_flow entry carries the flag {BCFLOW_FLAG!r}")
+        if entry.get("execution_eligible") is True and \
+                "bc_flow" not in str((entry.get("execution_decision") or {}).get("text", "")):
+            raise ValueError(f"{source}: policy {pid}: an execution-eligible bc_flow entry needs a user decision "
+                             "naming bc_flow")
+
+
 def validate_catalog(raw: dict, source="catalog") -> dict:
     """Checked catalog dict (see ``CATALOG_*``): unknown keys refused, status values checked, aliases point at existing
     ids and never shadow one. Returns ``{"schema", ..., "policies": {id: entry}, "aliases": {alias: id}}``."""
@@ -166,6 +190,7 @@ def validate_catalog(raw: dict, source="catalog") -> dict:
         if entry.get("usage", "dry_run_replay_only") not in CATALOG_USAGES:
             raise ValueError(f"{source}: policy {pid}: usage {entry.get('usage')!r} not in {CATALOG_USAGES}")
         _check_eligibility(source, pid, entry)
+        _check_actor(source, pid, entry)
         if not _finite_json(entry):
             raise ValueError(f"{source}: policy {pid}: non-finite number (NaN / Infinity) in the entry")
         if not isinstance(entry.get("usage_reasons", []), list) or \
@@ -182,6 +207,8 @@ def validate_catalog(raw: dict, source="catalog") -> dict:
             raise ValueError(f"{source}: alias {alias!r} shadows a policy id")
         if pid not in out["policies"]:
             raise ValueError(f"{source}: alias {alias!r} points at unknown policy {pid!r}")
+        if out["policies"][pid].get("actor", "onestep") != "onestep":
+            raise ValueError(f"{source}: alias {alias!r} points at the experimental {pid!r} (select it by its id)")
         out["aliases"][str(alias)] = str(pid)
     return out
 

@@ -139,7 +139,12 @@ noise=None)` runs `DeployPolicy.act` under `torch.inference_mode()` and adds `me
 GPU; FQL includes the trainable projection head). `act` reuses `OfflinePolicy.features` / `act_from_features` /
 `act_from_pixels` and, for frozen encoders, rounds the features to **float16** before the agent, exactly as training
 saw them (`fql_data.encode_timeline` stores `.to(torch.float16)`, the FQL encoder reads `.float()`;
-`InputSpec.feature_precision`). `OfflinePolicy.act` itself is unchanged and feeds unrounded float32 features.
+`InputSpec.feature_precision`). `OfflinePolicy.act` rounds the same way (since DIAG 2026-11-11; it used to feed
+unrounded float32 features); the unrounded effect is reported by `check_realworld_deploy.py equality`.
+`actor=` selects the action head: `onestep` (default, FQL's deployed one-step policy) or the EXPERIMENTAL `bc_flow`
+(`OfflinePolicy.sample`: the checkpoint's own behaviour-cloning flow, 10-step Euler `compute_flow_actions`, no Q
+term), fixed per object and reported as `metadata.actor`; observation, history, binding and action decoding are
+identical. Evidence and decision rule: realworld-ops/diag (DIAG-REPORT.md, bcflow/PREREG.md).
 Checkpoints trained with the frozen-feature standardisation (3D-MVP reruns from 2026-11-10; `docs/realworld_fql.md`)
 carry its mean / std as encoder buffers inside `policy.pt`: the same `OfflinePolicy` load path rebuilds and
 sha256-checks them and the encoder applies `(f16(f) - mean) / std` after the float16 rounding, exactly as in training

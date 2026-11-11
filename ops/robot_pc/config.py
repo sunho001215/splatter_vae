@@ -63,7 +63,6 @@ def limits(cfg: dict, task: str):
 def client(cfg: dict, policy_id: str, choices, *, name: str, token_file: str | Path | None = None, **overrides):
     """The persistent link to the policy server (``ops.policy_serving.client.PolicyClient``)."""
     from ops.policy_serving.client import PolicyClient
-
     from ops.robot_pc.safety import admit_endpoint
 
     s = {**(cfg.get("server") or {}), **{k: v for k, v in overrides.items() if v is not None}}

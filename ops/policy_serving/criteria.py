@@ -310,7 +310,8 @@ def visual_probe(policy, samples: list[dict], *, seed: int = 0) -> dict:
         if pixel:
             return policy.act(obs[i_obs], s["pose7"], s["gripper_register"], noise=nz)["action_norm"]
         proprio = A.measured_proprio(s["pose7"], s["gripper_register"])
-        return off.act_from_features(feats[i_obs], proprio, s["pose7"], noise=nz)["action_norm"]
+        return off.act_from_features(feats[i_obs], proprio, s["pose7"], noise=nz,
+                                     actor=getattr(policy, "actor", "onestep"))["action_norm"]
 
     for i in range(min(4, n)):  # the cached-feature path IS DeployPolicy.act
         ref = policy.act(obs[i], samples[i]["pose7"], samples[i]["gripper_register"],

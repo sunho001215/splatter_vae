@@ -3,6 +3,7 @@
     .venv/bin/python -I ops/policy_serving/staging.py inventory [--evaluate] --out-json INV.json --out-md INV.md
     .venv/bin/python -I ops/policy_serving/staging.py stage RUN [RUN ...] [--execute]   # dry run by default
     .venv/bin/python -I ops/policy_serving/staging.py hook RUN [--execute]              # monitoring hook (Phase 2)
+    .venv/bin/python -I ops/policy_serving/staging.py bcflow-variant ID [ID ...] [--decision-json F] [--execute]
 
 The registry and queue are DATA here (read-only JSONL / YAML; no ``ops.campaign`` import). Run directories, FQL
 datasets and recordings are only read. ``stage --execute`` copies a deployable policy (checkpoint, encoder export,
@@ -438,6 +439,57 @@ def build_catalog(entries: dict[str, dict], *, aliases: dict[str, str], criteria
             "policies": dict(sorted(entries.items())), "aliases": dict(sorted(aliases.items()))}
 
 
+BCFLOW_REASON = ("EXPERIMENTAL bc_flow actor (DIAG 2026-11-11, realworld-ops/diag/bcflow): the checkpoint's BC flow "
+                 "instead of its one-step policy; criteria a-f were evaluated for the one-step actor; dry run / replay "
+                 "only unless a user decision names bc_flow")
+
+
+def bcflow_variant(base_id: str, base: dict, *, decision: dict | None = None) -> tuple[str, dict]:
+    """``(<base_id>+bcflow, entry)``: the same staged files served with ``actor: bc_flow`` under its own id (never
+    replacing ``base_id``). Not eligible unless ``decision`` (a user decision whose text names bc_flow) is given AND
+    the base entry is deployable; a non-servable base gives a quarantined variant (withdrawn with it)."""
+    from ops.policy_serving.config import BCFLOW_FLAG, BCFLOW_SUFFIX, SERVABLE_STATUSES
+
+    if base.get("actor", "onestep") != "onestep" or base_id.endswith(BCFLOW_SUFFIX):
+        raise ValueError(f"{base_id}: a bc_flow variant derives from a one-step entry")
+    keep = ("checkpoint", "sha256", "export", "training_contract", "dataset", "condition", "task", "seed", "run",
+            "input_spec", "criteria")
+    entry = {k: base[k] for k in keep if k in base}
+    entry.update(actor="bc_flow", flags=sorted({*base.get("flags", []), BCFLOW_FLAG}),
+                 note=f"experimental BC-flow actor of {base_id}")
+    if base["status"] not in SERVABLE_STATUSES:
+        entry.update(status="quarantined", reasons=[f"base entry {base_id} is {base['status']}", BCFLOW_REASON],
+                     usage="none", execution_eligible=False, usage_reasons=[NOT_ELIGIBLE])
+    else:
+        entry.update(status=base["status"], reasons=list(base.get("reasons", [])) or ([BCFLOW_REASON]
+                     if base["status"] != "deployable" else []))
+        if decision is not None and base["status"] == "deployable":
+            if decision.get("decided_by") != "user" or "bc_flow" not in str(decision.get("text", "")):
+                raise ValueError("a bc_flow execution decision is a user decision whose text names bc_flow")
+            entry.update(usage="execution", execution_eligible=True, execution_decision=dict(decision),
+                         usage_reasons=[f"user decision {decision.get('at')}: experimental bc_flow actor -> "
+                                        "execution-eligible; robot-PC manual execution mode still required"])
+        else:
+            entry.update(usage="dry_run_replay_only", execution_eligible=False, usage_reasons=[BCFLOW_REASON])
+    return base_id + BCFLOW_SUFFIX, entry
+
+
+def sync_bcflow_variants(entries: dict[str, dict]) -> dict[str, dict]:
+    """Re-derive every ``+bcflow`` entry from its CURRENT base (files, labels, withdrawal follow the base; a granted
+    bc_flow decision is kept only while the base stays deployable). Returns a new dict."""
+    from ops.policy_serving.config import BCFLOW_SUFFIX
+
+    out = dict(entries)
+    for pid, e in entries.items():
+        if pid.endswith(BCFLOW_SUFFIX):
+            base_id = pid[:-len(BCFLOW_SUFFIX)]
+            base = entries.get(base_id) or {"status": "withdrawn", **{k: e[k] for k in ("checkpoint", "sha256",
+                                                                                           "condition", "task")}}
+            decision = e.get("execution_decision") if e.get("execution_eligible") is True else None
+            out[pid] = bcflow_variant(base_id, base, decision=decision)[1]
+    return out
+
+
 def legacy_aliases(entries: dict[str, dict]) -> dict[str, str]:
     """The pre-catalog IDs ``<condition>-<task>`` -> the staged ``-s0`` entry (a quarantined one is refused by the
     server with its reasons instead of an unknown-id error)."""
@@ -757,6 +809,7 @@ def cmd_stage(a, *, hook: bool = False) -> int:
         crit = sha256_file(a.criteria) if a.criteria.is_file() else None
 
         def publish(policies: dict) -> None:
+            policies = sync_bcflow_variants(policies)
             aliases = {k: v for k, v in {**(catalog.get("aliases") or {}), **legacy_aliases(policies)}.items()
                        if v in policies}
             unchanged = policies == (catalog.get("policies") or {}) and aliases == (catalog.get("aliases") or {})
@@ -812,6 +865,35 @@ def cmd_stage(a, *, hook: bool = False) -> int:
     return 0 if all(r["status"] in ("deployable", "restricted") for r in report.values()) or not hook else 3
 
 
+def cmd_bcflow(a) -> int:
+    """``bcflow-variant``: add/refresh ``<id>+bcflow`` entries (experimental BC-flow actor) of staged one-step entries
+    in the host catalog (no files are copied: the variant serves the base entry's staged files), then reload."""
+    import fcntl
+
+    decision = json.loads(a.decision_json.read_text()) if a.decision_json else None
+    host = Host(ssh=a.ssh)
+    a.lock_file.parent.mkdir(parents=True, exist_ok=True)
+    with open(a.lock_file, "a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        catalog = read_host_catalog(host)
+        entries = dict(catalog.get("policies") or {})
+        report = {}
+        for pid in a.policies:
+            if pid not in entries:
+                print(json.dumps({"error": f"{pid} is not in the host catalog"}))
+                return 2
+            vid, entry = bcflow_variant(pid, entries[pid], decision=decision)
+            entries[vid] = entry
+            report[vid] = {k: entry.get(k) for k in ("status", "usage", "execution_eligible")}
+        aliases = {k: v for k, v in (catalog.get("aliases") or {}).items() if v in entries}
+        write_host_catalog(host, build_catalog(sync_bcflow_variants(entries), aliases=aliases,
+                                               criteria_sha256=catalog.get("criteria_sha256")),
+                           execute=a.execute, log=lambda m: print(m, file=sys.stderr, flush=True))
+        signal_reload(host, execute=a.execute, log=lambda m: print(m, file=sys.stderr, flush=True))
+    print(json.dumps({"execute": bool(a.execute), "variants": report}, indent=1))
+    return 0
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="ops/policy_serving/staging.py", description=__doc__.split("\n")[0])
     ap.add_argument("--data-root", type=Path, default=Path("/home/ws/ws/splatter4d"),
@@ -844,9 +926,18 @@ def main(argv=None) -> int:
         s.add_argument("--ssh", default="irsl")
         s.add_argument("--lock-file", type=Path, default=Path("/home/ws/ws/realworld-ops/serving/.pol-staging.lock"))
         s.add_argument("--bwlimit", default="10m")
+    b = sub.add_parser("bcflow-variant", help="EXPERIMENTAL: serve staged policies' BC flow as <id>+bcflow")
+    b.add_argument("policies", nargs="+", help="staged one-step policy ids")
+    b.add_argument("--decision-json", type=Path, help="user decision {decided_by: user, at, text naming bc_flow}; "
+                                                      "without it the variants are dry run / replay only")
+    b.add_argument("--execute", action="store_true", help="really write the catalog + reload (default: dry run)")
+    b.add_argument("--ssh", default="irsl")
+    b.add_argument("--lock-file", type=Path, default=Path("/home/ws/ws/realworld-ops/serving/.pol-staging.lock"))
     a = ap.parse_args(argv)
     if a.cmd == "inventory":
         return cmd_inventory(a)
+    if a.cmd == "bcflow-variant":
+        return cmd_bcflow(a)
     return cmd_stage(a, hook=a.cmd == "hook")
 
 

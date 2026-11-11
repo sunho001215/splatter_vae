@@ -23,6 +23,8 @@ sg dialout -c "venv/bin/python -I src/scripts/robot_pc/infer.py --task drawer-op
 # 2. on the robot (switch_controller running, teleop collector stopped, operator at the e-stop): press ENTER to start
 sg dialout -c "venv/bin/python -I src/scripts/robot_pc/infer.py --task drawer-open --method e2e_cnn --seed 0 --cameras right --duration-s 30"
 #    or by id:  infer.py --policy reviwo-drawer-open-s1 --cameras left
+#    EXPERIMENTAL BC-flow actor (only where the catalog stages <id>+bcflow; folder <method>+bcflow):
+#               infer.py --task drawer-open --method reviwo --seed 0 --actor bc_flow --cameras middle --dry-run
 # stop: s + ENTER, Ctrl-C or SIGTERM (hold at the measured pose, wait still, IDLE); the hardware e-stop stays yours
 # 3. outputs
 ls inference_outputs/drawer-open/e2e_cnn/seed0/right/                # <task>/<method>/seed<N>/<cameras>/runNNN/

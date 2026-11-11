@@ -24,6 +24,9 @@ from s4d.rwlearn import actions as A
 from s4d.rwlearn.fql import FQLAgent
 from s4d.rwlearn.fql_data import CONDITIONS, FRAME_STACK, ObsEncoder, encoder_adapter, sha256_file
 
+ACTORS = ("onestep", "bc_flow")  # FQL's deployed one-step policy | the BC flow it distils (10-step Euler)
+TRAINING_FEATURE_DTYPE = torch.float16  # fql_data.encode_timeline stores frozen features as float16
+
 
 class OfflinePolicy:
     def __init__(self, checkpoint: str | Path, *, device="cpu", export_path: str | Path | None = None):
@@ -85,17 +88,33 @@ class OfflinePolicy:
         return bb(x[:, 0]).flatten(1).unsqueeze(0)
 
     @torch.no_grad()
+    def sample(self, obs: dict, noise: torch.Tensor | None = None, actor: str = "onestep") -> torch.Tensor:
+        """Normalised actions in [-1, 1]. ``actor``: ``onestep`` = the FQL policy (``sample_actions``, what FQL
+        deploys); ``bc_flow`` = the behaviour-cloning flow it distils (``compute_flow_actions``: 10-step Euler, no Q
+        term; EXPERIMENTAL deployment variant, DIAG 2026-11-11). ``noise`` None draws from the agent's generator."""
+        if actor not in ACTORS:
+            raise ValueError(f"actor {actor!r} not in {ACTORS}")
+        if actor == "onestep":
+            return self.agent.sample_actions(obs, None if noise is None else noise.to(self.device))
+        lead = next(iter(obs.values())).shape[0]
+        if noise is None:
+            noise = torch.randn(lead, A.ACTION_DIM, generator=self.agent.generator)
+        return self.agent.compute_flow_actions(obs, noise.to(self.device))
+
+    @torch.no_grad()
     def act_from_features(self, feat: torch.Tensor, proprio: np.ndarray, measured_pose7: np.ndarray, *,
-                          noise: torch.Tensor | None = None, binary_gripper: bool = False) -> dict:
+                          noise: torch.Tensor | None = None, binary_gripper: bool = False,
+                          actor: str = "onestep") -> dict:
         obs = {"feat": feat.to(self.device), "proprio": torch.as_tensor(proprio, device=self.device).float()[None]}
-        a = self.agent.sample_actions(obs, None if noise is None else noise.to(self.device)).cpu().numpy()[0]
+        a = self.sample(obs, noise, actor).cpu().numpy()[0]
         out = A.to_robot_command(measured_pose7, a, self.contract, binary_gripper=binary_gripper)
         out["action_norm"] = a
         return out
 
     @torch.no_grad()
     def act_from_pixels(self, rgb: np.ndarray, proprio: np.ndarray, measured_pose7: np.ndarray, *,
-                        noise: torch.Tensor | None = None, binary_gripper: bool = False) -> dict:
+                        noise: torch.Tensor | None = None, binary_gripper: bool = False,
+                        actor: str = "onestep") -> dict:
         """``e2e_cnn``: rgb (T=3, 1, H, W, 3) uint8 oldest first (one camera) -> the robot command."""
         from s4d.rwlearn.pixel import stack_frames
 
@@ -104,16 +123,19 @@ class OfflinePolicy:
             raise ValueError(f"expected a {FRAME_STACK}-frame single-camera history (T, 1, H, W, 3)")
         obs = {"pixels": stack_frames(x[:, 0].unsqueeze(0)),
                "proprio": torch.as_tensor(proprio, device=self.device).float()[None]}
-        a = self.agent.sample_actions(obs, None if noise is None else noise.to(self.device)).cpu().numpy()[0]
+        a = self.sample(obs, noise, actor).cpu().numpy()[0]
         out = A.to_robot_command(measured_pose7, a, self.contract, binary_gripper=binary_gripper)
         out["action_norm"] = a
         return out
 
     def act(self, obs: dict, measured_pose7: np.ndarray, gripper_register: float, **kw) -> dict:
+        """Frozen features rounded to the training precision (float16, as ``fql_data.encode_timeline`` stored them
+        and ``DeployPolicy.act`` feeds them); the e2e CNN has no frozen features."""
         proprio = A.measured_proprio(measured_pose7, gripper_register)
         if self.condition == "e2e_cnn":
             return self.act_from_pixels(obs["rgb"], proprio, measured_pose7, **kw)
-        return self.act_from_features(self.features(obs), proprio, measured_pose7, **kw)
+        feat = self.features(obs).to(TRAINING_FEATURE_DTYPE).float()
+        return self.act_from_features(feat, proprio, measured_pose7, **kw)
 
 
 def replay(policy: OfflinePolicy, dataset_path: str | Path, episode: str, timeline: str, *, seed: int = 0,

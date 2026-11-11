@@ -14,19 +14,21 @@ from s4d.rwlearn import actions as A
 from s4d.rwlearn.deploy.contracts import InputSpec, read_training_contract
 from s4d.rwlearn.deploy.errors import BindingRefused, ContractViolation, SessionMismatch
 from s4d.rwlearn.deploy.history import Frame, HistoryWindow, ObservationWindow
-from s4d.rwlearn.inference import OfflinePolicy
-
-TRAINING_FEATURE_DTYPE = torch.float16  # fql_data.encode_timeline stores frozen features as float16
+from s4d.rwlearn.inference import ACTORS, TRAINING_FEATURE_DTYPE, OfflinePolicy
 
 
 class DeployPolicy:
     def __init__(self, checkpoint, *, device="cpu", export_path=None, export_root=None, dataset_path=None,
-                 training=None):
+                 training=None, actor: str = "onestep"):
         """Load once. ``export_path``: the frozen encoder export (sha256-checked against the checkpoint); else
         ``export_root`` / meta["export_path"] (the repo-relative ``runs/<pretrain>/encoder.pt``, e.g. a staged
         checkpoint root mirroring ``runs/``); else meta["export_path"] as recorded. ``training``: training-contract
         dict or deploy-contract sidecar (.json); else ``dataset_path`` (or the checkpoint's recorded dataset) is read
-        once for the trained camera ids."""
+        once for the trained camera ids. ``actor``: ``onestep`` (FQL's deployed policy, default) or the EXPERIMENTAL
+        ``bc_flow`` (``OfflinePolicy.sample``); fixed for the object's lifetime and reported in every output."""
+        if actor not in ACTORS:
+            raise ValueError(f"actor {actor!r} not in {ACTORS}")
+        self.actor = actor
         if export_path is None and export_root is not None:
             recorded = torch.load(checkpoint, map_location="cpu", weights_only=False)["meta"].get("export_path")
             if recorded:
@@ -50,6 +52,7 @@ class DeployPolicy:
             raise ValueError("from_fixture requires matching, explicitly labelled FIXTURE policy and InputSpec")
         obj = cls.__new__(cls)
         obj.offline, obj.input_spec, obj.spec, obj._live, obj._session_ids = offline, spec, None, {}, set()
+        obj.actor = "onestep"
         return obj
 
     @property
@@ -143,11 +146,13 @@ class DeployPolicy:
         def post(name):
             def hook(_module, _args, _out):
                 self._sync()
-                elapsed[name] = (perf_counter() - active[name]) * 1000
+                elapsed[name] = elapsed.get(name, 0.0) + (perf_counter() - active[name]) * 1000  # bc_flow: 10 calls
             return hook
 
         pixel = self.offline.condition == "e2e_cnn"
-        actor = self.offline.agent.actor_onestep_flow
+        nested = pixel and self.actor == "onestep"
+        agent = self.offline.agent
+        actor = agent.actor_bc_flow if self.actor == "bc_flow" else agent.actor_onestep_flow
         encoder = actor.encoder if pixel else self.offline.adapter.backbone
         handles = []
         for name, module in (("encoder_ms", encoder), ("actor_ms", actor)):
@@ -161,7 +166,8 @@ class DeployPolicy:
         finish = perf_counter()
         # FQL includes the learned projection/proprio head for frozen encoders; the CNN encoder is reported separately.
         timings = {"validation_ms": (validated - start) * 1000, "encoder_ms": elapsed["encoder_ms"],
-                   "fql_ms": max(0.0, elapsed["actor_ms"] - (elapsed["encoder_ms"] if pixel else 0.0)),
+                   # the one-step actor calls its pixel encoder inside its forward; the BC flow encodes once before
+                   "fql_ms": max(0.0, elapsed["actor_ms"] - (elapsed["encoder_ms"] if nested else 0.0)),
                    "policy_ms": (finish - validated) * 1000, "total_ms": (finish - start) * 1000}
         out.update(measured_pose7=pose, measured_gripper_register=grip, obs_ids=copy.deepcopy(obs_ids),
                    frame_timestamps_ns=window.timestamps_ns.copy(), timings=timings,
@@ -171,7 +177,8 @@ class DeployPolicy:
                              "training_depth": spec.training_depth,
                              "deployment_depth": spec.deployment_depth,
                              "native_depth_correction": copy.deepcopy(spec.native_depth_correction),
-                             "action_reference": "bound measured_pose7; base-frame flange delta; continuous gripper"})
+                             "action_reference": "bound measured_pose7; base-frame flange delta; continuous gripper",
+                             "actor": self.actor})
         return out
 
     @torch.inference_mode()
@@ -179,12 +186,13 @@ class DeployPolicy:
         """The training-consistent numerical path (no validation, timings or binding): ``OfflinePolicy``'s own
         methods, with frozen-encoder features rounded to float16 exactly as the FQL dataset stored them
         (``fql_data.encode_timeline`` -> ``.to(torch.float16)``; the agent then reads ``.float()``).
-        ``OfflinePolicy.act`` feeds unrounded float32 features; the e2e CNN has no frozen features (identical)."""
+        ``OfflinePolicy.act`` rounds identically; the e2e CNN has no frozen features. The configured ``actor``."""
         proprio = A.measured_proprio(measured_pose7, gripper_register)
         if self.offline.condition == "e2e_cnn":
-            return self.offline.act_from_pixels(observation["rgb"], proprio, measured_pose7, noise=noise)
+            return self.offline.act_from_pixels(observation["rgb"], proprio, measured_pose7, noise=noise,
+                                                actor=self.actor)
         feat = self.offline.features(observation).to(TRAINING_FEATURE_DTYPE).float()
-        return self.offline.act_from_features(feat, proprio, measured_pose7, noise=noise)
+        return self.offline.act_from_features(feat, proprio, measured_pose7, noise=noise, actor=self.actor)
 
     @torch.inference_mode()
     def warm_up(self, window: ObservationWindow | None = None, *, iterations: int = 2) -> dict:

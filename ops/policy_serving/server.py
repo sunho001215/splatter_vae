@@ -119,7 +119,7 @@ def warmup_choices(spec, native_hw=(480, 640)) -> dict:
     return out
 
 
-IDENTITY_KEYS = ("checkpoint", "sha256", "export", "training_contract", "dataset", "input_spec")
+IDENTITY_KEYS = ("checkpoint", "sha256", "export", "training_contract", "dataset", "input_spec", "actor")
 
 
 class BudgetExceeded(Exception):
@@ -150,7 +150,7 @@ class CatalogEntry:
         out = {"condition": e.get("condition") or (self.spec or {}).get("condition"), "task": e.get("task"),
                "seed": e.get("seed"), "run": e.get("run"), "status": self.status, "flags": list(e.get("flags", [])),
                "checkpoint_sha256": e.get("sha256"), "usage": e.get("usage", "dry_run_replay_only"),
-               "execution_eligible": e.get("execution_eligible") is True,
+               "execution_eligible": e.get("execution_eligible") is True, "actor": e.get("actor", "onestep"),
                "execution_decision": e.get("execution_decision") if e.get("execution_eligible") is True else None,
                "usage_reasons": list(e.get("usage_reasons", [])), "criteria": e.get("criteria", {}),
                "reasons": list(self.reasons)}
@@ -1464,11 +1464,12 @@ def load_policy(entry: dict, *, root, device: str, allow_fixture: bool = False):
     export = resolve(root, entry.get("export"))
     contract = entry.get("training_contract") or entry.get("dataset")
     policy = DeployPolicy(ckpt, device=device, export_path=export,
-                          training=None if contract is None else str(resolve(root, contract)))
+                          training=None if contract is None else str(resolve(root, contract)),
+                          actor=entry.get("actor", "onestep"))
     if policy.input_spec.fixture and not allow_fixture:
         raise ValueError(f"{ckpt}: a FIXTURE checkpoint (synthetic weights) is never served without --allow-fixture")
     info = {"checkpoint": str(ckpt), "checkpoint_sha256": digest, "condition": policy.input_spec.condition,
-            "fixture": policy.input_spec.fixture, "task": entry.get("task"), "device": device}
+            "fixture": policy.input_spec.fixture, "task": entry.get("task"), "device": device, "actor": policy.actor}
     return policy, info
 
 

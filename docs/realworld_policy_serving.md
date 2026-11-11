@@ -227,6 +227,18 @@ re-evaluation that no longer passes withdraws the run's catalog entry (quarantin
 (status / criteria / usage) refresh on reload without reloading the model; the catalog transaction is serialised by a
 local lock and the container copy is verified byte-identical to the host copy.
 
+**Experimental BC-flow actor (DIAG 2026-11-11).** A catalog entry may carry `actor: bc_flow`: the server loads the
+same staged checkpoint with `DeployPolicy(actor="bc_flow")` (the checkpoint's BC flow instead of its one-step policy).
+It never replaces a policy: the validator requires its own id `<base id>+bcflow`, the flag `experimental_bc_flow`,
+no alias pointing at it, and execution eligibility only under a user decision whose text names bc_flow (never on a
+restricted base). `staging.py bcflow-variant ID... [--decision-json F] [--execute]` derives such entries from staged
+one-step entries (no files copied); every staging transaction re-derives them from their current base, so a withdrawn
+base withdraws its variant. The robot-PC client selects a variant only with `--actor bc_flow` (or its explicit id).
+
+```bash
+.venv/bin/python -I ops/policy_serving/staging.py bcflow-variant reviwo-drawer-open-s0 [--decision-json D.json] [--execute]
+```
+
 ## Dry-run demo and benchmark
 
 ```bash

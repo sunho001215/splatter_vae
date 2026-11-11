@@ -74,8 +74,11 @@ def test_fixture_infer_equals_offline_and_binds_action(policies, condition):
     else:  # training precision: the FQL dataset stores float16 features (fql_data.encode_timeline)
         feat = torch.from_numpy(policy.offline.features(obs).numpy().astype(np.float16).astype(np.float32))
         expected = policy.offline.act_from_features(feat, A.measured_proprio(pose, 107.5), pose, noise=noise)
-        unrounded = policy.offline.act(obs, pose, 107.5, noise=noise)
+        unrounded = policy.offline.act_from_features(policy.offline.features(obs), A.measured_proprio(pose, 107.5),
+                                                     pose, noise=noise)
         assert np.abs(unrounded["action_norm"] - expected["action_norm"]).max() < 1e-2
+        offline = policy.offline.act(obs, pose, 107.5, noise=noise)  # rounds like training (DIAG 2026-11-11)
+        assert all(np.array_equal(np.asarray(offline[k]), np.asarray(expected[k])) for k in expected)
     actual = policy.infer(window, pose, 107.5, ids, noise=noise.numpy().astype(np.float64))
     for k in expected:
         np.testing.assert_array_equal(actual[k], expected[k])
