@@ -13,7 +13,10 @@ import hashlib
 import json
 import os
 import shlex
+import shutil
 import subprocess
+import tempfile
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -35,6 +38,47 @@ COMMIT = "a" * 40
 SCOPE = {"source_commit": COMMIT, "files": {"scripts/train_realworld_fql.py": "b" * 64}}
 IDENTITY = {"commit": "c", "source_sha256": {"scripts/train_realworld_fql.py": "b" * 64}}
 REAL_PLACEMENT_SCOPE = rw.placement_scope
+# ops/jobs/realworld_local.py treats every absolute path under the remote host's home as a REMOTE path (by design: the
+# local host has no /home/compu; asserted below). This file's synthetic LOCAL mirrors, runs and queues therefore must not
+# live there - but the remote native suite's pytest basetemp does (S4D_PYTEST_TMP under
+# /home/compu/kaist/sunho/runtime/verification/...; first remote run of this file: verify-native-37bfd30-cc, 23 failures
+# "the effective configuration still names a remote path"). Production checks are unchanged; only the tests' own
+# temporary root moves when it would sit inside the remote home.
+REMOTE_HOME = "/home/compu/"
+
+
+def _outside_remote_home(home: str = REMOTE_HOME) -> Path:
+    """A fresh writable directory whose path is not under ``home`` (the remote verification container is read-only
+    except its mounts: the repository's .cache mount, then /dev/shm, then the system temporary directory)."""
+    for base in (rw.REPO / ".cache" / "pytest-realworld-local", Path("/dev/shm"), Path(tempfile.gettempdir())):
+        if str(base.resolve()).startswith(home) or str(base).startswith(home):
+            continue
+        try:
+            base.mkdir(parents=True, exist_ok=True)
+            return Path(tempfile.mkdtemp(prefix="rwlocal-", dir=base))
+        except OSError:
+            continue
+    raise RuntimeError(f"no writable temporary directory outside {home}")
+
+
+@pytest.fixture
+def tmp_path(tmp_path):  # noqa: F811 - overrides pytest's tmp_path for this module only
+    """pytest's tmp_path, unless it lies inside the remote home (remote native suite): then a fresh directory outside."""
+    if not str(tmp_path).startswith(REMOTE_HOME):
+        yield tmp_path
+        return
+    path = _outside_remote_home(REMOTE_HOME)
+    try:
+        yield path
+    finally:
+        shutil.rmtree(path, ignore_errors=True)
+
+
+def test_production_treats_the_remote_home_as_remote_on_every_host():
+    """The premise of the tmp_path override: an unmapped path under REMOTE_HOME is refused as a remote input."""
+    with pytest.raises(rw.LocalInputError, match="unmappable remote input"):
+        rw._mapped(REMOTE_HOME + "elsewhere/input")
+    assert rw._mapped(PREFIX + "/" + SPLIT) == SPLIT and rw._mapped("/srv/elsewhere") is None
 
 
 @pytest.fixture(autouse=True)
@@ -198,7 +242,7 @@ def test_remote_descriptor_and_episode_fail_closed(mirrored, edit):
     f = mirrored
     path = f.remote / STORE
     if edit == "outside":
-        path.write_text("kind: compact\npaths: [/home/compu/elsewhere/episode]\n")
+        path.write_text(f"kind: compact\npaths: [{REMOTE_HOME}elsewhere/episode]\n")
     elif edit == "not_compact":
         path.write_text("kind: other\npaths: []\n")
     elif edit == "incomplete":
@@ -258,7 +302,7 @@ def test_localize_refusals(mirrored, edit, reason):
     elif edit == "remote_verified":
         f.state["dataset"]["remote_verified"]["files"]["dataset.h5"] = "0" * 64
     elif edit == "outside":
-        job["args"].append("data.other=/home/compu/not-realworld/input")
+        job["args"].append(f"data.other={REMOTE_HOME}not-realworld/input")
     elif edit == "symlink":
         path.unlink()
         path.symlink_to(f.remote / SPLIT)
@@ -698,7 +742,7 @@ def test_plain_remote_paths_may_contain_equals(mirrored):
 
 
 def test_plan_reports_unmappable_inputs_without_aborting_other_decisions(mirrored):
-    decisions = planning(mirrored, [row("bad", args=["data.other=/home/compu/outside/input"]), row("good")])
+    decisions = planning(mirrored, [row("bad", args=[f"data.other={REMOTE_HOME}outside/input"]), row("good")])
     assert decisions[0]["decision"] == "waits" and "unmappable" in decisions[0]["reason"]
     assert decisions[1]["decision"] == "local"
 
