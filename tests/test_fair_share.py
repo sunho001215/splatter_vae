@@ -21,7 +21,9 @@ def test_two_families_get_equal_guarantees_despite_queue_order():
     rows = [row(f"m{i}") for i in range(10)] + [row(f"r{i}", "realworld") for i in range(10)]
     before = copy.deepcopy(rows)
     result = select(rows)
-    assert result["admitted"] == [f"m{i}" for i in range(5)] + [f"r{i}" for i in range(5)]
+    # protected heads (each family below its guarantee) start first, then rows in order
+    assert sorted(result["admitted"]) == sorted([f"m{i}" for i in range(5)] + [f"r{i}" for i in range(5)])
+    assert result["admitted"][:2] == ["m0", "r0"]
     assert rows == before
     for family in result["report"]["families"].values():
         assert family["dominant_share"] == 0.5
@@ -35,7 +37,7 @@ def test_one_family_can_use_every_slot_and_all_ram():
 def test_unclaimed_guarantee_is_borrowed_without_wasting_capacity():
     rows = [row(f"m{i}") for i in range(10)] + [row("r", "realworld", ram=10)]
     result = select(rows)
-    assert result["admitted"] == [f"m{i}" for i in range(9)] + ["r"]
+    assert sorted(result["admitted"]) == sorted([f"m{i}" for i in range(9)] + ["r"])
     assert result["total_ram_bytes"] == 100
 
 
@@ -61,7 +63,7 @@ def test_active_family_counts_even_without_a_ready_candidate():
 def test_other_familys_small_rows_cannot_starve_a_large_head():
     rows = [row(f"small{i}", ram=5) for i in range(20)] + [row("big", "realworld", ram=50)]
     result = select(rows, [row("active", ram=40, gpu="mig")], jobs=30)
-    assert result["admitted"] == ["small0", "small1", "big"]
+    assert result["admitted"] == ["big", "small0", "small1"]  # the under-served head starts first
     assert result["blocked"]["metaworld"] == "small2"
 
 
@@ -69,7 +71,7 @@ def test_head_reservation_is_per_family_and_evaluators_keep_their_exception():
     rows = [row("large", ram=60), row("small", ram=1),
             row("eval", ram=5, evaluator=True, trainer_ready=True), row("rw", "realworld", ram=20)]
     result = select(rows, [row("active", ram=45, gpu="mig")], jobs=30)
-    assert result["admitted"] == ["eval", "rw"]
+    assert result["admitted"] == ["rw", "eval"]  # the same-family evaluator still fills (2026-10-29 exception)
     assert result["blocked"] == {"metaworld": "large"}
 
 
@@ -84,8 +86,9 @@ def test_gpu_memory_and_pinned_mig_packing_are_enforced():
     rows = [row("wrong-gpu", gpu="other"), row("later"),
             row("rw", "realworld", mem=8), row("rw-later", "realworld", mem=4)]
     result = select(rows, mem=10)
-    assert result["admitted"] == ["rw"]
-    assert result["blocked"] == {"metaworld": "wrong-gpu", "realworld": "rw-later"}
+    # an intrinsically impossible row (pinned to an unknown instance) never blocks its family
+    assert result["admitted"] == ["later", "rw"]
+    assert result["blocked"] == {"realworld": "rw-later"}
 
 
 def test_unattributed_ram_and_registry_gpu_reservations_consume_capacity():
@@ -105,7 +108,9 @@ def test_three_families_and_empty_pass():
 def test_capacity_that_no_other_ready_head_can_claim_is_borrowed(impossible):
     rows = [row(f'm{i}') for i in range(10)] + [row('impossible', 'realworld', **impossible),
                                                row('behind-head', 'realworld')]
-    assert select(rows)['admitted'] == [f'm{i}' for i in range(10)]
+    # the impossible head claims nothing; the possible trainer behind it is the family's head and gets its turn
+    admitted = select(rows)['admitted']
+    assert sorted(admitted) == sorted(['behind-head'] + [f'm{i}' for i in range(9)]) and 'impossible' not in admitted
 
 
 def test_unready_evaluator_is_not_a_contending_family():
@@ -153,7 +158,7 @@ def test_selected_mig_instances_follow_the_scheduler_rule_and_blocked_heads_rese
     active = [row(f"a{i}", ram=1, mem=6, gpu=f"mig{i // 2}") for i in range(16)]  # 12 GB on mig0..mig7
     rows = [row("big", "realworld", ram=1, mem=12)] + [row(f"s{i}", ram=1, mem=4) for i in range(4)]
     result = fair.select(rows, active, limits, 1000, 16)
-    assert result["blocked"] == {"realworld": "big"} and result["reserved"] == {"mig0": "realworld"}
+    assert result["blocked"] == {"realworld": "big"} and result["reserved"] == {"mig0": "big"}
     assert set(result["admitted"]) == {"s0", "s1", "s2", "s3"}
     assert "mig0" not in {result["assigned"][i] for i in result["admitted"]}
     assert [result["assigned"][i] for i in result["admitted"]] == ["mig1", "mig2", "mig3", "mig4"]  # least memory
@@ -165,3 +170,28 @@ def test_selected_mig_instances_follow_the_scheduler_rule_and_blocked_heads_rese
 def test_driver_dispatches_the_selected_instance():
     source = (Path(__file__).resolve().parents[1] / "ops/campaign/baseline_local_driver.py").read_text()
     assert "'gpu': fair['assigned'][j['id']]}" in source
+
+
+def test_protected_head_holds_ram_and_its_instance_against_every_later_pass_refill():
+    """Codex review 3: (1) within-share refills of another family cannot take the RAM a protected head still lacks;
+    (2) the head's instance is kept from every other row (other families and its own evaluators) at every pass, so it
+    only drains; (3) the head starts as soon as enough has drained."""
+    active = [row(f"a{i}", ram=10, gpu="mig") for i in range(7)] + [row("b", ram=5, gpu="mig")]  # metaworld at 75
+    result = select([row("m-refill", ram=5), row("rw", "realworld", ram=80)], active, ram=150, jobs=30, mem=300,
+                    used=75)
+    assert result["admitted"] == [] and result["blocked"]["realworld"] == "rw"
+    assert result["report"]["held_for_protected_heads"]["realworld"]["ram_bytes"] == 75
+    drained = [a for a in active if a["id"] != "b"]  # 70 in use: the head fits in the 80 left, before any refill
+    assert select([row("m-refill", ram=5), row("rw", "realworld", ram=80)], drained, ram=150, jobs=30, mem=300,
+                  used=70)["admitted"] == ["rw"]
+    limits = {f"mig{i}": {"max_jobs": 3, "max_mem_gb": 22} for i in range(8)}
+    busy = [row(f"x{i}", ram=1, mem=6, gpu=f"mig{i // 2}") for i in range(16)]
+    rows = [row("big", "realworld", ram=1, mem=12), row("own-eval", "realworld", ram=1, mem=4, evaluator=True,
+                                                        trainer_ready=True)] + [row(f"s{i}", ram=1, mem=4)
+                                                                                for i in range(8)]
+    first = fair.select(rows, busy, limits, 1000, 16)
+    assert first["reserved"] == {"mig0": "big"}
+    assert "mig0" not in {first["assigned"][i] for i in first["admitted"]}  # own evaluator and other family excluded
+    one_left = [b for b in busy if b["id"] != "x0"]  # mig0 drains one job: 6 GB in use, the 12 GB head fits
+    second = fair.select(rows, one_left, limits, 1000, 15)
+    assert second["admitted"][0] == "big" and second["assigned"]["big"] == "mig0"
