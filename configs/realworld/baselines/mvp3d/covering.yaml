@@ -8,7 +8,7 @@
 #   data_interface.source = realworld: selects the real-world dataset classes (per-episode cameras, loader-side sync, run-bounded windows)
 #   data_interface.target = covering: task(s) in the store
 #   dataset.num_views = 3: fuse all three cameras per time step (the original fused setting)
-#   render.bounds = None: NOT MEASURED for this task (TODO): measure with store.scene_statistics on its validated processed episodes (docs/realworld_baselines.md); null on purpose, the planner refuses this baseline until then
+#   render.bounds = [-0.15, -0.7, 0.15, 1.05, 0.6, 1.0]: real-world scene bounds in the robot base frame (measured, see docs/realworld_baselines.md)
 # Plan rows only through scripts/realworld_learning.py plan (full-data gate); see docs/realworld_baselines.md.
 dataset:
   hdf5_path: /home/compu/kaist/sunho/realworld/learning_inputs/covering/store.yaml
@@ -18,7 +18,13 @@ dataset:
   num_workers: 8
   pin_memory: true
 render:
-  bounds: null
+  bounds:
+  - -0.15
+  - -0.7
+  - 0.15
+  - 1.05
+  - 0.6
+  - 1.0
   radius: 0.012
 model:
   img_size: 48

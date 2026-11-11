@@ -104,6 +104,19 @@ These were measured on the two processed episodes (drawer-open-000000 and mug-ha
 These values must be re-measured on the full stores before launch: `scene-stats` over all episodes, then a check that
 they hold.
 
+**covering** (measured 2026-11-12 on its full calibration-validated store: 98 episodes, `scene-stats`, agent COV;
+`realworld-ops/rwx/scene/covering/scene-stats.json`):
+
+| Parameter | Value | Evidence |
+|---|---|---|
+| SNeRL `lookat` | [0.322, -0.031, 0.346] m | optical-axis least squares [0.3222, -0.0306, 0.346] |
+| SNeRL `pose_scale` | 3.74 | median camera distance 1.070 m (0.996-1.107) |
+| SNeRL near/far | official 2 / 6 units = 0.53 / 1.60 m (at pose_scale 3.74) | 67.6 % of valid depth inside (drawer/mug 68.5 %) |
+| SinCro near/far | 0.1 / 2.5 m (unchanged) | 98.3 % of valid depth inside |
+| 3D-MVP bounds | MVP3D_BOUNDS (unchanged) | robot 99.65 %, object 100 %, fixture 100 % inside (FoundationStereo depth; the native-depth store is re-checked with `scene-stats --store store-native.yaml` before 3D-MVP pretraining) |
+
+pick-and-place stays unmeasured until its calibration-validated store exists.
+
 ## Gate and launch
 
 `s4d/rwlearn/gate.py` evaluates the user's full-data gate on the ingestion manifest (`rw-ingest-manifest` v2,
@@ -210,9 +223,11 @@ against HEAD e52bfca): every generated config byte, gate result, plan row, the 2
 replayed plans of the two existing registrars; `docs/realworld_training_plan.yaml` gained the new tasks' preview rows
 after its unchanged two-task rows.
 
-**Scene geometry: pending, not inferred.** SNeRL's `lookat` / `pose_scale` and 3D-MVP's `bounds` were measured on
-drawer-open / mug-hanging processed episodes. `configs.SCENE_PARAMETERS` maps those two tasks to exactly those values
-and the new tasks to `None` (generated YAMLs hold `null`, with a TODO reason). Raw evidence
+**Scene geometry: measured per task, never inferred.** SNeRL's `lookat` / `pose_scale` and 3D-MVP's `bounds` were
+measured on drawer-open / mug-hanging processed episodes, and on covering's full validated store on 2026-11-12 (see
+"Scene parameters"). `configs.SCENE_PARAMETERS` maps those tasks to their measured values and pick-and-place to `None`
+(generated YAMLs hold `null`, with a TODO reason) until its store is measured. The text below describes the state
+before covering was measured. Raw evidence
 (`realworld_newtasks_evidence.json`, read-only): the same three camera serials; base-frame flange ranges
 
 | Task (raw recordings) | x m | y m | z m | flange rows in MVP3D_BOUNDS |

@@ -51,6 +51,11 @@ def amendment(task, excluded):
     return {task: {'record': rec, 'path': f'/cfg/{task}.json', 'sha256': 'e' * 64}}
 
 
+def unmeasured_scenes(monkeypatch, task):
+    """A release whose scene geometry for ``task`` is NOT measured (covering's was measured 2026-11-12)."""
+    monkeypatch.setitem(configs.SCENE_PARAMETERS, task, {'lookat': None, 'pose_scale': None, 'bounds': None})
+
+
 def measured_scenes(monkeypatch, task):
     """A release whose scene geometry for ``task`` was measured (stand-in values: the existing tasks')."""
     monkeypatch.setitem(configs.SCENE_PARAMETERS, task, dict(configs.SCENE_PARAMETERS['drawer-open']))
@@ -226,9 +231,10 @@ def test_an_amended_task_registers_on_exactly_its_amendment_episodes(task, exclu
 
 
 @pytest.mark.parametrize('task', ['covering', 'pick-and-place'])
-def test_unmeasured_scene_never_registers_a_partial_geometry_family(task, tmp_path):
+def test_unmeasured_scene_never_registers_a_partial_geometry_family(task, tmp_path, monkeypatch):
     """Before the scene geometry is measured the planner refuses SNeRL / 3D-MVP (and their FQL conditions); SinCro
     alone would pass its gates, but a partial family would collide with the rest later, so it is refused too."""
+    unmeasured_scenes(monkeypatch, task)
     assert configs.pending_scene_parameters('snerl', task) and configs.pending_scene_parameters('mvp3d', task)
     _, report = staged_inputs(tmp_path, task)
     plan = launch.plan(report, [task], PIN['commit'])
@@ -295,6 +301,7 @@ def test_role_release_is_read_at_registration_time(tmp_path):
 
 
 def test_prepare_refuses_unmeasured_scene_but_can_prepare_image_rows(tmp_path, monkeypatch):
+    unmeasured_scenes(monkeypatch, 'covering')
     directory = tmp_path / 'inputs'
     manifest, _ = staged_inputs(directory)
     manifest_path = tmp_path / 'manifest.json'

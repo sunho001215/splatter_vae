@@ -7,8 +7,8 @@
 #   data_interface.consumer = snerl: GEOMETRY-DEPENDENT consumer (s4d/rwlearn/gate.py CONSUMERS): also needs the calibration hold released (calibration_validated per episode) and a store built from the validated calibration
 #   data_interface.source = realworld: selects the real-world dataset classes (per-episode cameras, loader-side sync, run-bounded windows)
 #   data_interface.target = covering: task(s) in the store
-#   data_interface.lookat = None: NOT MEASURED for this task (TODO): measure with store.scene_statistics on its validated processed episodes (docs/realworld_baselines.md); null on purpose, the planner refuses this baseline until then
-#   data_interface.pose_scale = None: NOT MEASURED for this task (TODO): measure with store.scene_statistics on its validated processed episodes (docs/realworld_baselines.md); null on purpose, the planner refuses this baseline until then
+#   data_interface.lookat = [0.322, -0.031, 0.346]: normalised scene origin: least-squares intersection of the three optical axes (Meta-World: rig look-at)
+#   data_interface.pose_scale = 3.74: cameras 4 official units from the origin, as official / Meta-World (median distance 1.070 m, covering store); official near/far 2/6 -> 0.53-1.60 m camera depth (67.6 % of all valid depth of the centre-cropped views; the rest is distant room background)
 #   dataset.num_inputs = 3: 3 input cameras (user decision 2026-11-06): the rig has exactly 3, so every training target view is also an input view (Meta-World: 3 of 6). Validation (separate episodes) reports input-view reconstruction and leave-one-camera-out novel-view reconstruction separately (s4d/rwlearn/snerl_eval.py)
 # Plan rows only through scripts/realworld_learning.py plan (full-data gate); see docs/realworld_baselines.md.
 dataset:
@@ -60,8 +60,11 @@ wandb:
   project: splatter4d-baselines
 data_interface:
   split_manifest: /home/compu/kaist/sunho/realworld/learning_inputs/covering/split_seed0.json
-  lookat: null
-  pose_scale: null
+  lookat:
+  - 0.322
+  - -0.031
+  - 0.346
+  pose_scale: 3.74
   gate_report: /home/compu/kaist/sunho/realworld/learning_inputs/covering/gate_report.json
   consumer: snerl
   source: realworld

@@ -357,6 +357,14 @@ def test_plan_rows_declare_roles_dependencies_and_are_not_registered():
     assert {r["fql_seed"] for r in fql if "fql_seed" in r} == {0, 1, 2}
 
 
+def unmeasured_scenes(monkeypatch, tasks=None):
+    """Stand-in for a release whose new-task scene geometry is NOT measured yet (covering's was measured 2026-11-12)."""
+    from s4d.rwlearn import configs
+
+    for task in tasks or NEW_TASKS:
+        monkeypatch.setitem(configs.SCENE_PARAMETERS, task, {"lookat": None, "pose_scale": None, "bounds": None})
+
+
 def measured_scenes(monkeypatch):
     """Stand-in for a release whose new-task scene geometry was measured (here: the existing tasks' values)."""
     from s4d.rwlearn import configs
@@ -374,6 +382,8 @@ SCENE_IDS = {f"rw-{b}-{{t}}-pre" for b in ("snerl", "mvp3d")} | {f"rw-fql-{c}-{{
 def test_preview_matches_a_fully_passed_plan_and_the_table(scenes, monkeypatch):
     if scenes == "measured":
         measured_scenes(monkeypatch)
+    else:
+        unmeasured_scenes(monkeypatch)
     m = manifest(validated=True)
     m["counts"]["pick-and-place"] = {"complete": True, "target": 100}
     m["episodes"].update({f"pick-and-place/episode_{i:06d}.h5": entry("pick-and-place", i, validated=True)
@@ -531,6 +541,8 @@ def test_every_singleview_fql_condition_ignores_cross_camera_family_but_keeps_ge
 @pytest.mark.parametrize("task", NEW_TASKS)
 def test_new_tasks_have_an_independent_100_episode_gate(task, tmp_path, monkeypatch):
     from s4d.rwlearn.tasks import TARGETS
+
+    unmeasured_scenes(monkeypatch, [task])
 
     m = {"schema": gate.SCHEMA, "schema_version": gate.SCHEMA_VERSION,
          "counts": {task: {"complete": True, "target": 100}},

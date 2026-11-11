@@ -367,7 +367,11 @@ def test_new_task_registry_and_scene_measurement_hooks():
         assert C.SCENE_PARAMETERS[task] == {"lookat": C.SNERL_LOOKAT, "pose_scale": C.SNERL_POSE_SCALE,
                                            "bounds": C.MVP3D_BOUNDS}
         assert all(not C.pending_scene_parameters(b, task) for b in C.BASELINES)
-    for task in ("covering", "pick-and-place"):  # not measured yet: null in the configs, never a guessed number
+    # covering: measured 2026-11-12 on its full calibration-validated store (scene-stats, 98 episodes)
+    assert C.SCENE_PARAMETERS["covering"] == {"lookat": C.COVERING_LOOKAT, "pose_scale": C.COVERING_POSE_SCALE,
+                                              "bounds": C.MVP3D_BOUNDS}
+    assert all(not C.pending_scene_parameters(b, "covering") for b in C.BASELINES)
+    for task in ("pick-and-place",):  # not measured yet: null in the configs, never a guessed number
         assert C.pending_scene_parameters("snerl", task) == ["lookat", "pose_scale"]
         assert C.pending_scene_parameters("mvp3d", task) == ["bounds"]
         assert all(not C.pending_scene_parameters(b, task) for b in ("sincro", "reviwo", "dynamo"))
