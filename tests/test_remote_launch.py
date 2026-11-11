@@ -627,6 +627,9 @@ class FakeClient:
         self.calls.append(("upload", str(local), remote, wait))
 
     def checked_ssh(self, command, **kwargs):
+        if command.startswith("nvidia-smi --query-gpu=uuid,mig.mode"):  # the launcher's MIG-mode preflight
+            modes = "".join(f"{uuid}, [N/A], [N/A]\n" for uuid in APPROVED_HOST_GPUS["remote"])
+            return subprocess.CompletedProcess([], 0, modes, "")
         self.calls.append(("ssh", command, kwargs))
         if isinstance(self.response, Exception):
             raise self.response
@@ -1139,3 +1142,28 @@ def test_release_repin_source_reaches_the_container_environment_only_when_record
                 {"commit": "9" * 40, "image_digest": "sha256:zz"}, "9" * 40):
         with pytest.raises(ValueError, match="re-pin"):
             validate_spec({**spec, "repinned_from": bad})
+
+
+def test_mig_mode_preflight_refuses_physical_gpus_in_mig_mode_and_unreadable_modes(monkeypatch):
+    from ops.containers import launch as module
+
+    gpu = APPROVED_HOST_GPUS["remote"][0]
+
+    class Modes:
+        def __init__(self, text):
+            self.text = text
+
+        def checked_ssh(self, command, **kwargs):
+            assert command == module.MIG_MODE_QUERY
+            return subprocess.CompletedProcess([], 0, self.text, "")
+
+    module.mig_mode_preflight(Modes(f"{gpu}, [N/A], [N/A]\n"), gpu)
+    module.mig_mode_preflight(Modes(f"{gpu}, Disabled, Disabled\n"), gpu)
+    for text in (f"{gpu}, Enabled, Enabled\n", f"{gpu}, Disabled, Enabled\n", "", "garbage"):
+        with pytest.raises(ValueError, match="MIG mode"):
+            module.mig_mode_preflight(Modes(text), gpu)
+    mig = "MIG-00000000-0000-5000-8000-000000000000"
+    monkeypatch.setattr(module, "REMOTE_MIG_DEVICES", {mig: (gpu, 3, 0)})
+    module.mig_mode_preflight(Modes(f"{gpu}, Enabled, Enabled\n"), mig)
+    with pytest.raises(ValueError, match="not Enabled"):
+        module.mig_mode_preflight(Modes(f"{gpu}, Enabled, Disabled\n"), mig)

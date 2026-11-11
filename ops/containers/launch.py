@@ -711,11 +711,35 @@ def gpu_free_command(gpu: str) -> str:
             'if ($1==gpu && $2 ~ /^[0-9]+$/ && $3 ~ /^[0-9]+$/) printf "%.0f", ($2-$3)*1048576}\')"; ')
 
 
+MIG_MODE_QUERY = "nvidia-smi --query-gpu=uuid,mig.mode.current,mig.mode.pending --format=csv,noheader,nounits"
+PHYSICAL_MODES = {("Disabled", "Disabled"), ("[N/A]", "[N/A]")}
+
+
+def mig_mode_preflight(client, gpu: str, *, wait: bool = False) -> None:
+    """Independent pre-launch check (Codex #12, 2026-11-11), outside the byte-identical launch command: a physical GPU
+    is launched on only while its MIG mode is current = pending = Disabled (or [N/A]); a remote MIG instance only while
+    its parent is current = pending = Enabled. An unreadable or incomplete reading refuses (ValueError: nothing was
+    started; the scheduler's lost-launch reconciliation applies)."""
+    output = client.checked_ssh(MIG_MODE_QUERY, wait=wait, idempotent=True, timeout=120).stdout
+    modes = {}
+    for line in output.splitlines():
+        parts = [part.strip() for part in line.split(",")]
+        if len(parts) == 3 and parts[0].startswith("GPU-"):
+            modes[parts[0]] = (parts[1], parts[2])
+    if gpu in REMOTE_MIG_DEVICES:
+        parent = REMOTE_MIG_DEVICES[gpu][0]
+        if modes.get(parent) != ("Enabled", "Enabled"):
+            raise ValueError(f"MIG instance {gpu}: parent {parent} MIG mode {modes.get(parent)} is not Enabled/Enabled")
+    elif modes.get(gpu) not in PHYSICAL_MODES:
+        raise ValueError(f"physical GPU {gpu}: MIG mode {modes.get(gpu)} (MIG enabled, pending or unreadable)")
+
+
 def launch(spec_path: Path, client: RemoteClient | None = None, *, wait: bool | None = None) -> dict:
     client = client or RemoteClient()
     wait = os.environ.get("S4D_REMOTE_NO_WAIT") != "1" if wait is None else wait
     spec = validate_spec(json.loads(Path(spec_path).read_text()))
     client.check_tunnel(wait=wait)
+    mig_mode_preflight(client, spec["gpu"], wait=wait)
     artifacts, data_identity, payloads = evidence_artifacts(spec, client.main_repo)
     proof_path = f"{REMOTE_ROOT}/releases/{spec['commit']}/provenance.json"
     local_proof = client.state_dir / "proofs" / (spec["commit"] + ".json")
