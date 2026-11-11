@@ -350,6 +350,98 @@
     "rwcal-20261111-ours-mug-hanging-pre"
    ],
    "lifted": "2026-11-11T22:41+09:00: refused attempt reconciled (runs/setup/reconcile-rwcal-20261111-ours-drawer-open-pre-20261111-223159.json); config.yaml removed from both rows required_results (backup experiments/queue.yaml.before-ours-pre-required-results-20261111)"
+  },
+  {
+   "name": "fql-a10-snerl-superseded-by-nq-20261111",
+   "active": true,
+   "prefixes": [
+    "rwcal-20261109-fql-snerl-"
+   ],
+   "since": "2026-11-11T23:10:43+0900",
+   "by": "coordinator (user decision 2026-11-11 ~23:10)",
+   "reason": "user 2026-11-11 ~23:10: every future FQL run with a pretrained encoder uses agent.alpha=10 + agent.normalize_q_loss=true; these 6 never-launched SNeRL rows carry the old alpha=10-only setting and are superseded by new-id rows (see runs/setup/rw-registration-fql-nq-20261111*.json once registered). Keep paused even after the SNeRL feature check passes. No run, checkpoint or dataset is touched."
+  },
+  {
+   "name": "fqlnq-await-placement-20261111",
+   "active": true,
+   "since": "2026-11-11T23:45:42+0900",
+   "by": "coordinator (user FQL decision 2026-11-11 ~23:10)",
+   "reason": "hold the 30 a10nq frozen-encoder FQL rows (alpha=10 + normalize_q_loss) at registration; released id by id: local placement first (idle MIG slices), remote rows as preprocessing/pretraining free GPUs (preprocessing priority; do not delay ongoing pretraining)",
+   "ids": [
+    "rwnq-20261111-fql-reviwo-drawer-open-s2",
+    "rwnq-20261111-fql-reviwo-mug-hanging-s0",
+    "rwnq-20261111-fql-reviwo-mug-hanging-s1",
+    "rwnq-20261111-fql-reviwo-mug-hanging-s2",
+    "rwnq-20261111-fql-sincro-drawer-open-s0",
+    "rwnq-20261111-fql-sincro-drawer-open-s1",
+    "rwnq-20261111-fql-sincro-drawer-open-s2",
+    "rwnq-20261111-fql-sincro-mug-hanging-s0",
+    "rwnq-20261111-fql-sincro-mug-hanging-s1",
+    "rwnq-20261111-fql-sincro-mug-hanging-s2",
+    "rwnq-20261111-fql-dynamo-drawer-open-s0",
+    "rwnq-20261111-fql-dynamo-drawer-open-s1",
+    "rwnq-20261111-fql-dynamo-drawer-open-s2",
+    "rwnq-20261111-fql-dynamo-mug-hanging-s0",
+    "rwnq-20261111-fql-dynamo-mug-hanging-s1",
+    "rwnq-20261111-fql-dynamo-mug-hanging-s2",
+    "rwnq-20261111-fql-mvp3d_single-drawer-open-s0",
+    "rwnq-20261111-fql-mvp3d_single-drawer-open-s1",
+    "rwnq-20261111-fql-mvp3d_single-drawer-open-s2",
+    "rwnq-20261111-fql-mvp3d_single-mug-hanging-s0",
+    "rwnq-20261111-fql-mvp3d_single-mug-hanging-s1",
+    "rwnq-20261111-fql-mvp3d_single-mug-hanging-s2",
+    "rwnq-20261111-fql-mvp3d_multiview-drawer-open-s0",
+    "rwnq-20261111-fql-mvp3d_multiview-drawer-open-s1",
+    "rwnq-20261111-fql-mvp3d_multiview-drawer-open-s2",
+    "rwnq-20261111-fql-mvp3d_multiview-mug-hanging-s0",
+    "rwnq-20261111-fql-mvp3d_multiview-mug-hanging-s1",
+    "rwnq-20261111-fql-mvp3d_multiview-mug-hanging-s2"
+   ],
+   "history": [
+    "2026-11-11 23:57:50: prefix -> id list; released for local placement: ['rwnq-20261111-fql-reviwo-drawer-open-s0', 'rwnq-20261111-fql-reviwo-drawer-open-s1']"
+   ]
+  },
+  {
+   "name": "fqla100-after-nq-20261111",
+   "active": true,
+   "since": "2026-11-11T23:45:42+0900",
+   "by": "coordinator (user FQL decision 2026-11-11 ~23:10)",
+   "reason": "alpha=100 / normalize_q_loss=false comparison rows (user: keep as comparison baseline) run after the a10nq rows; lifted once the nq rows are launched",
+   "ids": [
+    "rwa100-20261111-fql-reviwo-drawer-open-s0",
+    "rwa100-20261111-fql-reviwo-drawer-open-s1",
+    "rwa100-20261111-fql-reviwo-drawer-open-s2",
+    "rwa100-20261111-fql-reviwo-mug-hanging-s0",
+    "rwa100-20261111-fql-reviwo-mug-hanging-s1",
+    "rwa100-20261111-fql-reviwo-mug-hanging-s2",
+    "rwa100-20261111-fql-sincro-drawer-open-s0",
+    "rwa100-20261111-fql-sincro-drawer-open-s1",
+    "rwa100-20261111-fql-sincro-drawer-open-s2",
+    "rwa100-20261111-fql-sincro-mug-hanging-s0",
+    "rwa100-20261111-fql-sincro-mug-hanging-s1",
+    "rwa100-20261111-fql-sincro-mug-hanging-s2",
+    "rwa100-20261111-fql-dynamo-drawer-open-s0",
+    "rwa100-20261111-fql-dynamo-drawer-open-s1",
+    "rwa100-20261111-fql-dynamo-drawer-open-s2",
+    "rwa100-20261111-fql-dynamo-mug-hanging-s0",
+    "rwa100-20261111-fql-dynamo-mug-hanging-s1",
+    "rwa100-20261111-fql-dynamo-mug-hanging-s2",
+    "rwa100-20261111-fql-mvp3d_single-drawer-open-s0",
+    "rwa100-20261111-fql-mvp3d_single-drawer-open-s1",
+    "rwa100-20261111-fql-mvp3d_single-drawer-open-s2",
+    "rwa100-20261111-fql-mvp3d_single-mug-hanging-s0",
+    "rwa100-20261111-fql-mvp3d_single-mug-hanging-s1",
+    "rwa100-20261111-fql-mvp3d_single-mug-hanging-s2",
+    "rwa100-20261111-fql-mvp3d_multiview-drawer-open-s0",
+    "rwa100-20261111-fql-mvp3d_multiview-drawer-open-s1",
+    "rwa100-20261111-fql-mvp3d_multiview-drawer-open-s2",
+    "rwa100-20261111-fql-mvp3d_multiview-mug-hanging-s0",
+    "rwa100-20261111-fql-mvp3d_multiview-mug-hanging-s1",
+    "rwa100-20261111-fql-mvp3d_multiview-mug-hanging-s2"
+   ],
+   "history": [
+    "2026-11-11 23:57:50: prefix -> id list (staged release by realworld-ops/fqlnq/tools/remote_release.py)"
+   ]
   }
  ]
 }
