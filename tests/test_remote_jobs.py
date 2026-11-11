@@ -2322,7 +2322,8 @@ def test_remote_driver_charges_cotenants_before_any_placement(tmp_path):
                  "gpu_mem": {g: 5.0 if g == REMOTE else 0.0 for g in gpus}, "reserved": 6 * GIB, "messages": [],
                  "RemoteBackend": Backend, "cotenant_charges": remote.cotenant_charges, "json": json,
                  "COTENANT_GPU_MARGIN_GB": remote.COTENANT_GPU_MARGIN_GB, "subprocess": subprocess,
-                 "release_reservation": release_reservation}  # no reservation (tests/conftest.py isolates its path)
+                 "release_reservation": release_reservation,
+                 "GPU_CAP": {g: 90.0 for g in gpus}}  # per-device cap (physical GPUs: 90 GiB; MIG: instance size)
         exec(block, names)
         return names
 

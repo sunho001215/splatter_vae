@@ -15,7 +15,8 @@ from pathlib import Path
 
 from ops.provenance import upstreams as third_party
 from ops.jobs.host_roles import DOMAIN, job_class
-from ops.resources.gpu_guard import APPROVED_HOST_GPUS, LOCAL_MIG_PARENTS
+from ops.resources.gpu_guard import APPROVED_HOST_GPUS, LOCAL_MIG_PARENTS, REMOTE_MIG_DEVICES, REMOTE_MIG_PARENTS
+from ops.resources.mig_inventory import InventoryError, parse_list, parse_query
 from ops.remote.access import ORIGIN_BRANCH, RemoteClient, RemoteUnreachable
 from ops.containers import suite_partition
 from ops.containers.mounts import realworld_mounts
@@ -309,6 +310,66 @@ def removal_command(root: str, run_id: str, attempt: int, container: str, contai
     return script
 
 
+def mig_snapshot_command(parents=None) -> str:
+    """Remote MIG (2026-11-11): the instances (``nvidia-smi -L``) and, per authorized parent, every MIG device's
+    framebuffer and processes with their GPU instance (``nvidia-smi -q -i``); the compute-apps CSV reports only the
+    parent GPU, so it cannot attribute a process to an instance. Empty while the physical allowlist is in force."""
+    parents = REMOTE_MIG_PARENTS if parents is None else parents
+    if not parents:
+        return ""
+    return ("printf '__S4D_MIG_LIST__\\n'; if ! nvidia-smi -L; then printf '__S4D_QUERY_ERROR__\\n'; fi; "
+            "printf '__S4D_MIG_QUERY__\\n'; if ! nvidia-smi -q -i " + shlex.quote(",".join(parents))
+            + "; then printf '__S4D_QUERY_ERROR__\\n'; fi; ")
+
+
+def mig_usage(list_lines: list[str], query_lines: list[str], devices=None) -> tuple[dict, dict, bool]:
+    """Per authorized MIG instance: its processes [(pid, MiB)] and (total, used) framebuffer MiB, plus whether the
+    evidence is complete. Fails closed (ready False): an instance missing from ``nvidia-smi -L``, a device index whose
+    GPU instance differs from the allowlist (instances re-created since discovery), an unreadable process listing, or
+    a process without a readable GPU instance on an authorized parent."""
+    devices = REMOTE_MIG_DEVICES if devices is None else devices
+    usage = {uuid: [] for uuid in devices}
+    memory, ready = {}, True
+    try:
+        listed = {mig["uuid"]: (item["uuid"], mig["device"]) for item in parse_list("\n".join(list_lines))
+                  for mig in item["mig"]}
+        query = parse_query("\n".join(query_lines))
+    except (InventoryError, ValueError):
+        return usage, memory, False
+    for uuid, (parent, instance, device) in devices.items():
+        found = query.get(parent, {}).get("instances", {}).get(device)
+        if listed.get(uuid) != (parent, device) or found is None or found.get("gpu_instance_id") != instance:
+            ready = False
+            continue
+        if found.get("total_mib") is not None and found.get("used_mib") is not None:
+            memory[uuid] = (found["total_mib"], found["used_mib"])
+    for parent in dict.fromkeys(item[0] for item in devices.values()):
+        for proc in query.get(parent, {}).get("processes", []):
+            if proc["pid"] is None or proc["gpu_instance_id"] is None:
+                ready = False
+                continue
+            owner = next((uuid for uuid, (p, instance, _) in devices.items()
+                          if p == parent and instance == proc["gpu_instance_id"]), None)
+            if owner is not None:
+                usage[owner].append((proc["pid"], float(proc["used_mib"] or 0.0)))
+    return usage, memory, ready
+
+
+def mig_mode_conflict(lines: list[str], physical=None, parents=None) -> bool:
+    """True when the MIG mode contradicts the allowlist in force: a physical allowlisted GPU with MIG mode current or
+    pending Enabled, or (MIG allowlist) a parent that is not Enabled/Enabled. Lines absent: no evidence, no conflict."""
+    parents = REMOTE_MIG_PARENTS if parents is None else parents
+    physical = (() if parents else tuple(APPROVED_HOST_GPUS["remote"])) if physical is None else physical
+    modes = {}
+    for line in lines:
+        parts = [part.strip() for part in line.split(",")]
+        if len(parts) == 3 and parts[0].startswith("GPU-"):
+            modes[parts[0]] = (parts[1], parts[2])
+    if any("Enabled" in modes.get(uuid, ()) for uuid in physical):
+        return True
+    return bool(modes) and any(modes.get(uuid) != ("Enabled", "Enabled") for uuid in parents)
+
+
 def snapshot_command(root: str) -> str:
     if root != ROOT:
         raise ValueError("Remote snapshot root is not authorized")
@@ -331,6 +392,11 @@ def snapshot_command(root: str) -> str:
         # with co-tenants)
         "printf '__S4D_GPU_MEMORY__\\n'; "
         "nvidia-smi --query-gpu=uuid,memory.total,memory.used --format=csv,noheader,nounits || true; "
+        # MIG mode of every GPU (2026-11-11): a physical allowlisted GPU whose MIG mode is (being) enabled is never a
+        # launch target (its UUID gives CUDA no device); a reading failure leaves the section empty (no effect)
+        "printf '__S4D_MIG_MODE__\\n'; "
+        "nvidia-smi --query-gpu=uuid,mig.mode.current,mig.mode.pending --format=csv,noheader,nounits || true; "
+        + mig_snapshot_command() +
         "printf '__S4D_COTENANTS__\\n'; "
         # the listing fails the whole snapshot like the managed listing above; an inspect failure other than the
         # container's removal since the listing marks the snapshot not ready (no co-tenant reservation is lost)
@@ -364,7 +430,8 @@ def parse_snapshot(output: str) -> RemoteSnapshot:
             if value.isdigit():
                 ram_used[top] = int(value)
         elif line in {"__S4D_GPUS__", "__S4D_USAGE__", "__S4D_GRAPHICS__", "__S4D_MEMORY__",
-                      "__S4D_DISK__", "__S4D_CONTAINERS__", "__S4D_GPU_MEMORY__", "__S4D_COTENANTS__", "__S4D_END__"}:
+                      "__S4D_DISK__", "__S4D_CONTAINERS__", "__S4D_GPU_MEMORY__", "__S4D_COTENANTS__", "__S4D_END__",
+                      "__S4D_MIG_LIST__", "__S4D_MIG_QUERY__", "__S4D_MIG_MODE__"}:
             section = line
             sections.setdefault(section, [])
         elif top is not None:
@@ -382,9 +449,16 @@ def parse_snapshot(output: str) -> RemoteSnapshot:
         parts = [part.strip() for part in line.split(",")]
         if len(parts) == 2 and parts[0].isdigit():
             indices[int(parts[0])] = parts[1]
-    if not set(APPROVED_HOST_GPUS["remote"]) <= set(indices.values()):
+    if not set(REMOTE_MIG_PARENTS or APPROVED_HOST_GPUS["remote"]) <= set(indices.values()):
         ready = False
     usage = {uuid: [] for uuid in APPROVED_HOST_GPUS["remote"]}
+    mig_memory = {}
+    if REMOTE_MIG_PARENTS:  # the instances' processes and framebuffer come from the MIG sections only
+        if not {"__S4D_MIG_LIST__", "__S4D_MIG_QUERY__"} <= sections.keys():
+            ready = False
+        usage, mig_memory, mig_ready = mig_usage(sections.get("__S4D_MIG_LIST__", []),
+                                                 sections.get("__S4D_MIG_QUERY__", []))
+        ready = ready and mig_ready and set(usage) == set(APPROVED_HOST_GPUS["remote"])
     for line in sections["__S4D_USAGE__"]:
         parts = [part.strip() for part in line.split(",")]
         if len(parts) == 3 and parts[0] in usage:
@@ -420,7 +494,9 @@ def parse_snapshot(output: str) -> RemoteSnapshot:
             containers[name] = item
         except (KeyError, TypeError, ValueError) as exc:
             raise RemoteJobError("Invalid Docker inspect snapshot") from exc
-    gpu_memory = {}
+    if mig_mode_conflict(sections.get("__S4D_MIG_MODE__", [])):
+        ready = False
+    gpu_memory = dict(mig_memory)
     for line in sections.get("__S4D_GPU_MEMORY__", []):
         parts = [part.strip() for part in line.split(",")]
         if len(parts) == 3 and parts[0] in usage and parts[1].isdigit() and parts[2].isdigit():

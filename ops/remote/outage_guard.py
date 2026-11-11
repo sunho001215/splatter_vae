@@ -31,8 +31,13 @@ LEDGER = ROOT / 'runs/setup/remote-ledger'
 GUARD = LEDGER / 'guard.json'
 HOLD = ROOT / 'runs/setup/remote-hold-admissions'
 HOLD_AFTER_S, LEDGER_EVERY_S = 600, 1800
-GPUS = ('GPU-4391fcee-537f-d408-d138-10d8a3866eea', 'GPU-6122c7a9-eaa6-b539-6005-f20e339da4ea',
-        'GPU-9e9f1e97-b2ca-04e0-eb2a-8035398daa79', 'GPU-ca65e1b7-c0ac-6757-7d3f-816c3119a4c1')
+from ops.resources.gpu_guard import APPROVED_HOST_GPUS  # noqa: E402
+
+# the authorized remote devices (physical GPUs or, under the MIG allowlist, MIG instances): `nvidia-smi -L` lists both
+GPUS = tuple(APPROVED_HOST_GPUS['remote'])
+# Only a hold this guard wrote itself is ever lifted by it (its text starts with this prefix). A hold placed by the
+# coordinator or the user (e.g. the MIG migration hold of 2026-11-11) is never renamed, even if guard.json were stale.
+GUARD_HOLD_PREFIX = 'remote outage guard '
 
 
 def log(msg):
@@ -48,10 +53,18 @@ def save(state):
     os.replace(tmp, GUARD)
 
 
+def guard_owns_hold():
+    """True only when the hold file exists and was written by this guard."""
+    try:
+        return HOLD.read_text().startswith(GUARD_HOLD_PREFIX)
+    except OSError:
+        return False
+
+
 def recovery_check(client):
     ledger = json.loads((LEDGER / 'pre-outage-ledger.json').read_text())
     running = {j: e for j, e in ledger['jobs'].items() if e['status'] == 'running'}
-    cmds = ['echo "@@gpu"; nvidia-smi --query-gpu=uuid --format=csv,noheader 2>&1',
+    cmds = ['echo "@@gpu"; nvidia-smi -L 2>&1',
             'echo "@@disk"; df -P ' + shlex.quote('/home/compu/kaist/sunho') + ' | tail -1',
             'echo "@@docker"; docker ps -a --filter name=s4d- --format "{{.Names}}|{{.State}}|{{.Status}}" 2>&1']
     for j, e in running.items():
@@ -67,7 +80,7 @@ def recovery_check(client):
         elif key:
             sec[key].append(line)
     blockers, notes = {}, {}
-    if not all(any(g in line for line in sec.get('gpu', [])) for g in GPUS):
+    if not GPUS or not all(any(f'(UUID: {g})' in line for line in sec.get('gpu', [])) for g in GPUS):
         blockers['host'] = f"authorized GPUs not all visible: {sec.get('gpu')}"
     disk = (sec.get('disk') or [''])[0].split()
     if len(disk) >= 5 and disk[4].endswith('%') and int(disk[4][:-1]) > 85:
@@ -119,7 +132,7 @@ def main():
             else:
                 if (LEDGER / 'latest.json').is_file():
                     (LEDGER / 'pre-outage-ledger.json').write_bytes((LEDGER / 'latest.json').read_bytes())
-                HOLD.write_text(f'remote outage guard {time.strftime("%Y-%m-%dT%H:%M:%S%z")}: host unreachable since '
+                HOLD.write_text(f'{GUARD_HOLD_PREFIX}{time.strftime("%Y-%m-%dT%H:%M:%S%z")}: host unreachable since '
                                 f'{time.strftime("%H:%M:%S", time.localtime(state["unreachable_since"]))}; resumes after the '
                                 'recovery check (runs/setup/tools/remote_outage_guard.py)\n')
                 state['hold_by_guard'] = True
@@ -140,6 +153,10 @@ def main():
         if blockers:
             (LEDGER / 'recovery-blockers.json').write_text(json.dumps(report, indent=1))
             log(f'RECOVERY BLOCKED {sorted(blockers)}; hold kept')
+        elif not guard_owns_hold():
+            # the hold file is not (or no longer) the guard's own: never lift it; the guard's claim ends here
+            state['hold_by_guard'] = False
+            log('recovery check passed, but the hold in place was not written by the guard; left untouched')
         else:
             HOLD.rename(ROOT / f'runs/setup/remote-hold-admissions.cleared-{time.strftime("%Y%m%d-%H%M%S")}')
             state['hold_by_guard'] = False

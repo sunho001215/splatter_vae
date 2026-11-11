@@ -18,6 +18,8 @@ from ops.jobs import release_reservation  # noqa: E402
 from ops.jobs import scheduler as jobs  # noqa: E402
 from ops.jobs.remote_backend import COTENANT_GPU_MARGIN_GB, RemoteBackend, cotenant_charges  # noqa: E402
 from ops.remote.access import RemoteClient  # noqa: E402
+from ops.resources.gpu_guard import APPROVED_HOST_GPUS, REMOTE_MIG_ACTIVE, REMOTE_MIG_INSTANCES  # noqa: E402
+from ops.resources.mig_inventory import INSTANCE_LOAD_LIMIT, device_capacity_gib  # noqa: E402
 
 IMAGE = 'sha256:c3ffea7f7c114dd12755f9d537f760a6d5b31c96c923233185b775e0324799b7'
 FROZEN_COMMIT = '226d8ae89b6f65097d372e597e0a7734d2eee3e0'  # method-frozen-v1 source (freeze manifest identity)
@@ -123,13 +125,27 @@ for _previous in ROLE_RELEASE.get('previous', []):
     RELEASES.setdefault((_previous['commit'], _previous['image']),
                         f"runs/remote/acceptance/{_previous['commit'][:7]}-cc/manifest.json")
 ROLE_READY = bool(ROLE_COMMIT and ROLE_IMAGE) and (REPO / RELEASES[(ROLE_COMMIT, ROLE_IMAGE)]).is_file()
+# Remote MIG releases (user directive 2026-11-11): per pinned release family, a release of identical execution scope plus
+# the MIG GPU allowlist (ops/jobs/release_repin.py), listed in runs/setup/remote-mig-releases.json
+# [{"commit", "image", "manifest"}]; each is offered only once its acceptance manifest (native suite + one isolation
+# check per instance) exists, exactly like every other release.
+MIG_RELEASES_FILE = REPO / 'runs/setup/remote-mig-releases.json'
+for _release in (json.loads(MIG_RELEASES_FILE.read_text()) if MIG_RELEASES_FILE.is_file() else []):
+    RELEASES[(_release['commit'], _release['image'])] = _release['manifest']
 ROOT = '/home/compu/kaist/sunho'
 CAP = 1_000_000_000_000
-GPU_LOAD_LIMIT = float((REPO / 'runs/setup/remote-gpu-load-limit.txt').read_text()) \
-    if (REPO / 'runs/setup/remote-gpu-load-limit.txt').exists() else 2.0
+# Load units per device: a physical GPU (runs/setup/remote-gpu-load-limit.txt, default 2.0) or, once the remote MIG
+# allowlist is in force (configs/hosts/remote-mig.yaml, user directive 2026-11-11), one 1g.24gb instance
+# (runs/setup/remote-mig-load-limit.txt, default INSTANCE_LOAD_LIMIT).
+_LIMIT_FILE = REPO / ('runs/setup/remote-mig-load-limit.txt' if REMOTE_MIG_ACTIVE else 'runs/setup/remote-gpu-load-limit.txt')
+GPU_LOAD_LIMIT = float(_LIMIT_FILE.read_text()) if _LIMIT_FILE.exists() else (
+    INSTANCE_LOAD_LIMIT if REMOTE_MIG_ACTIVE else 2.0)
 MAX_REVIWO = 8
-GPUS = ('GPU-4391fcee-537f-d408-d138-10d8a3866eea', 'GPU-6122c7a9-eaa6-b539-6005-f20e339da4ea',
-        'GPU-9e9f1e97-b2ca-04e0-eb2a-8035398daa79', 'GPU-ca65e1b7-c0ac-6757-7d3f-816c3119a4c1')
+# The authorized remote devices (gpu_guard): the four physical GPUs, or their verified MIG instances. An invalid MIG
+# allowlist authorizes none, so nothing is placed (fail closed).
+GPUS = tuple(APPROVED_HOST_GPUS['remote'])
+# Per-device GPU-memory admission cap (GiB): 90 per physical GPU, the instance framebuffer less a reserve per MIG instance
+GPU_CAP = {g: device_capacity_gib(g, REMOTE_MIG_INSTANCES or ()) for g in GPUS}
 FINISHED = REPO / 'runs/remote/finished'
 DATA_LOGS = ['remote-data-sync-ds-20261028.log',  # new-task batches (user 2026-10-28; upload_task_data_20261028.py)
              'stage4-baseline-data-sync-20261012.log', 'remote-data-sync-w1-20261012.log',
@@ -663,7 +679,7 @@ else:
     for g, charge in COTENANT['gpus'].items():
         if g in gpu_load:
             gpu_load[g] += charge['load']
-            gpu_mem[g] = max(gpu_mem[g] + charge['mem_gb'], 90 - charge['free_gb'] + COTENANT_GPU_MARGIN_GB)
+            gpu_mem[g] = max(gpu_mem[g] + charge['mem_gb'], GPU_CAP[g] - charge['free_gb'] + COTENANT_GPU_MARGIN_GB)
     reserved += COTENANT['ram_declared_bytes']
     if COTENANT['gpus']:
         messages.append('COTENANT ' + json.dumps({g[4:8]: {k: round(charge[k], 1) for k in ('jobs', 'load', 'mem_gb',
@@ -695,7 +711,7 @@ chosen, total, taken = [], reserved, set()
 def place(job):
     fitting = [g for g in GPUS
                if gpu_load[g] + load(job) <= GPU_LOAD_LIMIT + (2.0 if kind(job['id']) == 'proxy' else 0.0) + 1e-9
-               and gpu_mem[g] + float(job['mem_gb']) <= 90
+               and gpu_mem[g] + float(job['mem_gb']) <= GPU_CAP[g]
                and (g != hyb_reserved or may_use_reserved(job['id']))]
     return min(fitting, key=lambda g: (gpu_load[g], gpu_mem[g])) if fitting else None
 
@@ -715,7 +731,7 @@ def may_use_reserved(job_id):
 
 
 def reserve_for_hybrid(job):
-    room = [g for g in GPUS if gpu_mem[g] + float(job['mem_gb']) <= 90] or list(GPUS)
+    room = [g for g in GPUS if gpu_mem[g] + float(job['mem_gb']) <= GPU_CAP[g]] or list(GPUS)
     return min(room, key=lambda g: (gpu_load[g], gpu_mem[g]))
 
 
@@ -799,7 +815,7 @@ if POOL_READY and not DRY and not held and ROLES is not None and COTENANT is not
                     0.1 if u['script'] == 'scripts/export_encoder.py' else 0.5)))
             need = int(float(u['ram_gb']) * 2**30)
             fitting = [g for g in GPUS if gpu_load[g] + row_load <= GPU_LOAD_LIMIT + 1e-9
-                       and gpu_mem[g] + float(u['mem_gb']) <= 90
+                       and gpu_mem[g] + float(u['mem_gb']) <= GPU_CAP[g]
                        and (g != hyb_reserved or may_use_reserved(u['id']))]
             if total + need > CAP or not fitting:
                 break

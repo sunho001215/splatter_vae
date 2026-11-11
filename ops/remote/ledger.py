@@ -25,8 +25,11 @@ from ops.jobs import scheduler as jobs  # noqa: E402
 
 REMOTE_ROOT = '/home/compu/kaist/sunho'
 OUT = ROOT / 'runs/setup/remote-ledger'
-GPUS = ('GPU-4391fcee-537f-d408-d138-10d8a3866eea', 'GPU-6122c7a9-eaa6-b539-6005-f20e339da4ea',
-        'GPU-9e9f1e97-b2ca-04e0-eb2a-8035398daa79', 'GPU-ca65e1b7-c0ac-6757-7d3f-816c3119a4c1')
+from ops.resources.gpu_guard import APPROVED_HOST_GPUS, REMOTE_MIG_PARENTS  # noqa: E402
+
+# the physical GPUs the ledger's --query-gpu listing must show: the authorized GPUs, or the parents of the authorized
+# MIG instances (remote MIG allowlist, 2026-11-11); an empty allowlist (invalid MIG file) never counts as visible
+GPUS = tuple(REMOTE_MIG_PARENTS or APPROVED_HOST_GPUS['remote'])
 
 
 def run_dir(job):
@@ -83,7 +86,7 @@ def main():
     record['host'] = {'date': host[0] if host else None, 'mem_line': host[1] if len(host) > 1 else None,
                       'disk_line': host[2] if len(host) > 2 else None}
     record['gpus'] = {line.split(',')[0].strip(): line for line in sections.get('gpu', []) if line.startswith('GPU-')}
-    record['authorized_gpus_visible'] = all(g in record['gpus'] for g in GPUS)
+    record['authorized_gpus_visible'] = bool(GPUS) and all(g in record['gpus'] for g in GPUS)
     containers = {line.split('|')[0]: line.split('|')[1:] for line in sections.get('docker', []) if '|' in line}
     for jid, job, cur, status in tracked:
         lines = sections.get(f'job {jid}', [])

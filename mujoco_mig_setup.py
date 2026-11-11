@@ -6,7 +6,7 @@ import ctypes
 import os
 from ctypes import byref, c_char_p, c_int, c_uint32, c_void_p
 
-from ops.resources.gpu_guard import MIG_DEVICES, GPUIsolationError, visible_device_uuids
+from ops.resources.gpu_guard import MIG_DEVICES, REMOTE_MIG_DEVICES, GPUIsolationError, visible_device_uuids
 
 EGL_NO_DISPLAY = c_void_p(0)
 EGL_TRUE = 1
@@ -79,6 +79,16 @@ def _find_egl_device_index_for_visible_cuda(visible_cuda_idx: int = 0) -> int | 
         # MIG device order: select this instance's position among them.
         parent, _, slot = MIG_DEVICES[uuid]
         if len(matching) != sum(item[0] == parent for item in MIG_DEVICES.values()):
+            raise GPUIsolationError(f"{len(matching)} EGL devices map to {uuid}'s parent GPU; refusing EGL order.")
+        return matching[slot]
+    if uuid in REMOTE_MIG_DEVICES:
+        # A remote container receives exactly one MIG instance (CDI). Accept the single EGL device that maps to the
+        # visible CUDA ordinal, or, if EGL still lists every instance of the parent, this instance's position among
+        # them; anything else is refused (validated per instance by the release's isolation check).
+        parent, _, slot = REMOTE_MIG_DEVICES[uuid]
+        if len(matching) == 1:
+            return matching[0]
+        if len(matching) != sum(item[0] == parent for item in REMOTE_MIG_DEVICES.values()):
             raise GPUIsolationError(f"{len(matching)} EGL devices map to {uuid}'s parent GPU; refusing EGL order.")
         return matching[slot]
     if len(matching) != 1:

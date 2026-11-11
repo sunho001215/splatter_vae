@@ -9,7 +9,7 @@ import shlex
 import sys
 from pathlib import Path, PurePosixPath
 
-from ops.resources.gpu_guard import APPROVED_HOST_GPUS, LOCAL_MIG_PARENTS
+from ops.resources.gpu_guard import APPROVED_HOST_GPUS, LOCAL_MIG_PARENTS, REMOTE_MIG_DEVICES
 from ops.remote.access import (ORIGIN_REF, RELEASE_ORIGIN_REFS, REMOTE_ROOT, RemoteClient, RemoteCommandError,
                                RemoteUnreachable, sha256)
 from ops.jobs.host_roles import job_class
@@ -476,18 +476,10 @@ def build_remote_command(spec: dict, data_identity: str, origin_commit: str, pro
                        f"({device},-?[0-9]+,[0-9]+,[0-9]+,({device};)*/)*")
     if not all(re.fullmatch(r"[a-z][a-z-]*", role) for role in COTENANT_ROLES):
         raise ValueError("Invalid co-tenant role")
-    lines += ['apps="$(nvidia-smi --query-compute-apps=gpu_uuid,pid,used_memory --format=csv,noheader,nounits)"',
-              'indices="$(nvidia-smi --query-gpu=index,uuid --format=csv,noheader,nounits)"',
-              'selected_index="$(printf \'%s\\n\' "$indices" | awk -F, -v gpu="$gpu" '
-              '\'{gsub(/ /,"",$2); if($2==gpu)print $1}\')"; test -n "$selected_index"',
-              'table="$(nvidia-smi)"; graphics="$(printf \'%s\\n\' "$table" | awk -v gpu="$selected_index" '
-              '\'$1=="|" && $2==gpu && $5 ~ /^[0-9]+$/ && $6 ~ /^[CG+]+$/ {print $5}\')"',
-              'owned="$(docker ps --filter label=s4d.managed=true --filter label=s4d.host=remote --format \'{{.Names}}\')"',
-              # Include graphics-only memory; C+G processes can appear in both sources, so use the larger
-              # per-PID reading before summing each container's memory.
-              'graphics_memory="$(printf \'%s\\n\' "$table" | awk -v gpu="$gpu" -v idx="$selected_index" '
-              '\'$1=="|" && $2==idx && $5 ~ /^[0-9]+$/ && $6 ~ /^[CG+]+$/ '
-              '{m=$(NF-1); sub(/MiB$/,"",m); if(m ~ /^[0-9]+$/) print gpu "," $5 "," m}\')"',
+    probe = gpu_probe_lines(spec["gpu"])
+    lines += probe[:-1]  # the selected device's processes (the graphics memory line follows the owned listing)
+    lines += ['owned="$(docker ps --filter label=s4d.managed=true --filter label=s4d.host=remote --format \'{{.Names}}\')"',
+              probe[-1],
               # GPU memory (bytes) used on the selected GPU by the processes in $1 (whitespace-separated PIDs)
               'gpu_used() { printf \'%s\\n\' "$apps" "$graphics_memory" | awk -F, -v gpu="$gpu" -v pids=" $(printf \'%s \' $1)" '
               '\'{gsub(/ /,"",$1); gsub(/ /,"",$2); gsub(/ /,"",$3); '
@@ -573,9 +565,7 @@ def build_remote_command(spec: dict, data_identity: str, origin_commit: str, pro
               # with co-tenants on the GPU: the measured free memory less every known tenant's declared but not yet
               # allocated reservation must hold this job plus the margin (scheduler.choose_gpu applies the same rule)
               'if [ "$co_here" -gt 0 ]; then '
-              'gpu_free="$(nvidia-smi --query-gpu=uuid,memory.total,memory.used --format=csv,noheader,nounits '
-              '| awk -F, -v gpu="$gpu" \'{gsub(/ /,"",$1); gsub(/ /,"",$2); gsub(/ /,"",$3); '
-              'if ($1==gpu && $2 ~ /^[0-9]+$/ && $3 ~ /^[0-9]+$/) printf "%.0f", ($2-$3)*1048576}\')"; '
+              + gpu_free_command(spec["gpu"]) +
               'case "$gpu_free" in ""|*[!0-9]*) exit 1;; esac; '
               f'test "$((gpu_free-co_pending-own_pending-{math.ceil(COTENANT_GPU_MARGIN_GB * 1024**3)}))" '
               f'-ge {spec["gpu_bytes"]} || {{ printf \'Co-tenant GPU memory\\n\' >&2; exit 1; }}; fi']
@@ -589,6 +579,98 @@ def build_remote_command(spec: dict, data_identity: str, origin_commit: str, pro
               'case "$cid" in *[!0-9a-f]*) exit 1;; esac',
               'printf \'{"container_id":"%s","container":"%s"}\\n\' "$cid" "$container"']
     return "\n".join(lines)
+
+
+# Remote MIG (2026-11-11): the instance's evidence is read from ``nvidia-smi -q -i <parent>`` on the host (python3 -I,
+# stdlib only): exit != 0 when the process listing is unreadable, a process lacks its GPU instance, or the device index
+# no longer carries the allowlisted GPU instance; otherwise "MEM,<total MiB>,<used MiB>" and one "APP,<pid>,<MiB>" per
+# process on this instance (C and G alike).
+MIG_PROBE = r"""
+import sys
+gi, dev = int(sys.argv[1]), int(sys.argv[2])
+sec = sub = cur = proc = found = None
+apps = []
+for line in sys.stdin.read().splitlines():
+    if not line.strip():
+        continue
+    ind = len(line) - len(line.lstrip())
+    k, sep, v = (x.strip() for x in line.partition(":"))
+    if ind == 0:
+        sec = None
+        continue
+    if ind <= 4:
+        sec, sub, proc = k, None, None
+        if k == "MIG Device":
+            cur = {}
+        if k == "Processes" and v not in ("", "None"):
+            sys.exit(2)
+        continue
+    if sec == "MIG Device" and cur is not None:
+        if ind == 8 and not sep:
+            sub = k
+        elif ind == 8 and k in ("Index", "GPU Instance ID"):
+            cur[k] = int(v)
+        elif sub == "FB Memory Usage" and k in ("Total", "Used"):
+            cur[k] = int(v.split()[0])
+        if cur.get("Index") == dev:
+            found = cur
+    elif sec == "Processes":
+        if k == "GPU instance ID":
+            proc = [v]
+        elif k == "Process ID" and proc is not None:
+            proc.append(v)
+        elif k == "Used GPU Memory" and proc is not None and len(proc) == 2:
+            if not (proc[0].isdigit() and proc[1].isdigit()):
+                sys.exit(3)
+            if int(proc[0]) == gi:
+                apps.append((proc[1], (v.split() or ["N/A"])[0]))
+            proc = None
+if not found or found.get("GPU Instance ID") != gi or "Total" not in found or "Used" not in found:
+    sys.exit(4)
+print("MEM,%d,%d" % (found["Total"], found["Used"]))
+for pid, mib in apps:
+    print("APP,%s,%s" % (pid, mib))
+"""
+
+
+def gpu_probe_lines(gpu: str) -> list[str]:
+    """Shell lines that set ``apps`` ("<device>,<pid>,<MiB>" per process on the selected device), ``graphics`` (PIDs
+    of graphics-only processes) and ``graphics_memory``. A physical GPU keeps the established lines byte for byte; a
+    remote MIG instance is read from its parent's detailed query (the compute-apps CSV names only the parent). A
+    physical GPU whose MIG mode is (being) enabled is refused earlier, by the scheduler's snapshot
+    (remote_backend.parse_snapshot: resources not ready)."""
+    q = shlex.quote
+    if gpu in REMOTE_MIG_DEVICES:
+        parent, instance, device = REMOTE_MIG_DEVICES[gpu]
+        return ['parent=' + q(parent),
+                'listing="$(nvidia-smi -L)"; printf \'%s\\n\' "$listing" | grep -Fq -- "(UUID: $gpu)" '
+                '|| { printf \'MIG instance not present\\n\' >&2; exit 1; }',
+                'mig_query="$(nvidia-smi -q -i "$parent")"',
+                'mig_probe="$(printf \'%s\\n\' "$mig_query" | python3 -I -c ' + q(MIG_PROBE) + f' {int(instance)} {int(device)})" '
+                '|| { printf \'MIG instance evidence unreadable\\n\' >&2; exit 1; }',
+                'apps="$(printf \'%s\\n\' "$mig_probe" | awk -F, -v gpu="$gpu" \'$1=="APP" {print gpu "," $2 "," $3}\')"',
+                'graphics=""', 'graphics_memory=""']
+    return ['apps="$(nvidia-smi --query-compute-apps=gpu_uuid,pid,used_memory --format=csv,noheader,nounits)"',
+            'indices="$(nvidia-smi --query-gpu=index,uuid --format=csv,noheader,nounits)"',
+            'selected_index="$(printf \'%s\\n\' "$indices" | awk -F, -v gpu="$gpu" '
+            '\'{gsub(/ /,"",$2); if($2==gpu)print $1}\')"; test -n "$selected_index"',
+            'table="$(nvidia-smi)"; graphics="$(printf \'%s\\n\' "$table" | awk -v gpu="$selected_index" '
+            '\'$1=="|" && $2==gpu && $5 ~ /^[0-9]+$/ && $6 ~ /^[CG+]+$/ {print $5}\')"',
+            # Include graphics-only memory; C+G processes can appear in both sources, so use the larger
+            # per-PID reading before summing each container's memory.
+            'graphics_memory="$(printf \'%s\\n\' "$table" | awk -v gpu="$gpu" -v idx="$selected_index" '
+            '\'$1=="|" && $2==idx && $5 ~ /^[0-9]+$/ && $6 ~ /^[CG+]+$/ '
+            '{m=$(NF-1); sub(/MiB$/,"",m); if(m ~ /^[0-9]+$/) print gpu "," $5 "," m}\')"']
+
+
+def gpu_free_command(gpu: str) -> str:
+    """Shell fragment assigning the selected device's measured free framebuffer (bytes) to ``gpu_free``."""
+    if gpu in REMOTE_MIG_DEVICES:
+        return ('gpu_free="$(printf \'%s\\n\' "$mig_probe" | awk -F, \'$1=="MEM" && $2 ~ /^[0-9]+$/ && $3 ~ /^[0-9]+$/ '
+                '{printf "%.0f", ($2-$3)*1048576}\')"; ')
+    return ('gpu_free="$(nvidia-smi --query-gpu=uuid,memory.total,memory.used --format=csv,noheader,nounits '
+            '| awk -F, -v gpu="$gpu" \'{gsub(/ /,"",$1); gsub(/ /,"",$2); gsub(/ /,"",$3); '
+            'if ($1==gpu && $2 ~ /^[0-9]+$/ && $3 ~ /^[0-9]+$/) printf "%.0f", ($2-$3)*1048576}\')"; ')
 
 
 def launch(spec_path: Path, client: RemoteClient | None = None, *, wait: bool | None = None) -> dict:

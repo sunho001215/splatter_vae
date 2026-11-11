@@ -14,6 +14,34 @@ from types import MappingProxyType
 
 import yaml
 
+from ops.resources.mig_inventory import INVENTORY_RELATIVE, REMOTE_PHYSICAL_GPUS, InventoryError, load_allowlist
+
+REPO = Path(__file__).resolve().parents[2]
+
+
+def _remote_mig_allowlist(path):
+    """(instances or None, error): None = no MIG allowlist file (the physical GPUs stay authorized); an unreadable
+    or invalid file authorizes NO remote device (fail closed), with the reason in REMOTE_MIG_ERROR."""
+    try:
+        return load_allowlist(path), None
+    except InventoryError as exc:
+        return (), str(exc)
+
+
+# Remote MIG (user directive 2026-11-11): configs/hosts/remote-mig.yaml, written from a verified discovery report by
+# ops/resources/mig_inventory.py render and committed with the release that is verified on exactly those instances.
+REMOTE_MIG_ALLOWLIST = REPO / INVENTORY_RELATIVE
+REMOTE_MIG_INSTANCES, REMOTE_MIG_ERROR = _remote_mig_allowlist(REMOTE_MIG_ALLOWLIST)
+REMOTE_MIG_ACTIVE = REMOTE_MIG_INSTANCES is not None
+# The parents of the remote instances: never a launch target while MIG is active (a physical UUID of a MIG-enabled
+# GPU gives CUDA no device; launch.py refuses it explicitly).
+REMOTE_MIG_PARENTS = tuple(REMOTE_PHYSICAL_GPUS) if REMOTE_MIG_ACTIVE else ()
+REMOTE_DEVICES = tuple(REMOTE_PHYSICAL_GPUS) if not REMOTE_MIG_ACTIVE else tuple(
+    item["uuid"] for item in REMOTE_MIG_INSTANCES)
+# remote MIG UUID -> (parent GPU UUID, GPU instance ID, MIG device index on the parent), as MIG_DEVICES for local
+REMOTE_MIG_DEVICES = MappingProxyType({item["uuid"]: (item["parent"], item["gpu_instance_id"], item["device"])
+                                      for item in (REMOTE_MIG_INSTANCES or ())})
+
 APPROVED_HOST_GPUS = MappingProxyType(
     {
         # MIG 1g.24gb instances of local GPUs 4/5 (user, 2026-10-19; GPU 6 revoked), in nvidia-smi -L order.
@@ -27,12 +55,8 @@ APPROVED_HOST_GPUS = MappingProxyType(
             "MIG-2ebd9e11-f2e0-5e22-870a-7779d44ec10a",
             "MIG-c3511b41-5f78-52f1-9b93-9c6794cdbbdd",
         ),
-        "remote": (
-            "GPU-4391fcee-537f-d408-d138-10d8a3866eea",
-            "GPU-6122c7a9-eaa6-b539-6005-f20e339da4ea",
-            "GPU-9e9f1e97-b2ca-04e0-eb2a-8035398daa79",
-            "GPU-ca65e1b7-c0ac-6757-7d3f-816c3119a4c1",
-        ),
+        # the four physical GPUs, or their verified MIG instances once configs/hosts/remote-mig.yaml exists
+        "remote": REMOTE_DEVICES,
         # Real-world inference server (user, 2026-11-04): the one designated RTX 5090, inside the RAM-only inference
         # container (ops/inference_server). Preprocessing, inference and bounded tests only - never a training-pool host.
         "inference": ("GPU-9bcf38b6-8240-e910-6548-ca715643dc11",),
@@ -52,7 +76,6 @@ MIG_DEVICES = MappingProxyType(
 )
 APPROVED_RUNTIME_ROOTS = MappingProxyType({"local": None, "remote": Path("/home/compu/kaist/sunho"),
                                            "inference": Path("/ram/s4d-runtime")})  # RAM tmpfs in the container
-REPO = Path(__file__).resolve().parents[2]
 
 
 class GPUIsolationError(RuntimeError):
@@ -66,7 +89,9 @@ def _normalize_uuid(value: str) -> str:
 
 def cuda_uuid(entry: str) -> str:
     """The UUID CUDA reports for a CUDA_VISIBLE_DEVICES entry: a MIG device reports its parent GPU's UUID."""
-    return MIG_DEVICES[entry][0] if entry in MIG_DEVICES else entry
+    if entry in MIG_DEVICES:
+        return MIG_DEVICES[entry][0]
+    return REMOTE_MIG_DEVICES[entry][0] if entry in REMOTE_MIG_DEVICES else entry
 
 
 def _die(message: str) -> None:
@@ -138,7 +163,7 @@ def visible_device_uuids() -> list[str]:
             _die(f"CUDA_VISIBLE_DEVICES entry {item!r} is not an allowed GPU UUID. Allowed: {list(ALLOWED_GPU_UUIDS)}.")
     if len({_normalize_uuid(item) for item in entries}) != len(entries):
         _die(f"CUDA_VISIBLE_DEVICES={raw!r} lists a device twice.")
-    if len(entries) > 1 and any(item in MIG_DEVICES for item in entries):
+    if len(entries) > 1 and any(item in MIG_DEVICES or item in REMOTE_MIG_DEVICES for item in entries):
         _die(f"CUDA_VISIBLE_DEVICES={raw!r}: CUDA exposes only one MIG device per process.")
     return entries
 
@@ -165,7 +190,8 @@ def enforce_allowed_gpus(verbose: bool = True) -> list[dict]:
             _die(f"Visible CUDA device {index} has UUID {uuid} which is not allowed.")
         if uuid != _normalize_uuid(cuda_uuid(entries[index])):
             _die(f"Visible CUDA device {index} is {uuid} but CUDA_VISIBLE_DEVICES[{index}] is {entries[index]}.")
-        mapping.append({"index": index, "uuid": entries[index] if entries[index] in MIG_DEVICES else f"GPU-{uuid}",
+        mig = entries[index] in MIG_DEVICES or entries[index] in REMOTE_MIG_DEVICES
+        mapping.append({"index": index, "uuid": entries[index] if mig else f"GPU-{uuid}",
                         "name": props.name})
     if verbose:
         for item in mapping:
