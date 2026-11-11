@@ -787,9 +787,9 @@ def test_repin_hardening_image_chain_patch_and_reserved_field(tmp_path):
     with pytest.raises(release_repin.RepinError, match="image change"):
         release_repin.check_state("j", stopped, C2, "sha256:" + "d" * 64)
     pending = {**stopped, "commit": C2, "repinned_from": {"commit": C1, "image_digest": IMG, "attempt": 1}}
-    with pytest.raises(release_repin.RepinError, match="not been taken up"):
-        release_repin.check_state("j", pending, "e" * 40, IMG)
-    release_repin.check_state("j", {**pending, "attempt": 2}, "e" * 40, IMG)  # taken up by attempt 2: allowed
+    for attempt in (1, 2):  # one re-pin per run (Codex review 3, 13), whether or not it was taken up
+        with pytest.raises(release_repin.RepinError, match="already re-pinned once"):
+            release_repin.check_state("j", {**pending, "attempt": attempt}, "e" * 40, IMG)
     scope = {"operational_differences": ["ops/jobs/run_identity.py", "configs/hosts/remote.yaml"]}
     release_repin.check_operational(scope, {"ops/jobs/run_identity.py": b"reviewed\n"}, lambda name: b"reviewed\n")
     with pytest.raises(release_repin.RepinError, match="reviewed MIG patch"):
@@ -800,3 +800,214 @@ def test_repin_hardening_image_chain_patch_and_reserved_field(tmp_path):
     path.write_text(yaml.safe_dump(queue))
     with pytest.raises(ValueError, match="reserved"):
         jobs.load_queue(path)
+
+
+
+
+# Shared exclusive slot guard: executed in an isolated host Python with synthetic commands/files only.
+@pytest.fixture
+def slot_evidence(tmp_path):
+    (tmp_path / 'listing').write_text(render_list([(PARENTS[0], True)]))
+    (tmp_path / 'query').write_text(render_query([(PARENTS[0], True)]))
+    (tmp_path / 'containers').write_text('{}')
+    (tmp_path / 'meminfo').write_text(f'MemAvailable: {1000 * 1024**2} kB\n')
+    (tmp_path / 'disk').write_text(f'Size Avail\n{1000 * 2**30} {800 * 2**30}\n')
+    script = '''
+import json, sys
+from pathlib import Path
+root = Path(__file__).parent
+with (root / 'calls').open('a') as log:
+    log.write(json.dumps([Path(sys.argv[0]).name, *sys.argv[1:]]) + '\\n')
+if (root / (Path(sys.argv[0]).name + '.fail')).exists():
+    sys.exit(2)
+if Path(sys.argv[0]).name == 'nvidia-smi':
+    assert sys.argv[1:] in (['-L'], ['-q', '-i', PARENT])
+    print((root / ('listing' if sys.argv[1] == '-L' else 'query')).read_text())
+elif Path(sys.argv[0]).name == 'df':
+    print((root / 'disk').read_text())
+else:
+    containers = json.loads((root / 'containers').read_text())
+    if sys.argv[1] == 'ps':
+        assert sys.argv[2:] == ['-q', '--no-trunc', '--filter', 'label=s4d.project=splatter4d',
+                              '--filter', 'label=s4d.owner=kaist-sunho']
+        print('\\n'.join(containers))
+    else:
+        assert sys.argv[1] == 'inspect'
+        print(json.dumps([containers[sys.argv[2]]]))
+'''.replace('PARENT', repr(PARENTS[0]))
+    for command in ('nvidia-smi', 'docker', 'df'):
+        path = tmp_path / command
+        path.write_text('#!' + sys.executable + '\n' + script)
+        path.chmod(0o755)
+    return {"uuid": mig_uuid(0, 0), "parent": PARENTS[0], "gpu_instance_id": 3, "device": 0,
+            "max_jobs": 1, "idle_mib": 256, "gpu_bytes": 16 * 2**30, "capacity_bytes": 22 * 2**30,
+            "ram_bytes": 32 * 2**30, "reserve_bytes": 120 * 2**30, "disk_bytes": 4 * 2**30,
+            "floor_bytes": 100 * 2**30, "disk_floor_fraction": 0.15, "root": str(tmp_path),
+            "test_paths": {"nvidia_smi": str(tmp_path / 'nvidia-smi'), "docker": str(tmp_path / 'docker'),
+                           "df": str(tmp_path / 'df'), "meminfo": str(tmp_path / 'meminfo'),
+                           "cgroup_root": str(tmp_path)}}
+
+
+def run_slot(data):
+    from ops.containers.slot_guard import SOURCE
+
+    result = subprocess.run([sys.executable, '-I', '-c', SOURCE, json.dumps(data)],
+                            capture_output=True, text=True, timeout=30)
+    assert len(result.stdout.splitlines()) == 1, result.stderr
+    verdict = json.loads(result.stdout)
+    assert verdict['admit'] is (result.returncode == 0)
+    return result.returncode, verdict
+
+
+def slot_container(tmp_path, gpu=None, managed='false', limit=48 * 2**30, current=16 * 2**30, **labels):
+    cid = 'a' * 64
+    folder = tmp_path / ('docker-' + cid + '.scope')
+    folder.mkdir(exist_ok=True)
+    (folder / 'memory.stat').write_text(f'anon {current}\nshmem 0\nfile 999999999999\n')
+    item = {'Id': cid, 'State': {'Running': True}, 'Config': {'Labels': {
+        's4d.project': 'splatter4d', 's4d.owner': 'kaist-sunho', 's4d.managed': managed,
+        's4d.host': 'remote', 's4d.gpu': gpu, 's4d.ram_bytes': str(64 * 2**30),
+        's4d.disk_bytes': str(10 * 2**30), **labels}}, 'HostConfig': {'Memory': limit}}
+    (tmp_path / 'containers').write_text(json.dumps({cid: item}))
+    return item
+
+
+def test_slot_admits_idle_instance_and_ignores_sibling_processes(slot_evidence, tmp_path):
+    data = slot_evidence
+    (tmp_path / 'query').write_text(render_query([(PARENTS[0], True)], processes={0: [(4, 777, 512)]}))
+    slot_container(tmp_path, gpu=mig_uuid(0, 1))
+    code, result = run_slot(data)
+    assert code == 0 and result['pending_ram_bytes'] == 32 * 2**30 and result['containers'] == 0
+    assert result['used_mib'] == 67
+    calls = [json.loads(line) for line in (tmp_path / 'calls').read_text().splitlines()]
+    assert calls[0] == ['nvidia-smi', '-L'] and calls[1] == ['nvidia-smi', '-q', '-i', PARENTS[0]]
+
+
+@pytest.mark.parametrize('managed', ['true', 'false'])
+@pytest.mark.parametrize('state', ['running', 'paused', 'restarting'])
+def test_slot_counts_every_owned_live_container(slot_evidence, tmp_path, managed, state):
+    item = slot_container(tmp_path, gpu=slot_evidence['uuid'], managed=managed)
+    item['State'] = {'Running': state != 'restarting', 'Paused': state == 'paused', 'Restarting': state == 'restarting'}
+    (tmp_path / 'containers').write_text(json.dumps({item['Id']: item}))
+    code, result = run_slot(slot_evidence)
+    assert code == 20 and 'slot container limit reached' in result['reasons']
+
+
+@pytest.mark.parametrize('case,reason', [
+    ('process', 'instance has processes'), ('framebuffer', 'instance framebuffer above idle threshold'),
+    ('capacity', 'declared GPU need exceeds capacity'), ('ram', 'host RAM reserve'),
+    ('disk_need', 'disk floor'), ('disk_floor', 'disk floor'), ('disk_fraction', 'disk floor'),
+    ('reserved_disk', 'disk floor'),
+])
+def test_slot_resource_refusals(slot_evidence, tmp_path, case, reason):
+    data = slot_evidence
+    if case == 'process':
+        (tmp_path / 'query').write_text(render_query([(PARENTS[0], True)], processes={0: [(3, 777, 0)]}))
+    elif case == 'framebuffer':
+        path = tmp_path / 'query'
+        path.write_text(path.read_text().replace(': 67 MiB', ': 257 MiB'))
+    elif case == 'capacity':
+        data['gpu_bytes'] = data['capacity_bytes'] + 1
+    elif case == 'ram':
+        slot_container(tmp_path, current=0)
+        (tmp_path / 'meminfo').write_text(f'MemAvailable: {180 * 1024**2} kB\n')  # 180-48 < 120+32
+    elif case == 'disk_need':
+        data['disk_bytes'] = 651 * 2**30
+    elif case == 'disk_floor':
+        data['floor_bytes'] = 797 * 2**30
+    elif case == 'disk_fraction':
+        data['disk_floor_fraction'] = 0.8
+    else:
+        slot_container(tmp_path, managed='true')
+        data['disk_bytes'] = 641 * 2**30
+    code, result = run_slot(data)
+    assert code == 20 and reason in result['reasons']
+
+
+@pytest.mark.parametrize('case', [
+    'missing_uuid', 'duplicate_uuid', 'wrong_parent', 'wrong_device', 'wrong_gi', 'wrong_query_parent',
+    'missing_instance', 'duplicate_instance', 'bad_framebuffer', 'missing_processes', 'denied_processes',
+    'unfinished_process', 'unattributed_process', 'meminfo', 'cgroup_missing', 'cgroup_bad', 'ram_unknown',
+    'docker', 'nvidia-smi', 'df', 'disk_bad', 'inspect_bad', 'max_jobs', 'capacity_drift',
+])
+def test_slot_evidence_errors_fail_closed(slot_evidence, tmp_path, case):
+    data = slot_evidence
+    path = tmp_path / 'query'
+    query = path.read_text()
+    if case in ('missing_uuid', 'duplicate_uuid', 'wrong_parent', 'wrong_device'):
+        listing = tmp_path / 'listing'
+        text = listing.read_text()
+        if case == 'missing_uuid':
+            text = text.replace(data['uuid'], mig_uuid(3, 3))
+        elif case == 'duplicate_uuid':
+            text += text
+        elif case == 'wrong_parent':
+            text = text.replace(PARENTS[0], PARENTS[1])
+        else:
+            text = text.replace('Device  0:', 'Device  9:')
+        listing.write_text(text)
+    elif case == 'wrong_gi':
+        data['gpu_instance_id'] = 9
+    elif case == 'wrong_query_parent':
+        query = query.replace(PARENTS[0], PARENTS[1])
+    elif case == 'missing_instance':
+        query = render_query([(PARENTS[0], True)], per_parent=0)
+    elif case == 'duplicate_instance':
+        query = query.replace('Index                                          : 1', 'Index                                          : 0')
+    elif case == 'bad_framebuffer':
+        query = query.replace(': 24192 MiB', ': N/A')
+    elif case == 'missing_processes':
+        query = query[:query.index('    Processes')]
+    elif case == 'denied_processes':
+        query = render_query([(PARENTS[0], True)], process_value='Insufficient Permissions')
+    elif case in ('unfinished_process', 'unattributed_process'):
+        query = render_query([(PARENTS[0], True)], processes={0: [(4, 777, 512)]})
+        if case == 'unfinished_process':
+            query = query[:query.index('            Used GPU Memory')]
+        else:
+            query = query.replace('        GPU instance ID                                : 4\n', '')
+    elif case == 'meminfo':
+        (tmp_path / 'meminfo').write_text('MemAvailable: N/A\n')
+    elif case in ('cgroup_missing', 'cgroup_bad', 'ram_unknown'):
+        slot_container(tmp_path, limit=0 if case == 'ram_unknown' else 48 * 2**30,
+                       **({'s4d.ram_bytes': ''} if case == 'ram_unknown' else {}))
+        cgroup = tmp_path / ('docker-' + 'a' * 64 + '.scope') / 'memory.stat'
+        if case == 'cgroup_missing':
+            cgroup.unlink()
+        elif case == 'cgroup_bad':
+            cgroup.write_text('N/A')
+    elif case in ('docker', 'nvidia-smi', 'df'):
+        (tmp_path / (case + '.fail')).touch()
+    elif case == 'disk_bad':
+        (tmp_path / 'disk').write_text('Size Avail\n100 101\n')
+    elif case == 'inspect_bad':
+        (tmp_path / 'containers').write_text(json.dumps({'b' * 64: {}}))
+    elif case == 'max_jobs':
+        data['max_jobs'] = 2
+    elif case == 'capacity_drift':
+        data['capacity_bytes'] = 25 * 2**30
+    path.write_text(query)
+    code, result = run_slot(data)
+    assert code not in (0, 20) and result['error']
+
+
+def test_slot_ram_exact_resource_boundaries_and_no_declaration_fallback(slot_evidence, tmp_path):
+    data = slot_evidence
+    slot_container(tmp_path, limit=64 * 2**30, current=16 * 2**30)
+    data.update(gpu_bytes=22 * 2**30, disk_bytes=650 * 2**30)
+    (tmp_path / 'meminfo').write_text(f'MemAvailable: {200 * 1024**2} kB\n')  # 200 - (64-16) == 120+32
+    path = tmp_path / 'query'
+    path.write_text(path.read_text().replace(': 67 MiB', ': 256 MiB'))
+    code, result = run_slot(data)
+    assert code == 0 and result['pending_ram_bytes'] == 48 * 2**30  # anon only: the file cache is not credited
+    slot_container(tmp_path, limit=0, current=16 * 2**30)  # Codex review 3 (16): no enforced limit -> refused
+    code, result = run_slot(data)
+    assert code != 0 and not result['admit']
+
+
+def test_slot_guard_rechecks_the_parent_mig_mode_inside_the_lock(slot_evidence, tmp_path):
+    code, verdict = run_slot(slot_evidence)
+    assert code == 0 and verdict["admit"]
+    (tmp_path / "query").write_text(render_query([(PARENTS[0], True)], mode=("Enabled", "Disabled")))
+    code, verdict = run_slot(slot_evidence)
+    assert code != 0 and not verdict["admit"]

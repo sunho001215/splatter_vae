@@ -40,6 +40,9 @@ REPIN_OPERATIONAL = frozenset({"ops/resources/gpu_guard.py", "ops/resources/mig_
 REPIN_CONFIG_SCOPE = ("configs/realworld/", "configs/metaworld/", "configs/rl/", "configs/baselines/")
 REPIN_ENVIRONMENT = ("uv.lock", "pyproject.toml")
 STOPPED = {"crashed", "pending", "failed"}
+# the reviewed MIG patch range, recorded by the coordinator after review ({"mig_base", "mig_head", "patch_sha256",
+# "approved_by"}); release_repin accepts only operational differences produced by exactly this patch (review 3, 7)
+APPROVED_PATCH = "runs/setup/remote-mig-approved-patch.json"
 
 
 class RepinError(RuntimeError):
@@ -79,9 +82,9 @@ def check_state(job_id: str, current: dict, to_commit: str, to_image: str) -> No
         raise RepinError(f"{job_id}: image change {current.get('image_digest')} -> {to_image} refused (same-science "
                          "variants keep the original image)")
     earlier = current.get("repinned_from")
-    if earlier and earlier.get("attempt") == current.get("attempt"):
-        raise RepinError(f"{job_id}: an earlier re-pin (from {str(earlier.get('commit'))[:7]}) has not been taken up by a "
-                         "launched attempt yet")
+    if earlier:  # Codex review 3 (13): one re-pin per run; a chain could outrun the provenance recorded on disk
+        raise RepinError(f"{job_id}: already re-pinned once (from {str(earlier.get('commit'))[:7]}); a further move needs "
+                         "the run's provenance.json release_history verified by hand")
     if current.get("host") != "remote" or not current.get("commit") or not current.get("image_digest"):
         raise RepinError(f"{job_id}: not a launched remote run")
     if current.get("status") not in STOPPED or current.get("unknown"):
@@ -140,7 +143,14 @@ def main(argv=None) -> int:
 
         scope = scope_comparison(scripts, before_read, before_listed, after_read, after_listed,
                                  commit_identity(REPO, current["commit"]), commit_identity(REPO, args.to_commit))
-        from ops.jobs.mig_variant import expected_operational  # noqa: PLC0415
+        from ops.jobs.mig_variant import expected_operational, mig_patch  # noqa: PLC0415
+
+        approved = json.loads((REPO / APPROVED_PATCH).read_text()) if (REPO / APPROVED_PATCH).is_file() else {}
+        digest = hashlib.sha256(mig_patch(REPO, args.mig_base, args.mig_head)).hexdigest()
+        if (approved.get("mig_base"), approved.get("mig_head"), approved.get("patch_sha256")) != (
+                args.mig_base, args.mig_head, digest):
+            raise RepinError(f"MIG patch {args.mig_base[:7]}..{args.mig_head[:7]} (sha256 {digest[:12]}) is not the approved "
+                             f"one recorded in {APPROVED_PATCH}")
 
         check_operational(scope, expected_operational(REPO, current["commit"], args.mig_base, args.mig_head),
                           after_read)
@@ -148,6 +158,7 @@ def main(argv=None) -> int:
             print(json.dumps({k: scope[k] for k in ("identical", "differences", "operational_differences")}, indent=1))
             return 0 if scope["identical"] else 3
         event = repin_event(args.job_id, current, args.to_commit, args.to_image, scope, scripts, args.authorization)
+        event["mig_patch"] = {"base": args.mig_base, "head": args.mig_head, "sha256": digest}
         with jobs.REGISTRY.open("a") as stream:
             stream.write(json.dumps({**event, "time": time.time()}) + "\n")
     print(json.dumps(event, indent=1))

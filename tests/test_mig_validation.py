@@ -549,3 +549,11 @@ def test_client_failure_still_creates_atomic_report(tmp_path):
     report = json.loads(out.read_text())
     assert not report["passed"] and "synthetic transport unavailable" in report["errors"][0]
     assert list(tmp_path.iterdir()) == [out]
+
+
+def test_cli_never_overwrites_an_existing_instances_report(allowlist, tmp_path):
+    out = tmp_path / "report.json"
+    out.write_text('{"keep": true}\n')
+    code = val.main(["instances", "--allowlist", str(allowlist), "--image", IMAGE, "--out", str(out)],
+                    client_factory=lambda: FakeClient(out))
+    assert code == 1 and out.read_text() == '{"keep": true}\n'

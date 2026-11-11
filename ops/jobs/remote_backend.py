@@ -256,6 +256,7 @@ test ! -L @RUN_DIR@ && test "$(realpath -e -- @RUN_DIR@)" = @RUN_DIR@ || exit 3
 @REQUIRED@
 mkdir -p @KEEP@ || exit 5
 test ! -L @KEEP@ && test "$(realpath -e -- @KEEP@)" = @KEEP@ || exit 3
+test ! -L @LOCK@ && test ! -L @RECEIPT_TMP@ && test ! -L @RECEIPT@ || exit 3
 exec 9> @LOCK@ || exit 5
 flock -w 60 9 || exit 8
 check

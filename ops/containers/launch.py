@@ -727,6 +727,25 @@ def gpu_free_command(gpu: str) -> str:
             'if ($1==gpu && $2 ~ /^[0-9]+$/ && $3 ~ /^[0-9]+$/) printf "%.0f", ($2-$3)*1048576}\')"; ')
 
 
+def recorded_repin(repo: Path, spec: dict) -> bool:
+    """Codex review 3 (6): a spec carrying ``repinned_from`` launches only when the local registry holds exactly that
+    release_repinned transition (job, source and destination release, scope identity, authorization)."""
+    registry = Path(repo) / "experiments/registry.jsonl"
+    source = spec["repinned_from"]
+    if not registry.is_file():
+        return False
+    for line in registry.read_text().splitlines():
+        if '"release_repinned"' not in line:
+            continue
+        event = json.loads(line)
+        if (event.get("event") == "release_repinned" and event.get("id") == spec["id"]
+                and event.get("from_commit") == source["commit"] and event.get("from_image_digest") == source["image_digest"]
+                and event.get("commit") == spec["commit"] and event.get("image_digest") == spec["image_digest"]
+                and event.get("sources_identical") is True and str(event.get("authorization", "")).strip()):
+            return True
+    return False
+
+
 MIG_MODE_QUERY = "nvidia-smi --query-gpu=uuid,mig.mode.current,mig.mode.pending --format=csv,noheader,nounits"
 PHYSICAL_MODES = {("Disabled", "Disabled"), ("[N/A]", "[N/A]")}
 
@@ -754,6 +773,8 @@ def launch(spec_path: Path, client: RemoteClient | None = None, *, wait: bool | 
     client = client or RemoteClient()
     wait = os.environ.get("S4D_REMOTE_NO_WAIT") != "1" if wait is None else wait
     spec = validate_spec(json.loads(Path(spec_path).read_text()))
+    if "repinned_from" in spec and not recorded_repin(client.main_repo, spec):
+        raise ValueError("Release re-pin of this attempt is not recorded in the registry (release_repinned)")
     client.check_tunnel(wait=wait)
     mig_mode_preflight(client, spec["gpu"], wait=wait)
     artifacts, data_identity, payloads = evidence_artifacts(spec, client.main_repo)

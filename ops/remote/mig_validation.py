@@ -429,6 +429,11 @@ def atomic_report(path: Path, report: dict) -> None:
             out.flush()
             os.fsync(out.fileno())
         os.replace(temporary, path)
+        descriptor = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)  # the new name is durable before any removal
+        try:
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
     finally:
         if temporary and os.path.exists(temporary):
             os.unlink(temporary)
@@ -638,8 +643,9 @@ def main(argv=None, *, client_factory=None) -> int:
     except Exception as exc:
         report["passed"] = False
         report.setdefault("errors", []).append(f"{type(exc).__name__}: {exc}")
-    if args.command != "report":
-        atomic_report(args.out, report)
+    if args.command != "report" and not (args.command == "instances" and any(
+            str(error).startswith("FileExistsError") for error in report.get("errors", []))):
+        atomic_report(args.out, report)  # an existing instances report (the only archive of removed containers) stays
     print(summary(report))
     return 0 if report.get("passed") is True else 1
 
