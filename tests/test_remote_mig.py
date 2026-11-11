@@ -518,3 +518,28 @@ def test_isolation_check_attributes_a_remote_instance_not_its_parent(monkeypatch
                         lambda cmd, **kw: Done(outputs.get(cmd[1], table) if len(cmd) > 1 else table))
     found, _, _ = module.pid_gpus(4321, {"1": PARENTS[1]})
     assert found == {mig_uuid(1, 1)}  # the instance on GI 4 of parent 1; the parent itself is not "seen"
+
+
+def test_launch_guard_mig_fragment_runs_against_fake_nvidia_smi(tmp_path, monkeypatch):
+    from ops.containers import launch
+
+    devices = devices_of(allowlist())
+    monkeypatch.setattr(launch, "REMOTE_MIG_DEVICES", devices)
+    parents = [(uuid, True) for uuid in PARENTS]
+    (tmp_path / "L.txt").write_text(render_list(parents))
+    (tmp_path / "q.txt").write_text(render_query(parents[:1], processes={0: [(4, 31, 700), (5, 32, 100)]}))
+    fake = tmp_path / "bin/nvidia-smi"
+    fake.parent.mkdir()
+    fake.write_text(f'#!/bin/sh\ncase "$1" in -L) cat {tmp_path}/L.txt;; -q) cat {tmp_path}/q.txt;; *) exit 9;; esac\n')
+    fake.chmod(0o755)
+    (tmp_path / "bin/python3").symlink_to(sys.executable)
+    gpu = mig_uuid(0, 1)
+    probe = launch.gpu_probe_lines(gpu)
+    script = "\n".join(["set -eu", f"gpu={gpu}", *probe, launch.gpu_free_command(gpu),
+                        'printf "APPS=%s\\nFREE=%s\\n" "$apps" "$gpu_free"'])
+    env = {**os.environ, "PATH": f"{tmp_path / 'bin'}:{os.environ['PATH']}"}
+    result = subprocess.run(["bash", "-c", script], capture_output=True, text=True, env=env, timeout=60)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.splitlines() == [f"APPS={gpu},31,700", f"FREE={(24192 - 67) * 1048576}"]
+    missing = "\n".join(["set -eu", f"gpu={mig_uuid(0, 9)}", *launch.gpu_probe_lines(gpu)[1:]])
+    assert subprocess.run(["bash", "-c", missing], capture_output=True, text=True, env=env).returncode == 1
