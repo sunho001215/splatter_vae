@@ -707,3 +707,46 @@ def test_validate_container_still_reconciles_a_historical_physical_attempt(monke
 
     source = (REPO / "ops/jobs/remote_backend.py").read_text()
     assert 'state["gpu"] not in (*APPROVED_HOST_GPUS["remote"], *REMOTE_MIG_PARENTS)' in source
+
+
+def test_mig_variant_recipe_applies_only_the_container_side_change(tmp_path):
+    from ops.jobs import mig_variant
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+
+    def git(*args):
+        return subprocess.run(["git", "-C", str(repo), "-c", "user.name=t", "-c", "user.email=t@t", *args],
+                              capture_output=True, text=True, check=True).stdout.strip()
+
+    git("init", "-q")
+    files = {"ops/resources/gpu_guard.py": "A = 1\n", "scripts/train.py": "import ops.resources.gpu_guard\n",
+             "scripts/remote/entry.py": "x = 1\n", "s4d/model.py": "M = 1\n", "uv.lock": "l\n"}
+    for name, text in files.items():
+        (repo / name).parent.mkdir(parents=True, exist_ok=True)
+        (repo / name).write_text(text)
+    git("add", "-A")
+    git("commit", "-q", "-m", "old release")
+    old = git("rev-parse", "HEAD")
+    (repo / "s4d/model.py").write_text("M = 2\n")  # science moved on in main after the old release
+    git("commit", "-qam", "main moves on")
+    mig_base = git("rev-parse", "HEAD")
+    (repo / "ops/resources/gpu_guard.py").write_text("A = 1\nMIG = True\n")
+    (repo / "ops/resources/mig_inventory.py").write_text("I = 1\n")
+    git("add", "-A")
+    git("commit", "-q", "-m", "MIG support")
+    mig_head = git("rev-parse", "HEAD")
+    configs = tmp_path / "configs"
+    for name in mig_variant.CONFIG_FILES:
+        (configs / name).parent.mkdir(parents=True, exist_ok=True)
+        (configs / name).write_text("rendered: true\n")
+    result = mig_variant.create(repo, old, mig_base, mig_head, configs, ["scripts/train.py"])
+    assert result["identical_scope"] and result["base"] == old
+    assert sorted(result["changed_files"]) == sorted([*mig_variant.CONFIG_FILES, "ops/resources/gpu_guard.py",
+                                                       "ops/resources/mig_inventory.py"])
+    show = subprocess.run(["git", "-C", str(repo), "show", f"{result['variant']}:s4d/model.py"], capture_output=True,
+                          text=True).stdout
+    assert show == "M = 1\n"  # the old release's science, not main's
+    (configs / mig_variant.CONFIG_FILES[1]).unlink()
+    with pytest.raises(mig_variant.VariantError, match="missing rendered"):
+        mig_variant.create(repo, old, mig_base, mig_head, configs, ["scripts/train.py"])
