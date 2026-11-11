@@ -79,3 +79,49 @@ def test_every_scheduler_launch_checks_the_hold_inside_the_admission_lock():
     assert lock < check < run
     scheduler = (Path(__file__).resolve().parents[1] / "ops/jobs/scheduler.py").read_text()
     assert '(snapshot.launch_hold or {}).get("held")' in scheduler
+
+
+def test_hold_writers_take_the_admission_lock_and_state_lives_outside_container_mounts(tmp_path):
+    import time
+
+    folder = str(tmp_path)
+    p = lh.paths()
+    assert p["dir"] == "/home/compu/kaist/sunho/control/launch-hold" and "/runtime/" not in p["dir"]
+    assert p["lock"] == "/home/compu/kaist/sunho/runtime/launch/admission.lock"
+    # a hold written while a launcher holds the lock lands only after the launcher released it
+    lock = tmp_path / "admission.lock"
+    holder = subprocess.Popen(["flock", str(lock), "sh", "-c", "sleep 1.5"])
+    time.sleep(0.3)
+    started = time.time()
+    body = f"printf x > {tmp_path}/HOLD"
+    result = subprocess.run(["sh", "-c", lh.locked(body, folder=folder)], capture_output=True, text=True, timeout=60)
+    holder.wait()
+    assert result.returncode == 0 and (tmp_path / "HOLD").exists() and time.time() - started >= 1.0
+
+
+def test_process_record_without_gpu_instance_refuses(tmp_path):
+    import sys
+
+    from ops.containers import launch
+    from ops.resources import mig_inventory as inv
+
+    query = ("GPU 00000000:41:00.0\n    MIG Mode\n        Current                 : Enabled\n"
+             "        Pending                 : Enabled\n    MIG Device\n        Index                   : 0\n"
+             "        GPU Instance ID         : 3\n        FB Memory Usage\n            Total               : 24192 MiB\n"
+             "            Used                : 67 MiB\n    GPU UUID                : GPU-4391fcee-537f-d408-d138-10d8a3866eea\n"
+             "    Processes\n        Process ID              : 4242\n            Used GPU Memory     : 100 MiB\n")
+    with pytest.raises(inv.InventoryError, match="without its GPU instance"):
+        inv.parse_query(query)
+    listing = ("GPU 0: X (UUID: GPU-4391fcee-537f-d408-d138-10d8a3866eea)\n"
+               "  MIG 1g.24gb     Device  0: (UUID: MIG-00000000-0000-5000-8000-000000000000)\n")
+    result = subprocess.run([sys.executable, "-I", "-c", launch.MIG_PROBE, "3", "0",
+                             "MIG-00000000-0000-5000-8000-000000000000", "GPU-4391fcee-537f-d408-d138-10d8a3866eea"],
+                            input=listing + "\n__S4D_QUERY__\n" + query, capture_output=True, text=True)
+    assert result.returncode == 3
+    pending = query.replace("Pending                 : Enabled", "Pending                 : Disabled").replace(
+        "    Processes\n        Process ID              : 4242\n            Used GPU Memory     : 100 MiB\n",
+        "    Processes               : None\n")
+    result = subprocess.run([sys.executable, "-I", "-c", launch.MIG_PROBE, "3", "0",
+                             "MIG-00000000-0000-5000-8000-000000000000", "GPU-4391fcee-537f-d408-d138-10d8a3866eea"],
+                            input=listing + "\n__S4D_QUERY__\n" + pending, capture_output=True, text=True)
+    assert result.returncode == 7  # the parent's MIG mode is re-checked inside the admission lock

@@ -88,7 +88,6 @@ def main(argv=None) -> int:
     parser.add_argument("--queue", type=Path, default=REPO / "experiments/queue.yaml")
     parser.add_argument("--extra-queue", type=Path, action="append", default=[],
                         help="further queues to check, e.g. runs/remote/verification/*-queue.yaml")
-    parser.add_argument("--max-jobs", type=int, default=1)
     parser.add_argument("--write", action="store_true")
     args = parser.parse_args(argv)
     instances = load_allowlist(args.allowlist)
@@ -102,7 +101,7 @@ def main(argv=None) -> int:
         print(json.dumps(report, indent=1))
         return 3 if report["blockers"] else 0
     text = args.queue.read_text()
-    new = rewrite_hosts(text, instances, args.max_jobs)
+    new = rewrite_hosts(text, instances)
     before, after = yaml.safe_load(text), yaml.safe_load(new)
     if before["jobs"] != after["jobs"] or {k: v for k, v in before["hosts"].items() if k != "remote"} != {
             k: v for k, v in after["hosts"].items() if k != "remote"}:

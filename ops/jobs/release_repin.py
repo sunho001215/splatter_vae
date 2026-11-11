@@ -72,14 +72,34 @@ def scope_comparison(scripts, before_read, before_listed, after_read, after_list
 
 
 def check_state(job_id: str, current: dict, to_commit: str, to_image: str) -> None:
-    """The run must be a stopped remote run pinned to another release (refuses active / unknown / never launched)."""
+    """The run must be a stopped remote run pinned to another release (refuses active / unknown / never launched), on
+    the SAME image (identical sources do not prove an identical environment), and any earlier re-pin must already have
+    been taken up by a launched attempt (otherwise the on-disk provenance still names the release before it)."""
+    if current.get("image_digest") != to_image:
+        raise RepinError(f"{job_id}: image change {current.get('image_digest')} -> {to_image} refused (same-science "
+                         "variants keep the original image)")
+    earlier = current.get("repinned_from")
+    if earlier and earlier.get("attempt") == current.get("attempt"):
+        raise RepinError(f"{job_id}: an earlier re-pin (from {str(earlier.get('commit'))[:7]}) has not been taken up by a "
+                         "launched attempt yet")
     if current.get("host") != "remote" or not current.get("commit") or not current.get("image_digest"):
         raise RepinError(f"{job_id}: not a launched remote run")
     if current.get("status") not in STOPPED or current.get("unknown"):
         raise RepinError(f"{job_id}: status {current.get('status')} (unknown={current.get('unknown')}); only a "
                          "stopped run whose container exit is recorded can be re-pinned")
-    if (current["commit"], current["image_digest"]) == (to_commit, to_image):
+    if current["commit"] == to_commit:
         raise RepinError(f"{job_id}: already on {to_commit[:7]}")
+
+
+def check_operational(scope: dict, expected: dict[str, bytes | None], after_read) -> None:
+    """Every operational (allowlist-related) difference must be exactly the reviewed MIG patch applied to the source
+    release (mig_variant.expected_operational); configuration files under configs/hosts are data and compared by the
+    allowlist validation instead."""
+    for name in scope["operational_differences"]:
+        if name.startswith("configs/hosts/"):
+            continue
+        if name not in expected or after_read(name) != expected[name]:
+            raise RepinError(f"operational file {name} differs from the reviewed MIG patch of the source release")
 
 
 def repin_event(job_id: str, current: dict, to_commit: str, to_image: str, scope: dict, scripts, authorization: str) -> dict:
@@ -103,6 +123,8 @@ def main(argv=None) -> int:
     parser.add_argument("--to-commit", required=True)
     parser.add_argument("--to-image", required=True)
     parser.add_argument("--authorization", default="")
+    parser.add_argument("--mig-base", required=True, help="the commit the reviewed MIG patch is based on (8299442)")
+    parser.add_argument("--mig-head", required=True, help="the reviewed MIG head whose patch the variant carries")
     parser.add_argument("job_id")
     args = parser.parse_args(argv)
     queue = {job["id"]: job for job in jobs.load_queue()["jobs"]}
@@ -118,6 +140,10 @@ def main(argv=None) -> int:
 
         scope = scope_comparison(scripts, before_read, before_listed, after_read, after_listed,
                                  commit_identity(REPO, current["commit"]), commit_identity(REPO, args.to_commit))
+        from ops.jobs.mig_variant import expected_operational  # noqa: PLC0415
+
+        check_operational(scope, expected_operational(REPO, current["commit"], args.mig_base, args.mig_head),
+                          after_read)
         if args.command == "plan":
             print(json.dumps({k: scope[k] for k in ("identical", "differences", "operational_differences")}, indent=1))
             return 0 if scope["identical"] else 3

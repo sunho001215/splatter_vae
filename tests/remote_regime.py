@@ -19,9 +19,7 @@ from types import MappingProxyType
 import pytest
 
 # a module file name (every test in it) or "<file>::<test function>"
-PHYSICAL_REGIME_TESTS = {"test_remote_launch.py",
-                         "test_remote_jobs.py::test_snapshot_parses_resources_graphics_and_host_pids",
-                         "test_remote_jobs.py::test_snapshot_identifies_only_positively_labelled_and_bound_cotenants"}
+PHYSICAL_REGIME_TESTS = {"test_remote_launch.py", "test_remote_jobs.py"}
 NAMES = ("APPROVED_HOST_GPUS", "REMOTE_MIG_PARENTS", "REMOTE_DEVICES")
 
 

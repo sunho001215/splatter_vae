@@ -251,8 +251,11 @@ digest() {
 }
 check
 test -d @RUN_DIR@ || exit 4
+# no symlink anywhere in the archive path: the archive must land in this run's own directory (2026-11-11)
+test ! -L @RUN_DIR@ && test "$(realpath -e -- @RUN_DIR@)" = @RUN_DIR@ || exit 3
 @REQUIRED@
 mkdir -p @KEEP@ || exit 5
+test ! -L @KEEP@ && test "$(realpath -e -- @KEEP@)" = @KEEP@ || exit 3
 exec 9> @LOCK@ || exit 5
 flock -w 60 9 || exit 8
 check
@@ -268,6 +271,8 @@ mv -f -- "$tmp_record" @RECORD@ || exit 5
 tmp_record=
 printf '%s %s %s\n' "$id" "$logsum" "$inspectsum" > @RECEIPT_TMP@ || exit 5
 mv -f -- @RECEIPT_TMP@ @RECEIPT@ || exit 5
+# durable before removal: the archive files and their directory entries reach the disk first
+sync -- @LOG@ @RECORD@ @RECEIPT@ @KEEP@ || exit 5
 check
 docker rm "$id" > /dev/null || exit 6
 printf '{"removed": true, "log_sha256": "%s", "inspect_sha256": "%s"}\n' "$logsum" "$inspectsum"

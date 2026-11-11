@@ -28,6 +28,9 @@ if __name__ == "__main__" and not __package__:
 
 from ops.remote.launch_hold import BOOT_ID, EXIT_HELD, ROOT, check_shell, parse_status, status_shell
 from ops.resources.mig_inventory import REMOTE_PHYSICAL_GPUS, build_inventory, load_allowlist, parse_list, parse_query
+from ops.containers.launch import MIG_PROBE
+
+IDLE_FB_MIB = 256
 
 SCHEMA = "s4d-mig-validation/1"
 PROBE_PREFIX = "__S4D_MIGVAL__ "
@@ -261,12 +264,14 @@ def container_spec(boot: str, index: int, instance: dict, other: str, image: str
             raise ValueError("release code must be a path within the authorized remote root")
         release_code = str(path)
     spec = {"name": f"s4d-migval-{boot[:8]}-{index}", "boot_id": boot, "uuid": instance["uuid"],
-            "parent": instance["parent"], "other": other, "image": image, "release_code": release_code,
+            "parent": instance["parent"], "gpu_instance_id": int(instance["gpu_instance_id"]),
+            "device": int(instance["device"]), "other": other, "image": image, "release_code": release_code,
             "probe_sha256": hashlib.sha256(PROBE.encode()).hexdigest()}
     spec["fingerprint"] = hashlib.sha256(json.dumps(spec, sort_keys=True).encode()).hexdigest()
     spec["marker"] = "s4d-migval-child-" + spec["fingerprint"][:32]
+    # s4d.gpu publishes the reservation to every other launcher's exclusive-slot check (Codex review 2, finding 4)
     spec["labels"] = {"s4d.project": "splatter4d", "s4d.owner": "kaist-sunho", "s4d.role": "migval",
-                      "s4d.migval.spec": spec["fingerprint"]}
+                      "s4d.migval.spec": spec["fingerprint"], "s4d.gpu": spec["uuid"]}
     return spec
 
 
@@ -301,7 +306,17 @@ def launch_command(spec: dict, root: str = ROOT) -> str:
     for key, value in spec["labels"].items():
         template = '{{index .Config.Labels "' + key + '"}}'
         lines.append(f'test "$(docker inspect --format {q(template)} "$cid")" = {q(value)}')
-    lines += ['printf \'%s\\n\' "$cid"', "else", container_command(spec), "fi"]
+    # inside the lock, from fresh evidence (Codex review 2, finding 4): no container of ours bound to the instance, the
+    # UUID bound to its parent/device/GPU instance with MIG mode Enabled/Enabled, no process, framebuffer idle
+    probe = (f'probe="$(printf \'%s\\n__S4D_QUERY__\\n%s\\n\' "$listing" "$mig_query" | python3 -I -c {q(MIG_PROBE)} '
+             f'{int(spec["gpu_instance_id"])} {int(spec["device"])} {q(spec["uuid"])} {q(spec["parent"])})"')
+    lines += ['printf \'%s\\n\' "$cid"', "else",
+              "test -z \"$(docker ps -q --filter " + q("label=s4d.gpu=" + spec["uuid"]) + ")\"",
+              f'listing="$(nvidia-smi -L)"; mig_query="$(nvidia-smi -q -i {q(spec["parent"])})"', probe,
+              'test -z "$(printf \'%s\\n\' "$probe" | grep \'^APP,\')"',
+              'used="$(printf \'%s\\n\' "$probe" | awk -F, \'$1=="MEM" {print $3}\')"; '
+              'test -n "$used" && test "$used" -le ' + str(IDLE_FB_MIB),
+              container_command(spec), "fi"]
     return "\n".join(lines)
 
 
@@ -539,6 +554,9 @@ def validate_instance(client, report: dict, instance: dict, spec: dict, out: Pat
 def instances(client, *, allowlist: Path, image: str, out: Path, release_code=None) -> dict:
     report = new_report("instances")
     report["instances"] = []
+    if Path(out).exists():  # the report holds the only archives of removed containers: never overwritten
+        report["errors"].append(f"FileExistsError: {out} exists; choose a new --out (evidence is never overwritten)")
+        return report
     try:
         allowed = load_allowlist(Path(allowlist))
         if not allowed or len(allowed) != 16:

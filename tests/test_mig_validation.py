@@ -143,12 +143,14 @@ class FakeClient:
             self.process_queries[command] = self.process_queries.get(command, 0) + 1
             if self.preflight_survivor or (self.survivor and self.process_queries[command] > 1):
                 stdout = "9876\n"
-        elif "nvidia-smi -q -i" in command:
+        elif "nvidia-smi -q -i" in command and "flock -x 9" not in command:
             parent = command.rsplit(" ", 1)[1]
             assert parent in PARENTS
             stdout = render_query([parent], processes=[(3, 9999)] if self.foreign_process else None)
-        elif "\nelse\ndocker run " in command:
-            args = shlex.split(command.split("\nelse\n", 1)[1].rsplit("\nfi", 1)[0])
+        elif "flock -x 9" in command and "\nelse\n" in command:  # the locked launch (checks, then docker run)
+            assert "label=s4d.gpu=" in command and "python3 -I -c" in command  # occupancy + idle probe in the lock
+            branch = command.split("\nelse\n", 1)[1].rsplit("\nfi", 1)[0]
+            args = shlex.split(branch[branch.index("docker run "):])
             name = args[args.index("--name") + 1]
             cid = hashlib.sha256(name.encode()).hexdigest()
             if cid not in self.live:
@@ -405,9 +407,13 @@ def test_instances_validate_all_sequentially_and_archive_before_exact_removal(al
     assert all(item["logs"]["stderr"] == "synthetic warning\n" for item in report["instances"])
     assert all(item["spec"]["uuid"] in {i["uuid"] for i in inv.load_allowlist(allowlist)} for item in report["instances"])
     assert json.loads(out.read_text())["passed"]
-    assert val.instances(client, allowlist=allowlist, image=IMAGE, out=out,
+    first = out.read_bytes()
+    refused = val.instances(client, allowlist=allowlist, image=IMAGE, out=out, release_code=val.ROOT + "/releases/abc")
+    assert not refused["passed"] and "FileExistsError" in refused["errors"][0] and out.read_bytes() == first
+    assert len(client.removed) == 16  # nothing launched: the evidence of the removed containers is never overwritten
+    assert val.instances(client, allowlist=allowlist, image=IMAGE, out=tmp_path / "report-2.json",
                          release_code=val.ROOT + "/releases/abc")["passed"]
-    assert len(client.removed) == 32  # Safe repeat after completed cleanup.
+    assert len(client.removed) == 32  # Safe repeat after completed cleanup, into a new report.
 
 
 @pytest.mark.parametrize("failure, expected", [("survivor", "surviving process after"),
@@ -455,7 +461,7 @@ def test_hold_rearmed_between_snapshot_and_launch(allowlist, tmp_path, monkeypat
     checked_ssh = client.checked_ssh
 
     def rearmed(command, **kwargs):
-        if "\nelse\ndocker run " in command:
+        if "flock -x 9" in command and "\nelse\n" in command:
             assert val.check_shell() in command
             raise RuntimeError(f"Remote operation exited {val.EXIT_HELD}: launch held")
         return checked_ssh(command, **kwargs)

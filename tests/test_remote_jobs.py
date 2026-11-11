@@ -4,6 +4,7 @@ import hashlib
 import math
 import importlib.util
 import json
+import os
 import subprocess
 from pathlib import Path
 
@@ -2412,3 +2413,33 @@ def test_verification_containers_are_removed_only_after_their_evidence_is_adopte
         with pytest.raises(ValueError):
             remote.removal_command(remote.ROOT, job, 1, f"s4d-{job}-a1", CONTAINER_ID, code, [],
                                    verification_purpose=purpose)
+
+
+def test_removal_archives_durably_and_refuses_symlinked_archive_paths(tmp_path):
+    """Codex review 2 (2026-11-11): the archive lands in the run's own directory (no symlink in the path) and is synced
+    before `docker rm`; executed against a fake docker with the root rewritten to a temporary directory."""
+    expected = f"{CONTAINER_ID}|exited|0|true|remote|r|1|/s4d-r-a1|true||"
+    fake = tmp_path / "bin/docker"
+    fake.parent.mkdir()
+    fake.write_text("#!/bin/sh\ncase \"$1\" in\n"
+                    f"  inspect) if [ \"$2\" = --format ]; then printf '%s\\n' '{expected}'; else echo '{{}}'; fi;;\n"
+                    "  logs) echo log;;\n"
+                    f"  rm) touch {tmp_path}/removed;;\nesac\n")
+    fake.chmod(0o755)
+    root = tmp_path / "root"
+    run = root / "runs/r"
+    run.mkdir(parents=True)
+    (run / "exit.json").write_text("{}")
+    script = remote.removal_command(remote.ROOT, "r", 1, "s4d-r-a1", CONTAINER_ID, 0, ["exit.json"])
+    script = script.replace(remote.ROOT, str(root))
+    env = {**os.environ, "PATH": f"{fake.parent}:{os.environ['PATH']}"}
+    assert "sync -- " in script
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    (run / "containers").symlink_to(elsewhere)
+    refused = subprocess.run(["bash", "-c", script], capture_output=True, text=True, env=env)
+    assert refused.returncode == 3 and not (tmp_path / "removed").exists() and not list(elsewhere.iterdir())
+    (run / "containers").unlink()
+    done = subprocess.run(["bash", "-c", script], capture_output=True, text=True, env=env)
+    assert done.returncode == 0 and json.loads(done.stdout.splitlines()[-1])["removed"] is True
+    assert (run / "containers/s4d-r-a1.docker.log").read_text() == "log\n" and (tmp_path / "removed").exists()

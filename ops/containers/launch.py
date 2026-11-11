@@ -170,6 +170,8 @@ def validate_spec(spec: dict) -> dict:
     if (fraction > 1 or cap > 90 or memory > cap or isinstance(slots, bool)
             or not isinstance(slots, int) or not 1 <= slots <= 20):
         raise ValueError("Invalid host resource ceilings")
+    if spec.get("gpu") in REMOTE_MIG_DEVICES and slots != 1:
+        raise ValueError("A MIG instance is an exclusive slot (max_jobs must be 1)")
     threads = spec.get("cpu_threads", DEFAULT_CPU_THREADS)
     if isinstance(threads, bool) or not isinstance(threads, int) or not 1 <= threads <= MAX_CPU_THREADS:
         raise ValueError("Invalid CPU thread limit")
@@ -624,7 +626,7 @@ for line in listing.splitlines():
         if owner != parent or not m or int(m.group(1)) != dev:
             sys.exit(6)
 sec = sub = cur = proc = found = None
-apps, listed = [], False
+apps, listed, modes = [], False, {}
 for line in query.splitlines():
     if not line.strip():
         continue
@@ -644,6 +646,8 @@ for line in query.splitlines():
                 sys.exit(2)
             listed = True
         continue
+    if sec == "MIG Mode" and k in ("Current", "Pending"):
+        modes[k] = v
     if sec == "MIG Device" and cur is not None:
         if ind == 8 and not sep:
             sub = k
@@ -658,7 +662,9 @@ for line in query.splitlines():
             if proc is not None:
                 sys.exit(3)
             proc = [v]
-        elif k == "Process ID" and proc is not None:
+        elif k == "Process ID":
+            if proc is None or len(proc) != 1:
+                sys.exit(3)
             proc.append(v)
         elif k == "Used GPU Memory" and proc is not None and len(proc) == 2:
             if not (proc[0].isdigit() and proc[1].isdigit()):
@@ -668,6 +674,8 @@ for line in query.splitlines():
             proc = None
 if proc is not None:
     sys.exit(3)
+if modes != {"Current": "Enabled", "Pending": "Enabled"}:
+    sys.exit(7)
 if not listed:
     sys.exit(5)
 if not found or found.get("GPU Instance ID") != gi or "Total" not in found or "Used" not in found:

@@ -153,9 +153,9 @@ def parse_query(text: str) -> dict[str, dict]:
                 if process is not None:
                     raise InventoryError("unfinished process record in nvidia-smi -q (ownership unknown)")
                 process = {"gpu_instance_id": int(value) if value.isdigit() else None, "pid": None, "used_mib": None}
-            elif key == "Process ID" and process is not None:
-                if not value.isdigit():
-                    raise InventoryError(f"unreadable process id {value!r}")
+            elif key == "Process ID":
+                if process is None or not value.isdigit():
+                    raise InventoryError(f"process {value!r} without its GPU instance (ownership unknown)")
                 process["pid"] = int(value)
             elif key == "Used GPU Memory" and process is not None:
                 process["used_mib"] = _mib(value)
@@ -317,6 +317,8 @@ def device_capacity_gib(uuid: str, instances=()) -> float:
 
 
 def queue_limits(instances, max_jobs: int = 1) -> dict:
+    if max_jobs != 1:
+        raise ValueError("a MIG instance is an exclusive slot: max_jobs is 1 (user decision 2026-11-11)")
     """``hosts.remote.limits`` for experiments/queue.yaml: one entry per instance, exclusive by default (user decision
     2026-11-11: one container per MIG instance). The scheduler refuses limits for non-authorized devices, so this block
     replaces the physical one in the same change as the allowlist (ops/jobs/mig_switch.py rewrite-queue)."""

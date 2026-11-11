@@ -24,7 +24,8 @@ from ops.containers.verification import validate_report, validate_verification, 
 from ops.jobs import host_roles, realworld_local  # noqa: E402
 from ops.jobs import release_reservation  # noqa: E402
 from ops.jobs.arguments import option as _option  # noqa: E402
-from ops.resources.gpu_guard import APPROVED_HOST_GPUS, HOST_CONFIG_PATH, MIG_DEVICES, REMOTE_MIG_ERROR  # noqa: E402
+from ops.resources.gpu_guard import (APPROVED_HOST_GPUS, HOST_CONFIG_PATH, MIG_DEVICES, REMOTE_MIG_DEVICES,  # noqa: E402
+                                     REMOTE_MIG_ERROR)
 from ops.remote.access import sha256 as file_sha256  # noqa: E402
 from ops.jobs.remote_backend import ROOT as REMOTE_ROOT  # noqa: E402
 from ops.jobs.remote_backend import (  # noqa: E402
@@ -36,11 +37,8 @@ from ops.jobs.remote_backend import (  # noqa: E402
     cotenant_charges,
     validate_container,
 )
-from ops.jobs.remote_backend import ROOT as REMOTE_ROOT  # noqa: E402
 from ops.jobs.retired import retired_reason  # noqa: E402
 from ops.provenance.upstreams import working_tree_identity as third_party_identity  # noqa: E402
-from ops.remote.access import sha256 as file_sha256  # noqa: E402
-from ops.resources.gpu_guard import APPROVED_HOST_GPUS, HOST_CONFIG_PATH, MIG_DEVICES  # noqa: E402
 from ops.resources.nvidia_query import mig_query  # noqa: E402
 from ops.resources.processes import pid_alive as pid_alive  # noqa: E402
 
@@ -87,6 +85,8 @@ def load_queue(path: Path = QUEUE) -> dict:
         for uuid, limit in host.get("limits", {}).items():
             if uuid not in APPROVED_HOST_GPUS[name]:
                 raise ValueError(f"queue limit for a non-authorized {name} GPU {uuid}")
+            if name == "remote" and uuid in REMOTE_MIG_DEVICES and int(limit.get("max_jobs", 0)) != 1:
+                raise ValueError(f"remote MIG instance {uuid} is an exclusive slot: max_jobs must be 1")
             if int(limit.get("max_jobs", 0)) < 1 or float(limit.get("max_mem_gb", 0)) <= 0:
                 raise ValueError(f"invalid admission limits for {uuid}")
         for key in ("host_ram_reserve_gb", "host_ram_ramp_minutes", "disk_floor_gb", "disk_floor_fraction"):
@@ -113,6 +113,8 @@ def load_queue(path: Path = QUEUE) -> dict:
                            or ".." in Path(value).parts
                            or Path(value).parts[0] in {"replay", "wandb", ".cache"} for value in required)):
                 raise ValueError(f"job {job_id}: explicit run-relative required_results are mandatory")
+        if "repinned_from" in job:  # scheduler-reserved: only a recorded release_repinned event may set it
+            raise ValueError(f"job {job_id}: repinned_from is reserved for the registry's release_repinned record")
         gpu = job.get("gpu", "any")
         if gpu != "any" and gpu not in APPROVED_HOST_GPUS[name] and not hosts[name].get("quarantine"):
             raise ValueError(f"job {job_id} requests non-authorized {name} GPU {gpu}")
@@ -1113,7 +1115,7 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
                 reachable = _cleanup_completed_containers(remote_backend, snapshot, read_registry(registry), registry,
                                                           messages)
             if reachable and snapshot.resources_ready and (snapshot.launch_hold or {}).get("held"):
-                # the durable remote launch hold (no resume record for this boot, or runtime/launch/HOLD): reconcile and
+                # the durable remote launch hold (no resume record for this boot, or control/launch-hold/HOLD): reconcile and
                 # sync as usual, launch nothing (ops/remote/launch_hold.py; the launcher re-checks inside its lock)
                 messages.append(f"remote: launch hold in force (boot {snapshot.launch_hold.get('boot_id')}, "
                                 f"hold {snapshot.launch_hold.get('hold')}, resumed {snapshot.launch_hold.get('resumed')})"

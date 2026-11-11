@@ -63,13 +63,16 @@ def job_of(container: str) -> str | None:
 def propose(samples: list[dict], rows: dict[str, dict] | None = None) -> dict:
     """Per job: measured peak / CPU cores and proposed ram_gb / cpu_threads (declared values shown for comparison)."""
     by_container: dict[str, list[dict]] = {}
-    for sample in samples:
-        by_container.setdefault(sample["container"], []).append(sample)
+    for sample in samples:  # one container ID per attempt: a re-created name is a separate series
+        by_container.setdefault(f"{sample['container']}@{sample['id'][:12]}", []).append(sample)
     out = {}
     for container, items in sorted(by_container.items()):
-        job = job_of(container)
+        job = job_of(container.split("@", 1)[0])
         items.sort(key=lambda item: item["at"] or 0)
-        peak = max((item["memory_peak"] or 0 for item in items), default=0)
+        readable = [item for item in items if item["memory_peak"] is not None and item["at"] is not None]
+        peak = max((item["memory_peak"] for item in readable), default=None)
+        span = (readable[-1]["at"] - readable[0]["at"]) if len(readable) > 1 else 0
+        ooms = [item["oom_kill"] for item in items if item["oom_kill"] is not None]
         cores = []
         for before, after in zip(items, items[1:]):
             if None not in (before["cpu_usage_usec"], after["cpu_usage_usec"], before["at"], after["at"]) \
@@ -79,13 +82,15 @@ def propose(samples: list[dict], rows: dict[str, dict] | None = None) -> dict:
         high = cores[min(len(cores) - 1, math.ceil(0.95 * len(cores)) - 1)] if cores else None
         row = (rows or {}).get(job, {})
         out[container] = {
-            "job": job, "samples": len(items), "memory_peak_gib": round(peak / GIB, 2),
-            "oom_kills": max((item["oom_kill"] or 0 for item in items), default=0),
+            "job": job, "samples": len(items), "readable_samples": len(readable),
+            "memory_peak_gib": None if peak is None else round(peak / GIB, 2),
+            "oom_kills": max(ooms) if ooms else None,  # None: unreadable, never reported as zero
             "cpu_cores_p95": None if high is None else round(high, 2),
             "proposed_ram_gb": math.ceil((peak * RAM_FACTOR) / GIB + RAM_MARGIN_GIB) if peak else None,
             "proposed_cpu_threads": None if high is None else min(CPU_MAX, max(CPU_MIN, math.ceil(high * CPU_FACTOR))),
             "declared_ram_gb": row.get("ram_gb"), "declared_cpu_threads": row.get("cpu_threads", 8 if row else None),
-            "enough_evidence": len(items) >= 12,  # at least ~1 h of 5-min samples; full runs per family are better
+            # >= 12 readable samples spanning >= 1 h of this container; full runs per row family are better still
+            "enough_evidence": len(readable) >= 12 and span >= 3600 and bool(ooms),
         }
     return out
 

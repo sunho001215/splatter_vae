@@ -752,6 +752,8 @@ def test_mig_variant_recipe_applies_only_the_container_side_change(tmp_path):
     show = subprocess.run(["git", "-C", str(repo), "show", f"{result['variant']}:s4d/model.py"], capture_output=True,
                           text=True).stdout
     assert show == "M = 1\n"  # the old release's science, not main's
+    expected = mig_variant.expected_operational(repo, old, mig_base, mig_head)
+    assert expected["ops/resources/gpu_guard.py"] == b"A = 1\nMIG = True\n" and expected["mujoco_mig_setup.py"] is None
     (configs / mig_variant.CONFIG_FILES[1]).unlink()
     with pytest.raises(mig_variant.VariantError, match="missing rendered"):
         mig_variant.create(repo, old, mig_base, mig_head, configs, ["scripts/train.py"])
@@ -765,8 +767,36 @@ def test_cgroup_usage_parses_samples_and_proposes_limits():
              for i in range(13)] + ["junk", f"S4D_CG|other|{cid}|1|2|3|max|0|1"]
     samples = cg.parse_samples("\n".join(lines))
     assert len(samples) == 13 and samples[0]["memory_max"] is None and samples[-1]["memory_peak"] == 16 * 2**30
-    proposal = cg.propose(samples, {"rwcal-x-pre": {"ram_gb": 20, "cpu_threads": 8}})["s4d-rwcal-x-pre-a1"]
+    proposal = cg.propose(samples, {"rwcal-x-pre": {"ram_gb": 20, "cpu_threads": 8}})[f"s4d-rwcal-x-pre-a1@{cid[:12]}"]
     assert proposal["job"] == "rwcal-x-pre" and proposal["memory_peak_gib"] == 16.0 and proposal["enough_evidence"]
+    unreadable = [{**sample, "memory_peak": None, "oom_kill": None} for sample in samples]
+    blind = cg.propose(unreadable)[f"s4d-rwcal-x-pre-a1@{cid[:12]}"]
+    assert blind["memory_peak_gib"] is None and blind["oom_kills"] is None and not blind["enough_evidence"]
+    short = cg.propose(samples[:3])[f"s4d-rwcal-x-pre-a1@{cid[:12]}"]
+    assert not short["enough_evidence"]
     assert proposal["proposed_ram_gb"] == math.ceil(16 * 1.25 + 1) and proposal["declared_ram_gb"] == 20
     assert proposal["cpu_cores_p95"] == 1.0 and proposal["proposed_cpu_threads"] == 2
     assert "memory.peak" in cg.SAMPLE_SHELL and "docker ps -q" in cg.SAMPLE_SHELL
+
+
+def test_repin_hardening_image_chain_patch_and_reserved_field(tmp_path):
+    from ops.jobs import release_repin
+    from ops.jobs import scheduler as jobs
+
+    stopped = {"host": "remote", "commit": C1, "image_digest": IMG, "status": "crashed", "attempt": 1}
+    with pytest.raises(release_repin.RepinError, match="image change"):
+        release_repin.check_state("j", stopped, C2, "sha256:" + "d" * 64)
+    pending = {**stopped, "commit": C2, "repinned_from": {"commit": C1, "image_digest": IMG, "attempt": 1}}
+    with pytest.raises(release_repin.RepinError, match="not been taken up"):
+        release_repin.check_state("j", pending, "e" * 40, IMG)
+    release_repin.check_state("j", {**pending, "attempt": 2}, "e" * 40, IMG)  # taken up by attempt 2: allowed
+    scope = {"operational_differences": ["ops/jobs/run_identity.py", "configs/hosts/remote.yaml"]}
+    release_repin.check_operational(scope, {"ops/jobs/run_identity.py": b"reviewed\n"}, lambda name: b"reviewed\n")
+    with pytest.raises(release_repin.RepinError, match="reviewed MIG patch"):
+        release_repin.check_operational(scope, {"ops/jobs/run_identity.py": b"reviewed\n"}, lambda name: b"other\n")
+    queue = {"hosts": {"local": {"enabled": False}}, "jobs": [{"id": "x", "script": "scripts/train.py",
+                                                                "repinned_from": {"commit": C1}}]}
+    path = tmp_path / "queue.yaml"
+    path.write_text(yaml.safe_dump(queue))
+    with pytest.raises(ValueError, match="reserved"):
+        jobs.load_queue(path)

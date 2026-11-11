@@ -59,6 +59,23 @@ def mig_patch(root: Path, mig_base: str, mig_head: str, files=VARIANT_FILES) -> 
     return git(root, "diff", "--binary", "--full-index", mig_base, mig_head, "--", *files)
 
 
+def expected_operational(root: Path, base: str, mig_base: str, mig_head: str) -> dict[str, bytes | None]:
+    """The container-side files a MIG variant of ``base`` must contain: ``base`` + exactly the MIG patch (computed in a
+    temporary worktree). release_repin accepts an operational difference only when it equals this."""
+    patch = mig_patch(root, mig_base, mig_head)
+    work = Path(tempfile.mkdtemp(prefix="mig-expected-"))
+    tree = work / "tree"
+    try:
+        git(root, "worktree", "add", "--detach", str(tree), base)
+        git(tree, "apply", "--3way", "--index", "-", stdin=patch)
+        if git(tree, "diff", "--name-only", "--diff-filter=U").decode().split():
+            raise VariantError(f"the MIG patch conflicts on {base[:7]}")
+        return {name: (tree / name).read_bytes() if (tree / name).is_file() else None for name in VARIANT_FILES}
+    finally:
+        subprocess.run(["git", "-C", str(root), "worktree", "remove", "--force", str(tree)], capture_output=True)
+        shutil.rmtree(work, ignore_errors=True)
+
+
 def create(root: Path, base: str, mig_base: str, mig_head: str, configs: Path, scripts: list[str],
            author=("Claude", "noreply@anthropic.com")) -> dict:
     """Build the variant commit (detached; nothing pushed) and verify its execution scope against ``base``."""
