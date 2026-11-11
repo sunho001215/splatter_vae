@@ -20,9 +20,9 @@ import yaml
 
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
-from ops.resources.gpu_guard import APPROVED_HOST_GPUS, HOST_CONFIG_PATH, MIG_DEVICES  # noqa: E402
-from ops.remote.access import sha256 as file_sha256  # noqa: E402
-from ops.jobs.remote_backend import ROOT as REMOTE_ROOT  # noqa: E402
+from ops.containers.verification import validate_report, validate_verification, verification_resources  # noqa: E402
+from ops.jobs import host_roles, realworld_local  # noqa: E402
+from ops.jobs.arguments import option as _option  # noqa: E402
 from ops.jobs.remote_backend import (  # noqa: E402
     COTENANT_GPU_MARGIN_GB,
     ContainerRemovalRefused,
@@ -32,11 +32,11 @@ from ops.jobs.remote_backend import (  # noqa: E402
     cotenant_charges,
     validate_container,
 )
-from ops.containers.verification import validate_report, validate_verification, verification_resources  # noqa: E402
-from ops.jobs import host_roles, realworld_local  # noqa: E402
-from ops.jobs.arguments import option as _option  # noqa: E402
+from ops.jobs.remote_backend import ROOT as REMOTE_ROOT  # noqa: E402
 from ops.jobs.retired import retired_reason  # noqa: E402
 from ops.provenance.upstreams import working_tree_identity as third_party_identity  # noqa: E402
+from ops.remote.access import sha256 as file_sha256  # noqa: E402
+from ops.resources.gpu_guard import APPROVED_HOST_GPUS, HOST_CONFIG_PATH, MIG_DEVICES  # noqa: E402
 from ops.resources.nvidia_query import mig_query  # noqa: E402
 from ops.resources.processes import pid_alive as pid_alive  # noqa: E402
 
@@ -222,7 +222,8 @@ def read_registry(path: Path = REGISTRY) -> dict[str, dict]:
                 job.update(status=FAILED)
             elif kind == "reset":
                 reconciliation = event.get("reconciliation", {})
-                if reconciliation.get("conclusion") == "launch refused before docker run; deterministic container never existed":
+                if reconciliation.get("conclusion") == (
+                        "launch refused before docker run; deterministic container never existed"):
                     checks = reconciliation.get("checks", [])
                     if (job["status"] != "launching" or job.get("host") != "remote"
                             or reconciliation.get("attempt") != job.get("attempt") or len(checks) != 2
@@ -1140,7 +1141,7 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
                 messages.append(f"{job['id']}: not admitted on local: {moved}")
                 continue
             input_event = {}
-            if realworld_local.applies(job, roles, jobs):
+            if host_roles.remote_resident(job, roles, jobs):
                 try:
                     effective, inputs = realworld_local.localize(job, state, roles=roles, by_id=jobs, runs=runs,
                                                                 source_identity=identity, ownership=ownership)

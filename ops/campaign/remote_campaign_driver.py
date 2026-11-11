@@ -13,10 +13,10 @@ import yaml
 
 REPO = Path('/home/ws/ws/splatter4d')
 sys.path.insert(0, str(REPO))
-from ops.jobs import scheduler as jobs
-from ops.remote.access import RemoteClient
-from ops.jobs.remote_backend import COTENANT_GPU_MARGIN_GB, RemoteBackend, cotenant_charges
 from ops.jobs import host_roles  # noqa: E402
+from ops.jobs import scheduler as jobs  # noqa: E402
+from ops.jobs.remote_backend import COTENANT_GPU_MARGIN_GB, RemoteBackend, cotenant_charges  # noqa: E402
+from ops.remote.access import RemoteClient  # noqa: E402
 
 IMAGE = 'sha256:c3ffea7f7c114dd12755f9d537f760a6d5b31c96c923233185b775e0324799b7'
 FROZEN_COMMIT = '226d8ae89b6f65097d372e597e0a7734d2eee3e0'  # method-frozen-v1 source (freeze manifest identity)
@@ -104,11 +104,11 @@ if ANA_COMMIT:
     RELEASES[(ANA_COMMIT, POOL_IMAGE)] = f'runs/remote/acceptance/{ANA_COMMIT[:7]}-cc/manifest.json'
 ANA_READY = bool(ANA_COMMIT) and (REPO / RELEASES[(ANA_COMMIT, POOL_IMAGE)]).is_file()
 # Server roles (user directive 2026-11-06 ~02:00 KST; configs/hosts/roles.yaml, ops/jobs/host_roles.py): the remote
-# admits only real-world / DROID preprocessing, real-world / DROID representation pretraining, real-world offline FQL
-# (and typed verification, which has its own queues). Rows of those classes ('role' kind) run on the release named in
+# admits every training family (unified pool, 2026-11-11 ~20:15). Real-world / DROID classes and typed verification
+# ('role' kind; verification has its own queues) run on the release named in
 # runs/setup/role-release.json {"commit", "image"} once its acceptance manifest exists (absent: not offered); retries
-# keep the release of their first launch. Meta-World rows are never offered or pool-moved here; never-launched ones
-# registered here are re-placed to local each pass (host_roles.replace_to_local), started ones move only through the
+# keep the release of their first launch. Meta-World retains its established releases and may pool-move here when unheld;
+# shared classes retain their placement, and started rows move only through the
 # explicit migration procedure (ops/jobs/migration.py).
 ROLE_RELEASE_FILE = REPO / 'runs/setup/role-release.json'
 ROLE_RELEASE = json.loads(ROLE_RELEASE_FILE.read_text()) if ROLE_RELEASE_FILE.is_file() else {}
@@ -137,7 +137,7 @@ try:
     fcntl.flock(_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
 except BlockingIOError:
     print('REMOTE_DRIVER another pass is running; skipped')
-    raise SystemExit(0)
+    raise SystemExit(0) from None
 
 
 PLACEMENT_PATH = REPO / 'runs/setup/stage2-placement-20261015.json'
@@ -154,7 +154,10 @@ S2_KINDS = {'scripts/train.py': 's2_pretrain', 'scripts/evaluate.py': 's2_eval',
 
 def kind(job_id):
     row = globals().get('by_id', {}).get(job_id)
-    if (row is not None and ROLES is not None and not row.get('verification_purpose')
+    if (row is not None and ROLES is not None
+            and host_roles.job_class(row, by_id).cls in (
+                'realworld_preprocess', 'droid_preprocess', 'realworld_pretrain', 'droid_pretrain',
+                'realworld_fql', 'verification')
             and host_roles.role_host(row, ROLES, by_id) == 'remote'):
         return 'role'  # a remote-role row (real-world / DROID preprocessing, pretraining, offline FQL)
     if row is not None and str(row.get('placement', '')).startswith('pool'):
@@ -243,13 +246,14 @@ if freeze:
 client = RemoteClient()
 messages = []
 from ops.jobs.admission_pause import paused  # noqa: E402  (intentional pauses, user 2026-10-28)
+
 if ROLE_ERROR:
     messages.append(f'ROLES unreadable ({ROLE_ERROR}); no remote admission or pool move this pass')
 elif (not DRY and not (REPO / 'runs/setup/remote-hold-admissions').exists()  # the hold file holds this too
       and (any(j.get('host') == 'remote' and j['id'] not in state and not paused(j['id'])
                and host_roles.role_host(j, ROLES, by_id) == 'local' for j in queue['jobs'])
            or host_roles.placement_repair_needed(queue['jobs']))):
-    # never-launched Meta-World rows registered on the remote move to local (host fields only; paused rows stay)
+    # Exclusive local classes may be re-placed; shared classes retain their host (none exclusive today).
     replaced = host_roles.replace_to_local(paused)
     if replaced.get('moved'):
         messages.append(f"ROLE re-placed to local: {replaced['moved']}")
@@ -594,6 +598,9 @@ candidates = [j for j in jobs.eligible(remote, retry_view) if role_admits(j) and
 # intentional admission pauses (user 2026-10-28; runs/setup/admission-pauses.json): never admitted, retried or moved
 sys.path.insert(0, str(REPO / 'runs/setup/tools'))
 candidates = [j for j in candidates if not paused(j['id'])]
+# Rows pinned to a LOCAL release (registrars' --release-source local) run only on local after explicit placement:
+# the remote would run them on runs/setup/role-release.json, which is not their release.
+candidates = [j for j in candidates if j.get('release_source') != 'local']
 if (REPO / 'runs/setup/remote-hold-admissions').exists():
     messages.append('ADMISSIONS_HELD ' + (REPO / 'runs/setup/remote-hold-admissions').read_text().strip())
     candidates = []
@@ -712,7 +719,10 @@ for job in candidates:
 # ---- host-neutral pool (user instruction 2026-10-23): eligible, never-launched local rows that the remote can start
 # now move here (runs/setup/tools/pool_placement.py: host-specific fields only) and are admitted in this pass. Pretraining
 # first (it gains most from the full GPUs), then RL trainer + evaluator pairs, each in priority / registration order.
-held = (REPO / 'runs/setup/remote-hold-admissions').exists()
+# Remote holds hold the REMOTE only (unified pool, 2026-11-11): the admission-hold file or the queue's remote host
+# `hold: true` (MIG reboot hold) stop every pool move to the remote; local admission never reads either.
+held = ((REPO / 'runs/setup/remote-hold-admissions').exists()
+        or queue['hosts'].get('remote', {}).get('hold', False) is not False)
 if POOL_READY and not DRY and not held and ROLES is not None and COTENANT is not None:
     sys.path.insert(0, str(REPO / 'runs/setup/tools'))
     from ops.jobs import pool_placement  # noqa: E402
@@ -723,7 +733,7 @@ if POOL_READY and not DRY and not held and ROLES is not None and COTENANT is not
     as_remote = [{**j, 'host': 'remote'} if j.get('host', 'local') == 'local' else j for j in queue['jobs']]
     for job in jobs.eligible(as_remote, retry_view):
         job = by_id[job['id']]
-        if paused(job['id']):
+        if paused(job['id']) or job.get('release_source') == 'local':
             continue
         if job.get('host', 'local') != 'local' or job['script'] not in ('scripts/train.py', 'scripts/train_rl.py',
                                                                          'scripts/export_encoder.py'):
@@ -734,7 +744,7 @@ if POOL_READY and not DRY and not held and ROLES is not None and COTENANT is not
         if not pool_placement.movable(job, state, by_id):
             continue
         members = [job] + ([by_id[job['id'] + '-eval']] if job['script'] == 'scripts/train_rl.py' else [])
-        if not all(role_admits(u, drain=False) for u in members):  # server roles: Meta-World never moves there
+        if not all(role_admits(u, drain=False) for u in members):  # unified pool: every admitted family may move when unheld
             continue
         units.append(members)
     if not ENC_ALLOWED:
@@ -825,7 +835,8 @@ def job_release(job):
 
 
 if chosen and DRY:
-    messages.append(f"DRY_RUN would admit {[(j['id'], j['gpu'][4:8], job_release(j)[0][:7]) for j in chosen]}, reserved {total} bytes")
+    messages.append(f"DRY_RUN would admit {[(j['id'], j['gpu'][4:8], job_release(j)[0][:7]) for j in chosen]}, "
+                    f"reserved {total} bytes")
 if chosen and not DRY:
     groups = {}
     for job in chosen:

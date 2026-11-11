@@ -133,7 +133,7 @@ def localize(fixture, job=None, **kwargs):
     ("scripts/realworld_native_depth.py", "realworld_fql", False, True, "remote"),
     ("scripts/train_sincro.py", "realworld_pretrain", False, True, "remote"),
     ("scripts/realworld_preprocess.py", "realworld_preprocess", False, True, "remote"),
-    ("scripts/train_rl.py", "metaworld", True, False, "local"),
+    ("scripts/train_rl.py", "metaworld", True, True, "remote"),
 ])
 def test_admission_matrix_and_existing_placement(script, role, local, remote, host):
     args = ["--config", "configs/realworld/fql/base.yaml"] if role != "metaworld" else ["--task", "hammer"]
@@ -146,7 +146,8 @@ def test_admission_matrix_and_existing_placement(script, role, local, remote, ho
         assert host_roles.role_host({**job, "host": "local"}, ROLES) == "local"
         assert host_roles.role_host({**job, "host": "inference"}, ROLES) is None
     if role == "realworld_fql" and not local:
-        assert host_roles.refusal(job, "local", ROLES).startswith("job class realworld_fql on local is limited to")
+        assert host_roles.refusal(job, "local", ROLES).startswith(
+            "data locality: inputs live on the remote; no local input resolver for")
 
 
 def test_generic_role_replacement_does_not_move_fql(tmp_path):
@@ -548,10 +549,10 @@ def test_local_driver_source_and_local_rows():
     source = (jobs.REPO / "ops/campaign/baseline_local_driver.py").read_text()
     assert "realworld_local.local_rows(queue['jobs'], host_roles.load_roles())" in source
     assert "host_roles.refusal(j, 'local', _roles, _ownership, _context) is None" in source
-    assert "job['script'] == 'scripts/train_realworld_fql.py'" in source
+    assert "host_roles.remote_resident(job, _roles, by_queue)" in source
     local = row(host="local")
     assert rw.local_rows([row("remote"), local, row("builder", host="local", script="scripts/realworld_fql_dataset.py")],
-                         ROLES) == [local]
+                         ROLES) == [local, row("builder", host="local", script="scripts/realworld_fql_dataset.py")]
 
 
 def test_active_pause_names_match_existing_paused_behavior(monkeypatch):
@@ -778,3 +779,332 @@ def test_fetches_are_serialized(mirrored):
         assert not done.wait(0.5)  # waits for the lock holder
     worker.join(10)
     assert done.is_set()
+
+
+def pretraining_rows(f):
+    """The stats/pre/export argv contract of register_ours_realworld_20261111.task_rows (read only as text)."""
+    config = f.root / 'configs/realworld/ours/task.yaml'
+    config.parent.mkdir(parents=True, exist_ok=True)
+    config.write_text('data: {regime: realworld}\nmodel: {}\n')
+    stats = row('stats', role='realworld_pretrain', script='scripts/compute_workspace_stats.py', deps=[], args=[
+        '--regime', 'realworld', '--path', PREFIX + '/' + STORE, '--split', PREFIX + '/' + SPLIT,
+        '--out', 'runs/stats/workspace_stats.json'])
+    pre = row('pre', role='realworld_pretrain', script='scripts/train.py', deps=['stats'], args=[
+        '--config', 'configs/realworld/ours/task.yaml', '--name', 'pre', '--output-root', 'runs', '--resume', 'auto',
+        '--set', 'data.store=' + PREFIX + '/' + STORE, 'data.split_manifest=' + PREFIX + '/' + SPLIT,
+        'data.gate_report=' + PREFIX + '/' + GATE, 'model.anchor_stats=runs/stats/workspace_stats.json'])
+    export = row('export', role='realworld_pretrain', script='scripts/export_encoder.py', deps=['pre'], args=[
+        '--run', 'runs/pre', '--checkpoint', 'runs/pre/checkpoints/step_0200000.pt', '--out', 'runs/export/encoder.pt'])
+    return stats, pre, export
+
+
+def dependency(f, name, relative, host='local', status='done'):
+    path = f.runs / name / relative
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text('verified output')
+    digest = sha(path.read_bytes())
+    state = f.state.setdefault(name, {'host': host, 'status': status, 'sync': {'files': {}},
+                                      'remote_verified': {'files': {}}})
+    state['sync']['files'][relative] = digest
+    state['remote_verified']['files'][relative] = digest
+    return path
+
+
+def test_stats_pretraining_and_export_local_resolvers(mirrored):
+    f = mirrored
+    stats, pre, export = pretraining_rows(f)
+    for job in (stats, pre, export):
+        assert rw.applies(job, ROLES) and host_roles.role_hosts(job, ROLES) == ('local', 'remote')
+        assert host_roles.role_host(job, ROLES) == 'remote'
+    effective, record = localize(f, stats)
+    assert effective == [a.replace(PREFIX, str(f.mirror)) for a in stats['args']]
+    assert set(record['input_closure']) >= {STORE, EPISODE + '/episode.h5'}
+    dependency(f, 'stats', 'workspace_stats.json')
+    effective, record = localize(f, pre)
+    assert 'model.anchor_stats=runs/stats/workspace_stats.json' in effective
+    assert record['dependency_inputs'] == {'runs/stats/workspace_stats.json': sha(b'verified output')}
+    dependency(f, 'pre', 'config.yaml')
+    dependency(f, 'pre', 'checkpoints/step_0200000.pt')
+    effective, record = localize(f, export)
+    assert effective == export['args']
+    assert set(record['dependency_inputs']) == {'runs/pre/config.yaml', 'runs/pre/checkpoints/step_0200000.pt'}
+    assert rw.needed_inputs(export)['dependency_files'] == [('pre', '.'), ('pre', 'checkpoints/step_0200000.pt'),
+                                                          ('pre', 'config.yaml')]
+
+
+@pytest.mark.parametrize('host,status', [('local', 'running'), ('local', 'pending'), ('remote', 'sync_pending'),
+                                         (None, 'done')])
+def test_dependency_inputs_require_done_and_an_explicit_host(mirrored, host, status):
+    f = mirrored
+    _, pre, _ = pretraining_rows(f)
+    dependency(f, 'stats', 'workspace_stats.json', host, status)
+    with pytest.raises(rw.LocalInputError, match='dependency must be done'):
+        localize(f, pre)
+
+
+def test_pretraining_remote_dependency_uses_verified_backup_checksums(mirrored):
+    f = mirrored
+    _, pre, export = pretraining_rows(f)
+    output = dependency(f, 'stats', 'workspace_stats.json', 'remote')
+    assert localize(f, pre)[1]['dependency_inputs']
+    output.write_text('changed')
+    with pytest.raises(rw.LocalInputError, match='unverified backup'):
+        localize(f, pre)
+    dependency(f, 'pre', 'config.yaml', 'remote')
+    dependency(f, 'pre', 'checkpoints/step_0200000.pt', 'remote')
+    with pytest.raises(rw.LocalInputError, match='remote dependency run directory'):
+        localize(f, export)
+
+
+@pytest.mark.parametrize('extra', [
+    ['--pointworld-root', PREFIX + '/tree'], ['--rlds-root', PREFIX + '/rlds'],
+    ['--rlds-index=' + PREFIX + '/index.json'], ['--pa', PREFIX + '/' + STORE],
+])
+def test_stats_unresolved_options_fail_closed(mirrored, extra):
+    stats, _, _ = pretraining_rows(mirrored)
+    with pytest.raises(rw.LocalInputError, match='unsupported local input options'):
+        localize(mirrored, {**stats, 'args': stats['args'] + extra})
+
+
+@pytest.mark.parametrize('regime', ['metaworld', 'droid', 'droid_largescale'])
+def test_stats_resolver_only_covers_realworld(mirrored, regime):
+    stats, _, _ = pretraining_rows(mirrored)
+    stats['args'][1] = regime
+    assert not rw.has_resolver(stats)
+    # Classification is deliberately unchanged; our stats rows declare their pretraining role explicitly.
+    assert host_roles.job_class({**stats, 'role': None}).cls != 'realworld_pretrain'
+
+
+def test_pretraining_merges_all_configs_and_yaml_overrides_exactly(mirrored):
+    f = mirrored
+    _, pre, _ = pretraining_rows(f)
+    dependency(f, 'stats', 'workspace_stats.json')
+    second = f.root / 'configs/realworld/ours/second.yaml'
+    second.write_text('data: {regime: metaworld, hidden: ' + PREFIX + '/hidden.h5}\n')
+    pre['args'].insert(2, 'configs/realworld/ours/second.yaml')
+    pre['args'] += ['data.regime=realworld']
+    with pytest.raises(rw.LocalInputError, match='not plain checked arguments'):
+        localize(f, pre)
+    pre['args'] += ['data.hidden=null']
+    assert localize(f, pre)[0]
+    pre['args'] += ['data={regime: realworld, store: ' + PREFIX + '/hidden.h5}']
+    with pytest.raises(rw.LocalInputError, match='not plain checked arguments'):
+        localize(f, pre)
+
+
+@pytest.mark.parametrize('edit,reason', [('resume', 'invalid local resolver'), ('abbreviation', 'invalid local resolver'),
+                                        ('regime', 'requires data.regime'), ('quoted', 'quoted or escaped')])
+def test_pretraining_fails_closed_for_resume_regime_and_path_spellings(mirrored, edit, reason):
+    f = mirrored
+    _, pre, _ = pretraining_rows(f)
+    dependency(f, 'stats', 'workspace_stats.json')
+    if edit == 'resume':
+        pre['args'][pre['args'].index('--resume') + 1] = 'runs/other/checkpoint.pt'
+    elif edit == 'abbreviation':
+        pre['args'][0] = '--conf'
+    elif edit == 'regime':
+        pre['args'] += ['data.regime=droid']
+    else:
+        pre['args'] += ['data.store="' + PREFIX + '/' + STORE + '"']
+    with pytest.raises(rw.LocalInputError, match=reason):
+        localize(f, pre)
+
+
+def test_export_default_checkpoint_wait_and_local_directory_checks(mirrored):
+    f = mirrored
+    _, _, export = pretraining_rows(f)
+    export['args'] = ['--run=runs/pre', '--out=runs/export/encoder.pt', '--wait']
+    dependency(f, 'pre', 'config.yaml')
+    checkpoint = dependency(f, 'pre', 'checkpoints/latest.pt')
+    assert 'runs/pre/checkpoints/latest.pt' in localize(f, export)[1]['dependency_inputs']
+    checkpoint.unlink()
+    with pytest.raises(rw.LocalInputError, match='missing mirror file'):
+        localize(f, export)
+
+
+def test_new_resolvers_placement_and_local_rows(mirrored):
+    f = mirrored
+    stats, pre, export = pretraining_rows(f)
+    decisions = planning(f, [stats, pre, export])
+    assert [d['decision'] for d in decisions] == ['local', 'waits', 'waits']
+    queue_files(f.root, [stats, pre, export])
+    assert apply_placement(f, ['stats'])['moved'] == ['stats']
+    after = jobs.load_queue(f.root / 'queue.yaml')['jobs']
+    assert rw.local_rows(after, ROLES) == [after[0]]
+    assert jobs.job_fingerprint(after[0]) == jobs.job_fingerprint(stats)
+
+
+def test_placement_ignores_remote_holds_and_preserves_them(mirrored):
+    f = mirrored
+    stats, _, _ = pretraining_rows(f)
+    setup, verification = f.runs / 'setup', f.runs / 'remote/verification'
+    setup.mkdir(parents=True)
+    verification.mkdir(parents=True)
+    holds = [setup / 'remote-hold-admissions', verification / 'HOLD']
+    for path in holds:
+        path.write_text('remote reboot hold\n')
+    original = {p: p.read_bytes() for p in holds}
+    assert planning(f, [stats], policy='all')[0]['decision'] == 'local'
+    queue_files(f.root, [stats])
+    assert apply_placement(f, ['stats'])['moved'] == ['stats']
+    assert {p: p.read_bytes() for p in holds} == original
+
+
+def test_realworld_migration_switch_rechecks_mirrored_inputs(mirrored, monkeypatch):
+    f = mirrored
+    # Migration uses the production mirror location relative to its sandbox root.
+    f.mirror = f.runs / 'realworld-inputs'
+    rw.fetch([STORE, SPLIT, GATE], f.client, mirror=f.mirror)
+    f.manifest = f.mirror / 'MANIFEST.json'
+    _, pre, _ = pretraining_rows(f)
+    dependency(f, 'stats', 'workspace_stats.json')
+    checkpoint = f.runs / 'pre/checkpoints/latest.pt'
+    checkpoint.parent.mkdir(parents=True)
+    checkpoint.write_bytes(b'verified paused checkpoint')
+    queue, registry = queue_files(f.root, [pre])
+    for event in [
+        {'event': 'launched', 'id': 'stats', 'host': 'local', 'attempt': 1, 'gpu': LOCAL_GPU, 'pid': 2**30},
+        {'event': 'exited', 'id': 'stats', 'host': 'local', 'attempt': 1, 'code': 0},
+        {'event': 'launched', 'id': 'pre', 'host': 'remote', 'attempt': 1, 'gpu': REMOTE_GPU, 'commit': COMMIT,
+         'job_sha256': jobs.job_fingerprint(pre)},
+        {'event': 'checkpoint_paused', 'id': 'pre', 'host': 'remote', 'attempt': 1, 'intentional_stop': True,
+         'checkpoint_step': 100, 'checkpoint': 'runs/pre/checkpoints/latest.pt',
+         'checkpoint_sha256': sha(checkpoint.read_bytes()), 'reason': 'explicit migration'},
+        {'event': 'exited', 'id': 'pre', 'host': 'remote', 'attempt': 1, 'code': 143},
+    ]:
+        jobs.record(event, registry)
+    paths = migration.Paths(root=f.root, queue=queue, registry=registry, ownership=f.root / 'ownership',
+                            admission_lock=f.root / 'admission.lock', pool_manifest=f.root / 'migration-pool.json')
+    record = migration.begin('pre', 'local', 'explicit pool migration', paths)[0]
+    # Model verify's recorded transfer manifest; checkpoint component verification has separate end-to-end tests.
+    record['manifest'] = {'sha256': 'a' * 64, 'files': {
+        'runs/pre/checkpoints/latest.pt': {'bytes': checkpoint.stat().st_size, 'sha256': sha(checkpoint.read_bytes())}}}
+    host_roles.write_ownership(record, paths.ownership)
+    original = f.manifest.read_bytes()
+    f.manifest.unlink()
+    before = queue.read_bytes(), registry.read_bytes()
+    with pytest.raises(migration.MigrationError, match='local migration inputs not verified'):
+        migration.switch('pre', paths)
+    assert (queue.read_bytes(), registry.read_bytes()) == before
+    f.manifest.write_bytes(original)
+    scope = lambda *args: {'identical': True, 'files': SCOPE['files'], 'third_party': {}}  # noqa: E731
+    with monkeypatch.context() as changed:
+        def changed_config(*args, **kwargs):
+            raise rw.LocalInputError('named config differs from launched release')
+        changed.setattr(rw, 'placement_scope', changed_config)
+        with pytest.raises(migration.MigrationError, match='argument/code scope differs from launched release'):
+            migration.switch('pre', paths, scope_fn=scope)
+    assert (queue.read_bytes(), registry.read_bytes()) == before
+    switched = migration.switch('pre', paths, scope_fn=scope, identity_fn=lambda _: ('c' * 40, 'local-venv'))
+    assert switched[0]['state'] == 'switched' and jobs.read_registry(registry)['pre']['host'] == 'local'
+    # Launch accepts migration ownership as an explicit placement and still verifies its recorded scope/inputs.
+    local_pre = jobs.load_queue(queue)['jobs'][0]
+    assert rw.localize(local_pre, jobs.read_registry(registry), roles=ROLES, root=f.root, mirror=f.mirror,
+                       source_identity=IDENTITY, ownership=host_roles.read_ownership(paths.ownership))[1]['inputs']
+
+
+@pytest.mark.parametrize('which', ['stats', 'pre', 'export'])
+def test_scheduler_localizes_every_resolvable_remote_resident_script(mirrored, monkeypatch, which):
+    f = mirrored
+    rows = dict(zip(('stats', 'pre', 'export'), pretraining_rows(f)))
+    job = {**rows[which], 'host': 'local', 'pin_host': 'local', 'gpu': 'any'}
+    events = []
+    if which == 'pre':
+        dependency(f, 'stats', 'workspace_stats.json')
+    if which == 'export':
+        dependency(f, 'pre', 'config.yaml')
+        dependency(f, 'pre', 'checkpoints/step_0200000.pt')
+    for dep in job['deps']:
+        events += [{'event': 'launched', 'id': dep, 'host': 'local', 'attempt': 1, 'gpu': LOCAL_GPU, 'pid': 2**30},
+                   {'event': 'exited', 'id': dep, 'host': 'local', 'attempt': 1, 'code': 0}]
+    host_roles.write_ownership(placed(job['id']), f.root / 'ownership')
+    original_localize = rw.localize
+    monkeypatch.setattr(rw, 'localize', lambda *args, **kwargs: original_localize(*args, **kwargs, root=f.root))
+    launches, _, launched = tick(f, monkeypatch, [job], events)
+    assert launches == [(job['id'], {'args': [a.replace(PREFIX, str(f.mirror)) for a in job['args']]})]
+    assert launched[-1]['inputs']['execution_scope'] == SCOPE
+
+
+def test_needs_cli_inventories_each_resolvable_row(mirrored, monkeypatch, capsys):
+    import sys
+
+    rows = pretraining_rows(mirrored)
+    monkeypatch.setattr(jobs, 'load_queue', lambda: {'jobs': list(rows)})
+    monkeypatch.setattr(jobs, 'read_registry', lambda: {})
+    monkeypatch.setattr(host_roles, 'read_ownership', lambda: {})
+    monkeypatch.setattr(sys, 'argv', ['realworld_local.py', 'needs', 'stats', 'pre', 'export'])
+    rw.main()
+    inventory = json.loads(capsys.readouterr().out)
+    assert inventory['stats']['mirror'] == sorted([STORE, SPLIT])
+    assert inventory['pre']['dependency_files'] == [['stats', 'workspace_stats.json']]
+    assert inventory['export']['dependency_files'] == [['pre', '.'], ['pre', 'checkpoints/step_0200000.pt'],
+                                                      ['pre', 'config.yaml']]
+
+
+def test_fql_retains_fail_closed_mapping_of_every_remote_path_argument(mirrored):
+    # Keep the original FQL launch guard even for an unusual output-root: no unchecked remote-prefix argument
+    # is rewritten into the mirror. The new scripts additionally require outputs under their own run id.
+    job = row(args=['--output-root', PREFIX + '/unmirrored-output'], deps=[])
+    with pytest.raises(rw.LocalInputError, match='input not mirrored: unmirrored-output'):
+        localize(mirrored, job)
+
+
+# ---------------------------------------------------------------------------------------------------- unified pool,
+# Codex review 1 fixes (Claude): effective-configuration check, absolute local inputs, dispatch role stamping
+def test_unused_set_spelling_cannot_stand_in_for_a_consumed_remote_default(mirrored):
+    """The pretraining config's own data.store default is a remote path: dropping the consumed override and adding an
+    unused --set that names the same remote file must not pass (the effective configuration still names a remote
+    path)."""
+    f = mirrored
+    _, pre, _ = pretraining_rows(f)
+    dependency(f, 'stats', 'workspace_stats.json')
+    config = f.root / 'configs/realworld/ours/task.yaml'
+    config.write_text('data: {regime: realworld, store: ' + PREFIX + '/' + STORE + '}\nmodel: {}\n')
+    store = next(a for a in pre['args'] if a.startswith('data.store='))
+    localize(f, pre)  # the consumed override replaces the remote default: accepted
+    edited = dict(pre, args=[('audit.unused=' + store.split('=', 1)[1]) if a == store else a for a in pre['args']])
+    with pytest.raises(rw.LocalInputError, match='still names a remote path'):
+        localize(f, edited)
+
+
+@pytest.mark.parametrize('which,edit', [
+    ('stats', lambda a: [x if not x.endswith('split_seed0.json') else '/home/ws/elsewhere/split_seed0.json' for x in a]),
+    ('pre', lambda a: a + ['data.extra_file=/home/ws/ws/splatter4d/runs/other/file.json']),
+    ('pre', lambda a: [x if x != 'configs/realworld/ours/task.yaml' else '/tmp/task.yaml' for x in a]),
+])
+def test_absolute_local_inputs_fail_closed(mirrored, which, edit):
+    f = mirrored
+    rows = dict(zip(('stats', 'pre', 'export'), pretraining_rows(f)))
+    dependency(f, 'stats', 'workspace_stats.json')
+    job = rows[which]
+    job = dict(job, args=edit(list(job['args'])))
+    with pytest.raises(rw.LocalInputError):
+        localize(f, job)
+
+
+def test_dispatch_copy_keeps_a_dependency_derived_class(mirrored):
+    """An export classified only through its real-world producer stays remote-resident in a one-row dispatch queue
+    once stamped (host_roles.with_role, used by both admission drivers); without the stamp it would be domain-free."""
+    f = mirrored
+    _, pre, export = pretraining_rows(f)
+    bare = {k: v for k, v in export.items() if k != 'role'}
+    by_id = {pre['id']: pre, bare['id']: bare}
+    assert host_roles.job_class(bare, by_id).cls == 'realworld_pretrain'
+    assert host_roles.job_class(bare, {bare['id']: bare}).cls == 'unknown'  # the dispatch queue alone
+    stamped = host_roles.with_role(bare, by_id)
+    assert stamped['role'] == 'realworld_pretrain' and host_roles.remote_resident(stamped, ROLES, {bare['id']: stamped})
+    assert jobs.job_fingerprint(stamped) == jobs.job_fingerprint(bare)
+    assert host_roles.with_role(export, by_id) == export
+
+
+def test_local_driver_stamps_roles_and_remote_driver_honours_queue_hold_and_local_pins():
+    local = (rw.REPO / 'ops/campaign/baseline_local_driver.py').read_text()
+    assert 'dispatched = [host_roles.with_role(j, by_queue) for j in admitted]' in local
+    assert "'jobs': json.loads(json.dumps(dispatched))" in local
+    assert 'if _paused_now(job' in local  # an intentionally paused Stage 2 row never forces the baselines to yield
+    remote = (rw.REPO / 'ops/campaign/remote_campaign_driver.py').read_text()
+    assert "or queue['hosts'].get('remote', {}).get('hold', False) is not False)" in remote
+    assert "candidates = [j for j in candidates if j.get('release_source') != 'local']" in remote
+    assert "if paused(job['id']) or job.get('release_source') == 'local':" in remote
+    for text in (local,):
+        assert 'remote-hold-admissions' not in text and 'verification/HOLD' not in text

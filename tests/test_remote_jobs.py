@@ -9,9 +9,9 @@ from pathlib import Path
 import pytest
 import yaml
 
-from ops.remote import artifact_check as remote_artifact_check
 from ops.containers.mounts import REALWORLD_READ_ROOTS
 from ops.jobs import remote_backend as remote
+from ops.remote import artifact_check as remote_artifact_check
 from ops.resources.gpu_guard import APPROVED_HOST_GPUS
 from ops.resources.nvidia_query import QueryUnavailable
 
@@ -30,7 +30,7 @@ GIB = 2**30
 
 
 def job(run_id="r", host="remote", **overrides):
-    # remote rows declare a remote role class (server roles 2026-11-06: the remote admits no unclassified rows)
+    # Most synthetic rows declare a real-world class; unified-pool tests also cover Meta-World and unknown rows.
     return {"id": run_id, "host": host, "script": "tests/_job_worker.py", "args": [0],
             "gpu": REMOTE if host == "remote" else LOCAL, "mem_gb": 5, "ram_gb": 10,
             "disk_gb": 20, "required_results": ["metrics.jsonl"],
@@ -581,21 +581,21 @@ def test_remote_ram_and_fifteen_percent_disk_floor(tmp_path, available, free, la
     assert len(backend.launches) == launches
 
 
-def test_remote_admits_only_its_role_classes(tmp_path):
-    """Server roles (2026-11-06; configs/hosts/roles.yaml): a Meta-World row or an unclassified row is never launched on
-    the remote, whatever capacity is free; a remote-role row is (and so is the same Meta-World row on local)."""
+def test_remote_admits_all_unified_pool_classes_and_unknown_without_domain(tmp_path):
+    """The unified pool admits Meta-World, known remote classes and domain-free diagnostics remotely.
+    Unknown activity with domain evidence still fails closed.
+    """
     meta = job("drm", script="scripts/train_rl.py", args=["--task", "hammer", "--run-dir", "runs/drm"])
     del meta["role"]
     unclassified = job("plain")
     del unclassified["role"]
     queued = write_queue(tmp_path, [meta, unclassified, job("realworld"),
                                      job("droid-pre", role=None, script="tests/_job_worker.py",
-                                         args=[0, "--config", "configs/droid/csw4_largescale.yaml"])])
+                                         args=[0, "--config", "configs/droid/csw4_largescale.yaml"])],
+                         limits={REMOTE: {"max_jobs": 4, "max_mem_gb": 40}})
     backend = FakeBackend(tmp_path / "runs")
     messages = tick(tmp_path, queued, backend)
-    assert [payload["id"] for payload in backend.launches] == ["realworld"]
-    assert any(m.startswith("drm: not admitted on remote: job class metaworld") for m in messages)
-    assert any(m.startswith("plain: not admitted on remote: job class unknown") for m in messages)
+    assert [payload["id"] for payload in backend.launches] == ["drm", "plain", "realworld"]
     assert any(m.startswith("droid-pre: not admitted on remote: job class unknown (configuration evidence; no droid "
                             "activity") for m in messages)  # a DROID row whose activity the script name does not say
 
@@ -605,6 +605,10 @@ def test_started_remote_metaworld_run_retries_in_place_only_by_explicit_exceptio
     it in runs/setup/role-exceptions.json (scope retry_in_place); never-launched Meta-World rows never are."""
     from ops.jobs import host_roles
 
+    # Exercise the retained exception contract under a synthetic exclusive-role policy.
+    roles = host_roles.load_roles()
+    roles["hosts"]["remote"]["admit"].remove("metaworld")
+    monkeypatch.setattr(host_roles, "load_roles", lambda: roles)
     monkeypatch.setattr(host_roles, "EXCEPTIONS_PATH", tmp_path / "role-exceptions.json")
     meta = job("r", script="scripts/train_rl.py", args=["--task", "hammer", "--run-dir", "runs/r"], max_restarts=2)
     del meta["role"]
@@ -625,9 +629,14 @@ def test_started_remote_metaworld_run_retries_in_place_only_by_explicit_exceptio
     assert [(payload["id"], payload["attempt"]) for payload in backend.launches] == [("r", 2)]
 
 
-def test_drain_exception_admits_the_evaluator_of_a_meta_world_trainer_running_on_the_remote(tmp_path):
+def test_drain_exception_admits_the_evaluator_of_a_meta_world_trainer_running_on_the_remote(tmp_path, monkeypatch):
     """Coordinator rule 2026-11-06 (live case cst50-drm-stick-push-s2002-eval): the evaluator companion of a Meta-World
     trainer running on the remote is still admitted there; an evaluator whose trainer has not run there is not."""
+    from ops.jobs import host_roles
+
+    roles = host_roles.load_roles()
+    roles["hosts"]["remote"]["admit"].remove("metaworld")
+    monkeypatch.setattr(host_roles, "load_roles", lambda: roles)
     trainer = job("t", script="scripts/train_rl.py", args=["--task", "hammer", "--run-dir", "runs/t"])
     evaluator = job("t-eval", script="scripts/eval_rl.py", args=["--run-dir", "runs/t", "--train-job", "t",
                                                                  "--output-dir", "runs/t-eval"])
@@ -1102,9 +1111,9 @@ def _rv_setup(tmp_path, monkeypatch):
     import json
     from types import SimpleNamespace
 
+    from ops.containers.verification import POLICIES, ROOT
     from ops.jobs import remote_backend as remote_jobs
     from ops.resources.gpu_guard import APPROVED_HOST_GPUS
-    from ops.containers.verification import POLICIES, ROOT
 
     gpu, commit, image = next(iter(APPROVED_HOST_GPUS["remote"])), "a" * 40, "sha256:" + "b" * 64
     source = {"s4d/example.py": "c" * 64, "third_party/example": "d" * 64}
@@ -1234,7 +1243,8 @@ def test_scheduler_bootstrap_does_not_share_campaign_readiness(tmp_path, monkeyp
     launches = []
     monkeypatch.setattr(backend, "snapshot", lambda: remote_jobs.RemoteSnapshot(
         {gpu: [] for gpu in APPROVED_HOST_GPUS["remote"]}, 200, 1000 * 2**30, 800 * 2**30, {}))
-    monkeypatch.setattr(backend, "launch", lambda path: launches.append(json.loads(path.read_text())) or {"container_id": "f" * 64})
+    monkeypatch.setattr(backend, "launch", lambda path: launches.append(
+        json.loads(path.read_text())) or {"container_id": "f" * 64})
     campaign = {"id": "campaign", "host": "remote", "script": "scripts/worker.py", "gpu": job["gpu"],
                 "ram_gb": 10, "mem_gb": 5, "disk_gb": 1, "required_results": ["completion.json"]}
     queue = tmp_path / "queue.yaml"
@@ -1365,8 +1375,8 @@ def test_verification_sync_uses_attempt_output_and_rejects_campaign_state(tmp_pa
     import hashlib
     from types import SimpleNamespace
 
-    from ops.jobs.remote_backend import RemoteJobError
     from ops.containers.verification import verification_output
+    from ops.jobs.remote_backend import RemoteJobError
 
     backend, host, job, evidence = _rv_setup(tmp_path, monkeypatch)
     _, spec = backend.prepare(job, job["gpu"], 2, host, evidence)
@@ -1422,7 +1432,8 @@ def test_removal_command_never_forces_prunes_or_deletes_volumes_and_rechecks_ide
     lines = cmd.splitlines()
     assert 'docker rm "$id" > /dev/null || exit 6' in lines and lines.count("check") == 3  # identity checked thrice
     assert lines.index("flock -w 60 9 || exit 8") < lines.index("check", lines.index("flock -w 60 9 || exit 8"))
-    assert [i for i, line in enumerate(lines) if line == "check"][-1] == lines.index('docker rm "$id" > /dev/null || exit 6') - 1
+    assert [i for i, line in enumerate(lines) if line == "check"][-1] == (
+        lines.index('docker rm "$id" > /dev/null || exit 6') - 1)
     assert 'd="$(sha256sum < "$1")" || exit 5' in cmd and "mktemp" in cmd and "removal-receipt" in cmd
     docker = [line for line in lines if "docker " in line]
     assert {line.split("docker ")[1].split()[0] for line in docker} == {"inspect", "logs", "rm"}
@@ -1592,7 +1603,7 @@ def test_backend_removal_maps_refusals_and_transport_failures(tmp_path):
             return subprocess.CompletedProcess([], self.code, self.out, "")
 
     args = ("r", 1, "s4d-r-a1", CONTAINER_ID, 0, ["exit.json"])
-    ok = Client(0, '{"removed": true, "log_sha256": "%s", "inspect_sha256": "%s"}\n' % ("0" * 64, "1" * 64))
+    ok = Client(0, json.dumps({"removed": True, "log_sha256": "0" * 64, "inspect_sha256": "1" * 64}) + "\n")
     assert remote.RemoteBackend(REPO, tmp_path / "runs", ok).remove_container(*args)["removed"] is True
     assert ok.commands[0][1]["idempotent"] is True
     gone = Client(0, '{"absent": true}\n')

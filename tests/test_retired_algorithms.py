@@ -61,7 +61,7 @@ def test_retired_rows_never_launch_after_recovery_or_reset(tmp_path, monkeypatch
             scheduler.record({"id": row["id"], "event": "exited", "code": 1}, registry)
             if previous == "reset":
                 scheduler.record({"id": row["id"], "event": "reset"}, registry)
-    roles = {"hosts": {"local": {"scheduler": True, "admit": ["metaworld"], "unknown": "allow"}}}
+    roles = host_roles.load_roles()
     monkeypatch.setattr(host_roles, "load_roles", lambda: roles)
     monkeypatch.setattr(host_roles, "read_ownership", lambda: {})
     monkeypatch.setattr(host_roles, "load_exceptions", lambda: {})

@@ -1,4 +1,10 @@
-"""Explicit migration of a started, checkpoint-paused run to the host its role belongs to (user directive 2026-11-06
+"""Explicit migration of a started, checkpoint-paused run within the unified pool (directive 2026-11-11 ~20:15).
+
+Either host may be the destination of begin when it admits every member, including data locality. Switching to local
+requires verified transferred state, identical execution scope and resolved mirrored inputs for remote-resident rows.
+Switching to remote fails closed: destination release adoption remains the separate remote release procedure.
+
+Original contract (user directive 2026-11-06
 item 2: remote Meta-World runs continue on local from their full state, same code / configuration / seeds, with
 explicit ownership records and no duplicates). Generalises the 2026-10-24 local -> remote migration
 (runs/setup/tools/migrate_cnn_to_remote_20261024.py) to remote -> local, reusing the scheduler's ``migrated`` registry
@@ -10,7 +16,7 @@ admission lock and the scheduler's registry lock and updates the unit's ownershi
 (runs/setup/ownership/<job id>.json, ops/jobs/host_roles.py):
 
   begin    the run is not active and its latest attempt ended in a recorded intentional checkpoint pause (a launched
-           evaluator too), the destination is the role host of its class, no other migration owns it -> state
+           evaluator too), the destination admits every member and its data locality, no other migration owns it -> state
            ``migrating`` (owner: the source host). From here on neither host admits any member of the unit.
   verify   after the transfer (resumable, checksum-verified, under the transfer limits; not done here): every file of
            the source run directories' checksum listing exists locally with the same sha256; the paused checkpoint
@@ -51,6 +57,8 @@ import sys
 import tempfile
 from collections.abc import Callable
 from pathlib import Path
+
+import yaml
 
 REPO = Path(__file__).resolve().parents[2]
 if str(REPO) not in sys.path:
@@ -188,8 +196,8 @@ def begin(run_id: str, to_host: str, reason: str, paths: Paths | None = None) ->
             raise MigrationError(f"{run_id}: invalid destination {to_host} (runs on {from_host})")
         if any(by_id[i].get("host", "local") != from_host for i in unit):
             raise MigrationError(f"{run_id}: queue rows of the unit are not all on {from_host}")
-        if any(host_roles.role_host(by_id[i], roles, by_id) != to_host for i in unit):
-            raise MigrationError(f"{run_id}: {to_host} is not the role host of every member's job class")
+        if any(to_host not in host_roles.role_hosts(by_id[i], roles, by_id) for i in unit):
+            raise MigrationError(f"{run_id}: destination {to_host} does not admit every member's class/data locality")
         if any(by_id[i].get("stage") == 2 for i in unit):
             raise MigrationError(f"{run_id}: Stage 2 rows are placed by the Stage 2 driver's own overlay; not supported")
         existing = [r for r in _records(paths, unit) if r and r["state"] in ("migrating", "switched")]
@@ -538,7 +546,22 @@ def switch(run_id: str, paths: Paths | None = None, scope_fn: Callable = executi
             return records
         to_host, from_host = records[0]["to_host"], records[0]["from_host"]
         if to_host != "local":
-            raise MigrationError("this procedure migrates to local (local -> remote: the 2026-10-24 tool)")
+            raise MigrationError("remote destination switch requires the remote release procedure; not available while "
+                                 "destination release adoption is outside this procedure (Meta-World: pool-release "
+                                 "procedure; real-world/DROID: role-release procedure)")
+        roles = host_roles.load_roles(paths.roles)
+        for i in unit:
+            if to_host not in host_roles.role_hosts(by_id[i], roles, by_id):
+                raise MigrationError(f"{i}: destination no longer admits its class/data locality")
+            if host_roles.remote_resident(by_id[i], roles, by_id):
+                from ops.jobs import realworld_local
+
+                try:
+                    realworld_local._inputs(by_id[i], state, paths.root / "runs/realworld-inputs",
+                                            paths.root / "runs/realworld-inputs/MANIFEST.json", paths.root / "runs",
+                                            root=paths.root)
+                except (OSError, ValueError, KeyError, TypeError, yaml.YAMLError) as exc:
+                    raise MigrationError(f"{i}: local migration inputs not verified: {exc}") from exc
         launched = [(i, r["member"]) for i, r in zip(unit, records) if r["member"]["launched"]]
         for i, member in launched:
             current = state.get(i, {})
@@ -558,6 +581,18 @@ def switch(run_id: str, paths: Paths | None = None, scope_fn: Callable = executi
         if not scope["identical"]:
             raise MigrationError(f"{run_id}: execution scope differs from release {source_commit[:7]}: "
                                  f"{scope['differences'][:10]} (a non-exact continuation needs a decision)")
+        for i in unit:
+            if host_roles.remote_resident(by_id[i], roles, by_id):
+                # The legacy scope includes Meta-World configs. Also compare the named real-world/DROID config
+                # arguments with the actual launched release, using the placement proof (no change to legacy scopes).
+                from ops.jobs import realworld_local
+
+                try:
+                    proof = realworld_local.placement_scope({**by_id[i], "planned_commit": source_commit}, root=paths.root)
+                except (OSError, ValueError, subprocess.SubprocessError) as exc:
+                    raise MigrationError(
+                        f"{i}: destination argument/code scope differs from launched release: {exc}") from exc
+                scope = {**scope, "files": {**scope["files"], **proof["files"]}}
         # the verified transferred state, checked again in full right before the switch (provenance records may
         # already be preserved under their new name by an interrupted earlier switch)
         manifest = records[0]["manifest"]

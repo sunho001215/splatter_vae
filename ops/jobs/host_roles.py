@@ -1,15 +1,9 @@
-"""Persistent server roles (user directive 2026-11-06 ~02:00 KST): which job classes each host may admit.
+"""Unified pool roles (user directive 2026-11-11 ~20:15 KST): which job classes each host may admit.
 
-The roles are declared in configs/hosts/roles.yaml and read at every decision (no in-memory state): local admits
-Meta-World work and script-restricted real-world offline FQL training (directive P, 2026-11-11). The remote admits
-real-world / DROID preprocessing, representation pretraining,
-real-world offline FQL and typed release verification, and the RTX 5090 inference server is never a scheduler host.
-Enforced at three points: the scheduler tick refuses every launch the roles forbid (ops/jobs/scheduler.py, the single
-launch path of every driver), the remote driver offers and pool-moves only rows its role admits, and Meta-World rows
-registered on the remote that never launched are re-placed to local (``replace_to_local``; recorded like the pool
-placement, plus an ownership record per row). Started runs never change host here: a paused remote Meta-World run moves
-only through the explicit migration procedure (ops/jobs/migration.py), whose ownership record blocks admission of the
-run on both hosts while the migration is in progress.
+Both scheduler hosts admit all training families (directive 2026-11-11 ~20:15). Remote-resident classes require a
+local input resolver before local admission or placement. Preprocessing and typed verification stay remote; the RTX
+5090 inference server never schedules. Roles are read at every decision. Shared classes keep their existing host;
+started runs move only through explicit migration and its ownership records.
 
 A row's class (``job_class``) is its explicit ``role:`` field (validated: it must not contradict the row's script or
 configuration) or is derived from decreasing-strength evidence, the first tier with any evidence deciding:
@@ -24,7 +18,7 @@ Several domains within the deciding tier make the row ``ambiguous`` (refused on 
 
     python -I ops/jobs/host_roles.py status                 (class counts and refusals of the queue, read-only)
     python -I ops/jobs/host_roles.py classify <job id> [...] (read-only)
-    python -I ops/jobs/host_roles.py replace [--dry-run]     (re-place never-launched remote Meta-World rows to local)
+    python -I ops/jobs/host_roles.py replace [--dry-run]     (re-place never-launched rows admitted exclusively by local)
 """
 
 from __future__ import annotations
@@ -91,7 +85,7 @@ def load_roles(path: Path | None = None) -> dict:
     path = Path(path or ROLES_PATH)
     raw = path.read_bytes()
     roles = yaml.safe_load(raw)
-    if not isinstance(roles, dict) or roles.get("version") != 1:
+    if not isinstance(roles, dict) or type(roles.get("version")) is not int or roles.get("version") != 2:
         raise ValueError("roles: unsupported role declaration")
     if not isinstance(roles.get("classes"), dict) or tuple(roles["classes"]) != CLASSES:
         raise ValueError(f"roles: the declared classes must be exactly {CLASSES}")
@@ -110,24 +104,24 @@ def load_roles(path: Path | None = None) -> dict:
         if not isinstance(spec.get("drain_evaluators", False), bool) or (spec.get("drain_evaluators")
                                                                         and name != "remote"):
             raise ValueError("roles: drain_evaluators is a boolean of the remote host")
-        scripts = spec.get("scripts", {})
-        if not isinstance(scripts, dict) or ("scripts" in spec and name not in SCHEDULER_HOSTS):
-            raise ValueError("roles: scripts is a mapping on scheduler hosts only")
-        for cls, allowed in scripts.items():
-            if (cls not in spec["admit"] or not isinstance(allowed, list) or not allowed
-                    or any(not isinstance(script, str)
-                           or not re.fullmatch(r"scripts/[A-Za-z0-9_][A-Za-z0-9_.-]*\.py", script)
-                           for script in allowed)):
-                raise ValueError(f"roles: invalid scripts restriction for {cls} on {name}")
+        if "scripts" in spec:
+            raise ValueError("roles: scripts restrictions were replaced by data_locality in version 2")
     if {"realworld_preprocess", "droid_preprocess"} & set(hosts["local"]["admit"]):
         raise ValueError("roles: real-world / DROID preprocessing executes on the remote only")
     if "verification" in hosts["local"]["admit"]:
         raise ValueError("roles: typed verification executes on the remote only")
     for cls in CLASSES:
         admitted = [spec for name, spec in hosts.items() if name in SCHEDULER_HOSTS and cls in spec["admit"]]
-        if not admitted or (len(admitted) > 1 and cls != "verification"
-                            and not any(cls in spec.get("scripts", {}) for spec in admitted)):
-            raise ValueError("roles: a job class belongs to exactly one host unless script-restricted")
+        if not admitted:
+            raise ValueError("roles: every class needs at least one scheduler host")
+    locality = roles.get("data_locality")
+    if (not isinstance(locality, dict) or set(locality) != {"remote_resident"}
+            or not isinstance(locality["remote_resident"], list)
+            or any(cls not in CLASSES for cls in locality["remote_resident"])):
+        raise ValueError("roles: data_locality must name only known classes")
+    if not {"realworld_preprocess", "droid_preprocess", "realworld_pretrain", "droid_pretrain", "realworld_fql"} <= set(
+            locality["remote_resident"]):
+        raise ValueError("roles: remote-resident data classes must retain their locality checks")
     return {**roles, "sha256": hashlib.sha256(raw).hexdigest(), "path": str(path)}
 
 
@@ -414,9 +408,9 @@ def refusal(job: dict, host: str, roles: dict, ownership: dict | None = None, by
         allowed = True  # the evaluator companion of a trainer that ran here (drain exception)
     if not allowed:
         return f"job class {found.cls} ({found.evidence}) is not a {host} role (configs/hosts/roles.yaml)"
-    scripts = spec.get("scripts", {}).get(found.cls)
-    if scripts is not None and str(Path(job.get("script", ""))) not in scripts:
-        return f"job class {found.cls} on {host} is limited to {scripts} (configs/hosts/roles.yaml)"
+    reason = locality_refusal(job, host, roles, by_id)
+    if reason is not None:
+        return reason
     return ownership_refusal(job["id"], host, ownership)
 
 
@@ -471,21 +465,45 @@ def migrated_source_refusal(job_id: str, ownership: dict | None, source_sha256: 
     return None
 
 
+def with_role(job: dict, by_id: dict | None = None) -> dict:
+    """A dispatch copy of ``job`` carrying its class as an explicit ``role`` (unchanged when it already declares one or
+    its class is not a role class). A dispatch queue holds only the admitted rows, so a class derived from dependencies
+    (an encoder export classified by its producer) must travel with the row. The job fingerprint is unchanged."""
+    found = job_class(job, by_id)
+    return {**copy.deepcopy(job), "role": found.cls} if "role" not in job and found.cls in DOMAIN else copy.deepcopy(job)
+
+
+def remote_resident(job: dict, roles: dict, by_id: dict | None = None) -> bool:
+    return job_class(job, by_id).cls in roles["data_locality"]["remote_resident"]
+
+
+def locality_refusal(job: dict, host: str, roles: dict, by_id: dict | None = None) -> str | None:
+    if host == "local" and remote_resident(job, roles, by_id):
+        # Lazy import: the resolver table is the single source of truth; realworld_local also uses host_roles.
+        from ops.jobs.realworld_local import has_resolver
+
+        if not has_resolver(job):
+            return f"data locality: inputs live on the remote; no local input resolver for {job.get('script', '')}"
+    return None
+
+
 def role_hosts(job: dict, roles: dict, by_id: dict | None = None) -> tuple[str, ...]:
-    """Scheduler hosts admitting this class and script, independent of the row's current placement."""
-    cls, script = job_class(job, by_id).cls, str(Path(job.get("script", "")))
-    return tuple(name for name in SCHEDULER_HOSTS if cls in roles["hosts"][name]["admit"]
-                 and (cls not in roles["hosts"][name].get("scripts", {})
-                      or script in roles["hosts"][name]["scripts"][cls]))
+    """Admitting scheduler hosts, including locality, independent of ownership and current placement."""
+    found = job_class(job, by_id)
+    return tuple(name for name in SCHEDULER_HOSTS
+                 if (found.cls in roles["hosts"][name]["admit"]
+                     or (found.cls == "unknown" and found.domain is None and roles["hosts"][name]["unknown"] == "allow"))
+                 and locality_refusal(job, name, roles, by_id) is None)
 
 
 def role_host(job: dict, roles: dict, by_id: dict | None = None) -> str | None:
     """The unique role host, or the row's existing host when its class and script are admitted on both hosts.
 
-    Shared admission never moves a row implicitly: remote FQL training remains remote until explicitly placed.
+    Shared admission never moves a row implicitly; placement is explicit.
     """
     hosts = role_hosts(job, roles, by_id)
-    return hosts[0] if len(hosts) == 1 else job.get("host", "local") if job.get("host", "local") in hosts else None
+    current = job.get("host", "local")
+    return current if current in hosts else hosts[0] if len(hosts) == 1 else None
 
 
 # ---------------------------------------------------------------------------------------------------- re-placement
@@ -576,12 +594,12 @@ def append_pool_record(manifest: Path, move: dict, effective: dict) -> None:
     os.replace(tmp, manifest)
 
 
-def replace_to_local(paused: Callable[[str], bool], reason: str = "server roles: Meta-World runs only on local",
+def replace_to_local(paused: Callable[[str], bool], reason: str = "server roles: destination admits this class exclusively",
                      *, dry_run: bool = False, blocking: bool = False, queue_path: Path | None = None,
                      registry_path: Path | None = None, manifest: Path = POOL_MANIFEST,
                      ownership_dir: Path = OWNERSHIP_DIR, admission_lock: Path = ADMISSION_LOCK,
                      roles_path: Path = ROLES_PATH, root: Path = REPO) -> dict:
-    """Re-place every never-launched remote row whose class is a local role (Meta-World) to local: host fields only,
+    """Re-place every never-launched remote row whose class is admitted exclusively on local to local: host fields only,
     under the local admission lock and the scheduler's registry lock, recorded in pool-placement.json (move entry and
     effective rows, which the local drivers apply as their overlay) and one ownership record per row. Rows under an
     intentional admission pause are never moved (runs/setup/admission-pauses.json). Returns {"moved": [...],

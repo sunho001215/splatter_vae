@@ -375,3 +375,76 @@ def test_a_published_task_set_does_not_block_later_tasks_but_a_pending_journal_d
     (setup / f'{R.STEM}.pending.json').write_text('{}')
     with pytest.raises(R.Refused, match='pending'):
         plan(fake, tasks=('covering',))
+
+
+# ---- LOCAL release source (unified pool, user 2026-11-11 ~20:15; Claude change)
+LOCAL_PIN = {**PIN, 'source': 'local'}
+
+
+def test_local_release_rows_name_local_evidence_and_pause(fake, capsys):
+    assert R.main(cli(fake) + ['--release-source', 'local']) == 0
+    record = json.loads(capsys.readouterr().out)
+    assert record['release'] == LOCAL_PIN
+    for row in record['rows']:
+        assert row['planned_commit'] == PIN['commit'] and row['host'] == 'remote'
+        assert row['evidence_manifest'] == 'docs/tests.json (local evidence)'
+        assert row['release_source'] == 'local' and row['local_placement_pause'] == R.LOCAL_PAUSE
+
+
+def test_local_release_execution_compares_the_local_pin(fake, monkeypatch):
+    monkeypatch.setattr(R, 'MAIN', fake.repo)
+    monkeypatch.setattr(R, '__file__', str(fake.repo / R.TOOL))
+    monkeypatch.setattr(R, 'release_pin', lambda repo: PIN)  # the role pin alone never authorizes a local pin
+    monkeypatch.setattr(R, 'local_release_pin', lambda repo: {**LOCAL_PIN, 'commit': '4' * 40})
+    with pytest.raises(R.Refused, match='role release differs'):
+        R.execution_allowed(fake.repo, LOCAL_PIN)
+    monkeypatch.setattr(R, 'local_release_pin', lambda repo: LOCAL_PIN)
+    R.execution_allowed(fake.repo, LOCAL_PIN)
+
+
+def test_local_release_pin_requires_passing_evidence_for_these_sources(fake, monkeypatch, tmp_path):
+    import subprocess
+    repo = fake.repo
+    subprocess.run(['git', 'init', '-q', str(repo)], check=True)
+    subprocess.run(['git', '-C', str(repo), '-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-q',
+                    '--allow-empty', '-m', 'x'], check=True)
+    (repo / 'runs/setup').mkdir(parents=True)
+    (repo / 'runs/setup/role-release.json').write_text(json.dumps(PIN))
+    (repo / 'scripts').mkdir()
+    (repo / 'scripts/_bootstrap.py').write_text('def source_fingerprints():\n    return {"a": "1"}\n')
+    (repo / 'docs').mkdir()
+    good = {'full_suite_passed': True, 'exit_code': 0, 'counts': {'passed': 5, 'failed': 0, 'error': 0, 'skipped': 0},
+            'source_sha256': {'a': '1'}}
+    (repo / 'docs/tests.json').write_text(json.dumps(good))
+    monkeypatch.delitem(__import__('sys').modules, '_bootstrap', raising=False)
+    head = subprocess.run(['git', '-C', str(repo), 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip()
+    assert R.local_release_pin(repo) == {'commit': head, 'image': PIN['image'], 'source': 'local'}
+    for bad in ({**good, 'source_sha256': {'a': '2'}}, {**good, 'full_suite_passed': False},
+                {**good, 'counts': {**good['counts'], 'skipped': 1}}):
+        (repo / 'docs/tests.json').write_text(json.dumps(bad))
+        monkeypatch.delitem(__import__('sys').modules, '_bootstrap', raising=False)
+        with pytest.raises(R.Refused):
+            R.local_release_pin(repo)
+
+
+def test_local_release_rows_publish_only_while_paused(fake, monkeypatch):
+    import sys
+    record = R.prepare(fake.repo, ['drawer-open'], fake.manifest, R.DEFAULT_INPUTS, fake.copies, LOCAL_PIN)
+    names = {}
+    module = SimpleNamespace(active_pauses=lambda job_id, fresh=False: names.get(job_id, []))
+    monkeypatch.setitem(sys.modules, 'ops.jobs.admission_pause', module)
+    with pytest.raises(R.Refused, match=R.LOCAL_PAUSE):
+        R.local_rows_paused(record)
+    names.update({row['id']: [R.LOCAL_PAUSE] for row in record['rows']})
+    R.local_rows_paused(record)
+    R.local_rows_paused({**record, 'release': PIN})  # role-release rows need no pause
+
+
+def test_local_release_pause_is_rechecked_under_the_publication_locks(fake, monkeypatch):
+    import sys
+    record = R.prepare(fake.repo, ['drawer-open'], fake.manifest, R.DEFAULT_INPUTS, fake.copies, LOCAL_PIN)
+    monkeypatch.setattr(R, 'execution_allowed', lambda repo, release: None)
+    module = SimpleNamespace(active_pauses=lambda job_id, fresh=False: [])  # pause lifted while waiting for locks
+    monkeypatch.setitem(sys.modules, 'ops.jobs.admission_pause', module)
+    with pytest.raises(R.Refused, match=R.LOCAL_PAUSE):
+        R.check_publication(fake.repo, record)

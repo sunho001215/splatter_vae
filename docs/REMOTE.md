@@ -1,5 +1,20 @@
 # Second-server campaign extension
 
+Unified pool (directive 2026-11-11 ~20:15 KST): LOCAL (8 MIG slices, 150 GB RAM budget) and REMOTE are
+interchangeable training hosts for Meta-World, real-world and DROID (`configs/hosts/roles.yaml`, version 2).
+Data locality still applies: preprocessing and typed release verification stay remote; remote-resident training
+runs locally only with a verified resolver in `ops/jobs/realworld_local.py`. Resolvers cover FQL training,
+real-world workspace stats, our real-world pretraining, and exports from locally produced run directories.
+Remote dependency files require verified backup checksums; a remote run directory cannot be consumed locally.
+`needs`, `fetch`, `verify`, `plan` and `place` inventory, mirror, check and explicitly place never-started rows.
+Started runs use `ops/jobs/migration.py`; begin permits either admitting destination, while switch-to-remote requires
+the separate remote release procedure. Meta-World keeps its pool/campaign release; other families keep their pins.
+Remote reboot/admission holds never hold local placement or admission. A queue's adjacent `HOLD` holds that queue;
+`hosts.remote.hold` / `enabled: false` hold only remote admission. The RTX 5090 inference host never schedules.
+Local baseline admission guarantees each active/ready family an equal share of RAM, GPU slots and GPU memory,
+borrowing only unclaimed guarantees and retaining trainer head-of-line reservation per family (`ops/jobs/fair_share.py`).
+
+
 Status (2026-10-11 17:10 +09:00): release `5a7177e` deployed; remote full native suite 728/0/0/0 and all four one-UUID isolation checks passed; cross-host v2 accepted as equivalent by the user (ratio 1.02, registered criterion not met); Stage 4 CNN DrM running remotely since 16:47 with offline W&B. Earlier history below; the 200e5e6 failure and later fixes are in RESULTS/EXPERIMENT_LOG.
 
 ## Connectivity and access

@@ -154,8 +154,9 @@ names its consumer (`data_interface.consumer`), which the trainers pass to the g
 The gate is enforced twice:
 
 1. `scripts/realworld_learning.py plan` refuses to emit rows for a failing target. Its rows declare
-   `role: realworld_pretrain` or `role: realworld_fql` and `host: remote`. Under REL-B's `ops/jobs/host_roles.py`
-   rules they classify to those roles both with and without the explicit role.
+   `role: realworld_pretrain` or `role: realworld_fql` and initially `host: remote`. The 2026-11-11 unified pool also
+   permits verified local resolvers (`docs/REMOTE.md`). `ops/jobs/host_roles.py` classifies these rows with and without
+   the explicit role.
 2. Every trainer's real-world branch checks `data_interface.gate_report`. A run longer than 10k steps refuses unless
    all of the following hold:
    - every store task passed;

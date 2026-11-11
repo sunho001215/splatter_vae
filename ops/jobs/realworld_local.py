@@ -1,4 +1,4 @@
-"""Explicit local placement and verified inputs for real-world offline FQL (directive P, 2026-11-11 ~18:10).
+"""Explicit local placement and verified inputs for remote-resident training (unified pool, 2026-11-11 ~20:15).
 
 Only never-launched training rows move. Preprocessing and dataset construction still execute remotely, where their
 source data lives. The queue's arguments and scientific fingerprint never change: the scheduler maps input paths at
@@ -45,6 +45,14 @@ OUTPUT_OPTIONS = ("--output-root", "--name")  # scripts/train_realworld_fql.py o
 # The trainer's complete option set (scripts/train_realworld_fql.py). Its argparse accepts unambiguous abbreviations
 # (--conf, --se); local launches require the full spellings so that the resolution below reads what the trainer reads.
 TRAINER_OPTIONS = ("--config", "--name", "--output-root", "--set", "--no-wandb")
+# One resolver table for both admission policy and input checking. Unknown scripts fail closed. Configuration paths
+# are resolved with the actual trainer loader; every remote/run input must also occur as a plain checked argument.
+RESOLVERS = {
+    "scripts/train_realworld_fql.py": {"inputs": ("--set",), "outputs": OUTPUT_OPTIONS, "config": "fql"},
+    "scripts/compute_workspace_stats.py": {"inputs": ("--path", "--split"), "outputs": ("--out",), "config": None},
+    "scripts/train.py": {"inputs": ("--set",), "outputs": OUTPUT_OPTIONS, "config": "pretrain"},
+    "scripts/export_encoder.py": {"inputs": ("--run", "--checkpoint"), "outputs": ("--out",), "config": None},
+}
 REMOTE_LOCK = REPO / "runs/setup/remote-driver.lock"
 
 
@@ -96,29 +104,109 @@ def _value(arg) -> str:
     return value
 
 
+def has_resolver(job: dict) -> bool:
+    """Whether the script/regime has a resolver; validation of its complete argv happens before launch."""
+    script = job.get("script")
+    if script not in RESOLVERS:
+        return False
+    args = host_roles._normalized(job.get("args", []))
+    if script == "scripts/compute_workspace_stats.py":
+        return "--regime" in args and args[args.index("--regime") + 1:][:1] == ["realworld"]
+    if script == "scripts/train.py":
+        return any(a.startswith("configs/realworld/") or a == "data.regime=realworld" for a in args)
+    return True
+
+
 def applies(job: dict, roles: dict, by_id: dict | None = None) -> bool:
-    """Pure policy check: this FQL script is admitted locally, independent of ownership and placement."""
-    return (host_roles.job_class(job, by_id).cls == "realworld_fql"
+    """Pure policy check, independent of ownership and placement."""
+    return (host_roles.remote_resident(job, roles, by_id) and has_resolver(job)
             and host_roles.refusal({**job, "host": "local"}, "local", roles, {}, by_id) is None)
+
+
+def _arguments(job: dict):
+    """Strict parsing for the additional resolvers. FQL retains its existing parser/argument behaviour."""
+    script = job.get("script")
+    if script == "scripts/train_realworld_fql.py":
+        return None
+    if not has_resolver(job):
+        raise LocalInputError(f"data locality: inputs live on the remote; no local input resolver for {script}")
+    parser = argparse.ArgumentParser(add_help=False, allow_abbrev=False, exit_on_error=False)
+    if script == "scripts/train.py":
+        parser.add_argument("--config", nargs="+", required=True)
+        parser.add_argument("--set", nargs="*", default=[])
+        parser.add_argument("--name", required=True)
+        parser.add_argument("--output-root", default="runs")
+        parser.add_argument("--resume", choices=["auto"])
+        parser.add_argument("--no-wandb", action="store_true")
+    elif script == "scripts/compute_workspace_stats.py":
+        parser.add_argument("--regime", choices=["realworld"], required=True)
+        parser.add_argument("--path", required=True)
+        parser.add_argument("--split", required=True)
+        parser.add_argument("--out", required=True)
+        for flag in ("--validation-percent", "--samples", "--seed"):
+            parser.add_argument(flag)
+    else:
+        parser.add_argument("--run", required=True)
+        parser.add_argument("--checkpoint")
+        parser.add_argument("--out", required=True)
+        parser.add_argument("--wait", action="store_true")
+    try:
+        known, other = parser.parse_known_args(list(map(str, job.get("args", []))))
+        if other:
+            raise LocalInputError(f"unsupported local input options: {other[:3]}")
+    except (argparse.ArgumentError, SystemExit) as exc:
+        raise LocalInputError(f"invalid local resolver arguments: {exc}") from exc
+    if script == "scripts/train.py":
+        # train.py's default output-root is outside runs: require the explicit portable output location.
+        if known.name != job["id"] or known.output_root != "runs" or not any(
+                a == "--output-root" or a.startswith("--output-root=") for a in job.get("args", [])):
+            raise LocalInputError("local training outputs must be --output-root runs --name <own id>")
+    else:
+        output = _rel(known.out)
+        if not output.startswith(f"runs/{job['id']}/"):
+            raise LocalInputError("local output must be runs/<own id>/<file>")
+    if script == "scripts/compute_workspace_stats.py":
+        if _mapped(known.path) is None or PurePosixPath(known.path).name != "store.yaml":
+            raise LocalInputError("realworld stats --path must name a mirrored compact store.yaml")
+        if _mapped(known.split) is None:
+            raise LocalInputError("realworld stats --split must name a mirrored remote split")
+    if script == "scripts/export_encoder.py":
+        parts = PurePosixPath(_rel(known.run)).parts
+        if len(parts) != 2 or parts[0] != "runs" or parts[1] not in job.get("deps", []):
+            raise LocalInputError("export --run must be runs/<declared dependency>")
+        if known.checkpoint and not _rel(known.checkpoint).startswith(known.run + "/"):
+            raise LocalInputError("export checkpoint must belong to its --run dependency")
+    return known
 
 
 def needed_inputs(job: dict, *, remote_prefix: str = REMOTE_PREFIX) -> dict:
     mirror, dependencies = set(), set()
+    known = _arguments(job)
+    outputs = RESOLVERS[job["script"]]["outputs"]
     args = [str(a) for a in job.get("args", [])]
     for i, arg in enumerate(args):
-        if (i and args[i - 1] in OUTPUT_OPTIONS) or arg.startswith(tuple(o + "=" for o in OUTPUT_OPTIONS)):
+        if (i and args[i - 1] in outputs) or arg.startswith(tuple(o + "=" for o in outputs)):
             continue  # an output location or run name, never an input
         value = _value(arg)
         relative = _mapped(value, remote_prefix)
         if relative is not None:
             mirror.add(relative)
+        elif value.startswith("/"):
+            # Inputs of remote-resident rows are mirrored remote files or declared dependency outputs (relative runs/
+            # paths); an absolute local path would be read without verification.
+            raise LocalInputError(f"absolute local input paths are not supported for remote-resident rows: {value}")
         parts = PurePosixPath(value).parts
-        if len(parts) >= 3 and parts[0] == "runs":
+        if len(parts) >= 2 and parts[0] == "runs":
             # every run output a local real-world row reads must be a dependency output, verified against the
             # dependency's recorded checksums at launch
             if parts[1] not in job.get("deps", []):
                 raise LocalInputError(f"run output {value} is not an output of a declared dependency")
-            dependencies.add((parts[1], _rel("/".join(parts[2:]))))
+            dependencies.add((parts[1], _rel("/".join(parts[2:]) or ".")))
+    if job["script"] == "scripts/export_encoder.py":
+        dep = PurePosixPath(known.run).parts[1]
+        dependencies.add((dep, "config.yaml"))
+        dependencies.add((dep, str(PurePosixPath(known.checkpoint).relative_to(known.run))
+                          if known.checkpoint else "checkpoints/latest.pt"))
     return {"mirror": sorted(mirror), "dependency_files": sorted(dependencies)}
 
 
@@ -419,29 +507,37 @@ def verify(full=True, *, mirror: Path = MIRROR, manifest: Path | None = None,
     return problems
 
 
-def _resolved_paths(job: dict, root: Path, remote_prefix: str = REMOTE_PREFIX) -> set[str]:
+def _resolved_paths(job: dict, root: Path, remote_prefix: str = REMOTE_PREFIX, *,
+                    absolute: bool = False) -> set[str]:
     """Every run-output or remote path string in the configuration the trainer resolves (``--config`` file(s) merged,
     then ``--set`` overrides parsed as YAML: s4d/config.py load_config, the trainer's own call), including paths
     inside mapping overrides (``data={dataset: ...}``) and inside the config files. A row without ``--config`` cannot
     start the trainer (a required option) and reads nothing."""
-    import argparse
-
     from s4d.config import load_config
 
+    resolver = RESOLVERS.get(job.get("script"), {})
+    if resolver.get("config") is None:
+        return set()
     args = [str(a) for a in job.get("args", [])]
-    odd = [a for a in args if a.startswith("--") and a.split("=", 1)[0] not in TRAINER_OPTIONS]
+    options = TRAINER_OPTIONS + (("--resume",) if resolver["config"] == "pretrain" else ())
+    odd = [a for a in args if a.startswith("--") and a.split("=", 1)[0] not in options]
     if odd:
         raise LocalInputError(f"options other than the trainer's full spellings are not supported locally: {odd[:3]}")
     if "--config" not in args and not any(a.startswith("--config=") for a in args):
         return set()
     parser = argparse.ArgumentParser(add_help=False, allow_abbrev=False, exit_on_error=False)
-    parser.add_argument("--config", required=True)
+    parser.add_argument("--config", **({"nargs": "+"} if resolver["config"] == "pretrain" else {}), required=True)
     parser.add_argument("--set", nargs="*", default=[])
     try:
         known, _ = parser.parse_known_args(args)
-        config = Path(known.config)
-        cfg = load_config([config if config.is_absolute() else root / config], known.set)
-    except (argparse.ArgumentError, OSError, ValueError, yaml.YAMLError) as exc:
+        configs = known.config if isinstance(known.config, list) else [known.config]
+        if resolver["config"] == "pretrain" and any(
+                Path(c).is_absolute() or ".." in Path(c).parts or not c.startswith("configs/") for c in configs):
+            raise LocalInputError("local train.py configurations must be repository files under configs/")
+        cfg = load_config([Path(c) if Path(c).is_absolute() else root / c for c in configs], known.set)
+        if resolver["config"] == "pretrain" and cfg.get("data", {}).get("regime") != "realworld":
+            raise LocalInputError("local train.py resolver requires data.regime realworld")
+    except (argparse.ArgumentError, SystemExit, OSError, ValueError, TypeError, AttributeError, yaml.YAMLError) as exc:
         raise LocalInputError(f"cannot resolve the trainer configuration: {exc}") from exc
     found, todo = set(), [cfg]
     while todo:
@@ -450,7 +546,8 @@ def _resolved_paths(job: dict, root: Path, remote_prefix: str = REMOTE_PREFIX) -
             todo += list(node.values())
         elif isinstance(node, list):
             todo += node
-        elif isinstance(node, str) and (node.startswith(("runs/", "./runs/", "/home/compu/")) or remote_prefix in node):
+        elif isinstance(node, str) and (node.startswith(("runs/", "./runs/", "/home/compu/")) or remote_prefix in node
+                                        or (absolute and node.startswith("/"))):
             found.add(node)
     return found
 
@@ -458,7 +555,8 @@ def _resolved_paths(job: dict, root: Path, remote_prefix: str = REMOTE_PREFIX) -
 def _inputs(job: dict, state: dict, mirror: Path, manifest: Path, runs: Path,
             remote_prefix: str = REMOTE_PREFIX, root: Path = REPO) -> tuple[list, dict]:
     needed = needed_inputs(job, remote_prefix=remote_prefix)
-    checked = {f"runs/{dep}/{relative}" for dep, relative in needed["dependency_files"]} | {
+    checked = {f"runs/{dep}" + (f"/{relative}" if relative != "." else "")
+               for dep, relative in needed["dependency_files"]} | {
         remote_prefix + ("" if relative == "." else "/" + relative) for relative in needed["mirror"]}
     hidden = sorted(_resolved_paths(job, root, remote_prefix) - checked)
     if hidden:
@@ -473,9 +571,20 @@ def _inputs(job: dict, state: dict, mirror: Path, manifest: Path, runs: Path,
             inputs[value] = _check(relative, files, mirror, closure, remote_prefix=remote_prefix)
     for dep, relative in needed["dependency_files"]:
         current = state.get(dep, {})
-        if current.get("host") != "remote":
+        name = f"runs/{dep}" + (f"/{relative}" if relative != "." else "")
+        path = runs / dep / relative
+        if current.get("host") == "local" and current.get("status") == "done":
+            if relative == ".":
+                if not path.is_dir() or path.is_symlink() or any(p.is_symlink() for p in path.parents):
+                    raise LocalInputError(f"missing or symlink dependency run directory: {name}")
+            else:
+                _regular(path)
+                dependencies[name] = _hash(path)
             continue
-        name, path = f"runs/{dep}/{relative}", runs / dep / relative
+        if current.get("host") != "remote" or current.get("status") != "done":
+            raise LocalInputError(f"dependency must be done on its recorded host: {name}")
+        if relative == ".":
+            raise LocalInputError(f"remote dependency run directory cannot be consumed locally: {name}")
         _regular(path)
         expected = current.get("sync", {}).get("files", {}).get(relative)
         digest = _hash(path)
@@ -490,6 +599,18 @@ def _inputs(job: dict, state: dict, mirror: Path, manifest: Path, runs: Path,
         relative = _mapped(value, remote_prefix)
         effective.append(str(arg)[:len(str(arg)) - len(value)] + str(mirror) + value[len(remote_prefix):]
                          if relative is not None else arg)
+    # The configuration the trainer will ACTUALLY resolve (config files + the effective, mapped arguments) may hold no
+    # unmapped remote path, no absolute path outside the verified mirror inputs and no run output other than a checked
+    # dependency file: an unused --set spelling cannot stand in for a consumed configuration value.
+    mapped_inputs = {str(mirror) + "/" + relative for relative in needed["mirror"]}
+    for found in sorted(_resolved_paths({**job, "args": effective}, root, remote_prefix, absolute=True)):
+        normal = found[2:] if found.startswith("./runs/") else found
+        if remote_prefix in found or found.startswith("/home/compu/"):
+            raise LocalInputError(f"the effective configuration still names a remote path: {found}")
+        if normal.startswith("/") and normal not in mapped_inputs:
+            raise LocalInputError(f"the effective configuration names an unverified absolute path: {found}")
+        if normal.startswith("runs/") and normal not in checked:
+            raise LocalInputError(f"the effective configuration names an unchecked run output: {found}")
     return effective, {"input_map": {"from": remote_prefix, "to": str(mirror)}, "manifest_sha256": _sha(raw or b""),
                        "inputs": inputs, "dependency_inputs": dependencies,
                        "input_closure": {name: files[name]["sha256"] for name in sorted(closure)}}
@@ -533,7 +654,8 @@ def localize(job: dict, state: dict, *, roles: dict, by_id=None, runs: Path | No
     """Validate the complete input closure and placed scope, returning effective args without modifying the row."""
     try:
         if not applies(job, roles, by_id):
-            raise LocalInputError("script is not admitted for local real-world FQL")
+            raise LocalInputError(host_roles.locality_refusal(job, "local", roles, by_id)
+                                  or "script is not admitted for local remote-resident training")
         manifest = Path(manifest or (Path(mirror) / "MANIFEST.json" if mirror is not None else MANIFEST))
         mirror = Path(mirror or MIRROR)
         effective, record = _inputs(job, state, mirror, manifest,
@@ -542,13 +664,21 @@ def localize(job: dict, state: dict, *, roles: dict, by_id=None, runs: Path | No
         placed = owned.get(job["id"]) or {}
         # Only rows moved by ``apply`` (locked, recorded, release scope proven) launch here: a row registered or
         # edited onto the local host by any other path has no such record and waits.
-        if (not job.get("planned_commit") or placed.get("kind") != "role_placement"
-                or placed.get("owner_host") != "local" or placed.get("state") != "placed"):
+        migrated = placed.get("kind") == "migration" and placed.get("state") in ("switched", "verified")
+        if ((not migrated and not job.get("planned_commit")) or (not migrated and (
+                placed.get("kind") != "role_placement" or placed.get("state") != "placed"))
+                or placed.get("owner_host") != "local"):
             raise LocalInputError("no explicit local placement record with a pinned release "
                                   "(python -I ops/jobs/realworld_local.py place)")
         scope = placed.get("execution_scope")
+        expected_commit = job.get("planned_commit")
+        if migrated:
+            destination = placed.get("destination", {})
+            expected_commit = placed.get("member", {}).get("commit")  # the run's actual launched release
+            scope = {"source_commit": destination.get("source_commit"),
+                     "files": {**destination.get("scope_files", {}), **destination.get("scope_third_party", {})}}
         found = (source_identity or {}).get("source_sha256", {})
-        if (not isinstance(scope, dict) or scope.get("source_commit") != job["planned_commit"]
+        if (not expected_commit or not isinstance(scope, dict) or scope.get("source_commit") != expected_commit
                 or not isinstance(scope.get("files"), dict) or not scope["files"]):
             raise LocalInputError("local code differs from the release the row was placed with")
         for name, digest in scope["files"].items():
@@ -729,7 +859,8 @@ def apply(ids, reason, *, allow_pauses=(), queue_path=None, registry_path=None,
                          policy="all", mirror=mirror, manifest=input_manifest, ownership=ownership, root=root)
         selected = [d for d in decisions if d["id"] in requested and d["decision"] == "local"]
         kept = {d["id"]: d["reason"] for d in decisions if d["id"] in requested and d["decision"] != "local"}
-        kept.update({i: "not a remote local-admitted FQL training row" for i in requested - {d["id"] for d in decisions}})
+        kept.update({i: "not a remote row with a local input resolver"
+                     for i in requested - {d["id"] for d in decisions}})
         if not selected:
             return {"moved": [], "kept": kept}
         by_id = {j["id"]: j for j in queue["jobs"]}
@@ -769,7 +900,7 @@ def apply(ids, reason, *, allow_pauses=(), queue_path=None, registry_path=None,
 
 def local_rows(rows: list[dict], roles: dict) -> list[dict]:
     by_id = {j["id"]: j for j in rows}
-    return [j for j in rows if j.get("host", "local") == "local" and applies(j, roles, by_id)]
+    return [j for j in rows if j.get("host", "local") == "local" and host_roles.remote_resident(j, roles, by_id)]
 
 
 def closeout(job_id: str, state: dict, job: dict, finished_dir: Path = FINISHED_DIR, *, runs: Path | None = None) -> dict:
@@ -832,6 +963,7 @@ def main() -> None:
     command.add_argument("ids", nargs="+")
     command.add_argument("--priority", choices=("bulk", "dependency"), default="bulk")
     command.add_argument("--dry-run", action="store_true")
+    sub.add_parser("needs").add_argument("ids", nargs="+")
     command = sub.add_parser("verify")
     command.add_argument("--quick", action="store_true")
     command = sub.add_parser("closeout")
@@ -847,7 +979,9 @@ def main() -> None:
     queue, state = scheduler.load_queue(), scheduler.read_registry()
     roles, owned = host_roles.load_roles(), host_roles.read_ownership()
     by_id = {j["id"]: j for j in queue["jobs"]}
-    if args.command == "fetch":
+    if args.command == "needs":
+        result = {i: needed_inputs(by_id[i]) for i in args.ids}
+    elif args.command == "fetch":
         result = fetch(sorted({r for i in args.ids for r in needed_inputs(by_id[i])["mirror"]}),
                        priority=args.priority, dry_run=args.dry_run)
     elif args.command == "closeout":
@@ -860,7 +994,7 @@ def main() -> None:
             files = _manifest(MANIFEST)["files"]
             missing = set()
             for job in queue["jobs"]:
-                if job.get("host") != "remote" or not applies(job, roles):
+                if job.get("host") != "remote" or not applies(job, roles, by_id):
                     continue
                 for relative in needed_inputs(job)["mirror"]:
                     try:
@@ -876,7 +1010,7 @@ def main() -> None:
         else:
             chosen = [d["id"] for d in decisions if d["id"] in args.ids and d["decision"] == "local"]
             result = {"would_move": chosen} if args.dry_run else apply(
-                chosen, "directive P: explicit local FQL placement", allow_pauses=args.allow_pause)
+                chosen, "unified pool: explicit local placement", allow_pauses=args.allow_pause)
             result["decisions"] = [d for d in decisions if d["id"] in args.ids]
     print(json.dumps(result, indent=1))
 

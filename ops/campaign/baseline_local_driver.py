@@ -1,6 +1,6 @@
 """One pass of local admission for the new-baseline jobs (registrations listed below), job by job under the local
-full-charge cap through scripts/jobs.py. Same accounting as stage2_local_driver.py (full cgroup charge + remaining
-growth of every active local job + non-resident dataset cache, 140 GB ceiling) and the same lock file, so the two
+full-charge cap through the scheduler. Same accounting as stage2_local_driver.py (cgroup budget usage + remaining
+growth of every active local job, 150 GB budget less transient/validation reservations) and the same lock file, so the two
 drivers never admit at the same time. Never deletes anything.
 
     python -I baseline_local_driver.py [--dry-run]
@@ -38,12 +38,13 @@ CAP = mb.CEILING - mb.TRANSIENT_OVERHEAD - VALIDATION_RESERVATION
 # kept local pair `bxs-dynamo-hammer-rand-s1000` (trainer done locally) is still admitted here (2026-10-17).
 # Eight-task runs (2026-10-17): the local rows of baselines-eight-task-registration-20261017.json (DynaMo and 3D-MVP
 # condition B DrM; their pretraining exports come from the remote).
-# SNeRL eight-task runs (user go-ahead 2026-10-20): the local DrM rows of baselines-snerl-eight-task-registration-20261020.json.
+# SNeRL eight-task runs (2026-10-20): local DrM rows of baselines-snerl-eight-task-registration-20261020.json.
 # Variant action_future (k = history = future stride) was CANCELLED and superseded on 2026-10-20 (user instruction;
 # runs/setup/actfut-cancellation-20261020.json): its registration is no longer admitted.
 # Its replacement future_k2 (fixed history stride 2, future stride k2 in 1..6; runs/setup/afk2-definition-20261020.json).
 REGISTRATIONS = ['baselines-sanity-registration-20261016.json', 'baselines-eight-task-registration-20261017.json',
-                 'baselines-snerl-eight-task-registration-20261020.json', 'afk2-registration-hammer-pick-place-20261020.json',
+                 'baselines-snerl-eight-task-registration-20261020.json',
+                 'afk2-registration-hammer-pick-place-20261020.json',
                  'afk2-registration-bin-picking-coffee-push-door-open-peg-insert-side-peg-unplug-side-stick-push-20261020.json',
                  # fresh unchanged bin-picking retraining (spike investigation 2026-10-21; cause unresolved)
                  'afk2rerun-seed0-bin-picking-200k-registration-20261021.json',
@@ -104,7 +105,7 @@ try:
     fcntl.flock(_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
 except BlockingIOError:
     print('BASELINE_DRIVER the Stage 2 driver (or another pass) holds the admission lock; skipped')
-    raise SystemExit(0)
+    raise SystemExit(0) from None
 
 queue = jobs.load_queue()
 by_queue = {j['id']: j for j in queue['jobs']}
@@ -122,8 +123,8 @@ for name in REGISTRATIONS:
         registered += [j for j in record_jobs if retired_reason(j, by_queue) is None
                        and (name not in ONLY or j['id'] in ONLY[name])
                        and not (j.get('host', 'local') == 'local' and j.get('pin_host') == 'remote')]  # waits for its move
-# Directive P (user 2026-11-11 ~18:10): explicitly placed real-world FQL training shares the local budget.
-from ops.jobs import host_roles, realworld_local  # noqa: E402
+# Unified pool (2026-11-11 ~20:15): explicitly placed remote-resident training shares the local budget.
+from ops.jobs import fair_share, host_roles, realworld_local  # noqa: E402
 
 _registered_ids = {j['id'] for j in registered}
 registered.extend(j for j in realworld_local.local_rows(queue['jobs'], host_roles.load_roles())
@@ -132,7 +133,6 @@ registered.extend(j for j in realworld_local.local_rows(queue['jobs'], host_role
 by_id = {j['id']: j for j in registered}
 if not registered:
     print('BASELINES nothing registered for local admission')
-    raise SystemExit(0)
 state = jobs.read_registry()
 messages = []
 
@@ -145,8 +145,8 @@ def status(job_id):
 
 
 def task_files(job):
-    if job['script'] == 'scripts/train_realworld_fql.py':
-        return []  # real-world FQL reads no Meta-World dataset
+    if host_roles.remote_resident(job, _roles, by_queue):
+        return []  # resolved remote-resident inputs read no Meta-World dataset
     if job['script'] in ('scripts/train_rl.py', 'scripts/eval_rl.py', 'scripts/train_sac.py'):
         return []  # DrM / SAC simulate Meta-World live; they read no dataset file
     trainer = by_id.get(job['id'].removesuffix('-eval'), job)
@@ -187,7 +187,9 @@ def footprint(job):
         # (the replay file's clean page cache is excluded from the budget since 2026-10-21, option (b))
         return int(MEASURED[job['script']])
     if job['script'] == 'scripts/train.py':  # our pretraining trainer: measured 10.77 GB max sampled PSS (rule 2026-10-11)
-        return int(MEASURED[job['script']])
+        return int(max(MEASURED[job['script']], float(job.get('ram_gb', 0)) * 2**30)
+                   if host_roles.job_class(job, by_queue).domain in ('realworld', 'droid')
+                   else MEASURED[job['script']])
     if job['script'] == 'scripts/train_sac.py' and job.get('host', 'local') == 'local':  # frozen-encoder SAC (2026-10-28)
         return int(MEASURED[job['script']])
     return int(float(job['ram_gb']) * 2**30)
@@ -195,12 +197,16 @@ def footprint(job):
 
 # Baselines rank below the registered Stage 2 work (user 2026-10-13): yield while any local Stage 2 job is waiting
 # (pending with its dependencies done, or crashed but restartable).
+from ops.jobs.admission_pause import paused as _paused_now  # noqa: E402
+
 stage2_waiting = []
 for job in queue['jobs']:
     if job.get('stage') != 2 or job.get('host', 'local') != 'local':
         continue
     current = state.get(job['id'], {})
     restartable = current.get('status') == 'crashed' and current['failures'] <= int(job.get('max_restarts', 1))
+    if _paused_now(job['id']):  # an intentionally paused Stage 2 row cannot start, so it never forces a yield
+        continue
     if restartable or (current.get('status', jobs.PENDING) == jobs.PENDING
                        and all(state.get(d, {}).get('status') == jobs.DONE for d in job.get('deps', []))):
         stage2_waiting.append(job['id'])
@@ -214,9 +220,10 @@ FROZEN = set(json.loads((SETUP / 'cnn-freeze-20261024.json').read_text())['froze
 candidates = [j for j in jobs.eligible(registered, view) if j.get('host', 'local') == 'local'
               and j['id'].removesuffix('-eval') not in FROZEN]
 from ops.jobs.admission_pause import paused  # noqa: E402  (intentional pauses, user 2026-10-28)
+
 candidates = [j for j in candidates if not paused(j['id'])]
-# server roles (user directive 2026-11-06; configs/hosts/roles.yaml): only rows the local role admits (Meta-World), and
-# none an explicit migration holds (ownership records); the scheduler tick enforces the same at launch
+# Unified roles (configs/hosts/roles.yaml): locally admitted classes, including remote-resident training, and
+# no row held by migration ownership. The scheduler checks roles and verified local inputs again at launch.
 _roles, _ownership, _context = host_roles.load_roles(), host_roles.read_ownership(), by_queue
 candidates = [j for j in candidates if host_roles.refusal(j, 'local', _roles, _ownership, _context) is None]
 if stage2_waiting:
@@ -246,7 +253,7 @@ charge = memory['budget_usage']
 active_share = memory['active_file'] / max(1, memory['active_file'] + memory['inactive_file'])
 pss = session_pss()
 # Measured footprints of the existing campaign scripts (the Stage 2 driver's table); new-baseline jobs: declared ram_gb.
-# scripts/train_sac.py (2026-10-28): measured 2.0-2.2 GB RSS for frozen-encoder SAC (csw4, ReViWo, 3D-MVP A, 100k-latent replay);
+# scripts/train_sac.py (2026-10-28): measured 2.0-2.2 GB RSS (csw4, ReViWo, 3D-MVP A; 100k-latent replay),
 # charged as the DrM trainer's 3.5 GB
 MEASURED = {'scripts/train.py': 10.77e9, 'scripts/train_rl.py': 3.5e9, 'scripts/train_sac.py': 3.5e9,
             'scripts/eval_rl.py': 4.5e9,
@@ -254,8 +261,8 @@ MEASURED = {'scripts/train.py': 10.77e9, 'scripts/train_rl.py': 3.5e9, 'scripts/
 
 
 def active_footprint(job_id, current):
-    if job_id in by_id:
-        return footprint(by_id[job_id])
+    if job_id in by_queue:
+        return footprint(by_queue[job_id])
     script = by_queue.get(job_id, {}).get('script')
     return int(MEASURED.get(script, float(current.get('ram_gb', 0)) * 2**30))
 
@@ -277,36 +284,40 @@ growth = {i: max(0, active_footprint(i, s) - pss.get(int(s.get('pid', -1)), 0))
           for i, s in state.items() if s.get('host', 'local') == 'local' and s['status'] in jobs.ACTIVE
           and i not in FROZEN}
 total = charge + sum(growth.values()) + cache_reserve
-admitted, taken = [], set()
-# Head-of-line reservation for trainers (2026-10-29): when the first waiting trainer in admission order does not fit,
-# later trainers wait instead of taking the freed memory (smaller rows had starved the 12 GB PPO pilot for 11 h);
-# evaluators (short) still fill the remaining capacity.
-trainer_blocked = None
-for job in candidates:
-    evaluator = job['script'] == 'scripts/eval_rl.py'
-    if evaluator:
-        trainer = trained_by(job)
-        if status(trainer) not in jobs.ACTIVE | {jobs.DONE} and trainer not in taken:
-            continue
-    elif trainer_blocked is not None:
-        continue
-    extra = sum(nonresident[f] for f in set(task_files(job)) - counted if f in nonresident)
-    if total + footprint(job) + extra >= CAP:
-        if not evaluator:
-            trainer_blocked = job['id']
-        continue
-    admitted.append(job)
-    taken.add(job['id'])
-    total += footprint(job) + extra
-    counted |= {f for f in task_files(job) if f in nonresident}
+# Equal dominant-resource guarantees across active/ready domains. Retain the existing candidate order within each
+# family and reserve the first blocked trainer per family; evaluators may still fill its remaining capacity.
+def family(job):
+    return host_roles.job_class(job, by_queue).domain or 'metaworld'
+
+
+fair_active = [{'id': i, 'family': family(by_queue.get(i, {})),
+                'ram_bytes': max(active_footprint(i, current), pss.get(int(current.get('pid') or -1), 0))
+                if i not in FROZEN else pss.get(int(current.get('pid') or -1), 0),
+                'gpu': current.get('gpu'), 'mem_gb': jobs.reservation(current, by_queue.get(i, {}), 'mem_gb')}
+               for i, current in state.items() if current.get('host', 'local') == 'local'
+               and current['status'] in jobs.RESERVING]
+fair_candidates = [{'id': j['id'], 'family': family(j), 'ram_bytes': footprint(j),
+                    'gpu': j.get('gpu', 'any'), 'mem_gb': float(j.get('mem_gb', 0)),
+                    'evaluator': j['script'] == 'scripts/eval_rl.py', 'trainer': trained_by(j),
+                    'trainer_ready': status(trained_by(j)) in jobs.ACTIVE | {jobs.DONE}}
+                   for j in candidates]
+fair = fair_share.select(fair_candidates, fair_active, queue['hosts']['local']['limits'], CAP, total)
+admitted = [by_id[i] for i in fair['admitted']]
+total = fair['total_ram_bytes']
+trainer_blocked = fair['blocked']
+print('FAIR_SHARE ' + json.dumps(fair['report'], sort_keys=True))
 if admitted and not DRY:
     source = jobs.source_identity()
     report = json.loads((ROOT / 'docs/tests.json').read_text())
     assert source['source_sha256'] == report['source_sha256'] and report['full_suite_passed'] is True
     qpath = SETUP / f'bx-local-{tag}.yaml'
+    # Dispatch copies carry their class as an explicit role (host_roles.with_role, as the remote driver does): the
+    # tick sees only the admitted rows, so an export classified through its real-world producer stays remote-resident
+    # (localized at launch) instead of becoming a domain-free row.
+    dispatched = [host_roles.with_role(j, by_queue) for j in admitted]
     with qpath.open('x') as stream:
         yaml.safe_dump({'hosts': {'local': copy.deepcopy(queue['hosts']['local'])},
-                        'jobs': json.loads(json.dumps(admitted))}, stream, sort_keys=False)
+                        'jobs': json.loads(json.dumps(dispatched))}, stream, sort_keys=False)
     with (SETUP / f'bx-local-admission-{tag}.json').open('x') as stream:
         json.dump({'recorded_local': stamp.isoformat(), 'charge_bytes': charge, 'budget_metric': 'budget_usage',
                    'budget_definition': 'memory.current - clean disk-backed file cache (option b)',
@@ -319,13 +330,17 @@ if admitted and not DRY:
     messages.extend(jobs.tick(queue_path=qpath))
 elif admitted:
     messages.append(f"DRY_RUN would admit {[j['id'] for j in admitted]} total {total} charge {charge}")
-if trainer_blocked is not None:
-    messages.append(f'RESERVED for waiting trainer {trainer_blocked} (later trainers wait; evaluators may fill)')
+for family_name, trainer_id in trainer_blocked.items():
+    messages.append(f'RESERVED for waiting {family_name} trainer {trainer_id} '
+                    '(later family trainers wait; evaluators may fill)')
 counts = {}
 for job in registered:
     counts.setdefault(job['script'].split('/')[-1], {}).setdefault(status(job['id']), 0)
     counts[job['script'].split('/')[-1]][status(job['id'])] += 1
 print('\n'.join(messages))
-print("ACCOUNTING budget_usage", charge, "clean_disk_file_excluded", memory["clean_disk_file"], "raw", memory["current"], "growth", sum(growth.values()), "active_cache_allowance", cache_reserve, "total", total, "cap", CAP, "candidates", len(candidates), "host_available", memory["host_mem_available"], "psi_some_avg60", memory["pressure"].get("some", {}).get("avg60"),
+print("ACCOUNTING budget_usage", charge, "clean_disk_file_excluded", memory["clean_disk_file"],
+      "raw", memory["current"], "growth", sum(growth.values()), "active_cache_allowance", cache_reserve,
+      "total", total, "cap", CAP, "candidates", len(candidates), "host_available", memory["host_mem_available"],
+      "psi_some_avg60", memory["pressure"].get("some", {}).get("avg60"),
       "io_psi_full_avg60", memory["io_pressure"].get("full", {}).get("avg60"))
 print("BASELINES", json.dumps(counts, sort_keys=True))

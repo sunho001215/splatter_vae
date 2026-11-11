@@ -1,7 +1,9 @@
 """OUR real-world pretraining registration. Default: stdout-only DRY RUN; no network.
 
 Only the coordinator's main-checkout copy may publish, after the role release
-matches --commit/--image. Publication uses candidate/journal/proof files and
+matches --commit/--image (or, with --release-source local, the adopted LOCAL release:
+main HEAD with a passing docs/tests.json for its exact sources; rows then stay under the
+pause ours-await-local-placement-20261111 until placed on local). Publication uses candidate/journal/proof files and
 stage2-driver.lock then registry.lock. Inspect a pending journal before retrying.
 FQL specifications are held evidence and are never queue rows.
 """
@@ -81,10 +83,39 @@ def release_pin(repo):
     return {k: release[k] for k in ('commit', 'image')}
 
 
+LOCAL_PAUSE = 'ours-await-local-placement-20261111'
+
+
+def local_release_pin(repo):
+    """LOCAL release (unified pool, user 2026-11-11 ~20:15; the remote is held for the MIG reboot): the main checkout's
+    HEAD whose adopted docs/tests.json passes the launch gate for exactly these sources (scripts/_bootstrap.py
+    require_passed_tests semantics). The image is the role release's (used only if a row later runs remotely, after a
+    remote acceptance of this commit). Rows pinned to it must be placed on local (ops/jobs/realworld_local.py place)."""
+    import subprocess
+    head = subprocess.run(['git', '-C', str(repo), 'rev-parse', 'HEAD'], capture_output=True, text=True,
+                          check=True).stdout.strip()
+    evidence = json.loads((repo / 'docs/tests.json').read_bytes())
+    counts = evidence.get('counts', {})
+    require(evidence.get('full_suite_passed') is True and evidence.get('exit_code') == 0
+            and not any(counts.get(k, 1) for k in ('failed', 'error', 'skipped')) and counts.get('passed', 0) > 0,
+            'docs/tests.json is not a passing full suite')
+    sys.path.insert(0, str(repo / 'scripts'))
+    try:
+        from _bootstrap import source_fingerprints  # noqa: PLC0415  (the gate's own fingerprint)
+    finally:
+        sys.path.remove(str(repo / 'scripts'))
+    require(evidence.get('source_sha256') == source_fingerprints(), 'docs/tests.json is stale for the main checkout')
+    return {'commit': head, 'image': release_pin(repo)['image'], 'source': 'local'}
+
+
+def current_pin(repo, release):
+    return local_release_pin(repo) if release.get('source') == 'local' else release_pin(repo)
+
+
 def execution_allowed(repo, release):
     require(repo.resolve() == MAIN and Path(__file__).resolve() == MAIN / TOOL, EXECUTION_REFUSAL)
     try:
-        require(release_pin(repo) == release, EXECUTION_REFUSAL + ': role release differs')
+        require(current_pin(repo, release) == release, EXECUTION_REFUSAL + ': role release differs')
     except ERRORS as exc:
         raise Refused(f'{EXECUTION_REFUSAL}: {exc}') from exc
 
@@ -144,7 +175,10 @@ def task_rows(task, inputs, report, release):
                   pretraining='task-specific, simulation Original (Arm4-recommended) per configs/realworld/ours '
                               '(s4d/rwlearn/ours.py)',
                   planned_commit=release['commit'], planned_image=release['image'],
-                  evidence_manifest=f"runs/remote/acceptance/{release['commit'][:7]}-cc/manifest.json",
+                  evidence_manifest=(f"runs/remote/acceptance/{release['commit'][:7]}-cc/manifest.json"
+                                     if release.get('source') != 'local' else 'docs/tests.json (local evidence)'),
+                  **({'release_source': 'local', 'local_placement_pause': LOCAL_PAUSE}
+                     if release.get('source') == 'local' else {}),
                   realworld_inputs=inputs, inputs=[f'{inputs}/{f}' for f in INPUT_NAMES[:3]],
                   realworld_gate_sha256=json_sha(report), realworld_manifest_sha256=report['manifest']['sha256'],
                   registration_tool=TOOL)
@@ -328,9 +362,22 @@ def proof_path(setup, record):
     return setup / f"{STEM}-{'+'.join(sorted(record['admitted']))}.json"
 
 
+def local_rows_paused(record):
+    """Rows pinned to a LOCAL release are published only while an active pause holds every one of them: the remote
+    driver offers role rows on runs/setup/role-release.json, which is not this release."""
+    if record['release'].get('source') != 'local':
+        return
+    sys.path.insert(0, str(MAIN))
+    from ops.jobs.admission_pause import active_pauses  # noqa: PLC0415
+    for row in record['rows']:
+        require(LOCAL_PAUSE in active_pauses(row['id'], fresh=True),
+                f"local-release row {row['id']} needs the active pause {LOCAL_PAUSE} before publication")
+
+
 def execute(repo, record):
     execution_allowed(repo, record['release'])
     require(record['rows'], 'no admitted tasks')
+    local_rows_paused(record)
     setup = repo / 'runs/setup'
     pending, proof = setup / f'{STEM}.pending.json', proof_path(setup, record)
     candidate_path = setup / f'{STEM}.queue-candidate.yaml'
@@ -357,6 +404,7 @@ def execute(repo, record):
 
 def check_publication(repo, record):
     execution_allowed(repo, record['release'])
+    local_rows_paused(record)  # re-checked under the locks, immediately before the queue replace (Codex review 1)
     require(sha((repo / QUEUE).read_bytes()) == record['queue_sha256_before'], 'queue changed under locks')
     registry = repo / REGISTRY
     require(registry.exists() == record['registry_exists_at_evaluation'] and
@@ -395,12 +443,18 @@ def main(argv=None):
     parser.add_argument('--manifest', type=Path, default=gate.MANIFEST)
     parser.add_argument('--commit', required=True)
     parser.add_argument('--image', required=True)
+    parser.add_argument('--release-source', choices=('role', 'local'), default='role',
+                        help='local: pin the adopted LOCAL release (main HEAD + passing docs/tests.json) instead of '
+                             'runs/setup/role-release.json; rows must stay under pause ' + LOCAL_PAUSE +
+                             ' until placed on local (unified pool, remote held)')
     parser.add_argument('--out', type=Path)
     parser.add_argument('--execute', action='store_true')
     parser.add_argument('--config-root', type=Path, default=None,
                         help='dry run only: checkout holding configs/realworld/ours (default --repo)')
     args = parser.parse_args(argv)
     release = dict(commit=args.commit, image=args.image)
+    if args.release_source == 'local':
+        release['source'] = 'local'
     if args.execute:
         execution_allowed(args.repo, release)
     require(not (args.out and args.execute), '--out is only for dry-run proofs')

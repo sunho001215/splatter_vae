@@ -5,6 +5,7 @@ remote -> local migration of a checkpoint-paused run. Synthetic queues and regis
 from __future__ import annotations
 
 import ast
+import copy
 import hashlib
 import json
 import subprocess
@@ -19,6 +20,10 @@ from ops.jobs import scheduler as jobs
 
 REPO = Path(__file__).resolve().parents[1]
 ROLES = roles_mod.load_roles()
+# Keep regression coverage for the retained exclusive-role replacement/retry/drain machinery using a synthetic policy.
+EXCLUSIVE_ROLES = copy.deepcopy(ROLES)
+EXCLUSIVE_ROLES["hosts"]["remote"]["admit"].remove("metaworld")
+EXCLUSIVE_ROLES["hosts"]["remote"]["unknown"] = "allow"
 LOCAL_GPU = jobs.APPROVED_HOST_GPUS["local"][0]
 REMOTE_GPU = jobs.APPROVED_HOST_GPUS["remote"][0]
 
@@ -59,22 +64,24 @@ CONTEXT = {r["id"]: r for r in (DRM, DRM_EVAL, PRETRAIN, EXPORT, DROID_PRETRAIN,
 # ---------------------------------------------------------------------------------------------------- declaration
 def test_shipped_role_declaration():
     hosts = ROLES["hosts"]
-    assert hosts["local"]["admit"] == ["metaworld", "realworld_fql"] and hosts["local"]["unknown"] == "allow"
-    assert hosts["local"]["scripts"] == {"realworld_fql": ["scripts/train_realworld_fql.py"]}
-    assert set(hosts["remote"]["admit"]) == {"realworld_preprocess", "droid_preprocess", "realworld_pretrain",
+    assert hosts["local"]["admit"] == ["metaworld", "realworld_pretrain", "droid_pretrain", "realworld_fql"]
+    assert hosts["local"]["unknown"] == "allow"
+    assert ROLES["version"] == 2 and "scripts" not in hosts["local"]
+    assert set(ROLES["data_locality"]["remote_resident"]) == set(roles_mod.CLASSES) - {"metaworld", "verification"}
+    assert set(hosts["remote"]["admit"]) == {"metaworld", "realworld_preprocess", "droid_preprocess", "realworld_pretrain",
                                              "droid_pretrain", "realworld_fql", "verification"}
-    assert hosts["remote"]["unknown"] == "deny" and hosts["remote"]["drain_evaluators"] is True
+    assert hosts["remote"]["unknown"] == "allow" and hosts["remote"]["drain_evaluators"] is True
     assert "drain_evaluators" not in hosts["local"]
     assert hosts["inference"]["scheduler"] is False and hosts["inference"]["admit"] == []
     assert roles_mod.ROLES_PATH == REPO / "configs/hosts/roles.yaml"
 
 
 @pytest.mark.parametrize("edit", [
-    lambda r: r["hosts"]["remote"]["admit"].append("metaworld"),  # one class, one host
+    lambda r: r["hosts"]["remote"]["admit"].remove("verification"),  # every class has a host
     lambda r: r["hosts"]["local"]["admit"].append("verification"),
     lambda r: r["hosts"]["local"]["admit"].append("realworld_preprocess"),
     lambda r: r["hosts"]["local"]["admit"].append("droid_preprocess"),
-    lambda r: r["hosts"]["local"]["scripts"].update(realworld_pretrain=["scripts/train_sincro.py"]),
+    lambda r: r["data_locality"]["remote_resident"].append("made_up"),
     lambda r: r["hosts"]["local"].update(scripts={"realworld_fql": []}),
     lambda r: r["hosts"]["local"].update(scripts={"realworld_fql": "scripts/train_realworld_fql.py"}),
     lambda r: r["hosts"]["local"].update(scripts={"realworld_fql": ["../train_realworld_fql.py"]}),
@@ -87,7 +94,9 @@ def test_shipped_role_declaration():
     lambda r: r["hosts"]["local"]["admit"].append("sim"),
     lambda r: r["classes"].pop("realworld_fql"),
     lambda r: r["hosts"].pop("inference"),
-    lambda r: r.update(version=2),
+    lambda r: r.update(version=1),
+    lambda r: r.update(data_locality=None),
+    lambda r: r["data_locality"].update(remote_resident=[]),
     lambda r: r["hosts"]["local"].update(drain_evaluators=True),
     lambda r: r["hosts"]["remote"].update(drain_evaluators="yes"),
 ])
@@ -97,6 +106,16 @@ def test_inconsistent_role_declarations_fail_closed(tmp_path, edit):
     path = tmp_path / "roles.yaml"
     path.write_text(yaml.safe_dump(declared, sort_keys=False))
     with pytest.raises(ValueError):
+        roles_mod.load_roles(path)
+
+
+@pytest.mark.parametrize('version', [0, 1, 3, None, 2.0, '2', True])
+def test_only_integer_version_two_is_accepted(tmp_path, version):
+    declared = yaml.safe_load(roles_mod.ROLES_PATH.read_text())
+    declared['version'] = version
+    path = tmp_path / 'roles.yaml'
+    path.write_text(yaml.safe_dump(declared, sort_keys=False))
+    with pytest.raises(ValueError, match='unsupported role declaration'):
         roles_mod.load_roles(path)
 
 
@@ -129,9 +148,9 @@ def test_exports_without_their_producer_in_context_are_unclassified():
 
 # ---------------------------------------------------------------------------------------------------- admission
 @pytest.mark.parametrize("job,local,remote", [
-    (DRM, True, False), (PRETRAIN, True, False), (EXPORT, True, False), (SNERL, True, False),
+    (DRM, True, True), (PRETRAIN, True, True), (EXPORT, True, True), (SNERL, True, True),
     (DROID_PRETRAIN, False, True), (DROID_PRE, False, True), (RW_PRE, False, True), (RW_FQL, False, True),
-    (VIEWER, False, False), (PLAIN, True, False), (RW_FQL_TASK, False, False),
+    (VIEWER, False, False), (PLAIN, True, True), (RW_FQL_TASK, False, False),
     ({**DRM, "role": "realworld_pretrain"}, False, False),
 ])
 def test_host_admission_matrix(job, local, remote):
@@ -139,7 +158,7 @@ def test_host_admission_matrix(job, local, remote):
     assert (roles_mod.refusal(job, "remote", ROLES, {}, CONTEXT) is None) is remote
     assert roles_mod.refusal(job, "inference", ROLES, {}, CONTEXT) == \
         "inference is not a scheduler host (configs/hosts/roles.yaml)"
-    assert roles_mod.role_host(job, ROLES, CONTEXT) == ("local" if local and job is not PLAIN else
+    assert roles_mod.role_host(job, ROLES, CONTEXT) == ("local" if local else
                                                          "remote" if remote else None)
 
 
@@ -169,18 +188,20 @@ def test_explicit_retry_in_place_exceptions(tmp_path):
     assert set(exceptions) == {DRM["id"]}
     started = {"host": "remote", "attempt": 1, "attempts": 1, "status": "crashed", "job_sha256": "1" * 64,
                "attempt_containers": {"1": {"container": "c", "container_id": "f" * 64}}}
-    assert roles_mod.refusal(DRM, "remote", ROLES, {}, CONTEXT, started, exceptions) is None
-    assert roles_mod.refusal(DRM, "remote", ROLES, {}, CONTEXT, None, exceptions) is not None  # never launched
-    assert roles_mod.refusal(DRM, "remote", ROLES, {}, CONTEXT, {**started, "host": "local"}, exceptions) is not None
+    assert roles_mod.refusal(DRM, "remote", EXCLUSIVE_ROLES, {}, CONTEXT, started, exceptions) is None
+    assert roles_mod.refusal(DRM, "remote", EXCLUSIVE_ROLES, {}, CONTEXT, None, exceptions) is not None  # never launched
+    assert roles_mod.refusal(DRM, "remote", EXCLUSIVE_ROLES, {}, CONTEXT,
+                             {**started, "host": "local"}, exceptions) is not None
     refused_launch = {**started, "attempt_containers": {}}  # reserved but never executed (no container recorded)
-    assert roles_mod.refusal(DRM, "remote", ROLES, {}, CONTEXT, refused_launch, exceptions) is not None
+    assert roles_mod.refusal(DRM, "remote", EXCLUSIVE_ROLES, {}, CONTEXT, refused_launch, exceptions) is not None
     later = {**started, "attempt": 2, "attempts": 2, "attempt_containers": {"2": {"container_id": "e" * 64}}}
-    assert roles_mod.refusal(DRM, "remote", ROLES, {}, CONTEXT, later, exceptions) is not None  # one granted attempt
+    # The grant covers one attempt.
+    assert roles_mod.refusal(DRM, "remote", EXCLUSIVE_ROLES, {}, CONTEXT, later, exceptions) is not None
     changed = {**started, "job_sha256": "2" * 64}
-    assert roles_mod.refusal(DRM, "remote", ROLES, {}, CONTEXT, changed, exceptions) is not None
-    assert roles_mod.refusal(EXPORT, "remote", ROLES, {}, CONTEXT, started, exceptions) is not None  # not listed
+    assert roles_mod.refusal(DRM, "remote", EXCLUSIVE_ROLES, {}, CONTEXT, changed, exceptions) is not None
+    assert roles_mod.refusal(EXPORT, "remote", EXCLUSIVE_ROLES, {}, CONTEXT, started, exceptions) is not None  # not listed
     migrating = ownership(DRM["id"], "migrating", "remote")
-    assert "in progress" in roles_mod.refusal(DRM, "remote", ROLES, migrating, CONTEXT, started, exceptions)
+    assert "in progress" in roles_mod.refusal(DRM, "remote", EXCLUSIVE_ROLES, migrating, CONTEXT, started, exceptions)
     for bad in ({**grant, "scope": "admit"}, {**grant, "host": "inference"}, {**grant, "reason": ""},
                 {k: v for k, v in grant.items() if k != "granted"}, {**grant, "attempt": 0},
                 {k: v for k, v in grant.items() if k != "job_sha256"}):
@@ -290,10 +311,13 @@ def remote_row(job, **extra):
 
 
 def replace(tmp_path, paused=lambda job_id: False, **kwargs):
+    policy = tmp_path / "exclusive-roles.yaml"
+    policy.write_text(yaml.safe_dump({k: v for k, v in EXCLUSIVE_ROLES.items() if k not in ("path", "sha256")},
+                                     sort_keys=False))
     return roles_mod.replace_to_local(
         paused, queue_path=tmp_path / "experiments/queue.yaml", registry_path=tmp_path / "experiments/registry.jsonl",
         manifest=tmp_path / "pool-placement.json", ownership_dir=tmp_path / "ownership",
-        admission_lock=tmp_path / "admission.lock", root=tmp_path, **kwargs)
+        admission_lock=tmp_path / "admission.lock", root=tmp_path, roles_path=policy, **kwargs)
 
 
 def test_never_launched_remote_metaworld_rows_are_replaced_to_local(tmp_path):
@@ -341,7 +365,8 @@ def test_started_paused_or_half_started_rows_are_never_replaced(tmp_path):
     rows = [remote_row({**PRETRAIN, "id": "x"})]
     sandbox(tmp_path / "other", rows)
     (tmp_path / "other/runs/x").mkdir(parents=True)
-    assert "local output directory" in roles_mod.replaceable(rows[0], {}, {"x": rows[0]}, ROLES, tmp_path / "other")
+    assert "local output directory" in roles_mod.replaceable(
+        rows[0], {}, {"x": rows[0]}, EXCLUSIVE_ROLES, tmp_path / "other")
 
 
 def test_replacement_waits_for_the_admission_lock(tmp_path):
@@ -784,9 +809,9 @@ def test_pool_mover_respects_roles_ownership_and_pauses(tmp_path, monkeypatch):
     monkeypatch.setattr(roles_mod, "OWNERSHIP_DIR", tmp_path / "ownership")
     roles_mod.write_ownership({"job_id": "droid-pre-b", "state": "placed", "owner_host": "local"})
     moved = pool.move([PRETRAIN["id"], "droid-pre-a", "droid-pre-b"], "remote", "test", blocking=True)
-    assert moved == ["droid-pre-a"]
+    assert moved == [PRETRAIN["id"], "droid-pre-a"]
     hosts = {j["id"]: j.get("host", "local") for j in jobs.load_queue(queue)["jobs"]}
-    assert hosts == {PRETRAIN["id"]: "local", "droid-pre-a": "remote", "droid-pre-b": "local"}
+    assert hosts == {PRETRAIN["id"]: "remote", "droid-pre-a": "remote", "droid-pre-b": "local"}
 
 
 # ---------------------------------------------------------------------------------------------------- drain exception
@@ -798,25 +823,26 @@ def test_drain_exception_admits_only_evaluators_of_trainers_that_ran_on_the_remo
     running = {"host": "remote", "status": "running", "attempt": 1,
                "attempt_containers": {"1": {"container": "c", "container_id": "f" * 64}}}
     for trainer in (running, {"host": "remote", "status": "sync_pending"}, {"host": "remote", "status": "done"}):
-        assert roles_mod.refusal(evaluator, "remote", ROLES, {}, CONTEXT, None, None, trainer) is None
+        assert roles_mod.refusal(evaluator, "remote", EXCLUSIVE_ROLES, {}, CONTEXT, None, None, trainer) is None
     for trainer in ({"host": "remote", "status": "crashed"}, {"host": "remote", "status": "pending"},
                     {"host": "remote", "status": "launching"},  # never confirmed to execute
                     {**running, "attempt_containers": {}}, {**running, "unknown": True},
                     {**running, "host": "local"}, None):
-        assert roles_mod.refusal(evaluator, "remote", ROLES, {}, CONTEXT, None, None, trainer) is not None
+        assert roles_mod.refusal(evaluator, "remote", EXCLUSIVE_ROLES, {}, CONTEXT, None, None, trainer) is not None
     for args in (["--run-dir", "runs/other", "--train-job", DRM["id"]],  # not the trainer's companion
                  ["--run-dir", f"runs/{DRM['id']}", "--train-job", "other"],
                  ["--run-dir", f"runs/{DRM['id']}", "--train-job", DRM["id"], "--snapshots", "final"],
                  ["--run-dir", f"runs/{DRM['id']}", "--train-job", DRM["id"], "--suites=v2"]):
-        assert roles_mod.refusal({**evaluator, "args": args}, "remote", ROLES, {}, CONTEXT, None, None,
+        assert roles_mod.refusal({**evaluator, "args": args}, "remote", EXCLUSIVE_ROLES, {}, CONTEXT, None, None,
                                  running) is not None
-    assert roles_mod.refusal(remote_row(DRM), "remote", ROLES, {}, CONTEXT, None, None, running) is not None
-    assert roles_mod.refusal({**evaluator, "reevaluates": DRM["id"]}, "remote", ROLES, {}, CONTEXT, None, None,
+    assert roles_mod.refusal(remote_row(DRM), "remote", EXCLUSIVE_ROLES, {}, CONTEXT, None, None, running) is not None
+    assert roles_mod.refusal({**evaluator, "reevaluates": DRM["id"]}, "remote", EXCLUSIVE_ROLES, {}, CONTEXT, None, None,
                              running) is not None  # a re-evaluation row is not a companion
-    assert roles_mod.refusal(evaluator, "remote", ROLES, {}, CONTEXT) is not None  # placement path: no drain
+    assert roles_mod.refusal(evaluator, "remote", EXCLUSIVE_ROLES, {}, CONTEXT) is not None  # placement path: no drain
     migrating = ownership(DRM_EVAL["id"], "migrating", "remote")
-    assert "in progress" in roles_mod.refusal(evaluator, "remote", ROLES, migrating, CONTEXT, None, None, running)
-    closed = {**ROLES, "hosts": {**ROLES["hosts"], "remote": {**ROLES["hosts"]["remote"], "drain_evaluators": False}}}
+    assert "in progress" in roles_mod.refusal(evaluator, "remote", EXCLUSIVE_ROLES, migrating, CONTEXT, None, None, running)
+    closed = copy.deepcopy(EXCLUSIVE_ROLES)
+    closed["hosts"]["remote"]["drain_evaluators"] = False
     assert roles_mod.refusal(evaluator, "remote", closed, {}, CONTEXT, None, None, running) is not None
 
 
@@ -842,3 +868,123 @@ def test_a_switch_interrupted_between_ownership_records_holds_the_whole_unit(tmp
     monkeypatch.setattr(roles_mod, "write_ownership", real)
     assert [r["state"] for r in migration.switch(DRM["id"], paths, identical_scope, destination)] == ["switched"] * 2
     assert roles_mod.ownership_refusal(DRM_EVAL["id"], "local", roles_mod.read_ownership(paths.ownership)) is None
+
+
+def test_shared_classes_never_trigger_generic_replacement(tmp_path):
+    rows = [remote_row(DRM), remote_row(DRM_EVAL), remote_row(PRETRAIN), remote_row(EXPORT)]
+    queue, registry = sandbox(tmp_path, rows)
+    before = queue.read_bytes()
+    result = roles_mod.replace_to_local(lambda _: False, queue_path=queue, registry_path=registry,
+                                        manifest=tmp_path / 'pool.json', ownership_dir=tmp_path / 'ownership',
+                                        admission_lock=tmp_path / 'admission.lock', root=tmp_path)
+    assert result['moved'] == [] and queue.read_bytes() == before
+    assert all(roles_mod.role_host(j, ROLES, {r['id']: r for r in rows}) == 'remote' for j in rows)
+
+
+@pytest.mark.parametrize('remote_spec', [{'enabled': True, 'hold': True}, {'enabled': False}])
+def test_remote_host_hold_or_disable_never_blocks_local(tmp_path, monkeypatch, remote_spec):
+    class NoRemoteCalls:
+        def snapshot(self):
+            pytest.fail('held or disabled remote must not be queried for ready rows')
+    queue, registry = sandbox(tmp_path, [{**DRM, "deps": []}, remote_row(PRETRAIN)])
+    spec = yaml.safe_load(queue.read_text())
+    spec['hosts']['local'] = {'limits': {LOCAL_GPU: {'max_jobs': 3, 'max_mem_gb': 22}}}
+    spec['hosts']['remote'].update(remote_spec)
+    queue.write_text(yaml.safe_dump(spec))
+    launched = []
+    monkeypatch.setattr(jobs, 'launch', lambda job, *args: launched.append(job['id']) or 2**30)
+    monkeypatch.setattr(jobs, 'source_identity', lambda: {'commit': 'c', 'source_sha256': {}})
+    monkeypatch.setattr(jobs, 'gpu_usage', lambda: {})
+    monkeypatch.setattr(jobs, 'host_available_gb', lambda: 500)
+    monkeypatch.setattr(roles_mod, 'OWNERSHIP_DIR', tmp_path / 'ownership')
+    monkeypatch.setattr(roles_mod, 'EXCEPTIONS_PATH', tmp_path / 'exceptions.json')
+    jobs.tick(queue, registry, tmp_path / 'runs', disk_bytes=(2000 * 2**30, 1000 * 2**30),
+              remote_backend=NoRemoteCalls())
+    assert launched == [DRM['id']]
+
+
+def test_only_hold_next_to_dispatch_queue_holds_it(tmp_path, monkeypatch):
+    setup = tmp_path / 'runs/setup'
+    verification = tmp_path / 'runs/remote/verification'
+    setup.mkdir(parents=True)
+    verification.mkdir(parents=True)
+    holds = [setup / 'remote-hold-admissions', verification / 'HOLD']
+    for path in holds:
+        path.write_text('remote MIG reboot: keep held\n')
+    original = {p: p.read_bytes() for p in holds}
+    launched = []
+    monkeypatch.setattr(jobs, 'launch', lambda job, *args: launched.append(job['id']) or 2**30)
+    monkeypatch.setattr(jobs, 'source_identity', lambda: {'commit': 'c', 'source_sha256': {}})
+    monkeypatch.setattr(jobs, 'gpu_usage', lambda: {})
+    monkeypatch.setattr(jobs, 'host_available_gb', lambda: 500)
+    monkeypatch.setattr(roles_mod, 'OWNERSHIP_DIR', tmp_path / 'ownership')
+    spec = {'hosts': {'local': {'limits': {LOCAL_GPU: {'max_jobs': 3, 'max_mem_gb': 22}}}}, 'jobs': [{**DRM, 'deps': []}]}
+    local = setup / 'bx-local-test.yaml'
+    local.write_text(yaml.safe_dump(spec))
+    jobs.tick(local, tmp_path / 'local-registry', tmp_path / 'runs',
+              disk_bytes=(2000 * 2**30, 1000 * 2**30))
+    assert launched == [DRM['id']]
+    held_queue = verification / 'queue.yaml'
+    typed = {'id': 'verify-suite', 'host': 'remote', 'script': 'scripts/run_tests.py', 'args': [],
+             'verification_purpose': 'native_suite', 'campaign_eligible': False, 'gpu': REMOTE_GPU,
+             'ram_gb': 32, 'mem_gb': 12, 'disk_gb': 1,
+             'required_results': ['evidence/tests.json', 'evidence/tests.log', 'evidence/tests.junit.xml']}
+    held_queue.write_text(yaml.safe_dump({'hosts': {**spec['hosts'], 'remote': {
+        'enabled': True, 'limits': {REMOTE_GPU: {'max_jobs': 1, 'max_mem_gb': 90}}}}, 'jobs': [*spec['jobs'], typed]}))
+    launched.clear()
+
+    class NoRemoteCalls:
+        def snapshot(self):
+            pytest.fail('an adjacent verification HOLD must prevent remote calls')
+
+    jobs.tick(held_queue, tmp_path / 'verification-registry', tmp_path / 'runs',
+              disk_bytes=(2000 * 2**30, 1000 * 2**30), remote_backend=NoRemoteCalls())
+    assert launched == [] and {p: p.read_bytes() for p in holds} == original
+
+
+def test_local_admission_and_placement_sources_have_no_remote_holds():
+    for name in ('baseline_local_driver.py', 'stage2_local_driver.py'):
+        source = driver_source(name)
+        assert 'remote-hold-admissions' not in source and 'verification/HOLD' not in source
+    source = (REPO / 'ops/jobs/realworld_local.py').read_text()
+    assert 'remote-hold-admissions' not in source and 'verification/HOLD' not in source
+    assert 'remote-hold-admissions' in driver_source('remote_campaign_driver.py')
+    assert '(queue_path.parent / "HOLD").exists()' in (REPO / 'ops/jobs/scheduler.py').read_text()
+
+
+@pytest.mark.parametrize('source,destination', [('local', 'remote'), ('remote', 'local')])
+@pytest.mark.parametrize('domain', ['metaworld', 'realworld', 'droid'])
+def test_migration_begin_accepts_any_admitting_destination(tmp_path, source, destination, domain):
+    # DROID's export resolver can consume a locally produced run directory without reading remote dataset trees.
+    script = 'scripts/export_encoder.py' if domain == 'droid' else 'scripts/train.py'
+    role = 'metaworld' if domain == 'metaworld' else domain + '_pretrain'
+    job = row('move', script, '--config', f'configs/{domain}/task.yaml', host=source, role=role,
+              required_results=['checkpoint.pt'], disk_gb=1)
+    queue, registry = sandbox(tmp_path, [job])
+    gpu = LOCAL_GPU if source == 'local' else REMOTE_GPU
+    jobs.record({'event': 'launched', 'id': 'move', 'host': source, 'attempt': 1, 'gpu': gpu, 'pid': 2**30,
+                 'commit': 'c' * 40, 'job_sha256': jobs.job_fingerprint(job)}, registry)
+    jobs.record({**STOP, 'id': 'move', 'host': source, 'checkpoint': 'runs/move/checkpoints/latest.pt'}, registry)
+    jobs.record({'event': 'exited', 'id': 'move', 'host': source, 'attempt': 1, 'code': 143}, registry)
+    paths = migration.Paths(root=tmp_path, queue=queue, registry=registry, ownership=tmp_path / 'ownership',
+                            admission_lock=tmp_path / 'admission.lock')
+    records = migration.begin('move', destination, 'unified pool', paths)
+    assert records[0]['to_host'] == destination and records[0]['state'] == 'migrating'
+    if destination == 'remote':
+        record = {**records[0], 'manifest': {'sha256': 'a' * 64}}
+        roles_mod.write_ownership(record, paths.ownership)
+        before = queue.read_bytes(), registry.read_bytes()
+        with pytest.raises(migration.MigrationError,
+                           match='remote destination switch requires the remote release procedure'):
+            migration.switch('move', paths)
+        assert (queue.read_bytes(), registry.read_bytes()) == before
+
+
+def test_remote_kind_preserves_metaworld_release_families_without_executing_driver():
+    source = driver_source('remote_campaign_driver.py')
+    kind = next(n for n in ast.parse(source).body if isinstance(n, ast.FunctionDef) and n.name == 'kind')
+    gate = ast.unparse(kind.body[1].test)
+    assert 'host_roles.job_class(row, by_id).cls' in gate
+    assert "'realworld_pretrain'" in gate and "'verification'" in gate and "'metaworld'" not in gate
+    assert "host_roles.role_host(row, ROLES, by_id) == 'remote'" in gate
+    assert all(repr(k) in ast.unparse(kind) for k in ('pool_pretrain', 'pool_export', 'pool_rl', 'brl'))
