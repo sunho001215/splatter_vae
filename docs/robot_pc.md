@@ -25,8 +25,8 @@ sg dialout -c "venv/bin/python -I src/scripts/robot_pc/infer.py --task drawer-op
 #    or by id:  infer.py --policy reviwo-drawer-open-s1 --cameras left
 # stop: s + ENTER, Ctrl-C or SIGTERM (hold at the measured pose, wait still, IDLE); the hardware e-stop stays yours
 # 3. outputs
-ls inference_outputs/                                                 # <task>_<method>_seed<N>_<cameras>_runNNN/
-venv/bin/python -I src/scripts/robot_pc/verify_session.py inference_outputs/drawer-open_e2e_cnn_seed0_right_run001
+ls inference_outputs/drawer-open/e2e_cnn/seed0/right/                # <task>/<method>/seed<N>/<cameras>/runNNN/
+venv/bin/python -I src/scripts/robot_pc/verify_session.py inference_outputs/drawer-open/e2e_cnn/seed0/right/run001
 ```
 
 Selection: `--task` + `--method` (alias `--baseline`) + `--seed` select the unique catalog policy (or `--policy <id>`).
@@ -43,7 +43,7 @@ documents (`assets/rig/rig-loma-drawer-open.json`, all three "validated"; `rig-l
 of the robot looking back at it (optical axes -x, down), so "left" follows the robot's left (on the right of a person
 standing behind the cameras facing the robot).
 
-**Output folder** `inference_outputs/<task>_<method>_seed<N>_<camera names joined by ->_runNNN/` (NNN = 1 + the largest
+**Output folder** `inference_outputs/<task>/<method>/seed<N>/<camera names joined by ->/runNNN/` (NNN = 1 + the largest
 existing index of that prefix, created exclusively, never reused):
 
 | file | content |
@@ -85,7 +85,7 @@ Gripper: speed 146 (collector `config/default.yaml:63`, rSP; DROID goto(speed=0.
 5. Short execution (10 s, operator at the e-stop): `infer.py ... --duration-s 10`; watch the motion speed (no software
    speed cap any more: the robot follows the policy's goals as fast as the controller's impedance allows), stop with
    `s` + ENTER; then `verify_session.py` (release hold + IDLE sent, `controller_guard` count, robot-state age).
-6. Full-duration run; inspect `inference_outputs/<...>_runNNN/` (`left.mp4` ..., `config.json`).
+6. Full-duration run; inspect `inference_outputs/<task>/<method>/seed<N>/<cameras>/runNNN/` (`left.mp4` ..., `config.json`).
 7. Depth policies only (none execution-eligible today): a `--dry-run` must record native z16 depth
    (`/cameras/<name>/depth` + depth scale) next to the RGB; RGB-only policies record no depth, never IR.
 

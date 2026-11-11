@@ -135,7 +135,7 @@ def hw_env(monkeypatch, tmp_path):
     class Serial:
         def __init__(self, *a, **kw):
             assert kw["exclusive"] is True
-            assert kw["write_timeout"] == 0.05
+            assert kw["write_timeout"] == 0.5
             self.position = 30 if env.problem == "not_open" else 3
             self.reply, self.requests, self.reads = b"", [], 0
             env.serials.append(self)

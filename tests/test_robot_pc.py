@@ -1024,7 +1024,7 @@ class FakeSerial:
 
     def __init__(self, *a, **k):
         assert k.get("exclusive") is True  # single Modbus master
-        assert k["write_timeout"] == 0.05
+        assert k["write_timeout"] == 0.5
         self.requests, self.reply = [], b""
 
     def reset_input_buffer(self):

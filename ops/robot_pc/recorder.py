@@ -84,15 +84,18 @@ def _image(value: Any, dtype: Any, shape: tuple) -> np.ndarray:
 
 
 def _next_run_dir(parent: Path, prefix: str) -> Path:
-    """``<prefix>_runNNN``: 1 + the largest existing index of that prefix, created exclusively (a concurrent run that
-    takes the index first moves this one to the next)."""
+    """``<prefix>/runNNN`` (``prefix`` may be nested, e.g. ``drawer-open/e2e_cnn/seed0/right``): 1 + the largest
+    existing index in that folder, created exclusively (a concurrent run that takes the index first moves this one
+    to the next)."""
     import re
 
-    pat = re.compile(re.escape(prefix) + r"_run(\d{3,})$")
+    parent = parent.joinpath(*prefix.split("/"))
+    parent.mkdir(parents=True, exist_ok=True)
+    pat = re.compile(r"run(\d{3,})$")
     used = [int(m.group(1)) for p in parent.iterdir() if (m := pat.match(p.name))]
     n = max(used, default=0) + 1
     while True:
-        d = parent / f"{prefix}_run{n:03d}"
+        d = parent / f"run{n:03d}"
         try:
             d.mkdir()
             return d
@@ -115,8 +118,8 @@ class SessionRecorder:
                  clock: Callable[[], int] = time.monotonic_ns, queue_size: int = 65536,
                  video: bool = True, video_fps: float = 15.0, run_prefix: str | None = None,
                  camera_names: dict | None = None, files: dict | None = None):
-        """``run_prefix`` (e.g. ``drawer-open_e2e_cnn_seed0_right``): the session folder is
-        ``inference_outputs/<run_prefix>_runNNN`` with NNN the next free index (exclusive mkdir, never reused);
+        """``run_prefix`` (e.g. ``drawer-open/e2e_cnn/seed0/right``): the session folder is
+        ``inference_outputs/<run_prefix>/runNNN`` with NNN the next free index (exclusive mkdir, never reused);
         without it ``inference_YYYYMMDD_HHMMSS``. ``camera_names`` {serial: name} names HDF5 camera groups
         and ``<name>.mp4`` (default name: ``cam_<serial>``). ``files`` {filename: JSON-able}: written into
         the folder at start (resolved config, mapping)."""
@@ -152,7 +155,8 @@ class SessionRecorder:
             self.session_dir = parent / name
             self.session_dir.mkdir()  # exclusive: a same-second collision must not clobber a prior run
         else:
-            if not run_prefix or any(c in run_prefix for c in "/\\\x00") or run_prefix.startswith("."):
+            parts = run_prefix.split("/") if run_prefix else [""]
+            if any(not x or x.startswith(".") or any(c in x for c in "\\\x00") for x in parts):
                 raise ValueError(f"invalid run prefix {run_prefix!r}")
             self.session_dir = _next_run_dir(parent, run_prefix)
         for fname, obj in {"config.json": self.config, **(files or {})}.items():

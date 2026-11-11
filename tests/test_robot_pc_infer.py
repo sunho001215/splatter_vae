@@ -103,7 +103,7 @@ def test_run_folders_are_named_numbered_and_never_reused(tmp_path):
     cams = {"135122073201": {"native_hw": [4, 6], "K_native": np.eye(3).tolist()}}
     dirs = []
     for _ in range(3):
-        r = SessionRecorder(tmp_path, meta={"x": 1}, cameras=cams, run_prefix="drawer-open_e2e_cnn_seed0_right",
+        r = SessionRecorder(tmp_path, meta={"x": 1}, cameras=cams, run_prefix="drawer-open/e2e_cnn/seed0/right",
                             camera_names={"135122073201": "right"}, files={"config.json": {"policy": "p"}})
         r.frame("135122073201", 1, 10, np.zeros((4, 6, 3), np.uint8), None, None, {})
         summary = r.close()
@@ -113,13 +113,17 @@ def test_run_folders_are_named_numbered_and_never_reused(tmp_path):
         assert (d / "inference.h5").is_file() and (d / "summary.json").is_file()
         video = summary["videos"]["right"]
         assert video["status"] != "available" or Path(video["file"]).name == "right.mp4"
-    assert dirs == [f"drawer-open_e2e_cnn_seed0_right_run{i:03d}" for i in (1, 2, 3)]
-    (tmp_path / "inference_outputs/drawer-open_e2e_cnn_seed0_right_run007").mkdir()  # a gap: next is 1 + max
-    r = SessionRecorder(tmp_path, meta={}, cameras=cams, run_prefix="drawer-open_e2e_cnn_seed0_right")
-    assert r.session_dir.name.endswith("_run008")
+    assert dirs == [f"run{i:03d}" for i in (1, 2, 3)]
+    base = tmp_path / "inference_outputs/drawer-open/e2e_cnn/seed0/right"
+    assert all(d.parent == base for d in base.iterdir())
+    (base / "run007").mkdir()  # a gap: next is 1 + max
+    r = SessionRecorder(tmp_path, meta={}, cameras=cams, run_prefix="drawer-open/e2e_cnn/seed0/right")
+    assert r.session_dir == base / "run008"
     r.close()
     with pytest.raises(ValueError):
         SessionRecorder(tmp_path, meta={}, cameras=cams, run_prefix="../escape")
+    with pytest.raises(ValueError):
+        SessionRecorder(tmp_path, meta={}, cameras=cams, run_prefix="drawer-open//right")
 
 
 def test_infer_cli_refuses_conflicting_camera_flags(capsys):

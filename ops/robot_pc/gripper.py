@@ -141,7 +141,10 @@ class RobotiqRTU:
             if serial_module is None:
                 import serial as serial_module
             self.ser = serial_module.Serial(port, BAUDRATE, bytesize=8, parity="N", stopbits=1, timeout=timeout,
-                                            write_timeout=0.05, exclusive=True)
+                                            write_timeout=0.5, exclusive=True)
+            # write_timeout 0.5 s (was 0.05): pyserial raises "Write timeout" when its timer ran out AFTER
+            # os.write() already sent the whole request (thread not scheduled / GIL held by the policy, camera and
+            # executor threads); 8-16 bytes take ~1 ms at 115200 baud, so 0.5 s still catches a stalled adapter.
             ioctl(self.ser.fileno(), termios.TIOCEXCL)
             ownership = scan_holders()  # TIOCEXCL doesn't evict pre-existing opens
             self.unverifiable = max(self.unverifiable, ownership["unverifiable"])

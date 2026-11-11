@@ -1,7 +1,7 @@
 """ROBOT PC inference: ONE entry point. Choose the policy by task / method / seed (or --policy), the cameras by NAME
 (config/camera_names.yaml: left / middle / right), run it on the robot (default: starts on the operator's ENTER) or as
 a --dry-run (commands computed and recorded, NOT sent). Every run is recorded to
-inference_outputs/<task>_<method>_seed<N>_<cameras>_runNNN/ (inference.h5, <camera>.mp4, config.json, summary.json).
+inference_outputs/<task>/<method>/seed<N>/<cameras>/runNNN/ (inference.h5, <camera>.mp4, config.json, summary.json).
 
     venv/bin/python -I src/scripts/robot_pc/infer.py --list                                   # what can run
     sg dialout -c "venv/bin/python -I src/scripts/robot_pc/infer.py --task drawer-open --method e2e_cnn --seed 0 \
@@ -215,7 +215,7 @@ def main(argv=None, *, operator_input=input) -> int:
                           "gripper_origin": getattr(gripper, "origin", None),
                           "gripper": {"speed": getattr(gripper, "speed", None), "force": getattr(gripper, "force", None)},
                           "config": cfg, "bundle": str(root / "BUNDLE.json"), "argv": list(argv or sys.argv[1:])}
-            prefix = f"{task}_{method}_seed{seed if seed is not None else 'x'}_{cam_label}"
+            prefix = f"{task}/{method}/seed{seed if seed is not None else 'x'}/{cam_label}"
             recorder = SessionRecorder(root, meta=experiment, run_prefix=prefix,
                                        camera_names={c: _name(names, c) for c in cams},
                                        files={"config.json": experiment},
