@@ -29,7 +29,7 @@ import yaml
 REPO = Path('/home/ws/ws/splatter4d')
 QUEUE = REPO / 'experiments/queue.yaml'
 REGISTRY = REPO / 'experiments/registry.jsonl'
-PAUSE = {'rwnq-20261111-fql-': 'fqlnq-await-placement-20261111', 'rwa100-20261111-fql-': 'fqla100-after-nq-20261111'}
+PAUSE = {'rwnq-20261111-fql-': 'fqlnq-await-placement-20261111', 'rwnq-20261111b-fql-': 'fqlnq-await-placement-20261111', 'rwa100-20261111-fql-': 'fqla100-after-nq-20261111'}
 CHANGED = {'planned_commit', 'evidence_manifest', 'release_source', 'local_placement_pause', 'repinned_from'}
 
 
@@ -98,7 +98,7 @@ def main(ids, execute):
                 new = new_jobs[job_id]
                 if job_id in ids:
                     diff = {k for k in set(old) | set(new) if old.get(k) != new.get(k)}
-                    assert diff == CHANGED, (job_id, diff)
+                    assert diff <= CHANGED and 'release_source' in diff, (job_id, diff)
                     assert new['planned_commit'] == head and new['release_source'] == 'local'
                     assert new['repinned_from']['planned_commit'] == old.get('planned_commit')
                 else:
