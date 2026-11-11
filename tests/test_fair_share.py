@@ -195,3 +195,13 @@ def test_protected_head_holds_ram_and_its_instance_against_every_later_pass_refi
     one_left = [b for b in busy if b["id"] != "x0"]  # mig0 drains one job: 6 GB in use, the 12 GB head fits
     second = fair.select(rows, one_left, limits, 1000, 15)
     assert second["admitted"][0] == "big" and second["assigned"]["big"] == "mig0"
+
+
+def test_single_family_keeps_finished_trainer_evaluators_ahead_of_the_next_trainer():
+    """Codex review 4: with one free instance slot, the evaluator of a finished trainer (ordered first by the driver)
+    starts before the family's next trainer, pass after pass, exactly as before fair share."""
+    limits = {f"mig{i}": {"max_jobs": 3, "max_mem_gb": 22} for i in range(8)}
+    active = [row(f"a{i}", ram=3.5, mem=6, gpu=f"mig{i // 3}") for i in range(23)]
+    rows = [row("eval", ram=4.5, mem=4, evaluator=True, trainer_ready=True), row("next", ram=3.5, mem=6)]
+    result = fair.select(rows, active, limits, 140, 23 * 3.5)
+    assert result["admitted"] == ["eval"] and result["blocked"] == {"metaworld": "next"}

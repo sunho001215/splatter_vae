@@ -119,6 +119,15 @@ def select(candidates: list[dict], active: list[dict], limits: dict, ram_cap: fl
                                                                 candidates.index(heads[f])))
                  if dominant(usage[f], capacity) < 1 / max(n, 1) - 1e-12 and possible(heads[f])]
     for head in protected:
+        # the family's own ready evaluators that precede its head keep their place (the driver orders evaluators of
+        # finished trainers first; Codex review 4): they start before the head, under the same rules as in step 2
+        for early in candidates[:candidates.index(head)]:
+            if (early["family"] == head["family"] and early.get("evaluator") and ready(early)
+                    and early["id"] not in admitted):
+                gpu = choose(early)
+                if gpu is not None and fits(demand(early), early["family"]) and permits(
+                        early["family"], demand(early), usage, capacity, {}, total):
+                    start(early, gpu)
         need, gpu = demand(head), choose(head)
         if gpu is not None and fits(need, head["family"]):
             start(head, gpu)
