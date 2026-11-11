@@ -207,3 +207,18 @@ def test_bcflow_variants_of_ineligible_bases_stay_ineligible_even_with_a_decisio
     assert ok["execution_eligible"] is True
     synced = S.sync_bcflow_variants({"m-s0": _entry("mvp3d_single"), "m-s0+bcflow": {**ok, "condition": "mvp3d_single"}})
     assert synced["m-s0+bcflow"]["execution_eligible"] is False  # a granted decision does not survive an ineligible base
+
+
+def test_bcflow_decisions_never_reach_excluded_bases_even_without_the_key():
+    """Codex review of 618ed2f: an existing catalog entry WITHOUT execution_eligible (older catalogs) must not let a
+    bc_flow decision make a 3D-MVP or new-setting base's variant eligible."""
+    decision = {"decided_by": "user", "at": "t", "text": "bc_flow may execute"}
+    bare = {"checkpoint": "a/policy.pt", "sha256": "0" * 64, "task": "t", "status": "deployable"}
+    for base in ({**bare, "condition": "mvp3d_single", "run": "r-fql-mvp3d_single-t-s0"},
+                 {**bare, "condition": "reviwo", "run": "rwnq-20261111-fql-reviwo-t-s0"},
+                 {**bare, "condition": "reviwo", "run": "rwa100-20261111-fql-reviwo-t-s0"}):
+        _, v = S.bcflow_variant("x-s0", base, decision=decision)
+        assert v["execution_eligible"] is False and v["usage"] == "dry_run_replay_only"
+        assert v["usage_reasons"][1:] == S.exclusions(base["condition"], S.fql_setting(base["run"]))
+    _, ok = S.bcflow_variant("x-s0", {**bare, "condition": "reviwo", "run": "r-fql-reviwo-t-s0"}, decision=decision)
+    assert ok["execution_eligible"] is True  # an alpha-10 base without the key: as before

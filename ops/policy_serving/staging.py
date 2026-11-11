@@ -474,6 +474,12 @@ def setting_reason(setting: str) -> str:
     return f"new FQL setting {setting}: execution eligibility awaits a user decision"
 
 
+def exclusions(condition: str | None, setting: str | None) -> list[str]:
+    """Reasons a deployable entry is nevertheless NOT execution-eligible (3D-MVP; a new FQL setting); [] otherwise."""
+    return ([INELIGIBLE_CONDITIONS[condition]] if condition in INELIGIBLE_CONDITIONS else []) + \
+        ([setting_reason(setting)] if setting else [])
+
+
 def usage_of(status: str, condition: str | None = None, setting: str | None = None) -> dict:
     """Usage restriction of a staged entry (user decision 2026-11-10 21:10): a ``deployable`` entry (every criterion
     passed) is execution-eligible with the recorded decision; ``restricted`` stays dry run / replay only, quarantined
@@ -482,8 +488,7 @@ def usage_of(status: str, condition: str | None = None, setting: str | None = No
     Exceptions for a deployable entry (status unchanged; dry run / replay only, ``execution_decision`` None): a
     3D-MVP condition (``INELIGIBLE_CONDITIONS``, user 2026-11-12 ~00:20) and any new FQL ``setting`` (rwnq / rwa100
     rows: awaiting a user decision); both reasons are listed when both apply."""
-    held = ([INELIGIBLE_CONDITIONS[condition]] if condition in INELIGIBLE_CONDITIONS else []) + \
-        ([setting_reason(setting)] if setting else [])
+    held = exclusions(condition, setting)
     if status == "deployable" and held:
         return {"usage": "dry_run_replay_only", "execution_eligible": False, "execution_decision": None,
                 "usage_reasons": held + [NOT_ELIGIBLE]}
@@ -540,7 +545,11 @@ def bcflow_variant(base_id: str, base: dict, *, decision: dict | None = None) ->
     else:
         entry.update(status=base["status"], reasons=list(base.get("reasons", [])) or ([BCFLOW_REASON]
                      if base["status"] != "deployable" else []))
-        if decision is not None and base["status"] == "deployable" and base.get("execution_eligible") is not False and \
+        # exclusions are re-derived from the base's condition and run id, so an existing entry without the key (or an
+        # older catalog) cannot carry a 3D-MVP / new-setting base to eligibility (Codex review of 618ed2f)
+        excluded = exclusions(base.get("condition"), fql_setting(str(base.get("run") or "")))
+        blocked = bool(excluded) or base.get("execution_eligible") is False
+        if decision is not None and base["status"] == "deployable" and not blocked and \
                 decision.get("checkpoint_sha256", base["sha256"]) == base["sha256"]:
             if decision.get("decided_by") != "user" or "bc_flow" not in str(decision.get("text", "")):
                 raise ValueError("a bc_flow execution decision is a user decision whose text names bc_flow")
@@ -550,8 +559,8 @@ def bcflow_variant(base_id: str, base: dict, *, decision: dict | None = None) ->
                          usage_reasons=[f"user decision {decision.get('at')}: experimental bc_flow actor -> "
                                         "execution-eligible; robot-PC manual execution mode still required"])
         else:  # an ineligible base (3D-MVP, new FQL setting, ...) keeps its variant ineligible with its reasons
-            held = [r for r in base.get("usage_reasons", []) if r != NOT_ELIGIBLE] \
-                if base.get("execution_eligible") is False and base["status"] == "deployable" else []
+            held = (excluded or [r for r in base.get("usage_reasons", []) if r != NOT_ELIGIBLE]) \
+                if blocked and base["status"] == "deployable" else []
             entry.update(usage="dry_run_replay_only", execution_eligible=False, usage_reasons=[BCFLOW_REASON, *held])
     return base_id + BCFLOW_SUFFIX, entry
 
