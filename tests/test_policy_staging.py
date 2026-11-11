@@ -531,3 +531,14 @@ def test_withdrawal_is_published_before_another_runs_identity_failure(tmp_path, 
     assert S.cmd_stage(args) == 2  # B's inputs changed ...
     pol = json.loads(host.copies["host"])["policies"]
     assert pol["e2e_cnn-t-s0"]["status"] == "quarantined"  # ... but A's withdrawal is published
+
+
+def test_native_depth_pretraining_rows_are_recognised():
+    """Native-depth 3D-MVP pretraining rows (``<prefix>-mvp3d-<task>-pre-native``, user 2026-11-10) are pretraining
+    rows: the FQL criterion (a) looks them up by the export recorded in the FQL dataset."""
+    m = S.PRE_RE.match("rwcal-20261110-mvp3d-mug-hanging-pre-native")
+    assert m and m["condition"] == "mvp3d" and m["task"] == "mug-hanging" and m["prefix"] == "rwcal-20261110"
+    m = S.PRE_RE.match("rwcal-20261109-sincro-drawer-open-pre")
+    assert m and m["task"] == "drawer-open"
+    assert not S.PRE_RE.match("rwcal-20261110-fqldata-mvp3d_single-drawer-open-native")
+    assert not S.PRE_RE.match("rwcal-20261110-nativedepth-mvp3d-drawer-open")

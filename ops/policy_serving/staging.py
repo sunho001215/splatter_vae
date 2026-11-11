@@ -37,7 +37,7 @@ PRETRAIN_OF = {"mvp3d_single": "mvp3d", "mvp3d_multiview": "mvp3d"}  # FQL condi
 _C = "|".join(CONDITIONS)
 FQL_RE = re.compile(rf"^(?P<prefix>.+)-fql-(?P<condition>{_C})-(?P<task>.+)-s(?P<seed>\d+)$")
 DATA_RE = re.compile(rf"^(?P<prefix>.+)-fqldata-(?P<condition>{_C})-(?P<task>.+)$")
-PRE_RE = re.compile(r"^(?P<prefix>.+)-(?P<condition>dynamo|reviwo|sincro|snerl|mvp3d)-(?P<task>.+)-pre$")
+PRE_RE = re.compile(r"^(?P<prefix>.+)-(?P<condition>dynamo|reviwo|sincro|snerl|mvp3d)-(?P<task>.+)-pre(?:-native)?$")
 # explicit decisions (MVP3D-FQL-DIAG.md, Directive I item 5): never staged as deployable until reruns pass
 QUARANTINE = {
     re.compile(r"^rwcal-20261109-fql-mvp3d_(single|multiview)-.+-s\d+$"):
