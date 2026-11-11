@@ -360,7 +360,7 @@ the per-episode record `calibration_validated`.
 
 | Consumer | Class | Why |
 |---|---|---|
-| ours (deferred) | geometry | base-frame dynamic 3D tracks, depth fused across cameras, camera poses |
+| ours (pretraining `s4d/rwlearn/ours.py`; FQL deferred) | geometry | base-frame dynamic 3D tracks, depth fused across cameras, camera poses |
 | SNeRL (pretrain + FQL `snerl`) | geometry | encoder input poses and every rendered ray come from the extrinsics |
 | 3D-MVP (pretrain + FQL `mvp3d_multiview`, `mvp3d_single`) | geometry | RGB-D back-projected into the base frame, base-frame bounds |
 | SinCro (pretrain + FQL `sincro`) | geometry | rendering targets along rays from K / c2w; the FQL condition uses that encoder |

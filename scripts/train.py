@@ -175,6 +175,11 @@ def build_data(cfg: dict):
         train_ds, val_ds = build_datasets(cfg)
         n_train_cams = 2
         val_loaders, probe_loaders = {train_ds.stride: loader(val_ds, False)}, {}
+    elif regime == "realworld":  # our method on the real-world compact store (s4d/rwlearn/ours.py, consumer 'ours')
+        from s4d.rwlearn.ours import build_realworld  # noqa: PLC0415
+
+        check_objective(cfg)
+        train_ds, val_loaders, probe_loaders, n_train_cams = build_realworld(cfg, loader)
     else:
         raise ValueError(f"unsupported data regime {regime!r}")
     return train_ds, val_loaders, probe_loaders, n_train_cams

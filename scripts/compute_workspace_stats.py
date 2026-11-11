@@ -19,6 +19,17 @@ from s4d.geometry import lift_depth  # noqa: E402
 
 
 def dataset_for(regime: str, path: Path, args=None):
+    if regime == "realworld":  # path = compact store descriptor (store.yaml); TRAINING episodes of --split only
+        from s4d.rwlearn.ours import STRIDES, _windows_class, load_split, open_compact_store
+
+        if args is None or not getattr(args, "split", None):
+            raise ValueError("realworld needs --split (the canonical split_seed0.json; statistics use training episodes)")
+        store = open_compact_store(path)
+        split = load_split(args.split)
+        if sorted(split["train"] + split["validation"]) != store.episodes():
+            raise ValueError("the split is not a partition of the store's episodes")
+        # As Meta-World: the largest training stride gives the most moving pixels for the dynamic-group anchors.
+        return _windows_class()(store, episodes=split["train"], split="all", strides=(max(STRIDES),))
     if regime == "droid_largescale":  # path = scripts/droid_ls_build_manifest.py output; training split only
         from s4d.data.droid.largescale.dataset import DroidLargeScaleDataset
 
@@ -103,8 +114,10 @@ def compute_statistics(dataset, samples: int, seed: int) -> dict:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--regime", choices=["metaworld", "droid", "droid_largescale"], required=True)
-    ap.add_argument("--path", type=Path, required=True, help="dataset file/root; the manifest for droid_largescale")
+    ap.add_argument("--regime", choices=["metaworld", "droid", "droid_largescale", "realworld"], required=True)
+    ap.add_argument("--path", type=Path, required=True,
+                    help="dataset file/root; the manifest for droid_largescale; the store descriptor for realworld")
+    ap.add_argument("--split", default=None, help="realworld: split_seed0.json (training episodes only)")
     ap.add_argument("--pointworld-root", default=None, help="droid_largescale: extracted PointWorld tree")
     ap.add_argument("--rlds-index", default=None, help="droid_largescale: RLDS step index")
     ap.add_argument("--rlds-root", default=None, help="droid_largescale: released RLDS shards (read in place)")
@@ -115,11 +128,20 @@ def main() -> None:
     args = ap.parse_args()
     output = args.out.resolve()
     allowed = (REPO, Path("/home/ws/data/metaworld/splatter4d_v1"), Path("/home/ws/data/droid_pointworld_cache_sample"))
-    if not any(root in output.parents for root in allowed):
+    if args.regime == "realworld":  # a plan row's run directory: the repository or the host's approved runtime root
+        from ops.resources.gpu_guard import validate_runtime_path
+
+        output = validate_runtime_path(output, repository=REPO)
+    elif not any(root in output.parents for root in allowed):
         raise ValueError("workspace statistics must remain within an authorized output root")
     torch.set_num_threads(1)
     stats = compute_statistics(dataset_for(args.regime, args.path, args), args.samples, args.seed)
     stats.update(source=str(args.path), regime=args.regime, gpu_mapping=GPU_MAPPING)
+    if args.regime == "realworld":  # provenance of the inputs (the store descriptor and the canonical split)
+        import hashlib  # noqa: PLC0415
+
+        stats.update(split=str(args.split), source_sha256=hashlib.sha256(args.path.read_bytes()).hexdigest(),
+                     split_sha256=hashlib.sha256(Path(args.split).read_bytes()).hexdigest())
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(stats, indent=2))
     print(json.dumps(stats, indent=2))

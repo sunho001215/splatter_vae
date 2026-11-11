@@ -571,36 +571,37 @@ class Evaluator:
         self.logger.save_gif(out_dir / "sequence.gif", seq, fps=2)
         media["video/sequence"] = W.video(seq, fps=2, caption="rendered t0..t2, source camera")
         center = get(self.cfg, "eval.orbit_center", list(LOOKAT))
-        w2c_orbit = orbit_w2c(
-            center,
-            float(get(self.cfg, "eval.orbit_distance", RADIUS)),
-            float(get(self.cfg, "eval.orbit_elevation", -45.0)),
-            24,
-            self.device,
-        )
-        gs_b = GaussianSet(
-            gs.xyz[b : b + 1],
-            gs.scales[b : b + 1],
-            gs.quats[b : b + 1],
-            gs.opacity[b : b + 1],
-            gs.rgb[b : b + 1],
-            gs.delta01[b : b + 1],
-            gs.delta12[b : b + 1],
-            gs.group,
-        )
-        orbit = render_rgbd(
-            gs_b,
-            gs_b.xyz[:, None],
-            w2c_orbit[None, :],
-            batch["K"][b : b + 1, 0:1].to(self.device).expand(-1, 24, -1, -1),
-            H,
-            Wd,
-            self.near,
-            self.far,
-        )["rgb"][0, 0]
-        frames = np.stack([P.to_uint8(f) for f in orbit.cpu()])
-        self.logger.save_gif(out_dir / "orbit.gif", frames, fps=8)
-        media["video/orbit"] = W.video(frames, fps=8, caption="24-frame orbit around the workspace at t0")
+        if center is not None:  # null: no measured scene centre (real-world target pending), no orbit video
+            w2c_orbit = orbit_w2c(
+                center,
+                float(get(self.cfg, "eval.orbit_distance", RADIUS)),
+                float(get(self.cfg, "eval.orbit_elevation", -45.0)),
+                24,
+                self.device,
+            )
+            gs_b = GaussianSet(
+                gs.xyz[b : b + 1],
+                gs.scales[b : b + 1],
+                gs.quats[b : b + 1],
+                gs.opacity[b : b + 1],
+                gs.rgb[b : b + 1],
+                gs.delta01[b : b + 1],
+                gs.delta12[b : b + 1],
+                gs.group,
+            )
+            orbit = render_rgbd(
+                gs_b,
+                gs_b.xyz[:, None],
+                w2c_orbit[None, :],
+                batch["K"][b : b + 1, 0:1].to(self.device).expand(-1, 24, -1, -1),
+                H,
+                Wd,
+                self.near,
+                self.far,
+            )["rgb"][0, 0]
+            frames = np.stack([P.to_uint8(f) for f in orbit.cpu()])
+            self.logger.save_gif(out_dir / "orbit.gif", frames, fps=8)
+            media["video/orbit"] = W.video(frames, fps=8, caption="24-frame orbit around the workspace at t0")
         # per-sample table
         rows, local_rows = [], []
         for i in range(batch["images"].shape[0]):

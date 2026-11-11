@@ -4,7 +4,7 @@ Branches `realworld-fql-20261106` (agent FQL) and `rwfql-decisions-20261106` (ag
 2026-11-06 ~11:20). Scope: SNeRL, 3D-MVP (one encoder; RL conditions A and B), SinCro, ReViWo and DynaMo pretrained on
 the real-world drawer-open, mug-hanging, covering and pick-and-place episodes, PER TASK only (task-specific encoders;
 the joint-task configs and rows are removed; covering / pick-and-place: last section). Our own method's real-world
-pretraining is deferred (user directive 2026-11-06, item 5). Nothing here has been trained; no GPU was used. Offline
+pretraining is defined in the section "Our method" at the end (user directive 2026-11-11). Nothing here has been trained; no GPU was used. Offline
 FQL on top of these encoders, and the end-to-end CNN + FQL baseline: `docs/realworld_fql.md`.
 
 ## Principle
@@ -238,3 +238,20 @@ Take the optical-axis least-squares `lookat`, `pose_scale = 4 / median camera di
 window and >= 99 % robot / object / fixture containment per class for the bounds (foreground apart from room
 background), then set the task's `SCENE_PARAMETERS` entry, regenerate the configs (the equality test pins them) and
 release. Keep the old numbers only if the statistics support them.
+
+## Our method (Original Splatter4D), user directive 2026-11-11
+
+The simulation "Original" (the Arm4 decision: scratch ViT 16 px / width 128 / depth 8, 50 % motion-aware tube
+masking, every Original loss, no Chamfer) is pretrained per task on the compact store through `data.regime:
+realworld` in `scripts/train.py` (`s4d/rwlearn/ours.py build_realworld`; loader `s4d.realworld.train_windows.
+RealworldWindowDataset`). `configs/realworld/ours/<target>.yaml` are GENERATED from the resolved simulation stack by an
+explicit override list (`ours.overrides`, each with its reason); `tests/test_rwlearn_ours.py` pins committed ==
+generated and diff == listed keys (model / loss / train / render sections identical). Consumer `ours` is geometric
+(gate + calibration hold + store built from the validated calibration; every sample carries its episode's own
+calibration, so per-period calibration documents such as covering's are honoured). Real-data specifics: FoundationStereo
+depth, TrackEverything moving tracks + gripper FK points as 3D track targets (`motion3d_track_loss`), strides 1/2/3
+camera frames (= 1/2/3 policy steps), synthetic views around the sample's own cameras, per-task anchor statistics
+from the training episodes (`scripts/compute_workspace_stats.py --regime realworld --split`, a stats row before the
+pretraining row). Rows: stats -> pre (200k) -> export (`runs/setup/tools/register_ours_realworld_20261111.py`, dry run
+by default). Deviations and their justification: `/home/ws/ws/realworld-ops/ours/DEVIATIONS.md`.
+
