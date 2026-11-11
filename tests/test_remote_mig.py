@@ -494,3 +494,27 @@ def test_snapshot_mig_mode_conflicts():
     command = remote_backend.snapshot_command(remote_backend.ROOT)
     assert "mig.mode.current,mig.mode.pending" in command and "python" not in command
     assert subprocess.run(["bash", "-n"], input=command, text=True, capture_output=True).returncode == 0
+
+
+def test_isolation_check_attributes_a_remote_instance_not_its_parent(monkeypatch):
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("isolation_mig", REPO / "scripts/check_gpu_isolation.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    devices = devices_of(allowlist())
+    monkeypatch.setattr(module, "KNOWN_MIG", {**module.MIG_DEVICES, **devices})
+    monkeypatch.setattr(module, "MIG_PARENTS", {owner for owner, _, _ in module.KNOWN_MIG.values()})
+    table = ("| Processes:                                                                              |\n"
+             "|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |\n"
+             "|    1    4    0            4321      C   python                                  500MiB |\n")
+    outputs = {"--query-compute-apps=pid,gpu_uuid": f"4321, {PARENTS[1]}\n"}
+
+    class Done:
+        def __init__(self, stdout):
+            self.stdout = stdout
+
+    monkeypatch.setattr(module.subprocess, "run",
+                        lambda cmd, **kw: Done(outputs.get(cmd[1], table) if len(cmd) > 1 else table))
+    found, _, _ = module.pid_gpus(4321, {"1": PARENTS[1]})
+    assert found == {mig_uuid(1, 1)}  # the instance on GI 4 of parent 1; the parent itself is not "seen"

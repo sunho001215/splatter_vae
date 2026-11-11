@@ -16,6 +16,11 @@ sys.path.insert(0, str(REPO / "scripts"))
 sys.path.insert(0, str(REPO))
 
 from ops.resources.gpu_guard import ALLOWED_GPU_UUIDS, APPROVED_HOST_GPUS, HOST_NAME, MIG_DEVICES, validate_runtime_path  # noqa: E402
+from ops.resources.gpu_guard import REMOTE_MIG_DEVICES  # noqa: E402
+
+# every known MIG instance (local GPUs 4/5; the remote allowlist once MIG is in force): (parent, GPU instance, index)
+KNOWN_MIG = {**MIG_DEVICES, **REMOTE_MIG_DEVICES}
+MIG_PARENTS = {owner for owner, _, _ in KNOWN_MIG.values()}
 
 CHILD = r"""
 import os, sys, json
@@ -82,7 +87,8 @@ def pid_gpus(pid: int, index_to_uuid: dict[str, str]) -> tuple[set[str], str, st
     found = set()
     for line in apps.splitlines():
         parts = [p.strip() for p in line.split(",")]
-        if len(parts) >= 2 and parts[0] == str(pid):
+        # the compute-apps CSV names only the parent of a MIG instance: the instance comes from the table's GI below
+        if len(parts) >= 2 and parts[0] == str(pid) and parts[1] not in MIG_PARENTS:
             found.add(parts[1])
     table = subprocess.run(["nvidia-smi"], capture_output=True, text=True, check=True, timeout=60).stdout
     in_processes = False
@@ -94,7 +100,7 @@ def pid_gpus(pid: int, index_to_uuid: dict[str, str]) -> tuple[set[str], str, st
             match = re.match(r"\|\s+(\d+)\s+(\S+)\s+\S+\s+(\d+)\s+([CG+]+)\s", line)
             if match and int(match.group(3)) == pid:
                 parent = index_to_uuid[match.group(1)]
-                mig = [uuid for uuid, (owner, instance, _) in MIG_DEVICES.items()
+                mig = [uuid for uuid, (owner, instance, _) in KNOWN_MIG.items()
                        if owner == parent and str(instance) == match.group(2)]
                 found.add(mig[0] if mig else parent)
     return found, table, apps
