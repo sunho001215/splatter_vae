@@ -9,7 +9,7 @@
 # data regime, data paths, task flags, then its dependencies). New row kinds (real-world / DROID preprocessing,
 # pretraining, offline FQL) should declare `role:` explicitly at registration.
 version: 1
-directive: "user 2026-11-06 ~02:00 KST: server-role separation (local = Meta-World; remote = real-world / DROID; RTX 5090 = inference only)"
+directive: "user 2026-11-06 ~02:00 KST: server-role separation; user 2026-11-11 ~18:10 directive P: local also admits real-world offline FQL training; RTX 5090 = inference only"
 classes:
   metaworld: "Meta-World simulation and everything built on Meta-World data: pretraining, exports, evaluations, DrM (and the paused RL algorithms), data collection, analysis, architecture / parameter selection"
   realworld_preprocess: "real-world episode validation and preprocessing (calibration, FoundationStereo, depth, TrackEverything, SAM 3 / DINO features for baselines)"
@@ -21,9 +21,12 @@ classes:
 hosts:
   local:
     scheduler: true
-    admit: [metaworld]
+    # user 2026-11-11 ~18:10, directive P: offline FQL training may also run locally. Running / launched rows
+    # never change host; real-world / DROID preprocessing and representation pretraining stay remote.
+    admit: [metaworld, realworld_fql]
+    scripts: {realworld_fql: [scripts/train_realworld_fql.py]}
     # rows without any domain evidence (diagnostics, test workers): admitted, as before the role separation; rows with
-    # real-world / DROID evidence are never admitted here
+    # real-world / DROID evidence require the explicit admission above
     unknown: allow
   remote:
     scheduler: true

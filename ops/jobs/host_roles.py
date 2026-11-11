@@ -1,7 +1,8 @@
 """Persistent server roles (user directive 2026-11-06 ~02:00 KST): which job classes each host may admit.
 
 The roles are declared in configs/hosts/roles.yaml and read at every decision (no in-memory state): local admits
-Meta-World work, the remote admits real-world / DROID preprocessing, real-world / DROID representation pretraining,
+Meta-World work and script-restricted real-world offline FQL training (directive P, 2026-11-11). The remote admits
+real-world / DROID preprocessing, representation pretraining,
 real-world offline FQL and typed release verification, and the RTX 5090 inference server is never a scheduler host.
 Enforced at three points: the scheduler tick refuses every launch the roles forbid (ops/jobs/scheduler.py, the single
 launch path of every driver), the remote driver offers and pool-moves only rows its role admits, and Meta-World rows
@@ -109,10 +110,24 @@ def load_roles(path: Path | None = None) -> dict:
         if not isinstance(spec.get("drain_evaluators", False), bool) or (spec.get("drain_evaluators")
                                                                         and name != "remote"):
             raise ValueError("roles: drain_evaluators is a boolean of the remote host")
+        scripts = spec.get("scripts", {})
+        if not isinstance(scripts, dict) or ("scripts" in spec and name not in SCHEDULER_HOSTS):
+            raise ValueError("roles: scripts is a mapping on scheduler hosts only")
+        for cls, allowed in scripts.items():
+            if (cls not in spec["admit"] or not isinstance(allowed, list) or not allowed
+                    or any(not isinstance(script, str)
+                           or not re.fullmatch(r"scripts/[A-Za-z0-9_][A-Za-z0-9_.-]*\.py", script)
+                           for script in allowed)):
+                raise ValueError(f"roles: invalid scripts restriction for {cls} on {name}")
+    if {"realworld_preprocess", "droid_preprocess"} & set(hosts["local"]["admit"]):
+        raise ValueError("roles: real-world / DROID preprocessing executes on the remote only")
     if "verification" in hosts["local"]["admit"]:
         raise ValueError("roles: typed verification executes on the remote only")
-    if set(hosts["local"]["admit"]) & set(hosts["remote"]["admit"]) - {"verification"}:
-        raise ValueError("roles: a job class belongs to exactly one host")
+    for cls in CLASSES:
+        admitted = [spec for name, spec in hosts.items() if name in SCHEDULER_HOSTS and cls in spec["admit"]]
+        if not admitted or (len(admitted) > 1 and cls != "verification"
+                            and not any(cls in spec.get("scripts", {}) for spec in admitted)):
+            raise ValueError("roles: a job class belongs to exactly one host unless script-restricted")
     return {**roles, "sha256": hashlib.sha256(raw).hexdigest(), "path": str(path)}
 
 
@@ -399,6 +414,9 @@ def refusal(job: dict, host: str, roles: dict, ownership: dict | None = None, by
         allowed = True  # the evaluator companion of a trainer that ran here (drain exception)
     if not allowed:
         return f"job class {found.cls} ({found.evidence}) is not a {host} role (configs/hosts/roles.yaml)"
+    scripts = spec.get("scripts", {}).get(found.cls)
+    if scripts is not None and str(Path(job.get("script", ""))) not in scripts:
+        return f"job class {found.cls} on {host} is limited to {scripts} (configs/hosts/roles.yaml)"
     return ownership_refusal(job["id"], host, ownership)
 
 
@@ -453,11 +471,21 @@ def migrated_source_refusal(job_id: str, ownership: dict | None, source_sha256: 
     return None
 
 
+def role_hosts(job: dict, roles: dict, by_id: dict | None = None) -> tuple[str, ...]:
+    """Scheduler hosts admitting this class and script, independent of the row's current placement."""
+    cls, script = job_class(job, by_id).cls, str(Path(job.get("script", "")))
+    return tuple(name for name in SCHEDULER_HOSTS if cls in roles["hosts"][name]["admit"]
+                 and (cls not in roles["hosts"][name].get("scripts", {})
+                      or script in roles["hosts"][name]["scripts"][cls]))
+
+
 def role_host(job: dict, roles: dict, by_id: dict | None = None) -> str | None:
-    """The one scheduler host whose role admits the row's class (None for unknown / ambiguous / invalid rows)."""
-    found = job_class(job, by_id)
-    hosts = [name for name in SCHEDULER_HOSTS if found.cls in roles["hosts"][name]["admit"]]
-    return hosts[0] if len(hosts) == 1 else None
+    """The unique role host, or the row's existing host when its class and script are admitted on both hosts.
+
+    Shared admission never moves a row implicitly: remote FQL training remains remote until explicitly placed.
+    """
+    hosts = role_hosts(job, roles, by_id)
+    return hosts[0] if len(hosts) == 1 else job.get("host", "local") if job.get("host", "local") in hosts else None
 
 
 # ---------------------------------------------------------------------------------------------------- re-placement

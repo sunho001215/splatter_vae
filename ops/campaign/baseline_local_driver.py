@@ -122,6 +122,13 @@ for name in REGISTRATIONS:
         registered += [j for j in record_jobs if retired_reason(j, by_queue) is None
                        and (name not in ONLY or j['id'] in ONLY[name])
                        and not (j.get('host', 'local') == 'local' and j.get('pin_host') == 'remote')]  # waits for its move
+# Directive P (user 2026-11-11 ~18:10): explicitly placed real-world FQL training shares the local budget.
+from ops.jobs import host_roles, realworld_local  # noqa: E402
+
+_registered_ids = {j['id'] for j in registered}
+registered.extend(j for j in realworld_local.local_rows(queue['jobs'], host_roles.load_roles())
+                  if j['id'] not in _registered_ids)
+
 by_id = {j['id']: j for j in registered}
 if not registered:
     print('BASELINES nothing registered for local admission')
@@ -138,6 +145,8 @@ def status(job_id):
 
 
 def task_files(job):
+    if job['script'] == 'scripts/train_realworld_fql.py':
+        return []  # real-world FQL reads no Meta-World dataset
     if job['script'] in ('scripts/train_rl.py', 'scripts/eval_rl.py', 'scripts/train_sac.py'):
         return []  # DrM / SAC simulate Meta-World live; they read no dataset file
     trainer = by_id.get(job['id'].removesuffix('-eval'), job)
@@ -208,7 +217,6 @@ from ops.jobs.admission_pause import paused  # noqa: E402  (intentional pauses, 
 candidates = [j for j in candidates if not paused(j['id'])]
 # server roles (user directive 2026-11-06; configs/hosts/roles.yaml): only rows the local role admits (Meta-World), and
 # none an explicit migration holds (ownership records); the scheduler tick enforces the same at launch
-from ops.jobs import host_roles  # noqa: E402
 _roles, _ownership, _context = host_roles.load_roles(), host_roles.read_ownership(), by_queue
 candidates = [j for j in candidates if host_roles.refusal(j, 'local', _roles, _ownership, _context) is None]
 if stage2_waiting:

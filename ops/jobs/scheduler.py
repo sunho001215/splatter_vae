@@ -33,7 +33,7 @@ from ops.jobs.remote_backend import (  # noqa: E402
     validate_container,
 )
 from ops.containers.verification import validate_report, validate_verification, verification_resources  # noqa: E402
-from ops.jobs import host_roles  # noqa: E402
+from ops.jobs import host_roles, realworld_local  # noqa: E402
 from ops.jobs.arguments import option as _option  # noqa: E402
 from ops.jobs.retired import retired_reason  # noqa: E402
 from ops.provenance.upstreams import working_tree_identity as third_party_identity  # noqa: E402
@@ -365,7 +365,7 @@ def source_identity() -> dict:
     return {"commit": commit, "source_sha256": fingerprints}
 
 
-def launch(job: dict, gpu: str, attempt: int, runs: Path = RUNS) -> int:
+def launch(job: dict, gpu: str, attempt: int, runs: Path = RUNS, args: list | None = None) -> int:
     script = check_guarded(job["script"])
     run_dir = runs / job["id"]
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -378,7 +378,7 @@ def launch(job: dict, gpu: str, attempt: int, runs: Path = RUNS) -> int:
         raise ValueError(f"job {job['id']}: oom_score_adj must be in [0, 1000]")
     wrapper = f'echo {adj} > /proc/self/oom_score_adj; "$@"; echo $? > "$S4D_EXIT_FILE"'
     env["S4D_EXIT_FILE"] = str(run_dir / "exit_code")
-    argv = [str(PYTHON), "-I", str(script), *map(str, job.get("args", []))]
+    argv = [str(PYTHON), "-I", str(script), *map(str, job.get("args", []) if args is None else args)]
     with open(run_dir / "console.log", "a") as log:
         log.write(f"\n=== attempt {attempt} on {gpu} at {time.ctime()} ===\n{' '.join(argv)}\n")
         log.flush()
@@ -1139,12 +1139,29 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
             if moved is not None:
                 messages.append(f"{job['id']}: not admitted on local: {moved}")
                 continue
-            pid = launch(job, gpu, attempt, runs)
+            input_event = {}
+            if realworld_local.applies(job, roles, jobs):
+                try:
+                    effective, inputs = realworld_local.localize(job, state, roles=roles, by_id=jobs, runs=runs,
+                                                                source_identity=identity, ownership=ownership)
+                except realworld_local.LocalInputError as exc:
+                    messages.append(f"{job['id']}: not admitted on local: {exc}")
+                    continue
+                previous_inputs = state.get(job["id"], {}).get("inputs")
+                if previous_inputs is not None and any(previous_inputs.get(key) != inputs[key]
+                                                       for key in ("inputs", "dependency_inputs")):
+                    messages.append(f"{job['id']}: retry inputs changed; admission held")
+                    continue
+                pid = launch(job, gpu, attempt, runs, args=effective)
+                input_event["inputs"] = inputs
+            else:
+                pid = launch(job, gpu, attempt, runs)
             # Device provenance: the MIG instance and its parent physical GPU (CUDA reports the parent's UUID).
             record({"event": "launched", "id": job["id"], "host": "local", "pid": pid, "gpu": gpu,
                     "gpu_parent": MIG_DEVICES[gpu][0] if gpu in MIG_DEVICES else gpu,
                     "attempt": attempt, "mem_gb": float(job["mem_gb"]), "ram_gb": need,
-                    "disk_gb": float(job.get("disk_gb", 0)), "job_sha256": job_fingerprint(job), **identity}, registry)
+                    "disk_gb": float(job.get("disk_gb", 0)), "job_sha256": job_fingerprint(job),
+                    **identity, **input_event}, registry)
             resource["available"] -= need
             resource["disk_free"] -= disk_need
             running.append({"host": "local", "gpu": gpu, "mem_gb": float(job["mem_gb"]), "pid": pid})
