@@ -309,6 +309,16 @@ def test_generated_shell_has_detachment_single_uuid_rooted_mounts_and_syntax(gpu
     assert "flock -x 9" in command and "native" not in spec["args"]
 
 
+def without_launch_hold(command: str) -> str:
+    """The command minus the one line added on purpose on 2026-11-11 (the durable remote launch hold, checked inside the
+    admission lock): every other byte stays pinned by the golden hashes below."""
+    from ops.remote import launch_hold
+
+    line = "\n" + launch_hold.check_shell(REMOTE_ROOT)
+    assert command.count(line) == 1
+    return command.replace(line, "")
+
+
 @pytest.mark.parametrize("gpu_backend,script,original_sha256", [
     # Full command fingerprints captured from e9338cb before adding real-world mounts (including all shell guards).
     ("cdi", "train.py", "5da26a0e5191d58318971603400e1f2f53953a632f6496daf4d01076dbcefcfb"),
@@ -325,7 +335,7 @@ def test_metaworld_command_is_byte_identical_to_before_realworld_mounts(gpu_back
     command = build_remote_command(spec, DATA_ID, "e" * 40, "f" * 64, {"tests.json": "1" * 64},
                                    [(REMOTE_ROOT + "/data/metaworld/splatter4d_v1/hammer.hdf5", "d" * 64)],
                                    origin_ref=LEGACY["origin_ref"])  # a legacy-branch release: byte-identical
-    assert hashlib.sha256(command.encode()).hexdigest() == original_sha256
+    assert hashlib.sha256(without_launch_hold(command).encode()).hexdigest() == original_sha256
 
 
 @pytest.mark.parametrize("gpu_backend,script,original_sha256", [
@@ -352,7 +362,7 @@ def test_realworld_command_is_byte_identical_before_mount_refactor(gpu_backend, 
     command = build_remote_command(spec, DATA_ID, "e" * 40, "f" * 64, {"tests.json": "1" * 64},
                                    [(REMOTE_ROOT + "/data/hammer.hdf5", "d" * 64)],
                                    origin_ref=LEGACY["origin_ref"])  # a legacy-branch release: byte-identical
-    assert hashlib.sha256(command.encode()).hexdigest() == original_sha256
+    assert hashlib.sha256(without_launch_hold(command).encode()).hexdigest() == original_sha256
 
 
 @pytest.mark.parametrize("script", ["train.py", "export_encoder.py", "train_reviwo.py", "train_dynamo.py",

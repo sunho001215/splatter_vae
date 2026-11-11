@@ -1057,7 +1057,13 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
                     and remote_host.get("cleanup_completed_containers", True) is True):
                 reachable = _cleanup_completed_containers(remote_backend, snapshot, read_registry(registry), registry,
                                                           messages)
-            if reachable and snapshot.resources_ready:
+            if reachable and snapshot.resources_ready and (snapshot.launch_hold or {}).get("held"):
+                # the durable remote launch hold (no resume record for this boot, or runtime/launch/HOLD): reconcile and
+                # sync as usual, launch nothing (ops/remote/launch_hold.py; the launcher re-checks inside its lock)
+                messages.append(f"remote: launch hold in force (boot {snapshot.launch_hold.get('boot_id')}, "
+                                f"hold {snapshot.launch_hold.get('hold')}, resumed {snapshot.launch_hold.get('resumed')})"
+                                "; no remote jobs launched")
+            elif reachable and snapshot.resources_ready:
                 # processes of campaign-owned co-tenants (remote_backend.identify_cotenant) are known on their GPU only
                 known = {uuid: charge["pids"] for uuid, charge in cotenant_charges(snapshot)["gpus"].items()}
                 foreign = {uuid for uuid, procs in snapshot.usage.items()

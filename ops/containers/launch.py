@@ -10,6 +10,7 @@ import sys
 from pathlib import Path, PurePosixPath
 
 from ops.resources.gpu_guard import APPROVED_HOST_GPUS, LOCAL_MIG_PARENTS, REMOTE_MIG_DEVICES
+from ops.remote import launch_hold
 from ops.remote.access import (ORIGIN_REF, RELEASE_ORIGIN_REFS, REMOTE_ROOT, RemoteClient, RemoteCommandError,
                                RemoteUnreachable, sha256)
 from ops.jobs.host_roles import job_class
@@ -433,7 +434,10 @@ def build_remote_command(spec: dict, data_identity: str, origin_commit: str, pro
               '  printf \'{"container_id":"%s","container":"%s"}\\n\' "$cid" "$container"; return 0; }',
               'if existing; then exit 0; fi', 'bounded "$runtime/launch"; mkdir -p -- "$runtime/launch"',
               'bounded "$runtime/launch/admission.lock"; exec 9>"$runtime/launch/admission.lock"; flock -x 9',
-              'if existing; then exit 0; fi']
+              'if existing; then exit 0; fi',
+              # durable launch hold (remote MIG migration, 2026-11-11): inside the admission lock, after the idempotent
+              # check (an existing container is reported, never re-created), before anything is started
+              launch_hold.check_shell(root)]
     for path in (code, proof, *([data] if needs_metaworld else []), acceptance, *(source for source, _, _ in mounts)):
         lines.append("bounded " + q(path))
     lines += ['test -d "$code/.git"' + ("; test -d " + q(data) if needs_metaworld else ""),

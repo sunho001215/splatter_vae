@@ -19,6 +19,7 @@ from ops.resources.gpu_guard import APPROVED_HOST_GPUS, LOCAL_MIG_PARENTS, REMOT
 from ops.resources.mig_inventory import InventoryError, parse_list, parse_query
 from ops.remote.access import ORIGIN_BRANCH, RemoteClient, RemoteUnreachable
 from ops.containers import suite_partition
+from ops.remote import launch_hold
 from ops.containers.mounts import realworld_mounts
 from ops.containers.verification import (
     POLICIES,
@@ -67,6 +68,9 @@ class RemoteSnapshot:
     # allowlisted GPU; both empty when absent from the snapshot (co-tenant processes then stay foreign)
     cotenants: dict[str, dict] = field(default_factory=dict)
     gpu_memory: dict[str, tuple[int, int]] = field(default_factory=dict)
+    # durable remote launch hold (ops/remote/launch_hold.py): {"boot_id", "hold", "resumed", "held"}; None only for a
+    # snapshot format without the line (pre-2026-11-11 fixtures); the real command always emits it
+    launch_hold: dict | None = None
 
 
 def container_name(run_id: str, attempt: int) -> str:
@@ -416,7 +420,7 @@ def snapshot_command(root: str) -> str:
         "stat=\"/sys/fs/cgroup/system.slice/docker-$id.scope/memory.stat\"; "
         "if [ -r \"$stat\" ]; then printf '__S4D_RAM_USED__ %s\\n' "
         "\"$(awk '$1==\"anon\" || $1==\"shmem\" {s+=$2} END {printf \"%.0f\", s}' \"$stat\")\"; fi; "
-        "printf '__S4D_END_TOP__\\n'; done; printf '__S4D_END__\\n'"
+        "printf '__S4D_END_TOP__\\n'; done; " + launch_hold.status_shell(root) + "printf '__S4D_END__\\n'"
     )
 
 
@@ -426,6 +430,8 @@ def parse_snapshot(output: str) -> RemoteSnapshot:
     ram_used: dict[str, int] = {}
     section, top = "", None
     for line in output.splitlines():
+        if line.startswith("__S4D_LAUNCH_HOLD__ "):
+            continue  # read by launch_hold.parse_status from the whole output, never part of a section
         if line.startswith("__S4D_TOP__ "):
             top = line.split()[1]
             if not SHA256.fullmatch(top):
@@ -520,8 +526,9 @@ def parse_snapshot(output: str) -> RemoteSnapshot:
         name = item["Name"].removeprefix("/") if found else None
         if found and name not in containers and name not in cotenants:
             cotenants[name] = found
+    hold = launch_hold.parse_status(output) if "__S4D_LAUNCH_HOLD__" in output else None
     return RemoteSnapshot(usage, int(memory) / 2**20, int(disk[0][0]), int(disk[0][1]), containers, ready,
-                          cotenants, gpu_memory)
+                          cotenants, gpu_memory, hold)
 
 
 def validate_container(item: dict, run_id: str, state: dict) -> None:
