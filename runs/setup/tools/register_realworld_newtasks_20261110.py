@@ -21,6 +21,19 @@ gate_report.json, split_seed0.json, outcomes.json), staged on the remote under -
 its versioned gate amendment's target, e.g. covering 98 - bound raw identities, calibration builds, QA families, the
 seed-0 split_episodes partition, all-success labels carrying ending-check decisions) and hashed.
 --publish is a FUTURE locked/journalled queue append; --recover repairs only its proof after an interrupted append.
+
+FQL setting (FQLNQ, user decision 2026-11-11 ~23:10 KST; coordinator 2026-11-11 ~23:50): every FROZEN-encoder FQL row
+(ReViWo, DynaMo, SinCro, SNeRL, 3D-MVP single + multiview) is registered as ``rwnq-20261111-fql-<cond>-<task>-s<k>``
+(the planner's alpha-10 row + ``agent.normalize_q_loss=true``; alpha stays 10.0) PLUS the comparison
+``rwa100-20261111-fql-<cond>-<task>-s<k>`` (``agent.alpha=100.0`` in place + ``agent.normalize_q_loss=false``) at the
+LOWEST queue priority (``A100_PRIORITY``), the same pair the drawer-open / mug-hanging rows got, so the a10nq-vs-a100
+comparison is one consistent design across all four tasks. Compute trade-off: the a100 rows double the frozen-encoder
+FQL compute of a task (18 extra 1M-step runs = 6 frozen encoders x 3 seeds, ~2-7 GPU-h each on the remote, i.e. roughly
+35-125 GPU-h per task); at the lowest priority and behind their own hold they only take capacity no a10nq / e2e /
+pretraining row is waiting for, and can be dropped (never lifted) without touching any other row. The setting rides on
+``--set`` overrides (configs/realworld/fql/base.yaml unchanged); the e2e_cnn and e2e_cnn_noaug rows are unchanged
+(``rwnt-20261110-*`` ids, alpha 10, no normalisation). The ``rw(nq|a100)-`` id prefixes are what the analysis tools and
+the variant-aware policy staging read.
 """
 from __future__ import annotations
 
@@ -60,13 +73,19 @@ DISK_GB = {'pretrain': 20, 'dataset': 20, 'fql': 10}  # as the two existing real
 # plus directive R (user 2026-11-11): the e2e_cnn_noaug FQL seeds (register_e2e_noaug_20261111 conventions) and the
 # native-depth 3D-MVP chain (register_mvp3d_native_20261110 conventions: one native-depth stage row, then the 3D-MVP
 # pretraining / fqldata / FQL rows on its store, FQL with train-split feature standardisation behind a feature check)
-FAMILY_COUNTS = {'image': {'image-pretrain': 2, 'image-dataset': 3, 'image-fql': 12},
-                 'geometry': {'geometry-stage': 1, 'geometry-pretrain': 3, 'geometry-dataset': 4, 'geometry-fql': 12}}
+# FQL: e2e_cnn + e2e_cnn_noaug (3 seeds each) + per frozen encoder 3 a10nq + 3 a100 seeds (FQLNQ)
+FAMILY_COUNTS = {'image': {'image-pretrain': 2, 'image-dataset': 3, 'image-fql': 18},
+                 'geometry': {'geometry-stage': 1, 'geometry-pretrain': 3, 'geometry-dataset': 4, 'geometry-fql': 24}}
+NQ_PREFIX, A100_PREFIX = 'rwnq-20261111-', 'rwa100-20261111-'
+SETTINGS = {'a10nq': (NQ_PREFIX, '10.0', True), 'a100': (A100_PREFIX, '100.0', False)}
+A100_PRIORITY = 4  # the lowest priority used in experiments/queue.yaml (coordinator 2026-11-11 ~23:50)
 NATIVE_SCRIPT = 'scripts/realworld_native_depth.py'
 NATIVE_DEPTH = 'native_realsense'
-FROZEN_HOLD_REASON = ('directive R (user 2026-11-11): frozen-encoder FQL rows are registered but HELD until the '
-                      'coordinator relays the agreed FQL setting from the running diagnostics; e2e_cnn and '
-                      'e2e_cnn_noaug keep alpha 10 and may run')
+FROZEN_HOLD_REASON = ('FQLNQ (user 2026-11-11 ~23:10): the a10nq frozen-encoder FQL rows are released by the coordinator '
+                      'per placement / capacity, as fqlnq-await-placement-20261111; e2e_cnn and e2e_cnn_noaug keep '
+                      'alpha 10 and may run')
+A100_HOLD_REASON = ('FQLNQ: alpha=100 / normalize_q_loss=false comparison rows (lowest priority) run after the task\'s '
+                    'a10nq rows, as fqla100-after-nq-20261111; lift once those are launched (or never, to drop them)')
 
 
 class Refused(RuntimeError):
@@ -258,6 +277,36 @@ def noaug_rows(rows):
     return out
 
 
+def setting_rows(rows):
+    """FQLNQ: each frozen-encoder FQL row of the plan becomes its a10nq row (+ ``agent.normalize_q_loss=true``) and its
+    a100 comparison (``agent.alpha=100.0`` in place + ``agent.normalize_q_loss=false``, ``A100_PRIORITY``); ids
+    ``<rwnq|rwa100>-20261111-fql-<cond>-<task>-s<k>``, the planner's id kept in ``plan_row_id``. Everything else (the
+    dataset dependency, split, gate report, seed, budget, footprint, native 3D-MVP standardisation) is the row's own.
+    e2e_cnn / e2e_cnn_noaug rows pass unchanged."""
+    out = []
+    for r in rows:
+        if kind(r) != 'fql' or r.get('fql_condition') == 'e2e_cnn':
+            out.append(r)
+            continue
+        require(r['id'].startswith(PREFIX + 'fql-') and r['args'].count('agent.alpha=10.0') == 1
+                and not any(a.startswith('agent.normalize_q_loss') for a in r['args']), f"unexpected FQL row {r['id']}")
+        for setting, (prefix, alpha, normalize) in SETTINGS.items():
+            new = copy.deepcopy(r)
+            new['id'] = prefix + r['id'][len(PREFIX):]
+            new['args'] = [new['id'] if a == r['id'] else (f'agent.alpha={alpha}' if a == 'agent.alpha=10.0' else a)
+                           for a in r['args']] + [f'agent.normalize_q_loss={str(normalize).lower()}']
+            new['fql_budget'] = {**r['fql_budget'], 'alpha': float(alpha), 'normalize_q_loss': normalize}
+            new.update(fql_setting=setting, purpose=(
+                'FQLNQ 2026-11-11 (user): adopted pretrained-encoder FQL setting agent.alpha=10.0 + '
+                'agent.normalize_q_loss=true' if setting == 'a10nq' else
+                'FQLNQ 2026-11-11 (user): comparison baseline agent.alpha=100.0 + agent.normalize_q_loss=false, lowest '
+                'priority; never staged unless asked'))
+            if setting == 'a100':
+                new['priority'] = A100_PRIORITY
+            out.append(new)
+    return out
+
+
 def native_mvp3d(rows, task, remote_inputs, rig):
     """The native-depth 3D-MVP chain: a native-depth stage on the task's store with the task's validated rig document
     (its sensor_depth scales), the 3D-MVP pretraining and fqldata rows on the native store, FQL rows with train-split
@@ -304,16 +353,17 @@ def holds(rows, task):
     """The admission pauses that must be ACTIVE (ops.jobs.lifecycle semantics) before the rows are published:
     every frozen-encoder FQL row until the FQL setting is agreed, and, separately, the native 3D-MVP FQL rows until
     their native fqldata passes the standardised feature check (lifted per cell, as the 2026-11-10 native chain)."""
-    def spec(name, conds, reason):
-        prefixes = [f'{PREFIX}fql-{c}-{task}-' for c in conds]
+    def spec(name, prefixes_of, conds, reason):
+        prefixes = [f'{p}fql-{c}-{task}-' for p in prefixes_of for c in conds]
         held = sorted(r['id'] for r in rows if any(r['id'].startswith(p) for p in prefixes))
         return {'name': name, 'active': True, 'prefixes': prefixes, 'reason': reason, 'rows': held}
 
     frozen = sorted({r['fql_condition'] for r in rows if kind(r) == 'fql' and r.get('fql_condition') != 'e2e_cnn'})
     native = sorted({r['fql_condition'] for r in rows if kind(r) == 'fql' and r.get('depth_source') == NATIVE_DEPTH})
-    out = [spec(f'newtasks-frozen-fql-hold-{task}-20261111', frozen, FROZEN_HOLD_REASON)]
+    out = [spec(f'newtasks-fqlnq-hold-{task}-20261112', [NQ_PREFIX], frozen, FROZEN_HOLD_REASON),
+           spec(f'newtasks-fqla100-hold-{task}-20261112', [A100_PREFIX], frozen, A100_HOLD_REASON)]
     if native:
-        out.append(spec(f'newtasks-mvp3d-native-fql-feature-check-{task}-20261111', native,
+        out.append(spec(f'newtasks-mvp3d-native-fql-feature-check-{task}-20261111', [NQ_PREFIX, A100_PREFIX], native,
                         "held until the cell's native fqldata passes the standardised A1 feature check"))
     return out
 
@@ -339,6 +389,7 @@ def plan_task(task, report, release, remote_inputs, *, family='all', rig=None):
                      registration_tool='runs/setup/tools/' + Path(__file__).name,
                      evidence_manifest=f"runs/remote/acceptance/{release['commit'][:7]}-cc/manifest.json")
         rows = sorted(native, key=lambda row: row['priority'])
+    rows = sorted(setting_rows(rows), key=lambda row: row['priority'])
     counts = dict(Counter(f"{'geometry' if r['calibration_dependent'] else 'image'}-{kind(r)}" for r in rows))
     want = {k: v for f, c in FAMILY_COUNTS.items() if family in ('all', f) for k, v in c.items()}
     # never a partial family: rows registered now would collide with the rest of the family later
@@ -375,7 +426,9 @@ def prepare(repo, task, manifest_path, inputs_copy, remote_inputs, *, family='al
             **result, 'jobs_sha256': json_sha(result['jobs']), 'tool_sha256': sha(Path(__file__).read_bytes()),
             'registered': False,
             'not_registered': {'ours': 'no plan row: our own real-world pretraining stays deferred (user decision)'},
-            'decisions': {'alpha': 10, 'gripper': 'continuous', 'encoders': 'task-specific', 'snerl_inputs': 3,
+            'decisions': {'alpha': 10, 'frozen_encoder_fql': 'a10nq (alpha 10 + normalize_q_loss) + a100 comparison at '
+                          f'priority {A100_PRIORITY} (FQLNQ 2026-11-11); e2e_cnn / e2e_cnn_noaug alpha 10 unchanged',
+                          'gripper': 'continuous', 'encoders': 'task-specific', 'snerl_inputs': 3,
                           'single_view': 'random camera per sample, fixed through history + paired next obs',
                           'fql_seeds': list(launch.SEEDS), 'fql_budget': launch.FQL_BUDGET,
                           'reward': 'success(s\') - 1, success at the final frame; every demo labelled success'}}

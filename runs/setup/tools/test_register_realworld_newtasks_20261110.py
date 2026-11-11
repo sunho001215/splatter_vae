@@ -29,8 +29,8 @@ SPEC = importlib.util.spec_from_file_location('newtask_registrar', PROPOSAL)
 R = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(R)
 PIN = {'commit': '1' * 40, 'image': 'sha256:' + '2' * 64}
-IMAGE_COUNTS = {'image-pretrain': 2, 'image-dataset': 3, 'image-fql': 12}  # + 3 e2e_cnn_noaug seeds
-GEOMETRY_COUNTS = {'geometry-stage': 1, 'geometry-pretrain': 3, 'geometry-dataset': 4, 'geometry-fql': 12}
+IMAGE_COUNTS = {'image-pretrain': 2, 'image-dataset': 3, 'image-fql': 18}  # + 3 noaug seeds + 6 a100 (FQLNQ)
+GEOMETRY_COUNTS = {'geometry-stage': 1, 'geometry-pretrain': 3, 'geometry-dataset': 4, 'geometry-fql': 24}  # + a100
 RIG = {'remote': '/home/compu/kaist/sunho/realworld/configs/calrel-6c3b9ec/rig/rig-loma-t.json', 'sha256': 'a' * 64}
 
 
@@ -113,7 +113,7 @@ def test_proposal_has_exact_families_resources_seeds_and_artifact_dependencies(t
     result = R.plan_task(task, report, PIN, remote, rig=RIG)
     assert result['counts'] == {**IMAGE_COUNTS, **GEOMETRY_COUNTS}
     rows = result['jobs']
-    assert len(rows) == 33 + 3 + 1 and not result['plan_refused']  # + 3 e2e_cnn_noaug FQL + the native-depth stage
+    assert len(rows) == 33 + 3 + 1 + 18 and not result['plan_refused']  # + noaug + native stage + 18 a100 (FQLNQ)
     templates = {r['id']: r for r in launch.plan(report, [task], PIN['commit'])['rows']}
     by_id = {r['id']: r for r in rows}
     assert len(by_id) == len(rows)
@@ -121,9 +121,12 @@ def test_proposal_has_exact_families_resources_seeds_and_artifact_dependencies(t
     for row in rows:
         if R.kind(row) == 'stage' or row.get('fql_variant') == 'noaug':
             continue  # checked by directive_r_checks
-        assert row['id'] == R.PREFIX + row['plan_row_id'][3:]
+        setting = row.get('fql_setting')
+        assert row['id'] == (R.SETTINGS[setting][0] if setting else R.PREFIX) + row['plan_row_id'][3:]
+        assert (setting is not None) == (R.kind(row) == 'fql' and row['fql_condition'] != 'e2e_cnn')
         template = templates[row['plan_row_id']]
-        assert all(row[k] == template[k] for k in ('priority', 'mem_gb', 'ram_gb', 'gpu', 'max_restarts', 'role'))
+        assert all(row[k] == template[k] for k in ('mem_gb', 'ram_gb', 'gpu', 'max_restarts', 'role'))
+        assert row['priority'] == (R.A100_PRIORITY if setting == 'a100' else template['priority'])
         assert row['planned_commit'] == PIN['commit'] and row['planned_image'] == PIN['image']
         assert row['pin_host'] == 'remote' and row['realworld_target'] == task
         assert all(d in by_id for d in row['deps'])
@@ -137,7 +140,11 @@ def test_proposal_has_exact_families_resources_seeds_and_artifact_dependencies(t
             if '--export' in args:
                 assert f"runs/{row['deps'][0]}/encoder.pt" in args
         else:
-            assert 'agent.alpha=10.0' in args and row['fql_seed'] in (0, 1, 2)
+            alpha = 'agent.alpha=100.0' if setting == 'a100' else 'agent.alpha=10.0'
+            assert alpha in args and row['fql_seed'] in (0, 1, 2)
+            flags = [a for a in args if a.startswith('agent.normalize_q_loss')]
+            assert flags == ([] if setting is None else
+                             [f"agent.normalize_q_loss={'true' if setting == 'a10nq' else 'false'}"])
             assert f"data.dataset=runs/{row['deps'][0]}/dataset.h5" in args
     hashes = R.verify_inputs(task, manifest, report, tmp_path)
     assert set(hashes) == set(R.INPUT_NAMES) and all(len(v) == 64 for v in hashes.values())
@@ -159,27 +166,31 @@ def directive_r_checks(task, rows, by_id, remote):
     assert stage['args'][:5] == ['build', '--store', f'{remote}/store.yaml', '--rig', RIG['remote']]
     assert stage['rig_document_sha256'] == RIG['sha256'] and R.kind(stage) == 'stage' and not stage['deps']
     mvp = [r for r in rows if r.get('baseline') == 'mvp3d' or str(r.get('fql_condition', '')).startswith('mvp3d')]
-    assert len(mvp) == 9 and all(r['depth_source'] == R.NATIVE_DEPTH for r in mvp)
+    assert len(mvp) == 3 + 12 and all(r['depth_source'] == R.NATIVE_DEPTH for r in mvp)  # 6 nq + 6 a100 FQL
     pre = next(r for r in mvp if R.kind(r) == 'pretrain')
     assert f'dataset.hdf5_path={store}' in pre['args'] and stage['id'] in pre['deps']
     assert all(r['args'][r['args'].index('--store') + 1] == store for r in mvp if R.kind(r) == 'dataset')
-    assert all(r['args'][-1] == 'encoder.feature_norm=train_standardize' and 'feature check' in r['launch_gate']
-               for r in mvp if R.kind(r) == 'fql')
-    frozen, feature = R.holds(rows, task)
-    held = set(frozen['rows'])
+    assert all(r['args'][-2] == 'encoder.feature_norm=train_standardize' and 'feature check' in r['launch_gate']
+               and r['args'][-1].startswith('agent.normalize_q_loss=') for r in mvp if R.kind(r) == 'fql')
+    nq, a100, feature = R.holds(rows, task)
     fql = [r for r in rows if R.kind(r) == 'fql']
-    assert held == {r['id'] for r in fql if r['fql_condition'] != 'e2e_cnn'} and len(held) == 18
-    assert all(r['id'] not in held for r in fql if r['fql_condition'] == 'e2e_cnn')  # e2e_cnn + noaug may run
+    assert set(nq['rows']) == {r['id'] for r in fql if r.get('fql_setting') == 'a10nq'} and len(nq['rows']) == 18
+    assert set(a100['rows']) == {r['id'] for r in fql if r.get('fql_setting') == 'a100'} and len(a100['rows']) == 18
+    held = set(nq['rows']) | set(a100['rows'])
+    assert held == {r['id'] for r in fql if r['fql_condition'] != 'e2e_cnn'}
+    assert all(r['id'] not in held and r['id'].startswith(R.PREFIX) and 'agent.alpha=10.0' in r['args']
+               and not any(a.startswith('agent.normalize_q_loss') for a in r['args'])
+               for r in fql if r['fql_condition'] == 'e2e_cnn')  # e2e_cnn + noaug unchanged, may run
     assert set(feature['rows']) == {r['id'] for r in fql if r.get('depth_source') == R.NATIVE_DEPTH} \
-        and len(feature['rows']) == 6
+        and len(feature['rows']) == 12
 
 
 def test_proposal_respects_each_consumer_gate_and_old_tasks_cannot_be_registered(tmp_path, monkeypatch):
     measured_scenes(monkeypatch, 'covering')
     _, report = staged_inputs(tmp_path, geometry=False)  # calibration hold closed
     image = R.plan_task('covering', report, PIN, '/remote/covering', family='image', rig=RIG)
-    assert len(image['jobs']) == 17 and not any(r['calibration_dependent'] for r in image['jobs'])
-    assert len(image['holds']) == 1 and set(image['holds'][0]['rows']) == {
+    assert len(image['jobs']) == 23 and not any(r['calibration_dependent'] for r in image['jobs'])
+    assert len(image['holds']) == 2 and set(image['holds'][0]['rows']) | set(image['holds'][1]['rows']) == {
         r['id'] for r in image['jobs'] if R.kind(r) == 'fql' and r['fql_condition'] in ('reviwo', 'dynamo')}
     assert image['counts'] == IMAGE_COUNTS
     for family in ('geometry', 'all'):
@@ -308,12 +319,13 @@ def test_prepare_refuses_unmeasured_scene_but_can_prepare_image_rows(tmp_path, m
     roles.write_text((configs.REPO / 'configs/hosts/roles.yaml').read_text())
     monkeypatch.setattr(R, 'release_evidence', lambda *args: {'source_sha256': {}})
     prepared = R.prepare(tmp_path, 'covering', manifest_path, directory, '/remote/covering', family='image')
-    assert len(prepared['jobs']) == 17 and prepared['status'] == 'dry-run' and not prepared['registered']
+    assert len(prepared['jobs']) == 23 and prepared['status'] == 'dry-run' and not prepared['registered']
     assert prepared['holds'][0]['rows'] and prepared['holds'][0]['active'] is True
     assert prepared['release'] == PIN and not (tmp_path / 'experiments').exists()
     assert set(prepared['learning_inputs']['sha256']) == set(R.INPUT_NAMES)
     assert {r['planned_commit'] for r in prepared['jobs']} == {PIN['commit']}
-    assert all(r['id'].startswith(R.PREFIX + ('fql' if R.kind(r) != 'pretrain' else '')) for r in prepared['jobs'])
+    assert all(r['id'].startswith((R.SETTINGS[r['fql_setting']][0] if r.get('fql_setting') else R.PREFIX)
+                                  + ('fql' if R.kind(r) != 'pretrain' else '')) for r in prepared['jobs'])
 
 
 @pytest.mark.parametrize('appended', [False, True])
@@ -380,3 +392,27 @@ def test_rig_document_must_be_this_tasks_validated_release(tmp_path):
             R.rig_arg(args(name, d))
     with pytest.raises(R.Refused, match='same document'):
         R.rig_arg(SimpleNamespace(rig_document=tmp_path / 'a.json', rig_remote='/remote/rig/x.json', task='covering'))
+
+
+def test_setting_rows_differ_from_the_planned_alpha10_row_only_by_the_setting():
+    """FQLNQ: a frozen-encoder FQL plan row -> its a10nq row + a100 comparison (lowest priority); e2e rows untouched."""
+    base = {'id': f'{R.PREFIX}fql-sincro-covering-s1', 'script': 'scripts/train_realworld_fql.py', 'priority': 2,
+            'role': 'realworld_fql',
+            'fql_condition': 'sincro', 'args': ['--name', f'{R.PREFIX}fql-sincro-covering-s1', '--set', 'condition=sincro',
+                                                'train.seed=1', 'agent.alpha=10.0', 'train.offline_steps=1000000'],
+            'fql_budget': {'alpha': 10.0, 'offline_steps': 1000000}, 'deps': ['d'], 'mem_gb': 6}
+    e2e = {**base, 'id': f'{R.PREFIX}fql-e2e_cnn-covering-s1', 'fql_condition': 'e2e_cnn'}
+    nq, a100, kept = R.setting_rows([base, e2e])[0], R.setting_rows([base, e2e])[1], R.setting_rows([base, e2e])[2]
+    assert kept == e2e
+    assert nq['id'] == 'rwnq-20261111-fql-sincro-covering-s1' and a100['id'] == 'rwa100-20261111-fql-sincro-covering-s1'
+    assert nq['args'] == ['--name', nq['id'], '--set', 'condition=sincro', 'train.seed=1', 'agent.alpha=10.0',
+                          'train.offline_steps=1000000', 'agent.normalize_q_loss=true']
+    assert a100['args'] == ['--name', a100['id'], '--set', 'condition=sincro', 'train.seed=1', 'agent.alpha=100.0',
+                            'train.offline_steps=1000000', 'agent.normalize_q_loss=false']
+    assert (nq['priority'], a100['priority']) == (2, R.A100_PRIORITY) and R.A100_PRIORITY > 2
+    assert nq['fql_budget'] == {'alpha': 10.0, 'offline_steps': 1000000, 'normalize_q_loss': True}
+    assert a100['fql_budget'] == {'alpha': 100.0, 'offline_steps': 1000000, 'normalize_q_loss': False}
+    same = set(base) - {'id', 'args', 'priority', 'fql_budget'}
+    assert all(nq[k] == base[k] == a100[k] for k in same) and {nq['fql_setting'], a100['fql_setting']} == {'a10nq', 'a100'}
+    with pytest.raises(R.Refused, match='unexpected FQL row'):
+        R.setting_rows([{**base, 'args': base['args'] + ['agent.normalize_q_loss=true']}])
