@@ -368,11 +368,34 @@ def test_local_remote_resident_launch_bounds_thread_pools_like_the_container(tmp
     assert [{k: e.get(k) for k in jobs.THREAD_ENV} for e in captured] == [
         dict.fromkeys(jobs.THREAD_ENV, "8"), dict.fromkeys(jobs.THREAD_ENV, "4"), dict.fromkeys(jobs.THREAD_ENV)]
     assert jobs.THREAD_ENV == ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS")
-    for bad in (0, -1, 2.0, "8", True):
+    for bad in (0, -1, 65, 2.0, 8.9, "8", True, None):
         with pytest.raises(ValueError, match="cpu_threads"):
             jobs.launch({**job, "id": "bad"}, LOCAL_GPU, 1, tmp_path, cpu_threads=bad)
-    container = (jobs.REPO / "ops/containers/launch.py").read_text()  # the quota this mirrors
-    assert '("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS")' in container
+    monkeypatch.setenv("OMP_NUM_THREADS", "384")  # an inherited limit is overridden, not kept
+    jobs.launch({**job, "id": "inherited"}, LOCAL_GPU, 1, tmp_path, args=job["args"], cpu_threads=64)
+    assert captured[-1]["OMP_NUM_THREADS"] == "64"
+    jobs.launch({**job, "id": "plain2"}, LOCAL_GPU, 1, tmp_path)  # ... and left alone elsewhere
+    assert captured[-1]["OMP_NUM_THREADS"] == "384"
+    from ops.containers import launch as container  # the quota this mirrors
+    assert (jobs.DEFAULT_CPU_THREADS, jobs.MAX_CPU_THREADS) == (container.DEFAULT_CPU_THREADS, container.MAX_CPU_THREADS)
+    assert '("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS")' in (
+        jobs.REPO / "ops/containers/launch.py").read_text()
+
+
+@pytest.mark.parametrize("value,expected", [(None, "absent"), (4, 4), (64, 64), (0, "refused"), (65, "refused"),
+                                            ("8", "refused"), (True, "refused"), (8.9, "refused")])
+def test_scheduler_passes_the_rows_thread_quota_to_local_remote_resident_launches(mirrored, monkeypatch, value,
+                                                                                  expected):
+    f = mirrored
+    job = row(host="local", pin_host="local", gpu="any", deps=[], args=["data.split_manifest=" + PREFIX + "/" + SPLIT])
+    if expected != "absent":
+        job["cpu_threads"] = value
+    launches, messages, _ = tick(f, monkeypatch, [job])
+    if expected == "refused":
+        assert launches == [] and any("not admitted on local: invalid cpu_threads" in m for m in messages)
+    else:
+        assert launches == [(job["id"], {"args": ["data.split_manifest=" + str(f.mirror / SPLIT)],
+                                         "cpu_threads": 8 if expected == "absent" else expected})]
 
 
 def queue_files(root, rows):

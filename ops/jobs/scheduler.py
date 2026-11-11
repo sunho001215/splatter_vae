@@ -367,14 +367,26 @@ def source_identity() -> dict:
 
 
 THREAD_ENV = ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS")
+DEFAULT_CPU_THREADS, MAX_CPU_THREADS = 8, 64  # == ops/containers/launch.py (the remote container quota; test-pinned)
+_UNBOUNDED = object()
+
+
+def thread_limit(value) -> int:
+    """A row's ``cpu_threads`` exactly as the container launcher accepts it: an int in 1..MAX_CPU_THREADS (no bool,
+    str, float or None; nothing is coerced)."""
+    if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= MAX_CPU_THREADS:
+        raise ValueError(f"invalid cpu_threads {value!r} (an integer 1..{MAX_CPU_THREADS})")
+    return value
 
 
 def launch(job: dict, gpu: str, attempt: int, runs: Path = RUNS, args: list | None = None,
-           cpu_threads: int | None = None) -> int:
+           cpu_threads=_UNBOUNDED) -> int:
     """Start one local job. ``cpu_threads`` (remote-resident training placed on local: the unified pool) bounds the
     OpenMP / MKL / OpenBLAS pools exactly as the remote container environment does (ops/containers/launch.py; thread
     count only, not a hyperparameter): without it every pool spans the shared host's cores (2026-11-12: one local
-    train_realworld_fql.py used ~95 cores). Every other local launch keeps its environment unchanged (None)."""
+    train_realworld_fql.py used ~95 cores). Every other local launch keeps its environment unchanged (argument not
+    given). The variables bound the default intra-op pools only; unlike the container's NanoCpus quota they do not cap
+    inter-op pools, total threads or aggregate CPU time."""
     script = check_guarded(job["script"])
     run_dir = runs / job["id"]
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -382,10 +394,8 @@ def launch(job: dict, gpu: str, attempt: int, runs: Path = RUNS, args: list | No
     env = {**os.environ, "CUDA_VISIBLE_DEVICES": gpu, "MUJOCO_GL": "egl", "PYOPENGL_PLATFORM": "egl",
            "S4D_HOST_CONFIG": str(HOST_CONFIG_PATH)}
     env.pop("MUJOCO_EGL_DEVICE_ID", None)
-    if cpu_threads is not None:
-        if type(cpu_threads) is not int or cpu_threads < 1:
-            raise ValueError(f"job {job['id']}: cpu_threads must be a positive integer")
-        env.update({name: str(cpu_threads) for name in THREAD_ENV})
+    if cpu_threads is not _UNBOUNDED:  # remote-resident rows only: the inherited values are overridden
+        env.update({name: str(thread_limit(cpu_threads)) for name in THREAD_ENV})
     adj = int(job.get("oom_score_adj", 0))
     if not 0 <= adj <= 1000:
         raise ValueError(f"job {job['id']}: oom_score_adj must be in [0, 1000]")
@@ -1165,8 +1175,12 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
                                                        for key in ("inputs", "dependency_inputs", "input_closure")):
                     messages.append(f"{job['id']}: retry inputs changed; admission held")
                     continue
-                # the container quota of the same row on the remote (remote_backend: cpu_threads, default 8)
-                pid = launch(job, gpu, attempt, runs, args=effective, cpu_threads=int(job.get("cpu_threads", 8)))
+                try:  # the container quota of the same row on the remote (remote_backend: cpu_threads, default 8)
+                    threads = thread_limit(job.get("cpu_threads", DEFAULT_CPU_THREADS))
+                except ValueError as exc:
+                    messages.append(f"{job['id']}: not admitted on local: {exc}")
+                    continue
+                pid = launch(job, gpu, attempt, runs, args=effective, cpu_threads=threads)
                 input_event["inputs"] = inputs
             else:
                 pid = launch(job, gpu, attempt, runs)
