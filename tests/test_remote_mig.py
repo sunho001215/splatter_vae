@@ -182,7 +182,7 @@ def test_capacity_limits_and_oversized_rows():
     assert inv.device_capacity_gib(instances[0]["uuid"], instances) == pytest.approx(24192 / 1024 - 1.0, abs=1e-3)
     assert inv.device_capacity_gib(PARENTS[0], ()) == 90.0
     limits = inv.queue_limits(instances)
-    assert set(limits) == {item["uuid"] for item in instances} and all(v["max_jobs"] == 2 for v in limits.values())
+    assert set(limits) == {item["uuid"] for item in instances} and all(v["max_jobs"] == 1 for v in limits.values())
     jobs = [{"id": "fql", "host": "remote", "mem_gb": 6}, {"id": "rwprep-ntb", "host": "remote", "mem_gb": 34},
             {"id": "prep", "host": "remote", "mem_gb": 24}, {"id": "local", "host": "local", "mem_gb": 40}]
     assert inv.oversized_rows(jobs, instances) == [("rwprep-ntb", 34.0), ("prep", 24.0)]
@@ -660,3 +660,50 @@ def test_repin_scope_treats_run_identity_as_operational():
     from ops.jobs import release_repin
 
     assert "ops/jobs/run_identity.py" in release_repin.REPIN_OPERATIONAL
+
+
+def test_switch_preflight_blocks_live_or_unknown_physical_attempts_and_pinned_rows():
+    from ops.jobs import mig_switch
+
+    instances = inv.validate_allowlist(allowlist())
+    state = {"snerl": {"host": "remote", "status": "running", "gpu": PARENTS[0], "attempt": 1},
+             "lost": {"host": "remote", "status": "crashed", "unknown": True, "gpu": PARENTS[1], "attempt": 1},
+             "done": {"host": "remote", "status": "sync_pending", "gpu": PARENTS[2], "attempt": 1},
+             "paused": {"host": "remote", "status": "crashed", "gpu": PARENTS[3], "attempt": 1},
+             "local": {"host": "local", "status": "running", "gpu": "MIG-x"}}
+    queue = {"hosts": {"remote": {"limits": {PARENTS[0]: {"max_jobs": 20, "max_mem_gb": 90}}}},
+             "jobs": [{"id": "pinned", "host": "remote", "gpu": PARENTS[0]}, {"id": "free", "host": "remote"}]}
+    report = mig_switch.preflight(state, {"q": queue}, instances)
+    assert len(report["blockers"]) == 3 and any("snerl" in b for b in report["blockers"])
+    assert any("lost" in b for b in report["blockers"]) and any("pinned" in b for b in report["blockers"])
+    assert any("done" in n for n in report["notes"]) and any("rewrite-queue" in n for n in report["notes"])
+    clean = mig_switch.preflight({"paused": state["paused"]}, {"q": {"hosts": {}, "jobs": []}}, instances)
+    assert clean == {"blockers": [], "notes": []}
+
+
+def test_queue_rewrite_replaces_only_the_remote_limits(tmp_path):
+    from ops.jobs import mig_switch
+
+    doc = allowlist()
+    text = ("limits:\n  MIG-local:\n    max_jobs: 3\nhosts:\n  remote:\n    enabled: false\n    hold: true  # keep me\n"
+            "    limits:\n" + "".join(f"      {u}:\n        max_jobs: 20\n        max_mem_gb: 90\n" for u in PARENTS)
+            + "    gpu_backend: cdi\njobs:\n- id: a\n  host: remote\n")
+    new = mig_switch.rewrite_hosts(text, inv.validate_allowlist(doc))
+    after = yaml.safe_load(new)
+    assert "# keep me" in new and after["jobs"] == [{"id": "a", "host": "remote"}]
+    assert after["hosts"]["remote"]["gpu_backend"] == "cdi" and after["limits"] == {"MIG-local": {"max_jobs": 3}}
+    assert set(after["hosts"]["remote"]["limits"]) == {i["uuid"] for i in doc["instances"]}
+    assert all(v == {"max_jobs": 1, "max_mem_gb": 22.625} for v in after["hosts"]["remote"]["limits"].values())
+    allow = tmp_path / "remote-mig.yaml"
+    allow.write_text(yaml.safe_dump(doc))
+    queue = tmp_path / "queue.yaml"
+    queue.write_text(text)
+    assert mig_switch.main(["rewrite-queue", "--allowlist", str(allow), "--queue", str(queue), "--write"]) == 0
+    assert yaml.safe_load(queue.read_text()) == after and list(tmp_path.glob("queue.yaml.before-mig-*"))
+
+
+def test_validate_container_still_reconciles_a_historical_physical_attempt(monkeypatch):
+    from ops.jobs import remote_backend
+
+    source = (REPO / "ops/jobs/remote_backend.py").read_text()
+    assert 'state["gpu"] not in (*APPROVED_HOST_GPUS["remote"], *REMOTE_MIG_PARENTS)' in source

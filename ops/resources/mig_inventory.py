@@ -316,9 +316,10 @@ def device_capacity_gib(uuid: str, instances=()) -> float:
     return PHYSICAL_MEMORY_GIB
 
 
-def queue_limits(instances, max_jobs: int = 2) -> dict:
-    """``hosts.remote.limits`` for experiments/queue.yaml: one entry per instance (the scheduler refuses limits for
-    non-authorized devices, so this block must replace the physical one in the same change as the allowlist)."""
+def queue_limits(instances, max_jobs: int = 1) -> dict:
+    """``hosts.remote.limits`` for experiments/queue.yaml: one entry per instance, exclusive by default (user decision
+    2026-11-11: one container per MIG instance). The scheduler refuses limits for non-authorized devices, so this block
+    replaces the physical one in the same change as the allowlist (ops/jobs/mig_switch.py rewrite-queue)."""
     return {item["uuid"]: {"max_jobs": int(max_jobs), "max_mem_gb": device_capacity_gib(item["uuid"], instances)}
             for item in instances}
 

@@ -557,7 +557,9 @@ def validate_container(item: dict, run_id: str, state: dict) -> None:
             or item.get("Image") != state["image_digest"]
             or not SHA256.fullmatch(str(item.get("Id", "")))
             or (state.get("container_id") and item["Id"] != state["container_id"])
-            or state["gpu"] not in APPROVED_HOST_GPUS["remote"]
+            # an attempt launched on a physical GPU before the MIG switch still reconciles and cleans up (its parent is
+            # never a launch target again: prepare() and the launcher accept only APPROVED_HOST_GPUS["remote"])
+            or state["gpu"] not in (*APPROVED_HOST_GPUS["remote"], *REMOTE_MIG_PARENTS)
             or env.get("CUDA_VISIBLE_DEVICES") != state["gpu"] or not request_ok
             or not {"compute", "utility", "graphics"} <= set(env.get("NVIDIA_DRIVER_CAPABILITIES", "").split(","))):
         raise RemoteJobError(f"Remote container identity/isolation mismatch for {run_id}")
