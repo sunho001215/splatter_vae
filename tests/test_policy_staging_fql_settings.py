@@ -130,3 +130,24 @@ def test_comparison_rows_are_staged_only_when_asked(tmp_path, capsys, monkeypatc
                            lock_file=tmp_path / "lock", inventory=None, data_root=tmp_path, splits=tmp_path,
                            raw_root=tmp_path, rig_dir=None, sidecar_dir=tmp_path, criteria=tmp_path / "c.md"))
     assert out == 2 and "unknown FQL runs" in capsys.readouterr().out  # past the comparison gate
+
+
+def test_stage_refuses_inventories_of_another_policy_id_rule(tmp_path, capsys, monkeypatch):
+    """Codex review (5ec2b46): an inventory evaluated before the FQL-setting rule names an rwnq run by the alpha-10 id;
+    staging it would overwrite that entry (and move its legacy alias). Refused before any host / catalog access."""
+    def host(**k):
+        raise AssertionError("no host access for a refused inventory")
+
+    monkeypatch.setattr(S, "Host", host)
+    crit = tmp_path / "criteria.md"
+    crit.write_text("criteria")
+    run = "rwnq-20261111-fql-reviwo-t-s0"
+    row = {"run": run, "condition": "reviwo", "task": "t", "seed": 0, "policy_id": "reviwo-t-s0",  # old rule
+           "class": {"status": "deployable", "reasons": [], "flags": []}}
+    base = {"criteria_sha256": S.sha256_file(crit), "fql": [row]}
+    args = SimpleNamespace(runs=[run], criteria=crit, allow_comparison=False)
+    for doc, message in ((base, "staging rule"), ({**base, "staging_rule": S.STAGING_RULE}, "FQL-setting rule")):
+        inv = tmp_path / "inv.json"
+        inv.write_text(json.dumps(doc))
+        assert S.cmd_stage(SimpleNamespace(**vars(args), inventory=inv)) == 2
+        assert message in json.loads(capsys.readouterr().out)["error"]

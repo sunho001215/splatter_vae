@@ -47,6 +47,9 @@ OURS_EXPORT_RE = re.compile(r"^(?P<prefix>.+)-(?P<condition>ours)-(?P<task>.+)-e
 # comparison baseline is staged only when explicitly asked (``stage``/``hook`` --allow-comparison).
 FQL_SETTINGS = {"rwnq-": ("a10nq", 10.0, True), "rwa100-": ("a100", 100.0, False)}
 COMPARISON_SETTINGS = ("a100",)
+# Inventories record the policy-id rule they were evaluated under; ``stage --inventory`` refuses any other (an inventory
+# from before the FQL-setting rule names rwnq rows by the alpha-10 ids and would overwrite those entries).
+STAGING_RULE = "fql-settings/1"
 # explicit decisions (MVP3D-FQL-DIAG.md, Directive I item 5): never staged as deployable until reruns pass
 QUARANTINE = {
     re.compile(r"^rwcal-20261109-fql-mvp3d_(single|multiview)-.+-s\d+$"):
@@ -795,6 +798,8 @@ def cmd_inventory(a) -> int:
                 r["host_catalog"] = f"{r['policy_id']} ({e['status']}, {e.get('usage', 'dry_run_replay_only')})"
     crit = inv.get("criteria_sha256") if a.from_json else (sha256_file(a.criteria) if a.criteria.is_file() else None)
     inv["criteria_sha256"] = crit
+    if not a.from_json:
+        inv["staging_rule"] = STAGING_RULE
     if a.out_json:
         a.out_json.write_text(json.dumps(inv, indent=1, default=str) + "\n")
     text = markdown(inv, criteria_sha256=crit)
@@ -856,6 +861,10 @@ def cmd_stage(a, *, hook: bool = False) -> int:
         if inv.get("criteria_sha256") != (sha256_file(a.criteria) if a.criteria.is_file() else None):
             print(json.dumps({"error": "inventory was evaluated under other criteria"}))
             return 2
+        if inv.get("staging_rule") != STAGING_RULE:
+            print(json.dumps({"error": f"inventory was evaluated under staging rule {inv.get('staging_rule')!r}, not "
+                                       f"{STAGING_RULE!r}: re-evaluate it (policy ids depend on the FQL setting)"}))
+            return 2
     else:
         a.evaluate = True
         inv = _evaluated(a, a.runs)
@@ -863,6 +872,11 @@ def cmd_stage(a, *, hook: bool = False) -> int:
     missing = [r for r in a.runs if r not in rows]
     if missing:
         print(json.dumps({"error": f"unknown FQL runs {missing}"}))
+        return 2
+    wrong = {r: rows[r].get("policy_id") for r in a.runs if rows[r].get("policy_id") != policy_id(
+        rows[r]["condition"], rows[r]["task"], int(rows[r]["seed"]), fql_setting(r))}
+    if wrong:  # before any catalog mutation: never let a run take another setting's id
+        print(json.dumps({"error": f"policy ids differ from the FQL-setting rule (re-evaluate): {wrong}"}))
         return 2
 
     src = _sources(a)

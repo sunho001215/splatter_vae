@@ -432,7 +432,7 @@ def _stage_env(tmp_path, monkeypatch, runs=("r-fql-e2e_cnn-t-s0",), status="depl
     crit = tmp_path / "criteria.md"
     crit.write_text("criteria")
     inv = tmp_path / "inv.json"
-    inv.write_text(json.dumps({"criteria_sha256": S.sha256_file(crit), "fql": rows}))
+    inv.write_text(json.dumps({"criteria_sha256": S.sha256_file(crit), "fql": rows, "staging_rule": S.STAGING_RULE}))
     monkeypatch.setattr(S, "stage_files", lambda host, files, **k: {r: S.sha256_file(p) for r, p in files.items()})
     monkeypatch.setattr(S, "local_input_spec", lambda *a: None)
     args = argparse.Namespace(inventory=inv, criteria=crit, runs=list(runs), sidecar_dir=sc, ssh="irsl", bwlimit="1m",

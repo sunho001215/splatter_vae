@@ -27,7 +27,7 @@ pretrainings (`docs/realworld_baselines.md`); one condition trains its CNN end-t
 | Outcomes | every uploaded episode is a successful demonstration; success-state proxy = the final observation; endings with a reset / reversal of the completed task are FLAGGED, flags never change the label | `s4d/rwlearn/outcomes.py`, `outcomes.json`, `docs/realworld_ending_flags.json` |
 | `action/flange_pose` | the pose command actually SENT; keep the command-based base-frame delta-pose contract (no measured displacement) | `s4d/rwlearn/actions.py`, `tests/test_rwlearn_actions.py::test_user_decision_contract_*` |
 | Gripper | continuous closure command, 2c - 1 (no binarisation) | same |
-| FQL alpha | 10 with the reference configuration for every condition; NO alpha sweep. Later tuning follows a predefined real-robot evaluation protocol, not offline action error (the offline action errors are logged as diagnostics only, never used for selection) | `configs/realworld/fql/base.yaml`, plan rows `fql_budget` |
+| FQL alpha | 10 with the reference configuration for every condition; NO alpha sweep. Later tuning follows a predefined real-robot evaluation protocol, not offline action error (the offline action errors are logged as diagnostics only, never used for selection). **Superseded for frozen encoders by the user decision 2026-11-11 ~23:10 (section "FQL setting for pretrained encoders")** | `configs/realworld/fql/base.yaml`, plan rows `fql_budget` |
 | Encoders | task-specific pretraining only; the joint-task rows and configs are removed | `s4d/rwlearn/configs.py`, `launch.py` |
 | SNeRL | 3 input cameras; validation on separate episodes; input-view and novel-view reconstruction reported separately; native multi-view FQL condition kept, its extra inputs labelled | `s4d/rwlearn/snerl_eval.py`, `fql_data.CONDITIONS` |
 | New baseline | ONE end-to-end random-init CNN + FQL (trained jointly, not frozen), official FQL pixel handling, matched to the other conditions | `s4d/rwlearn/pixel.py`, condition `e2e_cnn` |
@@ -375,7 +375,7 @@ the per-episode record `calibration_validated`.
 
 | Consumer | Class | Why |
 |---|---|---|
-| ours (pretraining `s4d/rwlearn/ours.py`; FQL deferred) | geometry | base-frame dynamic 3D tracks, depth fused across cameras, camera poses |
+| ours (pretraining `s4d/rwlearn/ours.py`; FQL `ours`, consumer `fql_ours` = families singleview + geometry) | geometry | base-frame dynamic 3D tracks, depth fused across cameras, camera poses |
 | SNeRL (pretrain + FQL `snerl`) | geometry | encoder input poses and every rendered ray come from the extrinsics |
 | 3D-MVP (pretrain + FQL `mvp3d_multiview`, `mvp3d_single`) | geometry | RGB-D back-projected into the base frame, base-frame bounds |
 | SinCro (pretrain + FQL `sincro`) | geometry | rendering targets along rays from K / c2w; the FQL condition uses that encoder |
@@ -703,3 +703,51 @@ only when present in the dataset; the deploy sidecar includes that source and pr
 checkpoint's recorded source. Native contracts describe the shared client depth processing. Ordinary datasets
 gain no attributes and retain their existing FoundationStereo contract text. Planned rows are unchanged: this
 chain is opt-in and requires new row names, output paths and native store arguments.
+
+## FQL setting for pretrained encoders (user decision 2026-11-11 ~23:10 KST; FQLNQ)
+
+DIAG's matched-budget diagnostic (realworld-ops/diag/DIAG-REPORT.md section 11, Codex-verified) showed that with
+alpha 10 the one-step actor of a frozen-encoder policy drifts to about twice the BC error (26-30 vs 11-13 mm on
+drawer-open), while `agent.alpha=10` + `agent.normalize_q_loss=true` (actor Q term scaled by
+lam = 1 / mean|Q(s, a_onestep)|, `s4d/rwlearn/fql.py`) met the pre-stated rule for both tested encoders, is invariant to
+each encoder's Q scale and had the best critic calibration. The user adopted it:
+
+| Rows | Setting | Ids | Priority |
+|---|---|---|---|
+| every FQL run on a PRETRAINED (frozen) encoder: ours, ReViWo, SinCro, DynaMo, SNeRL, 3D-MVP single + multiview; all four tasks; seeds 0-2 | `--set ... agent.alpha=10.0 agent.normalize_q_loss=true` (`a10nq`) | `rwnq-20261111-fql-<cond>-<task>-s<k>` | the source row's (2) |
+| comparison baseline | `agent.alpha=100.0` (in place) + `agent.normalize_q_loss=false` (explicit) (`a100`) | `rwa100-20261111-fql-<cond>-<task>-s<k>` | 3 (drawer-open / mug-hanging), 4 = lowest (covering / pick-and-place) |
+| End-to-end CNN (`e2e_cnn`, `e2e_cnn_noaug`) | UNCHANGED (alpha 10, no normalisation) | existing ids | unchanged |
+
+* The setting rides on `--set` overrides only. `configs/realworld/fql/base.yaml` is unchanged (`normalize_q_loss:
+  false`), so every E2E row and every existing row keeps exactly its configuration. Existing runs, checkpoints and
+  datasets are preserved as recorded results; the new settings have new ids (`derived_from` names the alpha-10 source
+  row; ours rows name their `protocol_template`).
+* Registrars: `runs/setup/tools/register_fql_nq_20261111.py` (reviwo, sincro, dynamo, mvp3d single / multiview on
+  drawer-open + mug-hanging), `register_fql_nq_followup_20261112.py` (`--group snerl`: from the paused alpha-10 SNeRL
+  rows, behind the SNeRL feature-check hold; `--group ours`: datasets + FQL rows behind the ours feature-check hold, on
+  a release that defines the condition), `register_realworld_newtasks_20261110.py` (covering / pick-and-place: each
+  frozen-encoder plan row becomes its a10nq row + a100 comparison; e2e rows unchanged). All are dry runs by default and
+  publish only under the coordinator's admission pauses; the remote driver ignores `priority` for role rows (queue
+  order), so the a100 pauses are what keep the comparison behind the a10nq rows there.
+* Policy staging (`ops/policy_serving/staging.py`): rwnq rows are served under distinct ids
+  `<cond>-<task>-s<k>-a10nq` (flag `fql_setting_a10nq`; the legacy `<cond>-<task>` aliases keep naming the alpha-10
+  ids), a setting row whose own `config.yaml` does not carry its setting fails criterion b, and rwa100 rows are staged
+  (`stage` / `hook`) only with `--allow-comparison`. Robot-PC selection by condition / task / seed then matches two
+  entries and asks for an explicit `--policy` (fail closed).
+* Monitoring: `realworld-ops/fqlnq/tools/fql_monitor.py` (Q scale, lam = -actor/q_loss / actor/q, critic stability,
+  validation one-step vs BC-flow error; flags fixed in its docstring).
+
+## FQL condition `ours` (2026-11-12; FQLNQ)
+
+`ours` reads the real-world-pretrained Original Splatter4D export (`rwcal-20261111-ours-<task>-pre` ->
+`-export/encoder.pt`) exactly as the simulation downstream protocol does (`s4d.rl.encoders.Splatter4DStateEncoder`):
+ONE camera's 3-frame RGB history (frame spacing 1 camera frame, inside the pretraining strides 1/2/3; DEVIATIONS D7) ->
+one joint state (`policy_state`, 1 slot x 256), stored as a sequence feature like SinCro's and read by the same
+`SmallPostEncoderMLPHead`. Single-view protocol (random camera per sample) as the other single-RGB conditions; consumer
+`fql_ours` (the geometry class of the ours encoder; each camera's own timeline, so no multi-view family).
+Datasets `rwcal-20261111-fqldata-ours-<task>` take the SinCro dataset row of the task as protocol template (same store,
+gate report, outcomes, footprint; remote only). FQL rows are a10nq + a100 on the SinCro FQL rows' protocol (split,
+seed, 1M steps, batch 256, intervals). Before launch, each ours dataset passes the same feature check as SinCro / SNeRL
+(offset / signal and LayerNorm spread, `ops/policy_serving/criteria.py feature_conditioning`); whether a failing
+dataset is standardised (`encoder.feature_norm=train_standardize`) is a decision for the user. Trained ours
+checkpoints get the condition's deploy contract (`InputSpec.from_meta`); the labelled serving fixture is unchanged.
