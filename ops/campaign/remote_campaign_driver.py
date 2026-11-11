@@ -115,6 +115,12 @@ ROLE_RELEASE = json.loads(ROLE_RELEASE_FILE.read_text()) if ROLE_RELEASE_FILE.is
 ROLE_COMMIT, ROLE_IMAGE = ROLE_RELEASE.get('commit'), ROLE_RELEASE.get('image')
 if ROLE_COMMIT and ROLE_IMAGE:
     RELEASES[(ROLE_COMMIT, ROLE_IMAGE)] = f'runs/remote/acceptance/{ROLE_COMMIT[:7]}-cc/manifest.json'
+# Earlier role releases (role-release.json "previous": [{"commit", "image"}, ...]) stay mapped for RETRIES only: a retry
+# keeps the release of its first launch (job_release), new launches always take ROLE_COMMIT. Without an entry such a
+# retry is held ("no accepted manifest"); an entry whose acceptance manifest is missing stays held the same way.
+for _previous in ROLE_RELEASE.get('previous', []):
+    RELEASES.setdefault((_previous['commit'], _previous['image']),
+                        f"runs/remote/acceptance/{_previous['commit'][:7]}-cc/manifest.json")
 ROLE_READY = bool(ROLE_COMMIT and ROLE_IMAGE) and (REPO / RELEASES[(ROLE_COMMIT, ROLE_IMAGE)]).is_file()
 ROOT = '/home/compu/kaist/sunho'
 CAP = 1_000_000_000_000

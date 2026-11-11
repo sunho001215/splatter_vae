@@ -1109,3 +1109,16 @@ def test_local_driver_stamps_roles_and_remote_driver_honours_queue_hold_and_loca
     assert "if paused(job['id']) or job.get('release_source') == 'local':" in remote
     for text in (local,):
         assert 'remote-hold-admissions' not in text and 'verification/HOLD' not in text
+
+
+def test_remote_driver_keeps_previous_role_releases_for_retries_only():
+    source = (rw.REPO / 'ops/campaign/remote_campaign_driver.py').read_text()
+    block = source[source.index("for _previous in ROLE_RELEASE.get('previous', []):"):]
+    block = block[:block.index('\nROLE_READY')]
+    names = {'ROLE_RELEASE': {'commit': 'b' * 40, 'image': 'i', 'previous': [{'commit': 'a' * 40, 'image': 'i'}]},
+             'RELEASES': {('b' * 40, 'i'): 'current'}}
+    exec(block, names)  # the mapping block only (no driver pass is run)
+    assert names['RELEASES'] == {('b' * 40, 'i'): 'current',
+                                 ('a' * 40, 'i'): f"runs/remote/acceptance/{'a' * 7}-cc/manifest.json"}
+    release = source[source.index('def job_release(job):'):source.index('\n\n\n', source.index('def job_release(job):'))]
+    assert release.index("if previous.get('commit'):") < release.index("if kind(job['id']) == 'role':")
