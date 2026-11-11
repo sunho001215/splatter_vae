@@ -29,8 +29,9 @@ SPEC = importlib.util.spec_from_file_location('newtask_registrar', PROPOSAL)
 R = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(R)
 PIN = {'commit': '1' * 40, 'image': 'sha256:' + '2' * 64}
-IMAGE_COUNTS = {'image-pretrain': 2, 'image-dataset': 3, 'image-fql': 9}
-GEOMETRY_COUNTS = {'geometry-pretrain': 3, 'geometry-dataset': 4, 'geometry-fql': 12}
+IMAGE_COUNTS = {'image-pretrain': 2, 'image-dataset': 3, 'image-fql': 12}  # + 3 e2e_cnn_noaug seeds
+GEOMETRY_COUNTS = {'geometry-stage': 1, 'geometry-pretrain': 3, 'geometry-dataset': 4, 'geometry-fql': 12}
+RIG = {'remote': '/home/compu/kaist/sunho/realworld/configs/calrel-6c3b9ec/rig/rig-loma-t.json', 'sha256': 'a' * 64}
 
 
 @pytest.fixture(autouse=True)
@@ -109,14 +110,17 @@ def test_proposal_has_exact_families_resources_seeds_and_artifact_dependencies(t
     measured_scenes(monkeypatch, task)
     manifest, report = staged_inputs(tmp_path, task)
     remote = f'/remote/learning_inputs/newtasks/{task}'
-    result = R.plan_task(task, report, PIN, remote)
+    result = R.plan_task(task, report, PIN, remote, rig=RIG)
     assert result['counts'] == {**IMAGE_COUNTS, **GEOMETRY_COUNTS}
     rows = result['jobs']
-    assert len(rows) == 33 and not result['plan_refused']
+    assert len(rows) == 33 + 3 + 1 and not result['plan_refused']  # + 3 e2e_cnn_noaug FQL + the native-depth stage
     templates = {r['id']: r for r in launch.plan(report, [task], PIN['commit'])['rows']}
     by_id = {r['id']: r for r in rows}
     assert len(by_id) == len(rows)
+    directive_r_checks(task, rows, by_id, remote)
     for row in rows:
+        if R.kind(row) == 'stage' or row.get('fql_variant') == 'noaug':
+            continue  # checked by directive_r_checks
         assert row['id'] == R.PREFIX + row['plan_row_id'][3:]
         template = templates[row['plan_row_id']]
         assert all(row[k] == template[k] for k in ('priority', 'mem_gb', 'ram_gb', 'gpu', 'max_restarts', 'role'))
@@ -126,7 +130,8 @@ def test_proposal_has_exact_families_resources_seeds_and_artifact_dependencies(t
         args = row['args']
         if R.kind(row) == 'pretrain':
             assert args[args.index('--output-root') + 1] == 'runs'
-            assert all(f'{key}={remote}/{name}' in args for key, name in R.OVERRIDE_KEYS.items())
+            assert all(f'{key}={remote}/{name}' in args for key, name in R.OVERRIDE_KEYS.items()
+                       if not (key == 'dataset.hdf5_path' and row.get('depth_source') == R.NATIVE_DEPTH))
         elif R.kind(row) == 'dataset':
             assert f"runs/{row['id']}/dataset.h5" in args and f'{remote}/outcomes.json' in args
             if '--export' in args:
@@ -138,20 +143,51 @@ def test_proposal_has_exact_families_resources_seeds_and_artifact_dependencies(t
     assert set(hashes) == set(R.INPUT_NAMES) and all(len(v) == 64 for v in hashes.values())
 
 
+def directive_r_checks(task, rows, by_id, remote):
+    """Directive R additions: e2e_cnn_noaug = its e2e_cnn row + pixel.p_aug=0.0 only; the native 3D-MVP chain; the
+    frozen-encoder FQL hold (e2e_cnn / noaug excluded)."""
+    noaug = [r for r in rows if r.get('fql_variant') == 'noaug']
+    assert len(noaug) == 3
+    for r in noaug:
+        orig = by_id[r['derived_from']]
+        assert r['args'] == [r['id'] if a == orig['id'] else a for a in orig['args']] + ['pixel.p_aug=0.0']
+        same = {k for k in orig if k not in ('id', 'args', 'plan_row_id')}
+        assert all(r[k] == orig[k] for k in same)
+        assert r['plan_row_id'] == orig['plan_row_id'].replace('e2e_cnn', 'e2e_cnn_noaug')
+    stage = by_id[f'{R.PREFIX}nativedepth-mvp3d-{task}']
+    store = f"runs/{stage['id']}/store-native.yaml"
+    assert stage['args'][:5] == ['build', '--store', f'{remote}/store.yaml', '--rig', RIG['remote']]
+    assert stage['rig_document_sha256'] == RIG['sha256'] and R.kind(stage) == 'stage' and not stage['deps']
+    mvp = [r for r in rows if r.get('baseline') == 'mvp3d' or str(r.get('fql_condition', '')).startswith('mvp3d')]
+    assert len(mvp) == 9 and all(r['depth_source'] == R.NATIVE_DEPTH for r in mvp)
+    pre = next(r for r in mvp if R.kind(r) == 'pretrain')
+    assert f'dataset.hdf5_path={store}' in pre['args'] and stage['id'] in pre['deps']
+    assert all(r['args'][r['args'].index('--store') + 1] == store for r in mvp if R.kind(r) == 'dataset')
+    assert all(r['args'][-1] == 'encoder.feature_norm=train_standardize' and 'feature check' in r['launch_gate']
+               for r in mvp if R.kind(r) == 'fql')
+    hold = R.frozen_hold(rows, task)
+    held = set(hold['rows'])
+    fql = [r for r in rows if R.kind(r) == 'fql']
+    assert held == {r['id'] for r in fql if r['fql_condition'] != 'e2e_cnn'} and len(held) == 18
+    assert all(r['id'] not in held for r in fql if r['fql_condition'] == 'e2e_cnn')  # e2e_cnn + noaug may run
+
+
 def test_proposal_respects_each_consumer_gate_and_old_tasks_cannot_be_registered(tmp_path, monkeypatch):
     measured_scenes(monkeypatch, 'covering')
     _, report = staged_inputs(tmp_path, geometry=False)  # calibration hold closed
-    image = R.plan_task('covering', report, PIN, '/remote/covering', family='image')
-    assert len(image['jobs']) == 14 and not any(r['calibration_dependent'] for r in image['jobs'])
+    image = R.plan_task('covering', report, PIN, '/remote/covering', family='image', rig=RIG)
+    assert len(image['jobs']) == 17 and not any(r['calibration_dependent'] for r in image['jobs'])
+    assert set(image['hold']['rows']) == {r['id'] for r in image['jobs']
+                                          if R.kind(r) == 'fql' and r['fql_condition'] in ('reviwo', 'dynamo')}
     assert image['counts'] == IMAGE_COUNTS
     for family in ('geometry', 'all'):
         with pytest.raises(R.Refused, match='incomplete consumer family'):
-            R.plan_task('covering', report, PIN, '/remote/covering', family=family)
+            R.plan_task('covering', report, PIN, '/remote/covering', family=family, rig=RIG)
     with pytest.raises(R.Refused, match='one new'):
-        R.plan_task('drawer-open', report, PIN, '/remote/drawer-open')
+        R.plan_task('drawer-open', report, PIN, '/remote/drawer-open', rig=RIG)
     report['tasks']['covering']['passed'] = False
     with pytest.raises(R.Refused, match='100-episode'):
-        R.plan_task('covering', report, PIN, '/remote/covering')
+        R.plan_task('covering', report, PIN, '/remote/covering', rig=RIG)
 
 
 # synthetic manifests number episodes 0..99 (the excluded indices stand in for the real ones)
@@ -164,13 +200,13 @@ def test_an_amended_task_registers_on_exactly_its_amendment_episodes(task, exclu
     manifest, report = staged_inputs(tmp_path, task, excluded=excluded)
     n = 100 - len(excluded)
     assert report['tasks'][task]['passed'] and report['tasks'][task]['target'] == n
-    assert R.plan_task(task, report, PIN, f'/remote/{task}')['counts'] == {**IMAGE_COUNTS, **GEOMETRY_COUNTS}
+    assert R.plan_task(task, report, PIN, f'/remote/{task}', rig=RIG)['counts'] == {**IMAGE_COUNTS, **GEOMETRY_COUNTS}
     assert set(R.verify_inputs(task, manifest, report, tmp_path)) == set(R.INPUT_NAMES)
     split = json.loads((tmp_path / 'split_seed0.json').read_text())
     assert len(split['validation']) == 10 and len(split['train']) == n_train
     report['tasks'][task]['target'] = 100
     with pytest.raises(R.Refused, match='gate target'):
-        R.plan_task(task, report, PIN, f'/remote/{task}')
+        R.plan_task(task, report, PIN, f'/remote/{task}', rig=RIG)
     # the same episodes without the amendment never pass the gate
     plain = gate.evaluate(manifest, [task], amendments={})
     assert not plain['tasks'][task]['passed']
@@ -188,8 +224,8 @@ def test_unmeasured_scene_never_registers_a_partial_geometry_family(task, tmp_pa
     assert all('scene parameters not measured' in ' '.join(v) for v in plan['refused'].values())
     for family in ('geometry', 'all'):
         with pytest.raises(R.Refused, match='incomplete consumer family'):
-            R.plan_task(task, report, PIN, f'/remote/{task}', family=family)
-    assert R.plan_task(task, report, PIN, f'/remote/{task}', family='image')['counts'] == IMAGE_COUNTS
+            R.plan_task(task, report, PIN, f'/remote/{task}', family=family, rig=RIG)
+    assert R.plan_task(task, report, PIN, f'/remote/{task}', family='image', rig=RIG)['counts'] == IMAGE_COUNTS
 
 
 @pytest.mark.parametrize('change', ['output', 'split', 'split_seed', 'outcome', 'ending', 'calibration', 'identity'])
@@ -261,14 +297,17 @@ def test_prepare_refuses_unmeasured_scene_but_can_prepare_image_rows(tmp_path, m
         R.prepare(tmp_path, 'covering', manifest_path, directory, '/remote/covering')
     with monkeypatch.context() as m:  # planner says measured, but the released configs still hold nulls
         measured_scenes(m, 'covering')
-        with pytest.raises(R.Refused, match='released config has unmeasured scene parameters'):
+        with pytest.raises(R.Refused, match='native 3D-MVP chain needs'):
             R.prepare(tmp_path, 'covering', manifest_path, directory, '/remote/covering')
+        with pytest.raises(R.Refused, match='released config has unmeasured scene parameters'):
+            R.prepare(tmp_path, 'covering', manifest_path, directory, '/remote/covering', rig=RIG)
     roles = tmp_path / 'configs/hosts/roles.yaml'
     roles.parent.mkdir(parents=True)
     roles.write_text((configs.REPO / 'configs/hosts/roles.yaml').read_text())
     monkeypatch.setattr(R, 'release_evidence', lambda *args: {'source_sha256': {}})
     prepared = R.prepare(tmp_path, 'covering', manifest_path, directory, '/remote/covering', family='image')
-    assert len(prepared['jobs']) == 14 and prepared['status'] == 'dry-run' and not prepared['registered']
+    assert len(prepared['jobs']) == 17 and prepared['status'] == 'dry-run' and not prepared['registered']
+    assert prepared['hold']['rows'] and prepared['hold']['active'] is True
     assert prepared['release'] == PIN and not (tmp_path / 'experiments').exists()
     assert set(prepared['learning_inputs']['sha256']) == set(R.INPUT_NAMES)
     assert {r['planned_commit'] for r in prepared['jobs']} == {PIN['commit']}

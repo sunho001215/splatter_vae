@@ -56,9 +56,17 @@ INPUT_NAMES = ('store.yaml', 'gate_report.json', 'split_seed0.json', 'outcomes.j
 OVERRIDE_KEYS = {'dataset.hdf5_path': 'store.yaml', 'data_interface.split_manifest': 'split_seed0.json',
                  'data_interface.gate_report': 'gate_report.json'}
 DISK_GB = {'pretrain': 20, 'dataset': 20, 'fql': 10}  # as the two existing real-world registrations
-# exactly what each existing task got (register_realworld_nongeometric_20261106 + register_realworld_geometric_20261109)
-FAMILY_COUNTS = {'image': {'image-pretrain': 2, 'image-dataset': 3, 'image-fql': 9},
-                 'geometry': {'geometry-pretrain': 3, 'geometry-dataset': 4, 'geometry-fql': 12}}
+# exactly what each existing task got (register_realworld_nongeometric_20261106 + register_realworld_geometric_20261109),
+# plus directive R (user 2026-11-11): the e2e_cnn_noaug FQL seeds (register_e2e_noaug_20261111 conventions) and the
+# native-depth 3D-MVP chain (register_mvp3d_native_20261110 conventions: one native-depth stage row, then the 3D-MVP
+# pretraining / fqldata / FQL rows on its store, FQL with train-split feature standardisation behind a feature check)
+FAMILY_COUNTS = {'image': {'image-pretrain': 2, 'image-dataset': 3, 'image-fql': 12},
+                 'geometry': {'geometry-stage': 1, 'geometry-pretrain': 3, 'geometry-dataset': 4, 'geometry-fql': 12}}
+NATIVE_SCRIPT = 'scripts/realworld_native_depth.py'
+NATIVE_DEPTH = 'native_realsense'
+FROZEN_HOLD_REASON = ('directive R (user 2026-11-11): frozen-encoder FQL rows are registered but HELD until the '
+                      'coordinator relays the agreed FQL setting from the running diagnostics; e2e_cnn and '
+                      'e2e_cnn_noaug keep alpha 10 and may run')
 
 
 class Refused(RuntimeError):
@@ -80,7 +88,8 @@ def json_sha(value):
 
 def kind(row):
     return ('pretrain' if row['role'] == 'realworld_pretrain' else
-            'dataset' if row['script'] == 'scripts/realworld_fql_dataset.py' else 'fql')
+            'dataset' if row['script'] == 'scripts/realworld_fql_dataset.py' else
+            'stage' if row['script'] == NATIVE_SCRIPT else 'fql')
 
 
 def release_pin(repo):
@@ -227,7 +236,75 @@ def adapt_rows(templates, report, release, remote_inputs):
     return sorted(rows, key=lambda row: row['priority'])
 
 
-def plan_task(task, report, release, remote_inputs, *, family='all'):
+def noaug_rows(rows):
+    """One e2e_cnn_noaug FQL row per e2e_cnn FQL row: identical except the id (+ --name), ONE appended override
+    pixel.p_aug=0.0 and bookkeeping (register_e2e_noaug_20261111 conventions)."""
+    out = []
+    for r in rows:
+        if kind(r) != 'fql' or r.get('fql_condition') != 'e2e_cnn':
+            continue
+        new = copy.deepcopy(r)
+        new['id'] = r['id'].replace('fql-e2e_cnn-', 'fql-e2e_cnn_noaug-')
+        new['args'] = [new['id'] if a == r['id'] else a for a in r['args']] + ['pixel.p_aug=0.0']
+        new.update(plan_row_id=r['plan_row_id'].replace('fql-e2e_cnn-', 'fql-e2e_cnn_noaug-'), derived_from=r['id'],
+                   fql_variant='noaug', purpose='End-to-End CNN + FQL WITHOUT random cropping (pixel.p_aug=0.0, the '
+                   'original inherits 0.5); everything else identical to derived_from (directive O / R)')
+        out.append(new)
+    return out
+
+
+def native_mvp3d(rows, task, remote_inputs, rig):
+    """The native-depth 3D-MVP chain: a native-depth stage on the task's store with the task's validated rig document
+    (its sensor_depth scales), the 3D-MVP pretraining and fqldata rows on the native store, FQL rows with train-split
+    feature standardisation behind the pre-launch feature check (register_mvp3d_native_20261110 conventions)."""
+    nid = f'{PREFIX}nativedepth-mvp3d-{task}'
+    store = f'runs/{nid}/store-native.yaml'
+    native = {'id': nid, 'script': NATIVE_SCRIPT,
+              'args': ['build', '--store', f'{remote_inputs}/store.yaml', '--rig', rig['remote'], '--out-dir',
+                       f'runs/{nid}/overlays', '--out-store', store, '--workers', '16'],
+              'role': 'realworld_fql', 'host': 'remote', 'gpu': 'any', 'mem_gb': 1, 'ram_gb': 8, 'cpus': 16,
+              'disk_gb': 10, 'priority': 1, 'deps': [], 'max_restarts': 2, 'oom_score_adj': 0,
+              'realworld_target': task, 'realworld_consumer': 'mvp3d', 'calibration_dependent': True,
+              'required_results': ['store-native.yaml'], 'rig_document_sha256': rig['sha256'],
+              'depth_source': NATIVE_DEPTH, 'gpu_note': 'CPU-only stage; gpu any + mem_gb 1 like the e2e_cnn CPU dataset '
+                                                        'builds',
+              'note': 'inputs read-only (store, raw recordings, rig document); resumable; descriptor published only when '
+                      'every overlay verifies'}
+    out = []
+    for r in rows:
+        if r.get('baseline') == 'mvp3d' and kind(r) == 'pretrain':
+            r = copy.deepcopy(r)
+            r['args'] = [f'dataset.hdf5_path={store}' if a == f'dataset.hdf5_path={remote_inputs}/store.yaml' else a
+                         for a in r['args']]
+            require(f'dataset.hdf5_path={store}' in r['args'], f"{r['id']}: no store override to replace")
+            r['deps'] = [*r['deps'], nid]
+            r['depth_source'] = NATIVE_DEPTH
+        elif kind(r) == 'dataset' and str(r.get('fql_condition', '')).startswith('mvp3d'):
+            r = copy.deepcopy(r)
+            i = r['args'].index('--store')
+            require(r['args'][i + 1] == f'{remote_inputs}/store.yaml', f"{r['id']}: unexpected store")
+            r['args'][i + 1] = store
+            r['depth_source'] = NATIVE_DEPTH
+        elif kind(r) == 'fql' and str(r.get('fql_condition', '')).startswith('mvp3d'):
+            r = copy.deepcopy(r)
+            r['args'] = [*r['args'], 'encoder.feature_norm=train_standardize']
+            r['depth_source'] = NATIVE_DEPTH
+            r['launch_gate'] = (f"pre-launch feature check on {r['deps'][0]} (standardised with the train-split fit = "
+                                'what the FQL head sees, MVP-STATUS V1 criteria) must pass')
+        out.append(r)
+    return ([native] if any(r.get('depth_source') == NATIVE_DEPTH for r in out) else []) + out
+
+
+def frozen_hold(rows, task):
+    """The admission pause that must be ACTIVE before the rows are published: every frozen-encoder FQL row."""
+    conds = sorted({r['fql_condition'] for r in rows if kind(r) == 'fql' and r.get('fql_condition') != 'e2e_cnn'})
+    prefixes = [f'{PREFIX}fql-{c}-{task}-' for c in conds]
+    held = sorted(r['id'] for r in rows if any(r['id'].startswith(p) for p in prefixes))
+    return {'name': f'newtasks-frozen-fql-hold-{task}-20261111', 'active': True, 'prefixes': prefixes,
+            'reason': FROZEN_HOLD_REASON, 'rows': held}
+
+
+def plan_task(task, report, release, remote_inputs, *, family='all', rig=None):
     require(task in TASKS, 'exactly one new real-world task is required')
     require(family in ('all', 'image', 'geometry'), 'unknown consumer family')
     require(report['tasks'][task]['passed'], 'full-data (100-episode or amended) gate refused')
@@ -236,18 +313,30 @@ def plan_task(task, report, release, remote_inputs, *, family='all'):
     templates = [r for r in result['rows'] if family == 'all' or
                  r['calibration_dependent'] == (family == 'geometry')]
     rows = adapt_rows(templates, report, release, remote_inputs)
+    rows = rows + noaug_rows(rows)
+    if any(r.get('baseline') == 'mvp3d' for r in rows):
+        require(rig is not None and re.fullmatch(r'[0-9a-f]{64}', str(rig.get('sha256', ''))) and
+                str(rig.get('remote', '')).startswith('/'), 'the native 3D-MVP chain needs --rig-document/--rig-remote')
+        native = native_mvp3d(rows, task, remote_inputs, rig)
+        stage = native[0]
+        stage.update(pin_host='remote', planned_commit=release['commit'], planned_image=release['image'],
+                     realworld_inputs=remote_inputs, realworld_gate_sha256=json_sha(report),
+                     realworld_manifest_sha256=report['manifest']['sha256'],
+                     registration_tool='runs/setup/tools/' + Path(__file__).name,
+                     evidence_manifest=f"runs/remote/acceptance/{release['commit'][:7]}-cc/manifest.json")
+        rows = sorted(native, key=lambda row: row['priority'])
     counts = dict(Counter(f"{'geometry' if r['calibration_dependent'] else 'image'}-{kind(r)}" for r in rows))
     want = {k: v for f, c in FAMILY_COUNTS.items() if family in ('all', f) for k, v in c.items()}
     # never a partial family: rows registered now would collide with the rest of the family later
     require(counts == want, f'{task}/{family}: incomplete consumer family {counts} != {want}; planner refused '
             + json.dumps(result['refused'], sort_keys=True)[:1500])
-    return {'jobs': rows, 'plan_refused': result['refused'], 'counts': counts}
+    return {'jobs': rows, 'plan_refused': result['refused'], 'counts': counts, 'hold': frozen_hold(rows, task)}
 
 
-def prepare(repo, task, manifest_path, inputs_copy, remote_inputs, *, family='all'):
+def prepare(repo, task, manifest_path, inputs_copy, remote_inputs, *, family='all', rig=None):
     release = release_pin(repo)
     report = gate.evaluate_file(manifest_path, [task])
-    result = plan_task(task, report, release, remote_inputs, family=family)
+    result = plan_task(task, report, release, remote_inputs, family=family, rig=rig)
     evidence = verify_inputs(task, json.loads(Path(manifest_path).read_bytes()), report, inputs_copy)
     require(sha(Path(manifest_path).read_bytes()) == report['manifest']['sha256'], 'manifest changed during evaluation')
     for row in result['jobs']:  # the planner already refused unmeasured scenes; the released configs must agree
@@ -346,7 +435,12 @@ def publish(repo, options):
     with locks(repo):
         require(not pending.exists() and not proof.exists(), 'pending transaction/proof exists; inspect/recover first')
         record = prepare(repo, options.task, options.manifest, options.inputs_copy, options.remote_inputs,
-                         family=options.family)
+                         family=options.family, rig=rig_arg(options))
+        hold = record['hold']
+        pauses = json.loads((repo / 'runs/setup/admission-pauses.json').read_bytes())['pauses']
+        active = [p for p in pauses if p.get('active')]
+        require(all(any(row.startswith(tuple(p.get('prefixes') or [])) for p in active) for row in hold['rows']),
+                f"publish the ACTIVE admission pause {hold['name']} (prefixes {hold['prefixes']}) first")
         before = queue.read_bytes()
         current = scheduler.load_queue(queue)
         known = scheduler.read_registry(repo / 'experiments/registry.jsonl')
@@ -394,6 +488,15 @@ def recover(repo):
         return record
 
 
+def rig_arg(options):
+    """{'remote', 'sha256'} of the rig document the native-depth stage reads (None without --rig-document)."""
+    if not getattr(options, 'rig_document', None):
+        return None
+    require(options.rig_remote and Path(options.rig_remote).name == options.rig_document.name,
+            '--rig-remote must name the same document as --rig-document')
+    return {'remote': options.rig_remote, 'sha256': sha(options.rig_document.read_bytes())}
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument('--repo', type=Path, default=ROOT)
@@ -402,6 +505,8 @@ def main():
     ap.add_argument('--inputs-copy', type=Path)
     ap.add_argument('--remote-inputs', help='absolute staged remote directory for this task')
     ap.add_argument('--family', choices=('all', 'image', 'geometry'), default='all')
+    ap.add_argument('--rig-document', type=Path, help='local copy of the task rig document (native 3D-MVP chain)')
+    ap.add_argument('--rig-remote', help='its absolute remote path (realworld/configs/calrel-6c3b9ec/rig/...)')
     ap.add_argument('--out', type=Path, help='dry-run proof only; queue and registry unchanged')
     mode = ap.add_mutually_exclusive_group()
     mode.add_argument('--publish', action='store_true')
@@ -416,7 +521,8 @@ def main():
         require(remote.is_absolute() and '..' not in remote.parts and remote.name == args.task,
                 '--remote-inputs must be an absolute directory ending in the task name')
         result = (publish(args.repo, args) if args.publish else
-                  prepare(args.repo, args.task, args.manifest, args.inputs_copy, str(remote), family=args.family))
+                  prepare(args.repo, args.task, args.manifest, args.inputs_copy, str(remote), family=args.family,
+                          rig=rig_arg(args)))
     if args.out:
         # Explicit output only; a dry run otherwise writes nothing.
         atomic_write(args.out, (json.dumps(result, indent=2) + '\n').encode())
