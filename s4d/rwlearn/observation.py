@@ -40,4 +40,9 @@ CONDITIONS = {
                               "+depth of the view, its intrinsics + extrinsics"),
     "e2e_cnn": Condition(None, 1, False, False, "End-to-end IMPALA-small CNN, random init, trained jointly with FQL "
                                                 "(official FQL pixel handling), single RGB"),
+    # Ours (FQLNQ 2026-11-11): the real-world-pretrained Original Splatter4D export (s4d/rwlearn/ours.py ->
+    # scripts/export_encoder.py), read exactly as in the simulation downstream protocol (s4d.rl.encoders
+    # Splatter4DStateEncoder): ONE camera's 3-frame RGB history -> one joint state (a sequence feature, like SinCro's);
+    # frame spacing 1 camera frame lies inside the pretraining strides 1/2/3 (realworld-ops/ours/DEVIATIONS.md D7).
+    "ours": Condition("splatter4d", 1, False, False, "Ours (Splatter4D Original, real-world pretrained), single RGB"),
 }

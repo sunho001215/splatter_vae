@@ -175,13 +175,13 @@ def test_calibration_hold_only_holds_geometry_dependent_consumers():
 
 def test_consumer_classification_is_explicit():
     geo = {k for k, c in gate.CONSUMERS.items() if c.geometry}
-    assert geo == {"ours", "snerl", "mvp3d", "sincro", "fql_sincro", "mvp3d_single"}
+    assert geo == {"ours", "snerl", "mvp3d", "sincro", "fql_sincro", "fql_ours", "mvp3d_single"}
     assert {k for k, c in gate.CONSUMERS.items() if not c.geometry} == {"reviwo", "dynamo", "e2e_cnn", "fql_reviwo"}
     from s4d.rwlearn.fql_data import CONDITIONS
 
     assert set(gate.FQL_CONSUMER) == set(CONDITIONS)  # every FQL condition inherits its encoder's class
     assert {c for c, k in gate.FQL_CONSUMER.items() if gate.CONSUMERS[k].geometry} == {
-        "snerl", "sincro", "mvp3d_multiview", "mvp3d_single"}
+        "snerl", "sincro", "mvp3d_multiview", "mvp3d_single", "ours"}
 
 
 KEY = "drawer-open/episode_000004.h5"

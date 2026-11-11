@@ -91,11 +91,19 @@ def exports(tmp_path_factory):
                            depth=4, decoder_dim=32, decoder_heads=2, decoder_dim_head=16)
     save_mvp(d / "mvp3d.pt", build_mvp(tiny_mvp).eval(), asdict(tiny_mvp), {"bounds": MVP3D_BOUNDS, "radius": 0.012},
              0, random_init=True)
+
+    from s4d.model.encoder import Encoder, EncoderConfig  # ours: a tiny splatter4d-encoder-v1 export (3 frames)
+
+    s4d_cfg = EncoderConfig(image_height=128, image_width=128, width=32, depth=2, heads=2, slot_dim=16, num_frames=3)
+    torch.save({"format": "splatter4d-encoder-v1", "encoder_config": asdict(s4d_cfg),
+                "state_dict": Encoder(s4d_cfg).state_dict(), "step": 0, "frame_strides": [1, 2, 3]},
+               d / "splatter4d.pt")
     return d
 
 
 @pytest.mark.parametrize("condition,timeline_names", [
-    ("dynamo", None), ("snerl", ["sync"]), ("sincro", None), ("mvp3d_single", None), ("mvp3d_multiview", ["sync"])])
+    ("dynamo", None), ("snerl", ["sync"]), ("sincro", None), ("mvp3d_single", None), ("mvp3d_multiview", ["sync"]),
+    ("ours", None)])
 def test_dataset_build_sampling_and_policy_round_trip(tmp_path, exports, condition, timeline_names):
     torch.manual_seed(0)
     store = store_on_fixture()
@@ -479,3 +487,42 @@ def test_geometric_condition_dataset_needs_the_validated_calibration(tmp_path, e
     with pytest.raises(RuntimeError, match="calibration hold released"):  # short runs are held too (geometric)
         check_dataset_gate(path, base, steps=100)
     assert check_dataset_gate(path, base, steps=100, smoke_without_calibration=True)["smoke"]  # explicit opt-in only
+
+
+def test_trained_ours_checkpoint_loads_through_the_deploy_path(tmp_path, exports):
+    """FQLNQ 2026-11-11: ``ours`` is a trained FQL condition (single RGB view, 3-frame joint state of the Original
+    export); its checkpoint gets the condition's own contract (not the labelled serving fixture's)."""
+    from s4d.rwlearn.deploy import DeployPolicy
+    from s4d.rwlearn.deploy.contracts import read_training_contract, training_contract
+    from s4d.rwlearn.gate import CONSUMERS, FQL_CONSUMER, consumer_families
+
+    assert FD.CONDITIONS["ours"].encoder_type == "splatter4d" and FD.CONDITIONS["ours"].views == 1
+    assert not FD.CONDITIONS["ours"].depth and not FD.CONDITIONS["ours"].cameras
+    assert FQL_CONSUMER["ours"] == "fql_ours" and CONSUMERS["fql_ours"].geometry
+    assert consumer_families("fql_ours") == ("singleview", "geometry")
+    torch.manual_seed(0)
+    store = store_on_fixture()
+    ep = store.episodes()[0]
+    path, export = tmp_path / "ours.h5", exports / "splatter4d.pt"
+    FD.build_fql_dataset(store, "ours", export, path, episodes=[ep], assume_final_success=True)
+    data = FD.OfflineTransitions(path)
+    assert data.sequence and data.attrs["encoder_type"] == "splatter4d" and data.attrs["condition"] == "ours"
+    enc = data.encoder_factory(32)
+    agent = FQLAgent.create(0, enc().out_dim, A.ACTION_DIM, {"actor_hidden_dims": (32,), "value_hidden_dims": (32,),
+                                                              "batch_size": 32, "alpha": 10.0,
+                                                              "normalize_q_loss": True}, encoder=enc)
+    gen = torch.Generator().manual_seed(0)
+    info = agent.update(data.sample(32, gen))
+    assert all(np.isfinite(v) for v in info.values())
+    ckpt = tmp_path / "policy.pt"
+    torch.save(checkpoint_payload(agent, data, "ours", 1), ckpt)
+    meta = torch.load(ckpt, map_location="cpu", weights_only=False)["meta"]
+    with h5py.File(path, "r") as f:
+        training = training_contract(dict(f.attrs))
+    read_training_contract(meta, training)
+    sidecar = tmp_path / "ours.deploy_contract.json"
+    sidecar.write_text(__import__("json").dumps(training))
+    policy = DeployPolicy(ckpt, export_path=export, training=sidecar)
+    spec = policy.input_spec
+    assert spec.condition == "ours" and not spec.fixture and spec.views == 1 and spec.modalities == ("rgb",)
+    assert not spec.needs_calibration and spec.sequence_feature

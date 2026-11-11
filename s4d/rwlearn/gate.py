@@ -106,7 +106,7 @@ QA_FAMILIES = ("singleview", "multiview", "geometry")
 CONSUMER_FAMILIES = {"ours": QA_FAMILIES, "snerl": QA_FAMILIES, "mvp3d": QA_FAMILIES, "sincro": QA_FAMILIES,
                      "reviwo": ("singleview", "multiview"), "dynamo": ("singleview",), "e2e_cnn": ("singleview",),
                      "fql_reviwo": ("singleview",), "fql_sincro": ("singleview", "geometry"),
-                     "mvp3d_single": ("singleview", "geometry")}
+                     "fql_ours": ("singleview", "geometry"), "mvp3d_single": ("singleview", "geometry")}
 _TRAIN_FORMAT = re.compile(r"^s4d\.realworld\.train/(\d+)\.(\d+)\.(\d+)$")
 MIN_TRAIN_VERSION = (1, 1, 0)
 
@@ -146,7 +146,7 @@ class Consumer:
 CONSUMERS = {
     "ours": Consumer(True, "dynamic 3D tracks in the robot base frame, depth fused across cameras, camera poses",
                      "tracks are lifted to the base frame and depth is fused with the camera-to-robot extrinsics "
-                     "(pretraining deferred until the architecture is final)"),
+                     "(Original pretraining s4d/rwlearn/ours.py; offline FQL reads its export, consumer fql_ours)"),
     "snerl": Consumer(True, "3 RGB views + normalised camera poses (encoder input); RGB / semantic / DINO targets "
                             "rendered along rays", "the encoder input poses and every rendered ray come from the "
                                                "extrinsics; a wrong calibration changes inputs and targets"),
@@ -163,10 +163,10 @@ CONSUMERS = {
 }
 # FQL's single-view conditions keep the encoder's geometry class but consume each camera's own timeline.
 CONSUMERS.update({"fql_reviwo": CONSUMERS["reviwo"], "fql_sincro": CONSUMERS["sincro"],
-                  "mvp3d_single": CONSUMERS["mvp3d"]})
+                  "fql_ours": CONSUMERS["ours"], "mvp3d_single": CONSUMERS["mvp3d"]})
 # offline-FQL conditions inherit the class of the encoder they are trained on (s4d/rwlearn/fql_data.py CONDITIONS)
 FQL_CONSUMER = {"dynamo": "dynamo", "reviwo": "fql_reviwo", "sincro": "fql_sincro", "snerl": "snerl",
-                "mvp3d_multiview": "mvp3d", "mvp3d_single": "mvp3d_single", "e2e_cnn": "e2e_cnn"}
+                "mvp3d_multiview": "mvp3d", "mvp3d_single": "mvp3d_single", "e2e_cnn": "e2e_cnn", "ours": "fql_ours"}
 
 
 def aggregate_status(stages: dict) -> str:

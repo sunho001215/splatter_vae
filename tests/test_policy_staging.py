@@ -187,7 +187,8 @@ def test_classification_rules():
     del e2e["a"], e2e["e1"]
     assert C.classify("e2e_cnn", e2e)["status"] == "deployable"
     assert C.classify("dynamo", _passing(), quarantine="decision")["status"] == "quarantined"
-    assert C.classify("ours", {})["status"] == "fixture-only"
+    assert C.classify("ours", _passing())["status"] == "deployable"  # trained FQL condition (FQLNQ 2026-11-11)
+    assert C.classify("ours", {})["status"] != "deployable"
     assert C.classify("dynamo", _passing(f=C.check(None)))["status"] == "quarantined"  # never deployable unchecked
 
 

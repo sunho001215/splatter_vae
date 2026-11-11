@@ -164,10 +164,9 @@ class InputSpec:
     def from_meta(cls, meta: dict, training: dict) -> InputSpec:
         condition = meta["condition"]
         fixture = meta.get("fixture") is True
-        if condition == "ours":
-            if not fixture:
-                raise ValueError("ours has no trained FQL checkpoint; only an explicitly labelled fixture is supported")
-            # Deferred scientific choices MUST be supplied by the fixture, never presented as a trained contract.
+        if condition == "ours" and fixture:
+            # The labelled serving fixture (s4d/rwlearn/deploy/fixtures.py) supplies its own protocol; a TRAINED ours
+            # checkpoint (FQL condition "ours", FQLNQ 2026-11-11) takes the condition's protocol like every other.
             protocol = training["fixture_protocol"]
             views, depth, cameras = protocol["views"], protocol["depth"], protocol["cameras"]
         else:

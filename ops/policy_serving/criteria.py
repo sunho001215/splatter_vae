@@ -52,6 +52,8 @@ def _budget(config: dict) -> tuple[str, int] | None:
             return "steps", int(train[key])
     if run.get("total_steps") is not None:  # epoch budget resolved by the trainer (epochs x steps_per_epoch)
         return "steps", int(run["total_steps"])
+    if train.get("steps") is not None:  # scripts/train.py (ours; completion.json records {"steps": train.steps})
+        return "steps", int(train["steps"])
     return None
 
 
@@ -372,10 +374,7 @@ def classify(condition: str, checks: dict, *, quarantine: str | None = None) -> 
     ``check`` dict; a/e1 may be absent where the condition has none). ``quarantine``: an explicit decision (reason).
     ``restricted``: every criterion passes EXCEPT the e1 LayerNorm-spread gate (offset gate and e2 pass): the
     criterion stays FAILED and the policy is available for dry run / replay only, never for execution."""
-    if condition == "ours":
-        return {"status": "fixture-only", "reasons": ["ours: training deferred; interfaces + labelled fixtures only"],
-                "flags": []}
-    reasons, failed = [], []
+    reasons, failed = [], []  # ours: a trained FQL condition since FQLNQ 2026-11-11, the same criteria as every other
     for k in ("a", "b"):
         if k in checks and not checks[k]["pass"]:
             reasons.append(f"{k}: {checks[k].get('reason', 'failed')}")

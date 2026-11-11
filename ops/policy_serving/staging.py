@@ -39,6 +39,14 @@ _C = "|".join(CONDITIONS)
 FQL_RE = re.compile(rf"^(?P<prefix>.+)-fql-(?P<condition>{_C})-(?P<task>.+)-s(?P<seed>\d+)$")
 DATA_RE = re.compile(rf"^(?P<prefix>.+)-fqldata-(?P<condition>{_C})-(?P<task>.+)$")
 PRE_RE = re.compile(r"^(?P<prefix>.+)-(?P<condition>dynamo|reviwo|sincro|snerl|mvp3d)-(?P<task>.+)-pre(?:-native)?$")
+# ours: the encoder export is its own row (scripts/export_encoder.py) after the scripts/train.py pretraining row
+# <prefix>-ours-<task>-pre; the export row stands for the pretraining (criterion a = the -pre run's completion).
+OURS_EXPORT_RE = re.compile(r"^(?P<prefix>.+)-(?P<condition>ours)-(?P<task>.+)-export$")
+# FQL settings (user decision 2026-11-11 ~23:10, FQLNQ): rows registered with a setting prefix are served under
+# DISTINCT ids <condition>-<task>-s<seed>-<setting>, never replacing the alpha-10 ids of the earlier rows; the a100
+# comparison baseline is staged only when explicitly asked (``stage``/``hook`` --allow-comparison).
+FQL_SETTINGS = {"rwnq-": ("a10nq", 10.0, True), "rwa100-": ("a100", 100.0, False)}
+COMPARISON_SETTINGS = ("a100",)
 # explicit decisions (MVP3D-FQL-DIAG.md, Directive I item 5): never staged as deployable until reruns pass
 QUARANTINE = {
     re.compile(r"^rwcal-20261109-fql-mvp3d_(single|multiview)-.+-s\d+$"):
@@ -150,8 +158,27 @@ def quarantine_decision(run: str) -> str | None:
     return next((why for rx, why in QUARANTINE.items() if rx.search(run)), None)
 
 
-def policy_id(condition: str, task: str, seed: int) -> str:
-    return f"{condition}-{task}-s{seed}"
+def fql_setting(run: str) -> str | None:
+    """The FQL setting of a run id (``FQL_SETTINGS`` prefix), None for the earlier rows (alpha 10, no normalisation)."""
+    return next((v[0] for k, v in FQL_SETTINGS.items() if run.startswith(k)), None)
+
+
+def policy_id(condition: str, task: str, seed: int, setting: str | None = None) -> str:
+    return f"{condition}-{task}-s{seed}" + (f"-{setting}" if setting else "")
+
+
+def setting_check(run: str, config: dict) -> str | None:
+    """A setting-prefixed run must have trained with exactly its setting (agent.alpha, agent.normalize_q_loss of its
+    own config.yaml); the reason of a mismatch, else None."""
+    spec = next((v for k, v in FQL_SETTINGS.items() if run.startswith(k)), None)
+    if spec is None or not config:
+        return None
+    agent = config.get("agent") or {}
+    alpha, normalize = agent.get("alpha"), agent.get("normalize_q_loss")
+    if alpha is None or float(alpha) != spec[1] or normalize is not spec[2]:
+        return (f"config.yaml agent.alpha {alpha!r} / normalize_q_loss {normalize!r} differ from the {spec[0]} setting "
+                f"(alpha {spec[1]}, normalize_q_loss {spec[2]})")
+    return None
 
 
 # ------------------------------------------------------------------------------------------------ inventory
@@ -208,6 +235,25 @@ def pretraining_row(src: Sources, run: str, life: Lifecycle | None, job: dict | 
             "completed": completion, "a": a, "encoder": _file_record(src, life, run, "encoder.pt")}
 
 
+def ours_export_row(src: Sources, run: str, life: Lifecycle | None, pre_life: Lifecycle | None) -> dict:
+    """ours: the export row (its encoder.pt) with criterion a of its pretraining run ``<prefix>-ours-<task>-pre``
+    (scripts/train.py config.yaml + completion.json); both rows must be completed and synced."""
+    m = OURS_EXPORT_RE.match(run)
+    pre = run[:-len("-export")] + "-pre"
+    d = src.runs / pre
+    config = _yaml(d / "config.yaml") if (d / "config.yaml").is_file() else {}
+    completion = _json(d / "completion.json")
+    a = C.pretraining_complete(config, completion) if config else C.check(False, reason=f"no local {pre}/config.yaml")
+    states = {pre: pre_life.state if pre_life else "never_launched", run: life.state if life else "never_launched"}
+    bad = {k: v for k, v in states.items() if v != "completed_synced"}
+    if bad:
+        a = {**a, "pass": False, "reason": f"registry state {bad}" + (f"; {a['reason']}" if "reason" in a else "")}
+    return {"run": run, "kind": "encoder_pretraining", "condition": m["condition"], "task": m["task"],
+            "pretraining_run": pre, "registry_state": states[run], "superseded": superseded(run),
+            "budget": {k: a.get(k) for k in ("kind", "budget")}, "completed": completion, "a": a,
+            "encoder": _file_record(src, life, run, "encoder.pt")}
+
+
 def fql_row(src: Sources, run: str, life: Lifecycle | None, job: dict | None) -> dict:
     m = FQL_RE.match(run)
     d = src.runs / run
@@ -218,9 +264,13 @@ def fql_row(src: Sources, run: str, life: Lifecycle | None, job: dict | None) ->
                                                                     budget=(job or {}).get("fql_budget"))
     if state != "completed_synced":
         b = {**b, "pass": False, "reason": f"registry state {state}" + (f"; {b['reason']}" if "reason" in b else "")}
+    setting = fql_setting(run)
+    if (wrong := setting_check(run, config)) is not None:
+        b = {**b, "pass": False, "reason": wrong + (f"; {b['reason']}" if "reason" in b else "")}
     dataset = ((config.get("data") or {}).get("dataset")) or _arg(job, "data.dataset")
     return {"run": run, "kind": "fql", "condition": m["condition"], "task": m["task"], "seed": int(m["seed"]),
-            "policy_id": policy_id(m["condition"], m["task"], int(m["seed"])), "registry_state": state,
+            "fql_setting": setting,
+            "policy_id": policy_id(m["condition"], m["task"], int(m["seed"]), setting), "registry_state": state,
             "superseded": superseded(run), "quarantine_decision": quarantine_decision(run), "dataset": dataset,
             "budget_steps": b.get("budget"), "completed": completion, "b": b,
             "policy": _file_record(src, life, run, "policy.pt")}
@@ -235,6 +285,8 @@ def inventory(src: Sources) -> dict:
         life, job = reg.get(run), queue.get(run)
         if PRE_RE.match(run):
             pre.append(pretraining_row(src, run, life, job))
+        elif OURS_EXPORT_RE.match(run):
+            pre.append(ours_export_row(src, run, life, reg.get(run[:-len("-export")] + "-pre")))
         elif FQL_RE.match(run):
             fql.append(fql_row(src, run, life, job))
         elif DATA_RE.match(run):
@@ -260,13 +312,14 @@ def _dataset_attrs(path: Path) -> dict | None:
 
 def pretrain_run_of(src: Sources, row: dict) -> str:
     """The pretraining run of an FQL row: the export recorded in its (local) FQL dataset, else the row-id convention
-    ``<prefix>-<family>-<task>-pre`` (datasets not built yet)."""
+    ``<prefix>-<family>-<task>-pre`` (ours: its export row ``-export``; datasets not built yet)."""
     if row.get("dataset"):
         attrs = _dataset_attrs(src.data_root / row["dataset"])
         if attrs and attrs.get("export_path"):
             return Path(attrs["export_path"]).parent.name
     prefix = row["run"].split("-fql-")[0]
-    return f"{prefix}-{PRETRAIN_OF.get(row['condition'], row['condition'])}-{row['task']}-pre"
+    suffix = "-export" if row["condition"] == "ours" else "-pre"
+    return f"{prefix}-{PRETRAIN_OF.get(row['condition'], row['condition'])}-{row['task']}{suffix}"
 
 
 def write_sidecars(src: Sources, runs: list[str], out_dir: Path) -> dict:
@@ -297,7 +350,7 @@ def evaluate(src: Sources, rows: list[dict], pre_rows: dict[str, dict], *, sidec
     out, candidates = {}, []
     for r in rows:
         checks = {"b": r["b"]}
-        if r["condition"] not in ("e2e_cnn", "ours"):
+        if r["condition"] != "e2e_cnn":
             pre_run = pretrain_run_of(src, r)
             r["pretrain_run"] = pre_run
             checks["a"] = pre_rows[pre_run]["a"] if pre_run in pre_rows else \
@@ -390,7 +443,9 @@ def catalog_entry(row: dict, input_spec: dict | None = None) -> dict:
     out = {"checkpoint": row["policy"]["path"], "sha256": row["policy"]["sha256"],
            "export": exp.get("path"), "training_contract": f"contracts/{row['run']}.deploy_contract.json",
            "condition": row["condition"], "task": row["task"], "seed": row["seed"], "run": row["run"],
-           "status": status, "flags": row["class"]["flags"], "reasons": row["class"]["reasons"],
+           "status": status, "reasons": row["class"]["reasons"],
+           "flags": list(row["class"]["flags"]) + ([f"fql_setting_{row['fql_setting']}"]
+                                                   if row.get("fql_setting") else []),
            "criteria": C.criteria_summary(row["condition"], row.get("checks") or {}),
            **usage_of(status)}
     if input_spec is not None:
@@ -680,7 +735,8 @@ def markdown(inv: dict, *, criteria_sha256: str | None) -> str:
         ids = [r["policy_id"] if status != "superseded" else r["run"] for r in inv["fql"]
                if r.get("class", {}).get("status") == status]
         L.append(f"* **{status}** ({len(ids)}): " + (", ".join(ids) if ids else "none"))
-    L.append("* **fixture-only**: ours (training deferred; labelled FIXTURE interfaces/tests only)")
+    L.append("* FQL settings (FQLNQ 2026-11-11): rwnq-* rows are served as `<id>-a10nq` (flag fql_setting_a10nq) next to "
+             "the alpha-10 ids; rwa100-* comparison rows are staged only with --allow-comparison")
     L.append("* restricted = every criterion passes except the e1 LayerNorm-spread gate (FAILED, not waived): served "
              "for dry run / replay only (amendment A2). No catalog entry is execution-eligible (Directive I).")
     L += ["", "## Check values (candidates)", "",
@@ -790,6 +846,11 @@ def cmd_stage(a, *, hook: bool = False) -> int:
     withdrawn = quarantined) and merge them into the host catalog under a local lock; then reload."""
     import fcntl
 
+    comparison = [r for r in a.runs if fql_setting(r) in COMPARISON_SETTINGS]
+    if comparison and not getattr(a, "allow_comparison", False):  # before any evaluation, host read or lock
+        print(json.dumps({"error": f"comparison-baseline runs {comparison} are staged only with --allow-comparison "
+                                   "(FQLNQ 2026-11-11: never staged unless asked)"}))
+        return 2
     if getattr(a, "inventory", None):  # a just-evaluated inventory (stage only; the hook always re-evaluates)
         inv = json.loads(a.inventory.read_text())
         if inv.get("criteria_sha256") != (sha256_file(a.criteria) if a.criteria.is_file() else None):
@@ -803,6 +864,7 @@ def cmd_stage(a, *, hook: bool = False) -> int:
     if missing:
         print(json.dumps({"error": f"unknown FQL runs {missing}"}))
         return 2
+
     src = _sources(a)
     host = Host(ssh=a.ssh, bwlimit=a.bwlimit)
     a.lock_file.parent.mkdir(parents=True, exist_ok=True)
@@ -928,6 +990,8 @@ def main(argv=None) -> int:
         s = sub.add_parser(name)
         s.add_argument("runs", nargs="+")
         s.add_argument("--execute", action="store_true", help="really stage (default: dry run)")
+        s.add_argument("--allow-comparison", action="store_true",
+                       help="also stage FQL comparison-baseline rows (rwa100-*); refused without it")
         s.add_argument("--read-host", action="store_true", help="dry run: read the host catalog for the merge")
         if name == "stage":
             s.add_argument("--inventory", type=Path, help="use this evaluated inventory JSON instead of re-evaluating")
