@@ -370,9 +370,11 @@ def mig_mode_conflict(lines: list[str], physical=None, parents=None) -> bool:
         parts = [part.strip() for part in line.split(",")]
         if len(parts) == 3 and parts[0].startswith("GPU-"):
             modes[parts[0]] = (parts[1], parts[2])
-    if any("Enabled" in modes.get(uuid, ()) for uuid in physical):
-        return True
-    return bool(modes) and any(modes.get(uuid) != ("Enabled", "Enabled") for uuid in parents)
+    if not lines:
+        return False  # the pre-2026-11-11 snapshot format (tests); the real command always emits the section
+    if any(modes.get(uuid) is None or "Enabled" in modes[uuid] for uuid in physical):
+        return True  # an allowlisted physical GPU with MIG (being) enabled, or its mode unreadable
+    return any(modes.get(uuid) != ("Enabled", "Enabled") for uuid in parents)
 
 
 def snapshot_command(root: str) -> str:
@@ -400,7 +402,8 @@ def snapshot_command(root: str) -> str:
         # MIG mode of every GPU (2026-11-11): a physical allowlisted GPU whose MIG mode is (being) enabled is never a
         # launch target (its UUID gives CUDA no device); a reading failure leaves the section empty (no effect)
         "printf '__S4D_MIG_MODE__\\n'; "
-        "nvidia-smi --query-gpu=uuid,mig.mode.current,mig.mode.pending --format=csv,noheader,nounits || true; "
+        "nvidia-smi --query-gpu=uuid,mig.mode.current,mig.mode.pending --format=csv,noheader,nounits "
+        "|| printf '__S4D_QUERY_ERROR__\\n'; "
         + mig_snapshot_command() +
         "printf '__S4D_COTENANTS__\\n'; "
         # the listing fails the whole snapshot like the managed listing above; an inspect failure other than the

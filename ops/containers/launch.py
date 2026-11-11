@@ -447,7 +447,7 @@ def build_remote_command(spec: dict, data_identity: str, origin_commit: str, pro
               'test "$(docker image inspect --format \'{{index .Config.Labels "s4d.managed"}}\' "$image")" = true',
               'docker image inspect --format \'{{range .RepoTags}}{{println .}}{{end}}\' "$image" | grep -q \'^s4d-\'']
     for artifact, digest in acceptance_sha256.items():
-        if (not re.fullmatch(r"(?:binding-)?(?:tests|data|cross_host|isolation-GPU-[0-9a-f-]+)\.json", artifact)
+        if (not re.fullmatch(r"(?:binding-)?(?:tests|data|cross_host|isolation-(?:GPU|MIG)-[0-9a-f-]+)\.json", artifact)
                 or not HEX64.fullmatch(digest)):
             raise ValueError("Invalid acceptance checksum")
         lines.append("bounded " + q(f"{acceptance}/{artifact}"))
@@ -564,7 +564,8 @@ def build_remote_command(spec: dict, data_identity: str, origin_commit: str, pro
               f'test "$((gpu_reserved+{spec["gpu_bytes"]}))" -le {spec["gpu_cap_bytes"]}',
               # with co-tenants on the GPU: the measured free memory less every known tenant's declared but not yet
               # allocated reservation must hold this job plus the margin (scheduler.choose_gpu applies the same rule)
-              'if [ "$co_here" -gt 0 ]; then '
+              # a MIG instance: the measured free framebuffer is checked for every launch (1g.24gb leaves no slack)
+              ('if true; then ' if spec["gpu"] in REMOTE_MIG_DEVICES else 'if [ "$co_here" -gt 0 ]; then ')
               + gpu_free_command(spec["gpu"]) +
               'case "$gpu_free" in ""|*[!0-9]*) exit 1;; esac; '
               f'test "$((gpu_free-co_pending-own_pending-{math.ceil(COTENANT_GPU_MARGIN_GB * 1024**3)}))" '
@@ -586,11 +587,22 @@ def build_remote_command(spec: dict, data_identity: str, origin_commit: str, pro
 # no longer carries the allowlisted GPU instance; otherwise "MEM,<total MiB>,<used MiB>" and one "APP,<pid>,<MiB>" per
 # process on this instance (C and G alike).
 MIG_PROBE = r"""
-import sys
-gi, dev = int(sys.argv[1]), int(sys.argv[2])
+import re, sys
+gi, dev, uuid, parent = int(sys.argv[1]), int(sys.argv[2]), sys.argv[3], sys.argv[4]
+listing, sep, query = sys.stdin.read().partition("\n__S4D_QUERY__\n")
+if not sep or listing.count("(UUID: " + uuid + ")") != 1:
+    sys.exit(6)
+owner = None
+for line in listing.splitlines():
+    if re.match(r"GPU \d+: .* \(UUID: GPU-[0-9a-f-]+\)\s*$", line):
+        owner = line.rsplit("(UUID: ", 1)[1].rstrip(") ")
+    elif ("(UUID: " + uuid + ")") in line:
+        m = re.match(r"\s+MIG \S+\s+Device\s+(\d+): \(UUID: ", line)
+        if owner != parent or not m or int(m.group(1)) != dev:
+            sys.exit(6)
 sec = sub = cur = proc = found = None
 apps, listed = [], False
-for line in sys.stdin.read().splitlines():
+for line in query.splitlines():
     if not line.strip():
         continue
     ind = len(line) - len(line.lstrip())
@@ -599,6 +611,8 @@ for line in sys.stdin.read().splitlines():
         sec = None
         continue
     if ind <= 4:
+        if proc is not None:
+            sys.exit(3)
         sec, sub, proc = k, None, None
         if k == "MIG Device":
             cur = {}
@@ -618,6 +632,8 @@ for line in sys.stdin.read().splitlines():
             found = cur
     elif sec == "Processes":
         if k == "GPU instance ID":
+            if proc is not None:
+                sys.exit(3)
             proc = [v]
         elif k == "Process ID" and proc is not None:
             proc.append(v)
@@ -627,6 +643,8 @@ for line in sys.stdin.read().splitlines():
             if int(proc[0]) == gi:
                 apps.append((proc[1], (v.split() or ["N/A"])[0]))
             proc = None
+if proc is not None:
+    sys.exit(3)
 if not listed:
     sys.exit(5)
 if not found or found.get("GPU Instance ID") != gi or "Total" not in found or "Used" not in found:
@@ -647,11 +665,12 @@ def gpu_probe_lines(gpu: str) -> list[str]:
     if gpu in REMOTE_MIG_DEVICES:
         parent, instance, device = REMOTE_MIG_DEVICES[gpu]
         return ['parent=' + q(parent),
-                'listing="$(nvidia-smi -L)"; printf \'%s\\n\' "$listing" | grep -Fq -- "(UUID: $gpu)" '
-                '|| { printf \'MIG instance not present\\n\' >&2; exit 1; }',
-                'mig_query="$(nvidia-smi -q -i "$parent")"',
-                'mig_probe="$(printf \'%s\\n\' "$mig_query" | python3 -I -c ' + q(MIG_PROBE) + f' {int(instance)} {int(device)})" '
-                '|| { printf \'MIG instance evidence unreadable\\n\' >&2; exit 1; }',
+                'listing="$(nvidia-smi -L)"; mig_query="$(nvidia-smi -q -i "$parent")"',
+                # fresh evidence: the UUID is listed exactly once, under the allowlisted parent and device index, whose
+                # GPU instance is the allowlisted one; its processes are complete records (else exit != 0: refused)
+                'mig_probe="$(printf \'%s\\n__S4D_QUERY__\\n%s\\n\' "$listing" "$mig_query" | python3 -I -c ' + q(MIG_PROBE)
+                + f' {int(instance)} {int(device)} "$gpu" "$parent")" '
+                '|| { printf \'MIG instance evidence refused\\n\' >&2; exit 1; }',
                 'apps="$(printf \'%s\\n\' "$mig_probe" | awk -F, -v gpu="$gpu" \'$1=="APP" {print gpu "," $2 "," $3}\')"',
                 'graphics=""', 'graphics_memory=""']
     return ['apps="$(nvidia-smi --query-compute-apps=gpu_uuid,pid,used_memory --format=csv,noheader,nounits)"',

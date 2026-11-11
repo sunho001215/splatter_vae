@@ -15,6 +15,7 @@ The guard never starts, stops or deletes anything on the remote.
 
     .venv/bin/python -I runs/setup/tools/remote_outage_guard.py
 """
+import hashlib
 import json
 import os
 import shlex
@@ -53,12 +54,17 @@ def save(state):
     os.replace(tmp, GUARD)
 
 
-def guard_owns_hold():
-    """True only when the hold file exists and was written by this guard."""
+def guard_owns_hold(state=None):
+    """True only when the hold file exists and is byte for byte the hold this guard wrote (its recorded sha256; a
+    guard.json from before that record: the guard's text prefix)."""
     try:
-        return HOLD.read_text().startswith(GUARD_HOLD_PREFIX)
+        data = HOLD.read_bytes()
     except OSError:
         return False
+    expected = (state or {}).get('hold_sha256')
+    if expected:
+        return hashlib.sha256(data).hexdigest() == expected
+    return data.decode(errors='replace').startswith(GUARD_HOLD_PREFIX)
 
 
 def recovery_check(client):
@@ -132,10 +138,18 @@ def main():
             else:
                 if (LEDGER / 'latest.json').is_file():
                     (LEDGER / 'pre-outage-ledger.json').write_bytes((LEDGER / 'latest.json').read_bytes())
-                HOLD.write_text(f'{GUARD_HOLD_PREFIX}{time.strftime("%Y-%m-%dT%H:%M:%S%z")}: host unreachable since '
-                                f'{time.strftime("%H:%M:%S", time.localtime(state["unreachable_since"]))}; resumes after the '
-                                'recovery check (runs/setup/tools/remote_outage_guard.py)\n')
+                text = (f'{GUARD_HOLD_PREFIX}{time.strftime("%Y-%m-%dT%H:%M:%S%z")}: host unreachable since '
+                        f'{time.strftime("%H:%M:%S", time.localtime(state["unreachable_since"]))}; resumes after the '
+                        f'recovery check (runs/setup/tools/remote_outage_guard.py); token {os.urandom(8).hex()}\n')
+                try:  # exclusive creation: a hold placed meanwhile by someone else is never overwritten
+                    with HOLD.open('x') as stream:
+                        stream.write(text)
+                except FileExistsError:
+                    log('a hold appeared while the guard was placing its own; left untouched, not claimed')
+                    save(state)
+                    return
                 state['hold_by_guard'] = True
+                state['hold_sha256'] = hashlib.sha256(text.encode()).hexdigest()
                 log(f'unreachable for {down:.0f}s: remote admissions held until the recovery check')
         save(state)
         return
@@ -153,13 +167,28 @@ def main():
         if blockers:
             (LEDGER / 'recovery-blockers.json').write_text(json.dumps(report, indent=1))
             log(f'RECOVERY BLOCKED {sorted(blockers)}; hold kept')
-        elif not guard_owns_hold():
+        elif not guard_owns_hold(state):
             # the hold file is not (or no longer) the guard's own: never lift it; the guard's claim ends here
             state['hold_by_guard'] = False
             log('recovery check passed, but the hold in place was not written by the guard; left untouched')
         else:
-            HOLD.rename(ROOT / f'runs/setup/remote-hold-admissions.cleared-{time.strftime("%Y%m%d-%H%M%S")}')
+            cleared = ROOT / f'runs/setup/remote-hold-admissions.cleared-{time.strftime("%Y%m%d-%H%M%S")}'
+            data = HOLD.read_bytes()
+            HOLD.rename(cleared)
+            if cleared.read_bytes() != data or not (not state.get('hold_sha256') or hashlib.sha256(
+                    data).hexdigest() == state['hold_sha256']):
+                # replaced between the check and the rename: put it back (never lift someone else's hold)
+                try:
+                    os.link(cleared, HOLD)
+                    cleared.unlink()
+                except FileExistsError:
+                    pass
+                log('the hold changed during the lift; restored and left in place')
+                state['hold_by_guard'] = False
+                save(state)
+                return
             state['hold_by_guard'] = False
+            state.pop('hold_sha256', None)
             log(f'recovery check passed ({len(notes)} jobs): hold removed; the driver resumes interrupted jobs')
         save(state)
         return

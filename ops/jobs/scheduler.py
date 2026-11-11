@@ -24,6 +24,9 @@ from ops.containers.verification import validate_report, validate_verification, 
 from ops.jobs import host_roles, realworld_local  # noqa: E402
 from ops.jobs import release_reservation  # noqa: E402
 from ops.jobs.arguments import option as _option  # noqa: E402
+from ops.resources.gpu_guard import APPROVED_HOST_GPUS, HOST_CONFIG_PATH, MIG_DEVICES, REMOTE_MIG_ERROR  # noqa: E402
+from ops.remote.access import sha256 as file_sha256  # noqa: E402
+from ops.jobs.remote_backend import ROOT as REMOTE_ROOT  # noqa: E402
 from ops.jobs.remote_backend import (  # noqa: E402
     COTENANT_GPU_MARGIN_GB,
     ContainerRemovalRefused,
@@ -77,6 +80,10 @@ def load_queue(path: Path = QUEUE) -> dict:
     for name, host in hosts.items():
         if not isinstance(host, dict):
             raise ValueError(f"host {name} configuration must be a mapping")
+        if name == "remote" and REMOTE_MIG_ERROR:
+            # an invalid remote MIG allowlist authorizes no remote device: quarantine the remote host (disabled, no
+            # limits) instead of failing the whole queue, so local reconciliation and scheduling continue
+            host.update(enabled=False, limits={}, quarantine=f"remote MIG allowlist invalid: {REMOTE_MIG_ERROR}")
         for uuid, limit in host.get("limits", {}).items():
             if uuid not in APPROVED_HOST_GPUS[name]:
                 raise ValueError(f"queue limit for a non-authorized {name} GPU {uuid}")
@@ -107,7 +114,7 @@ def load_queue(path: Path = QUEUE) -> dict:
                            or Path(value).parts[0] in {"replay", "wandb", ".cache"} for value in required)):
                 raise ValueError(f"job {job_id}: explicit run-relative required_results are mandatory")
         gpu = job.get("gpu", "any")
-        if gpu != "any" and gpu not in APPROVED_HOST_GPUS[name]:
+        if gpu != "any" and gpu not in APPROVED_HOST_GPUS[name] and not hosts[name].get("quarantine"):
             raise ValueError(f"job {job_id} requests non-authorized {name} GPU {gpu}")
         for key in ("mem_gb", "ram_gb", "disk_gb"):
             value = float(job.get(key, 0))
@@ -1155,6 +1162,13 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
             continue
         release_job = host_name == "remote" and release_reservation.covers(release_hold, job)
         held_back = host_name == "remote" and bool(release_hold) and not release_job
+        if (host_name == "remote" and validate_verification(job, queued=True) is None
+                and (registry.parent.parent / "runs/setup/remote-hold-admissions").exists()):
+            # the remote admission hold (outage guard, MIG migration 2026-11-11) applies to EVERY queue that launches
+            # campaign rows on the remote, not only to the campaign driver's; typed verification has its own HOLD
+            if "remote: campaign admissions held (runs/setup/remote-hold-admissions)" not in messages:
+                messages.append("remote: campaign admissions held (runs/setup/remote-hold-admissions)")
+            continue
         refused = host_roles.refusal(job, host_name, roles, ownership, jobs, state.get(job["id"]), exceptions,
                                      state.get(job["id"].removesuffix("-eval")) if job["id"].endswith("-eval") else None)
         if refused is not None:

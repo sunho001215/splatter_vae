@@ -306,11 +306,13 @@ def test_snapshot_attributes_processes_per_instance_and_fails_closed():
     assert "nvidia-smi -q -i" in remote_backend.mig_snapshot_command(PARENTS)
 
 
-def run_probe(text, gi, device):
+def run_probe(text, gi, device, uuid=None, parent=PARENTS[0], listing=None):
     from ops.containers import launch
 
-    return subprocess.run([sys.executable, "-I", "-c", launch.MIG_PROBE, str(gi), str(device)], input=text,
-                          capture_output=True, text=True, timeout=60)
+    listing = render_list([(p, True) for p in PARENTS]) if listing is None else listing
+    uuid = mig_uuid(PARENTS.index(parent), device) if uuid is None else uuid
+    return subprocess.run([sys.executable, "-I", "-c", launch.MIG_PROBE, str(gi), str(device), uuid, parent],
+                          input=listing + "\n__S4D_QUERY__\n" + text, capture_output=True, text=True, timeout=60)
 
 
 def test_launch_guard_probe_reports_instance_memory_and_processes():
@@ -318,6 +320,12 @@ def test_launch_guard_probe_reports_instance_memory_and_processes():
     result = run_probe(query, 4, 1)
     assert result.returncode == 0 and result.stdout.splitlines() == ["MEM,24192,67", "APP,21,512"]
     assert run_probe(query, 9, 1).returncode == 4  # the device index no longer carries the allowlisted GPU instance
+    # the UUID must be listed exactly once, under the allowlisted parent and device index (fresh -L evidence)
+    assert run_probe(query, 4, 1, uuid=mig_uuid(1, 1)).returncode == 6  # an instance of another parent
+    assert run_probe(query, 4, 1, uuid=mig_uuid(0, 2)).returncode == 6  # another device index of the same parent
+    assert run_probe(query, 4, 1, uuid="MIG-ffffffff-0000-5000-8000-000000000000").returncode == 6  # not listed
+    truncated = query.rsplit("            Used GPU Memory                            : 64 MiB", 1)[0]
+    assert run_probe(truncated, 4, 1).returncode == 3  # an unfinished foreign process record is never "no process"
     denied = render_query([(PARENTS[0], True)], process_value="Insufficient Permissions")
     assert run_probe(denied, 3, 0).returncode == 2
 
@@ -329,7 +337,7 @@ def test_launch_guard_lines_keep_physical_gpus_and_probe_instances(monkeypatch):
     assert "nvidia-smi --query-compute-apps" in physical and "python3" not in physical  # established lines unchanged
     monkeypatch.setattr(launch, "REMOTE_MIG_DEVICES", devices_of(allowlist()))
     mig = "\n".join(launch.gpu_probe_lines(mig_uuid(2, 1)))
-    assert f"parent={PARENTS[2]}" in mig and "python3 -I -c" in mig and " 4 1)" in mig
+    assert f"parent={PARENTS[2]}" in mig and "python3 -I -c" in mig and ' 4 1 "$gpu" "$parent")' in mig
     assert "nvidia-smi --query-compute-apps" not in mig
     assert "mig_probe" in launch.gpu_free_command(mig_uuid(2, 1))
 
@@ -588,3 +596,39 @@ def test_missing_process_listing_or_unreadable_framebuffer_fail_closed():
     single = render_query([(PARENTS[0], True)])
     assert run_probe("\n".join(l for l in single.splitlines() if not l.startswith("    Processes")), 3, 0).returncode == 5
     assert run_probe(single.replace(": 67 MiB", ": N/A"), 3, 0).returncode != 0
+
+
+def test_unfinished_process_record_fails_inventory():
+    listing, query = remote_host(processes={0: [(3, 11, 100)]})
+    truncated = query.replace("            Used GPU Memory                            : 100 MiB\n", "", 1)
+    with pytest.raises(inv.InventoryError, match="unfinished"):
+        inv.build_inventory(listing, truncated)
+
+
+def test_scheduler_central_remote_hold_and_quarantine(tmp_path, monkeypatch):
+    from ops.jobs import scheduler as jobs
+
+    source = (REPO / "ops/jobs/scheduler.py").read_text()
+    assert '(registry.parent.parent / "runs/setup/remote-hold-admissions").exists()' in source
+    queue = {"hosts": {"local": {"enabled": False}, "remote": {"enabled": True, "limits": {
+        PARENTS[0]: {"max_jobs": 1, "max_mem_gb": 10}}}}, "jobs": []}
+    path = tmp_path / "queue.yaml"
+    path.write_text(yaml.safe_dump(queue))
+    assert jobs.load_queue(path)["hosts"]["remote"]["enabled"] is True
+    monkeypatch.setattr(jobs, "REMOTE_MIG_ERROR", "bad allowlist")
+    quarantined = jobs.load_queue(path)["hosts"]["remote"]
+    assert quarantined["enabled"] is False and quarantined["limits"] == {} and "bad allowlist" in quarantined["quarantine"]
+
+
+def test_outage_guard_lifts_only_its_exact_hold(tmp_path, monkeypatch):
+    from ops.remote import outage_guard as guard
+
+    hold = tmp_path / "remote-hold-admissions"
+    monkeypatch.setattr(guard, "HOLD", hold)
+    hold.write_text(f"{guard.GUARD_HOLD_PREFIX}x token 1\n")
+    import hashlib
+
+    state = {"hold_sha256": hashlib.sha256(hold.read_bytes()).hexdigest()}
+    assert guard.guard_owns_hold(state)
+    hold.write_text(f"{guard.GUARD_HOLD_PREFIX}x token 2\n")  # same prefix, different hold: not ours
+    assert not guard.guard_owns_hold(state)

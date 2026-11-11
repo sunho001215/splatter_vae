@@ -121,6 +121,8 @@ def parse_query(text: str) -> dict[str, dict]:
         if current is None:
             continue
         if indent <= 4:
+            if process is not None:
+                raise InventoryError("unfinished process record in nvidia-smi -q (ownership unknown)")
             section, sub, device, process = key, None, None, None
             if key == "GPU UUID":
                 current["uuid"] = value
@@ -148,6 +150,8 @@ def parse_query(text: str) -> dict[str, dict]:
                 device[f"{key.lower()}_mib"] = _mib(value)
         elif section == "Processes":
             if key == "GPU instance ID":
+                if process is not None:
+                    raise InventoryError("unfinished process record in nvidia-smi -q (ownership unknown)")
                 process = {"gpu_instance_id": int(value) if value.isdigit() else None, "pid": None, "used_mib": None}
             elif key == "Process ID" and process is not None:
                 if not value.isdigit():
@@ -157,6 +161,8 @@ def parse_query(text: str) -> dict[str, dict]:
                 process["used_mib"] = _mib(value)
                 current["processes"].append(process)
                 process = None
+    if process is not None:
+        raise InventoryError("unfinished process record in nvidia-smi -q (ownership unknown)")
     close()
     return gpus
 
@@ -257,8 +263,8 @@ def validate_allowlist(doc, authorized=REMOTE_PHYSICAL_GPUS, profile: str = EXPE
     if type(minimum) is not int or minimum < MIN_MEMORY_MIB:
         raise InventoryError("allowlist min_memory_mib missing or below the module minimum")
     per_parent = doc.get("instances_per_parent")
-    if type(per_parent) is not int or not 1 <= per_parent <= 7:
-        raise InventoryError("invalid instances_per_parent")
+    if per_parent != INSTANCES_PER_PARENT or type(per_parent) is not int:
+        raise InventoryError(f"instances_per_parent must be {INSTANCES_PER_PARENT}")
     if (not isinstance(doc.get("parents"), list) or not all(isinstance(x, str) for x in doc["parents"])
             or not set(doc["parents"]) <= set(authorized)):
         raise InventoryError("allowlist names a parent outside the authorized GPUs")

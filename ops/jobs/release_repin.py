@@ -105,7 +105,7 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
     queue = {job["id"]: job for job in jobs.load_queue()["jobs"]}
     job = queue[args.job_id]
-    scripts = [job["script"]]
+    scripts = [job["script"], "scripts/remote/entry.py"]  # the container entry wrapper runs every remote job
     with jobs.REGISTRY.with_suffix(".lock").open("a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         current = jobs.read_registry().get(args.job_id, {})

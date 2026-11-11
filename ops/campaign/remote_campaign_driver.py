@@ -710,7 +710,8 @@ chosen, total, taken = [], reserved, set()
 
 def place(job):
     fitting = [g for g in GPUS
-               if gpu_load[g] + load(job) <= GPU_LOAD_LIMIT + (2.0 if kind(job['id']) == 'proxy' else 0.0) + 1e-9
+               if gpu_load[g] + load(job) <= GPU_LOAD_LIMIT + (2.0 if kind(job['id']) == 'proxy' and not REMOTE_MIG_ACTIVE
+                                                              else 0.0) + 1e-9
                and gpu_mem[g] + float(job['mem_gb']) <= GPU_CAP[g]
                and (g != hyb_reserved or may_use_reserved(job['id']))]
     return min(fitting, key=lambda g: (gpu_load[g], gpu_mem[g])) if fitting else None
@@ -747,7 +748,8 @@ for job in candidates:
         continue
     gpu = place(job)
     if gpu is None:
-        if hyb_reserved is None and job['id'].startswith(HYB_PREFIXES + CST_PREFIXES) and not job['id'].endswith('-eval'):
+        if (hyb_reserved is None and job['id'].startswith(HYB_PREFIXES + CST_PREFIXES) and not job['id'].endswith('-eval')
+                and any(float(job['mem_gb']) <= GPU_CAP[g] for g in GPUS)):  # never for a row no device can hold
             hyb_reserved, hyb_reserved_for = reserve_for_hybrid(job), job['id']
             messages.append(f"HYB_RESERVED {hyb_reserved} for waiting {job['id']} (load {gpu_load[hyb_reserved]:.1f} + "
                             f"{load(job):.1f} > {GPU_LOAD_LIMIT}; no new lower-priority rows there this pass)")
