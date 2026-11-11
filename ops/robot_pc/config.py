@@ -4,11 +4,15 @@ the entry points share: action limits of a task, the persistent ``PolicyClient``
 from __future__ import annotations
 
 import copy
+from dataclasses import asdict
 from pathlib import Path
+
+from ops.robot_pc.camera_warmup import WarmupConfig
 
 REPO = Path(__file__).resolve().parents[2]
 DEFAULT_PATH = REPO / "configs/robot_pc/robot_pc.yaml"
-SECTIONS = {"root", "server", "cameras", "assets", "tasks", "limits", "executor", "gripper", "static_latency_state"}
+SECTIONS = {"root", "server", "cameras", "camera_warmup", "assets", "tasks", "limits", "executor", "gripper",
+            "static_latency_state"}
 TASK_KEYS = {"rig_document", "m5_max_sync_ns"}
 REMOVED = {"workspace_min_m", "workspace_max_m", "max_translation_m", "max_rotation_deg", "max_linear_speed",
            "max_angular_speed", "max_linear_accel", "max_angular_accel", "lead_m", "lead_rot_deg"}  # directive K
@@ -30,6 +34,7 @@ def load(path: str | Path | None = None, *, root: str | Path | None = None) -> d
         if set(entry) - TASK_KEYS:
             raise ValueError(f"task {task}: unknown keys {sorted(set(entry) - TASK_KEYS)}")
     cfg = copy.deepcopy(cfg)
+    cfg["camera_warmup"] = asdict(WarmupConfig.from_config(cfg.get("camera_warmup")))
     cfg["root"] = str(Path(root or cfg.get("root") or ".").expanduser())
     return cfg
 

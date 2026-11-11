@@ -1972,8 +1972,8 @@ def test_launcher_cancellation_checkpoints_and_resource_order(checkpoint, monkey
     import threading
     import time
 
+    from ops.robot_pc import camera_warmup, controller, live, tunnel
     from ops.robot_pc import cameras as camera_mod
-    from ops.robot_pc import controller, live, tunnel
     from ops.robot_pc import gripper as G
     from ops.robot_pc import recorder as recorder_mod
     from scripts.robot_pc import infer as run
@@ -2177,6 +2177,8 @@ def test_launcher_cancellation_checkpoints_and_resource_order(checkpoint, monkey
     monkeypatch.setattr(selection, "depth_corrections", lambda *a, **kw: None)
     monkeypatch.setattr(selection, "session_choices", lambda *a, **kw: {})
     monkeypatch.setattr(camera_mod, "LiveCameras", Cameras)
+    monkeypatch.setattr(camera_warmup, "wait_until_stable", lambda *a, **kw:
+                        {"status": "stable", "waited_s": 1.5, "cameras": {}})
     monkeypatch.setattr(cli, "connect", lambda *a: SimpleNamespace(close=lambda: order.append("client close")))
     monkeypatch.setattr(recorder_mod, "SessionRecorder", Recorder)
     OriginalExecutor = executor.HighRateExecutor
@@ -2508,7 +2510,7 @@ def test_rtu_default_quiet_listen_is_point_three_seconds_without_requests(tmp_pa
 
     monkeypatch.setattr(devices, "scan", lambda **kw: {"recorders": []})
     now = [0.0]
-    serial = FakeSerial(exclusive=True, write_timeout=0.05)
+    serial = FakeSerial(exclusive=True, write_timeout=0.5)
     monkeypatch.setattr(G.time, "monotonic", lambda: now[0])
 
     def read(n):
@@ -2529,7 +2531,7 @@ def test_rtu_bad_reply_streak_resets_on_valid_reply_and_checks_fc16_echo(tmp_pat
     from ops.robot_pc import gripper as G
 
     monkeypatch.setattr(devices, "scan", lambda **kw: {"recorders": []})
-    serial = FakeSerial(exclusive=True, write_timeout=0.05)
+    serial = FakeSerial(exclusive=True, write_timeout=0.5)
     corrupt = [True]
 
     def read(n):

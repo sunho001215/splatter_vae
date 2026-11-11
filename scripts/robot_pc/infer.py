@@ -26,6 +26,7 @@ import signal
 import sys
 import threading
 import time
+from dataclasses import asdict
 from pathlib import Path
 
 sys.dont_write_bytecode = True
@@ -41,6 +42,7 @@ def say(msg: str) -> None:
 
 def main(argv=None, *, operator_input=input) -> int:
     from ops.robot_pc import devices, live, tunnel
+    from ops.robot_pc.camera_warmup import WarmupConfig, wait_until_stable
     from ops.robot_pc.cameras import LiveCameras
     from ops.robot_pc.executor import HighRateExecutor
     from ops.robot_pc.safety import ExecutionRefused, authorize_execution, execution_eligible
@@ -62,6 +64,8 @@ def main(argv=None, *, operator_input=input) -> int:
     ap.add_argument("--gripper", choices=("measured", "static"), default="measured",
                     help="static = a labelled fixed register, DRY RUN only (no gripper access)")
     ap.add_argument("--no-record", action="store_true")
+    ap.add_argument("--camera-warmup-timeout-s", type=float, default=None,
+                    help="colour stability timeout in seconds (0 disables warmup; recorded in run config)")
     ap.add_argument("--route", default="direct robotpc->5090 ssh -L")
     ap.add_argument("--fault-after-s", type=float, default=None,
                     help="DRY RUN ONLY: raise an injected error after N s (verifies error-terminated recording)")
@@ -74,6 +78,14 @@ def main(argv=None, *, operator_input=input) -> int:
     if args.execute and args.fault_after_s is not None:
         ap.error("--fault-after-s is a dry-run test option")
     cfg = cli.load_config(args)
+    warmup_options = dict(cfg.get("camera_warmup") or {})
+    if args.camera_warmup_timeout_s is not None:
+        warmup_options["timeout_s"] = args.camera_warmup_timeout_s
+    try:
+        warmup_cfg = WarmupConfig.from_config(warmup_options)
+    except ValueError as exc:
+        ap.error(str(exc))
+    cfg["camera_warmup"] = asdict(warmup_cfg)
     if args.list:
         return list_policies(cfg, args)
     names = camera_names(cfg)
@@ -228,6 +240,18 @@ def main(argv=None, *, operator_input=input) -> int:
                 say(f"recorded: {summary.get('session_dir')}")
             opened.append(close_recorder)
             say(f"recording to {recorder.session_dir}")
+        warmup = wait_until_stable(cameras, cams, warmup_cfg, cancel=stop, fps=int(cc.get("fps", 15)))
+        say(f"camera warmup: {warmup['status']} after {warmup['waited_s']:.2f} s; "
+            f"cameras {json.dumps(warmup['cameras'])}")
+        if recorder is not None:
+            recorder.event(time.monotonic_ns(), "camera_warmup " + json.dumps(warmup))
+        if warmup["status"] == "cancelled":
+            raise Cancelled()
+        if warmup["status"] == "no_frames" or (warmup["status"] == "timeout" and warmup_cfg.on_timeout == "refuse"):
+            failure["error"] = f"camera warmup {warmup['status']}: {warmup.get('reason', 'colour did not settle')}"
+            raise ExecutionRefused(failure["error"])
+        if warmup["status"] == "timeout":
+            say("WARNING: camera warmup timed out; proceeding (camera_warmup.on_timeout=proceed)")
         limits = C.limits(cfg, task)
         ex = cfg.get("executor") or {}
         executor = HighRateExecutor(_Discard(), **{k: ex[k] for k in ex})  # the session thread sends

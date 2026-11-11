@@ -20,6 +20,14 @@ cameras:                                  # the recorder's D435I rig (recordings
   fps: 15
   check_devices: true                     # refuse live acquisition if a recorder/teleop process or device holder exists
   names_file: config/camera_names.yaml    # left / middle / right -> serial (edit that copy; evidence inside)
+camera_warmup:                            # 22 robot trials, 2026-11-11: colour AWB/AE settles in 1.5-4.75 s (median 3.5)
+  window_s: 1.0
+  min_s: 1.5
+  rb_tolerance: 0.02                      # (max-min)/mean of per-frame mean R/B on preprocessed RGB
+  luma_tolerance: 0.03                    # (max-min)/mean of per-frame mean luma
+  timeout_s: 10.0
+  on_timeout: proceed                    # proceed with a warning, or refuse before operator START
+  enabled: true
 assets:                                   # shipped by the bundle (BUNDLE.json lists their sha256)
   m5_surface: assets/m5/panda_robotiq_2f85_droid_iso50.m5.npz   # training-store M5 surface (scripts/realworld_m5_asset.py)
   urdf: assets/urdf/panda_robotiq_2f85_droid_iso50.urdf         # unmodified composed URDF (sha256 ca60bab9...)

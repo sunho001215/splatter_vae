@@ -35,6 +35,13 @@ operator's ENTER; `--dry-run` runs any offered policy. `--cameras`: camera NAMES
 trained camera; a single-view policy takes exactly one name; a wrong count / untrained camera is refused with the
 contract in the message. Live multi-view policies (synchronised camera sets) are not implemented yet (clear error).
 
+Before START (also in `--dry-run`), colour warmup discards frames until every camera's preprocessed RGB is stable:
+at least 1.5 s of streaming, then a 1 s window with at least 80% of the expected frames and relative ranges of mean
+R/B <= 0.02 and luma <= 0.03. The `camera_warmup` config defaults to a 10 s timeout with a warning and continuation
+(`on_timeout: refuse` instead refuses); reader errors or 2 s without frames always refuse. Override the timeout with
+`--camera-warmup-timeout-s SECONDS` (0 disables it). Effective settings are in `config.json`; the result appears on
+the console and as a `camera_warmup` JSON event in `inference.h5`. Recorded replay is unchanged.
+
 **Camera names** (`config/camera_names.yaml`, user-editable; template `configs/robot_pc/camera_names.yaml`):
 `left = 135122070988`, `middle = 135122076054`, `right = 135122073201`. Evidence: camera positions in the robot base
 frame (panda_link0, +y = the ROBOT's left, teleop_collector DATASET.md) = `inv(T_cam_base)[:3, 3]` of the released rig

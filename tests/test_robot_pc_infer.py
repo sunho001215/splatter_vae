@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import io
 import json
+from collections import Counter
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -130,6 +133,232 @@ def test_infer_cli_refuses_conflicting_camera_flags(capsys):
     with pytest.raises(SystemExit) as exc:
         _infer().main(["--cameras", "left", "--camera", "135122070988", "--dry-run"])
     assert exc.value.code == 2 and "not both" in capsys.readouterr().err
+
+
+@pytest.fixture
+def warmup_launcher(monkeypatch, tmp_path):
+    """Exercise the real gate through main(); all surrounding resources are inert fakes."""
+    from ops.robot_pc import (
+        camera_warmup,
+        cameras,
+        cli,
+        controller,
+        executor,
+        gripper,
+        live,
+        recorder,
+        selection,
+        sinks,
+        switch_controller,
+        tunnel,
+    )
+
+    run = _infer()
+    order, events, configs, results, messages = [], [], [], [], []
+    now, cancel = [0], []
+    scenario = {"status": "stable"}
+    cfg = {"root": str(tmp_path), "camera_warmup": {"timeout_s": 10.0}}
+
+    def clock():
+        return now[0]
+
+    def sleep(seconds):
+        now[0] += round(seconds * 1e9)
+        if cancel and scenario["status"] == "cancelled":
+            cancel[0].set()
+
+    class Cameras:
+        def __init__(self, *a, **kw):
+            self.errors, self.index = Counter(), 0
+
+        def start(self, corrections):
+            return {"a": np.eye(3)}
+
+        def bind(self, K):
+            self.start_ns = clock()
+            order.append("bind")
+
+        def drain(self, serial):
+            if scenario["status"] == "no_frames":
+                return []
+            out = []
+            while self.start_ns + round(self.index * 1e9 / 15) <= clock():
+                r = 115 if scenario["status"] != "timeout" else 70 + 60 * (self.index % 2)
+                out.append({"capture_ns": self.start_ns + round(self.index * 1e9 / 15),
+                            "rgb": np.full((128, 128, 3), [r, 100, 100], np.uint8)})
+                self.index += 1
+            return out
+
+        def close(self):
+            order.append("cameras close")
+
+    class Recorder:
+        session_dir = tmp_path
+
+        def __init__(self, *a, **kw):
+            configs.append(json.loads(json.dumps(kw["files"]["config.json"])))
+            order.append("record")
+
+        def event(self, t_ns, text):
+            events.append(text)
+            if text.startswith("camera_warmup "):
+                order.append("warmup event")
+
+        def close(self, *a):
+            order.append("recorder close")
+            return {}
+
+    class Shutdown:
+        _thread = None
+        release_outcome = {"hold": "sent", "idle": "sent"}
+
+        def __init__(self, *a, **kw):
+            pass
+
+        def finish(self):
+            order.append("cleanup")
+
+    class Link:
+        mode_requests_sent = 0
+
+        def __init__(self, *a):
+            order.append("link")
+
+        def wait_subscribers(self, *a, **kw):
+            return True
+
+        def engage(self, **kw):
+            order.append("engage")
+
+    class Session:
+        stop_reason = "budget reached"
+
+        def __init__(self, **kw):
+            order.append("session")
+
+        def run(self, **kw):
+            order.append("stream")
+            return []
+
+        def loop_stats(self):
+            return {}
+
+    real_wait = camera_warmup.wait_until_stable
+
+    def wait(cams, serials, options, **kw):
+        assert order == ["bind", "record"] or order == ["bind"]
+        order.append("warmup")
+        cancel.append(kw["cancel"])
+        result = real_wait(cams, serials, options, clock=clock, sleep=sleep, **kw)
+        results.append(result)
+        order.append("warmup done")
+        return result
+
+    monkeypatch.setattr(run.time, "sleep", sleep)
+    monkeypatch.setattr(run.sys, "stdin", io.StringIO(""))
+    monkeypatch.setattr(run, "say", messages.append)
+    monkeypatch.setattr(cli, "load_config", lambda args: cfg)
+    monkeypatch.setattr(run, "camera_names", lambda cfg: {"front": "a"})
+    monkeypatch.setattr(tunnel, "welcome", lambda *a: {"fake": True})
+    from ops.robot_pc import devices
+
+    monkeypatch.setattr(devices, "require_free", lambda **kw: None)
+    monkeypatch.setattr(devices, "scan", lambda **kw: {"controllers": [1]})
+    monkeypatch.setattr(switch_controller, "LiveStateReader", lambda **kw:
+                        SimpleNamespace(samples=[], close=lambda: order.append("reader close")))
+    monkeypatch.setattr(switch_controller, "state_blockers", lambda *a: [])
+    monkeypatch.setattr(gripper, "GripperWorker", lambda *a, **kw:
+                        SimpleNamespace(start=lambda: None, healthy=lambda: True, error=None, unverifiable=0,
+                                        latest=SimpleNamespace(position=3, status=3, fault=0)))
+    monkeypatch.setattr(live, "LiveState", lambda *a: object())
+    monkeypatch.setattr(live, "MotionShutdown", Shutdown)
+    monkeypatch.setattr(live, "LiveSink", lambda *a: object())
+    monkeypatch.setattr(live, "LiveSession", Session)
+    monkeypatch.setattr(sinks, "DryRunSink", lambda: object())
+    monkeypatch.setattr(controller, "ControllerLink", Link)
+    monkeypatch.setattr(executor, "HighRateExecutor", lambda *a, **kw: SimpleNamespace(counts={}))
+    monkeypatch.setattr(C, "limits", lambda *a: object())
+    monkeypatch.setattr(cli, "choose_policy", lambda *a:
+                        ("p", "t", {"views": 1, "modalities": ["rgb"], "trained_camera_orders": [["a"]]},
+                         {"execution_eligible": True}))
+    monkeypatch.setattr(cli, "rig_document", lambda *a: None)
+    monkeypatch.setattr(selection, "depth_corrections", lambda *a, **kw: {})
+    monkeypatch.setattr(selection, "session_choices", lambda *a, **kw: {})
+    monkeypatch.setattr(cli, "connect", lambda *a: SimpleNamespace(close=lambda: order.append("client close")))
+    monkeypatch.setattr(cameras, "LiveCameras", Cameras)
+    monkeypatch.setattr(recorder, "SessionRecorder", Recorder)
+    monkeypatch.setattr(camera_warmup, "wait_until_stable", wait)
+
+    def launch(args=()):
+        def operator():
+            assert results and "warmup event" in order
+            order.append("prompt")
+            return ""
+        return run.main(["--policy", "p", *args], operator_input=operator)
+
+    return SimpleNamespace(launch=launch, order=order, events=events, configs=configs, cfg=cfg,
+                           results=results, scenario=scenario, messages=messages)
+
+
+@pytest.mark.parametrize("dry_run", [False, True])
+def test_warmup_precedes_prompt_engagement_and_streaming_and_records_event(warmup_launcher, dry_run):
+    f = warmup_launcher
+    assert f.launch(["--dry-run"] if dry_run else []) == 0
+    r = f.results[0]
+    assert r["status"] == "stable" and 1.5 <= r["waited_s"] < 1.6
+    assert json.loads(next(e.removeprefix("camera_warmup ") for e in f.events
+                           if e.startswith("camera_warmup "))) == r
+    assert f.order.index("bind") < f.order.index("record") < f.order.index("warmup")
+    assert f.order.index("warmup done") < f.order.index("warmup event") < f.order.index("stream")
+    if dry_run:
+        assert "prompt" not in f.order and "link" not in f.order
+    else:
+        assert f.order.index("warmup event") < f.order.index("prompt") < f.order.index("engage")
+
+
+@pytest.mark.parametrize("dry_run", [False, True])
+@pytest.mark.parametrize("on_timeout,code", [("proceed", 0), ("refuse", 3)])
+def test_warmup_timeout_policy_is_enforced_before_start(warmup_launcher, dry_run, on_timeout, code):
+    f = warmup_launcher
+    f.scenario["status"] = "timeout"
+    f.cfg["camera_warmup"].update(timeout_s=2, on_timeout=on_timeout)
+    assert f.launch(["--dry-run"] if dry_run else []) == code
+    assert f.results[0]["status"] == "timeout"
+    assert ("stream" in f.order) == (code == 0)
+    if code == 3:
+        assert "prompt" not in f.order and "link" not in f.order
+    else:
+        assert any("WARNING" in m and "proceeding" in m for m in f.messages)
+
+
+@pytest.mark.parametrize("status,code", [("no_frames", 3), ("cancelled", 130)])
+def test_warmup_failure_refuses_without_prompt_or_engagement(warmup_launcher, status, code):
+    f = warmup_launcher
+    f.scenario["status"] = status
+    assert f.launch() == code and f.results[0]["status"] == status
+    assert "prompt" not in f.order and "link" not in f.order and "stream" not in f.order
+    assert "warmup event" in f.order and "recorder close" in f.order
+
+
+@pytest.mark.parametrize("timeout", [0, 0.2])
+def test_warmup_cli_override_is_effective_and_recorded(warmup_launcher, timeout):
+    f = warmup_launcher
+    assert f.launch(["--dry-run", "--camera-warmup-timeout-s", str(timeout)]) == 0
+    assert f.results[0]["status"] == ("disabled" if timeout == 0 else "timeout")
+    assert f.configs[0]["config"]["camera_warmup"]["timeout_s"] == timeout
+
+
+@pytest.mark.parametrize("timeout", ["-1", "nan", "inf"])
+def test_warmup_cli_rejects_invalid_timeout(warmup_launcher, timeout):
+    with pytest.raises(SystemExit) as exc:
+        warmup_launcher.launch([f"--camera-warmup-timeout-s={timeout}"])
+    assert exc.value.code == 2 and not warmup_launcher.order
+
+
+def test_warmup_without_recording(warmup_launcher):
+    f = warmup_launcher
+    assert f.launch(["--dry-run", "--no-record"]) == 0
+    assert f.results[0]["status"] == "stable" and not f.events and not f.configs
 
 
 # ------------------------------------------------------------------------------------- review (robk-review) fixes
