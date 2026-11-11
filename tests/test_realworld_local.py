@@ -221,10 +221,10 @@ def test_localize_preserves_every_other_argument_and_fingerprint(mirrored):
     assert record["dependency_inputs"] == {"runs/dataset/dataset.h5": sha(b"verified dataset")}
     assert rw.needed_inputs(job) == {"mirror": sorted([GATE, SPLIT, STORE]),
                                      "dependency_files": [("dataset", "dataset.h5")]}
-    args = ["--split", PREFIX + "/" + SPLIT, "data.root=" + PREFIX, "untouched=abc"]
+    args = ["--set", PREFIX + "/" + SPLIT, "data.root=" + PREFIX, "untouched=abc"]
     assert rw.needed_inputs(row(args=args))["mirror"] == [".", SPLIT]
     effective, _ = localize(mirrored, row(args=args[:2]))
-    assert effective == ["--split", str(mirrored.mirror / SPLIT)]
+    assert effective == ["--set", str(mirrored.mirror / SPLIT)]
 
 
 @pytest.mark.parametrize("edit,reason", [
@@ -750,12 +750,21 @@ def test_paths_inside_the_config_file_must_be_checked_arguments(mirrored):
         localize(mirrored, job)
 
 
-def test_output_options_are_not_inputs(mirrored):
+@pytest.mark.parametrize("extra", [["--output-root", "runs/realworld_fql/custom"], ["--output-root=runs/realworld_fql/x"]])
+def test_output_options_are_not_inputs(mirrored, extra):
     job = row()
-    job["args"] += ["--output-root", "runs/realworld_fql/custom"]
+    job["args"] += extra
     assert rw.needed_inputs(job)["dependency_files"] == [("dataset", "dataset.h5")]
     effective, _ = localize(mirrored, job)
-    assert effective[-2:] == ["--output-root", "runs/realworld_fql/custom"]
+    assert effective[-len(extra):] == extra
+
+
+@pytest.mark.parametrize("abbreviated", [["--conf", "configs/x.yaml"], ["--se", "train.seed=1"]])
+def test_abbreviated_trainer_options_fail_closed(mirrored, abbreviated):
+    job = row()
+    job["args"] += abbreviated
+    with pytest.raises(rw.LocalInputError, match="full spellings"):
+        localize(mirrored, job)
 
 
 def test_fetches_are_serialized(mirrored):

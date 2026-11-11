@@ -42,6 +42,9 @@ MANIFEST = MIRROR / "MANIFEST.json"
 FINISHED_DIR = REPO / "runs/setup/realworld-local-finished"
 SMALL_HASH_BYTES = 64 * 2**20
 OUTPUT_OPTIONS = ("--output-root", "--name")  # scripts/train_realworld_fql.py options naming outputs
+# The trainer's complete option set (scripts/train_realworld_fql.py). Its argparse accepts unambiguous abbreviations
+# (--conf, --se); local launches require the full spellings so that the resolution below reads what the trainer reads.
+TRAINER_OPTIONS = ("--config", "--name", "--output-root", "--set", "--no-wandb")
 REMOTE_LOCK = REPO / "runs/setup/remote-driver.lock"
 
 
@@ -103,7 +106,7 @@ def needed_inputs(job: dict, *, remote_prefix: str = REMOTE_PREFIX) -> dict:
     mirror, dependencies = set(), set()
     args = [str(a) for a in job.get("args", [])]
     for i, arg in enumerate(args):
-        if i and args[i - 1] in OUTPUT_OPTIONS:
+        if (i and args[i - 1] in OUTPUT_OPTIONS) or arg.startswith(tuple(o + "=" for o in OUTPUT_OPTIONS)):
             continue  # an output location or run name, never an input
         value = _value(arg)
         relative = _mapped(value, remote_prefix)
@@ -426,6 +429,9 @@ def _resolved_paths(job: dict, root: Path, remote_prefix: str = REMOTE_PREFIX) -
     from s4d.config import load_config
 
     args = [str(a) for a in job.get("args", [])]
+    odd = [a for a in args if a.startswith("--") and a.split("=", 1)[0] not in TRAINER_OPTIONS]
+    if odd:
+        raise LocalInputError(f"options other than the trainer's full spellings are not supported locally: {odd[:3]}")
     if "--config" not in args and not any(a.startswith("--config=") for a in args):
         return set()
     parser = argparse.ArgumentParser(add_help=False, allow_abbrev=False, exit_on_error=False)
