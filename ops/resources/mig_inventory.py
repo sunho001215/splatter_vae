@@ -240,15 +240,22 @@ def allowlist_document(report: dict) -> dict:
     return doc
 
 
-def validate_allowlist(doc, authorized=REMOTE_PHYSICAL_GPUS) -> tuple[dict, ...]:
+def validate_allowlist(doc, authorized=REMOTE_PHYSICAL_GPUS, profile: str = EXPECTED_PROFILE) -> tuple[dict, ...]:
     """Validated instance records of an allowlist document, or InventoryError. A subset of the 16 instances is allowed
-    (bad / missing / foreign ones are excluded and reported), never an instance outside the authorized parents."""
+    (bad / missing / foreign ones are excluded and reported), never an instance outside the authorized parents, of
+    another profile than the directive's, or below the minimum framebuffer."""
     if not isinstance(doc, dict) or doc.get("schema") != SCHEMA or doc.get("host") != "remote":
         raise InventoryError("not a remote MIG allowlist")
+    if doc.get("profile") != profile:
+        raise InventoryError(f"allowlist profile {doc.get('profile')!r} is not {profile}")
+    minimum = doc.get("min_memory_mib")
+    if type(minimum) is not int or minimum < MIN_MEMORY_MIB:
+        raise InventoryError("allowlist min_memory_mib missing or below the module minimum")
     per_parent = doc.get("instances_per_parent")
     if type(per_parent) is not int or not 1 <= per_parent <= 7:
         raise InventoryError("invalid instances_per_parent")
-    if not isinstance(doc.get("parents"), list) or not set(doc["parents"]) <= set(authorized):
+    if (not isinstance(doc.get("parents"), list) or not all(isinstance(x, str) for x in doc["parents"])
+            or not set(doc["parents"]) <= set(authorized)):
         raise InventoryError("allowlist names a parent outside the authorized GPUs")
     items = doc.get("instances")
     if not isinstance(items, list) or not items:
@@ -264,7 +271,7 @@ def validate_allowlist(doc, authorized=REMOTE_PHYSICAL_GPUS) -> tuple[dict, ...]
         if any(type(item.get(k)) is not int or item[k] < 0
                for k in ("parent_index", "device", "gpu_instance_id", "compute_instance_id", "memory_total_mib")):
             raise InventoryError(f"{item['uuid']}: invalid numeric field")
-        if item["memory_total_mib"] < int(doc.get("min_memory_mib", MIN_MEMORY_MIB)):
+        if item["memory_total_mib"] < minimum:
             raise InventoryError(f"{item['uuid']}: framebuffer below the minimum")
         if item["uuid"] in seen or (item["parent"], item["gpu_instance_id"]) in slots:
             raise InventoryError(f"{item['uuid']}: repeated instance")

@@ -26,6 +26,8 @@ def _remote_mig_allowlist(path):
         return load_allowlist(path), None
     except InventoryError as exc:
         return (), str(exc)
+    except Exception as exc:  # noqa: BLE001 - any malformed content: no remote device, never an import failure
+        return (), f"{type(exc).__name__}: {exc}"
 
 
 # Remote MIG (user directive 2026-11-11): configs/hosts/remote-mig.yaml, written from a verified discovery report by

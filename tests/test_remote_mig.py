@@ -543,3 +543,30 @@ def test_launch_guard_mig_fragment_runs_against_fake_nvidia_smi(tmp_path, monkey
     assert result.stdout.splitlines() == [f"APPS={gpu},31,700", f"FREE={(24192 - 67) * 1048576}"]
     missing = "\n".join(["set -eu", f"gpu={mig_uuid(0, 9)}", *launch.gpu_probe_lines(gpu)[1:]])
     assert subprocess.run(["bash", "-c", missing], capture_output=True, text=True, env=env).returncode == 1
+
+
+def test_allowlist_profile_and_minimum_are_strict_and_guard_never_crashes(tmp_path):
+    doc = allowlist()
+    for bad in ({**doc, "min_memory_mib": None}, {**doc, "min_memory_mib": 1},
+                {**doc, "profile": "2g.48gb", "instances": [{**i, "profile": "2g.48gb"} for i in doc["instances"]]},
+                {**doc, "parents": [None]}):
+        with pytest.raises(inv.InventoryError):
+            inv.validate_allowlist(bad)
+    from ops.resources import gpu_guard
+
+    path = tmp_path / "remote-mig.yaml"
+    path.write_text(yaml.safe_dump({**doc, "instances": [{**doc["instances"][0], "device": None}]}))
+    instances, error = gpu_guard._remote_mig_allowlist(path)
+    assert instances == () and error
+
+
+def test_repin_scope_includes_third_party_pins():
+    from ops.jobs import release_repin
+
+    tree = {"scripts/train.py": b"x = 1\n"}
+    reader = (lambda relative: tree.get(relative)), sorted(tree)
+    same = release_repin.scope_comparison(["scripts/train.py"], *reader, *reader, {"third_party/dino@commit": "a"},
+                                          {"third_party/dino@commit": "a"})
+    moved = release_repin.scope_comparison(["scripts/train.py"], *reader, *reader, {"third_party/dino@commit": "a"},
+                                           {"third_party/dino@commit": "b"})
+    assert same["identical"] and not moved["identical"] and moved["differences"] == ["third_party:third_party/dino@commit"]

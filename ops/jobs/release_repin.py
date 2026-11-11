@@ -44,8 +44,11 @@ class RepinError(RuntimeError):
     pass
 
 
-def scope_comparison(scripts, before_read, before_listed, after_read, after_listed) -> dict:
-    """{"identical", "differences", "operational_differences", "files"} for two release trees given as readers."""
+def scope_comparison(scripts, before_read, before_listed, after_read, after_listed, before_third_party=None,
+                     after_third_party=None) -> dict:
+    """{"identical", "differences", "operational_differences", "files"} for two release trees given as readers; the
+    third-party pins (submodule commits, .gitmodules, patches: ops.provenance.upstreams.commit_identity) must be equal
+    too."""
     paths = import_closure(scripts, before_read) | import_closure(scripts, after_read)
     paths |= {p for p in list(before_listed) + list(after_listed) if p.startswith(REPIN_CONFIG_SCOPE)}
     paths |= set(REPIN_ENVIRONMENT)
@@ -59,8 +62,11 @@ def scope_comparison(scripts, before_read, before_listed, after_read, after_list
             differences.append(relative)
         if after is not None:
             files[relative] = hashlib.sha256(after).hexdigest()
+    before_tp, after_tp = before_third_party or {}, after_third_party or {}
+    differences += [f"third_party:{key}" for key in sorted(set(before_tp) | set(after_tp))
+                    if before_tp.get(key) != after_tp.get(key)]
     return {"identical": not differences, "differences": differences, "operational_differences": operational,
-            "files": files}
+            "files": files, "third_party": after_tp}
 
 
 def check_state(job_id: str, current: dict, to_commit: str, to_image: str) -> None:
@@ -106,7 +112,10 @@ def main(argv=None) -> int:
         check_state(args.job_id, current, args.to_commit, args.to_image)
         before_read, before_listed = commit_reader(REPO, current["commit"])
         after_read, after_listed = commit_reader(REPO, args.to_commit)
-        scope = scope_comparison(scripts, before_read, before_listed, after_read, after_listed)
+        from ops.provenance.upstreams import commit_identity  # noqa: PLC0415
+
+        scope = scope_comparison(scripts, before_read, before_listed, after_read, after_listed,
+                                 commit_identity(REPO, current["commit"]), commit_identity(REPO, args.to_commit))
         if args.command == "plan":
             print(json.dumps({k: scope[k] for k in ("identical", "differences", "operational_differences")}, indent=1))
             return 0 if scope["identical"] else 3
