@@ -326,6 +326,16 @@
       ],
       "lifted": "2026-11-11T00:36:00+0900",
       "lift_reason": "c366ec0 released (2662/0/0) and adopted: configs mounted read-only for realworld_native_depth.py; user 00:15: resume the two native-depth jobs"
+    },
+    {
+      "name": "noaug-await-local-placement-20261111",
+      "active": true,
+      "since": "2026-11-11T17:25:00+0900",
+      "by": "coordinator per user directive P (preprocessing priority; real-world training on both hosts)",
+      "reason": "hold the 6 e2e_cnn_noaug FQL rows until local real-world placement (agent HOSTS) is released, so they run on the idle local MIG slices instead of taking remote GPU slots needed by pick-and-place preprocessing; lift then (or earlier if remote capacity frees).",
+      "prefixes": [
+        "rwcal-20261111-fql-e2e_cnn_noaug-"
+      ]
     }
   ]
 }
