@@ -172,6 +172,8 @@ def test_execute_refuses_outside_main_before_any_writes(fake):
 
 def test_worktree_tool_cannot_execute_even_with_main_repo(fake, monkeypatch):
     monkeypatch.setattr(R, 'release_pin', lambda repo: PIN)
+    # the tool may live in main now: model a worktree copy explicitly (location-independent test)
+    monkeypatch.setattr(R, '__file__', str(fake.repo / '.worktrees/x' / R.TOOL))
     with pytest.raises(R.Refused, match="execution is the coordinator's step"):
         R.execution_allowed(R.MAIN, PIN)
 
