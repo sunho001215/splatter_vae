@@ -205,3 +205,51 @@ def test_single_family_keeps_finished_trainer_evaluators_ahead_of_the_next_train
     rows = [row("eval", ram=4.5, mem=4, evaluator=True, trainer_ready=True), row("next", ram=3.5, mem=6)]
     result = fair.select(rows, active, limits, 140, 23 * 3.5)
     assert result["admitted"] == ["eval"] and result["blocked"] == {"metaworld": "next"}
+
+
+def test_evaluators_started_before_the_head_are_not_admitted_twice():
+    """Codex review 5: 10 ready evaluators then 14 DrM trainers on an empty host (24 slots): every row starts once and
+    the reported usage equals the admitted rows."""
+    limits = {f"mig{i}": {"max_jobs": 3, "max_mem_gb": 22} for i in range(8)}
+    rows = [row(f"e{i}", ram=4.5, mem=4, evaluator=True, trainer_ready=True) for i in range(10)] + [
+        row(f"t{i}", ram=3.5, mem=6) for i in range(14)]
+    result = fair.select(rows, [], limits, 140, 0)
+    assert len(result["admitted"]) == len(set(result["admitted"])) == 24 and not result["blocked"]
+    assert set(result["assigned"]) == set(result["admitted"])
+    usage = result["report"]["families"]["metaworld"]["usage"]
+    assert usage["gpu_jobs"] == 24 and usage["ram_bytes"] == 10 * 4.5 + 14 * 3.5
+    slots = {}
+    for gpu in result["assigned"].values():
+        slots[gpu] = slots.get(gpu, 0) + 1
+    assert max(slots.values()) <= 3
+
+
+def test_random_scenarios_keep_every_hard_invariant():
+    """Uniqueness, MIG limits, the RAM cap and instance reservations hold for 300 random mixed scenarios."""
+    import random
+
+    rng = random.Random(20261111)
+    families = ("metaworld", "realworld", "droid")
+    for case in range(300):
+        limits = {f"mig{i}": {"max_jobs": 3, "max_mem_gb": 22} for i in range(8)}
+        active = [row(f"a{i}", rng.choice(families), ram=rng.choice((3.5, 4.5, 12, 16, 24)),
+                      mem=rng.choice((4, 6, 8, 12)), gpu=f"mig{rng.randrange(8)}") for i in range(rng.randrange(12))]
+        per = {}
+        active = [a for a in active if per.setdefault(a["gpu"], []).append(a) or
+                  (len(per[a["gpu"]]) <= 3 and sum(x["mem_gb"] for x in per[a["gpu"]]) <= 22)]
+        rows = []
+        for i in range(rng.randrange(1, 20)):
+            evaluator = rng.random() < 0.3
+            rows.append(row(f"c{i}", rng.choice(families), ram=rng.choice((3.5, 4.5, 12, 16, 24, 80)),
+                            mem=rng.choice((4, 6, 8, 12, 30)), evaluator=evaluator, trainer_ready=evaluator))
+        used = sum(a["ram_bytes"] for a in active)
+        result = fair.select(rows, active, limits, 140, used)
+        admitted = result["admitted"]
+        assert len(admitted) == len(set(admitted)) and set(result["assigned"]) == set(admitted), case
+        by_id = {r["id"]: r for r in rows}
+        assert used + sum(by_id[i]["ram_bytes"] for i in admitted) <= 140 + 1e-9 or not admitted, case
+        for gpu, limit in limits.items():
+            here = [a for a in active if a["gpu"] == gpu] + [by_id[i] for i in admitted if result["assigned"][i] == gpu]
+            assert len(here) <= limit["max_jobs"] and sum(r["mem_gb"] for r in here) <= limit["max_mem_gb"], case
+        for gpu, owner in result["reserved"].items():
+            assert all(result["assigned"][i] != gpu or i == owner for i in admitted), case

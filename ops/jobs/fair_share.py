@@ -147,7 +147,7 @@ def select(candidates: list[dict], active: list[dict], limits: dict, ram_cap: fl
 
     # 2. every other row in order, within the capacity the protected heads leave
     for row in candidates:
-        if row["id"] in done or not ready(row):
+        if row["id"] in done or row["id"] in admitted or not ready(row):  # early evaluators started in step 1
             continue
         family = row["family"]
         evaluator = row.get("evaluator", False)
