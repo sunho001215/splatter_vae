@@ -341,9 +341,14 @@ def mig_usage(list_lines: list[str], query_lines: list[str], devices=None) -> tu
         if listed.get(uuid) != (parent, device) or found is None or found.get("gpu_instance_id") != instance:
             ready = False
             continue
-        if found.get("total_mib") is not None and found.get("used_mib") is not None:
-            memory[uuid] = (found["total_mib"], found["used_mib"])
+        if found.get("total_mib") is None or found.get("used_mib") is None:
+            ready = False  # an unreadable framebuffer: the instance's free memory is unknown
+            continue
+        memory[uuid] = (found["total_mib"], found["used_mib"])
     for parent in dict.fromkeys(item[0] for item in devices.values()):
+        if not query.get(parent, {}).get("processes_listed"):
+            ready = False  # no process listing for the parent: ownership of its instances unknown
+            continue
         for proc in query.get(parent, {}).get("processes", []):
             if proc["pid"] is None or proc["gpu_instance_id"] is None:
                 ready = False

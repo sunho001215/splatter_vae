@@ -570,3 +570,21 @@ def test_repin_scope_includes_third_party_pins():
     moved = release_repin.scope_comparison(["scripts/train.py"], *reader, *reader, {"third_party/dino@commit": "a"},
                                            {"third_party/dino@commit": "b"})
     assert same["identical"] and not moved["identical"] and moved["differences"] == ["third_party:third_party/dino@commit"]
+
+
+def test_missing_process_listing_or_unreadable_framebuffer_fail_closed():
+    from ops.jobs import remote_backend
+
+    listing, query = remote_host()
+    no_listing = "\n".join(line for line in query.splitlines() if not line.startswith("    Processes"))
+    report = inv.build_inventory(listing, no_listing)
+    assert not report["instances"] and not report["complete"]
+    assert sum("ownership unknown" in p for p in report["problems"]) == 4
+    devices = devices_of(allowlist())
+    assert not remote_backend.mig_usage(listing.splitlines(), no_listing.splitlines(), devices)[2]
+    na = query.replace("            Used                                       : 67 MiB",
+                       "            Used                                       : N/A")
+    assert not remote_backend.mig_usage(listing.splitlines(), na.splitlines(), devices)[2]
+    single = render_query([(PARENTS[0], True)])
+    assert run_probe("\n".join(l for l in single.splitlines() if not l.startswith("    Processes")), 3, 0).returncode == 5
+    assert run_probe(single.replace(": 67 MiB", ": N/A"), 3, 0).returncode != 0

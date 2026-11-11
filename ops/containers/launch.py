@@ -589,7 +589,7 @@ MIG_PROBE = r"""
 import sys
 gi, dev = int(sys.argv[1]), int(sys.argv[2])
 sec = sub = cur = proc = found = None
-apps = []
+apps, listed = [], False
 for line in sys.stdin.read().splitlines():
     if not line.strip():
         continue
@@ -602,8 +602,10 @@ for line in sys.stdin.read().splitlines():
         sec, sub, proc = k, None, None
         if k == "MIG Device":
             cur = {}
-        if k == "Processes" and v not in ("", "None"):
-            sys.exit(2)
+        if k == "Processes":
+            if v not in ("", "None"):
+                sys.exit(2)
+            listed = True
         continue
     if sec == "MIG Device" and cur is not None:
         if ind == 8 and not sep:
@@ -625,6 +627,8 @@ for line in sys.stdin.read().splitlines():
             if int(proc[0]) == gi:
                 apps.append((proc[1], (v.split() or ["N/A"])[0]))
             proc = None
+if not listed:
+    sys.exit(5)
 if not found or found.get("GPU Instance ID") != gi or "Total" not in found or "Used" not in found:
     sys.exit(4)
 print("MEM,%d,%d" % (found["Total"], found["Used"]))

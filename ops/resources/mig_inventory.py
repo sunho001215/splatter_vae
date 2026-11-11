@@ -114,7 +114,8 @@ def parse_query(text: str) -> dict[str, dict]:
         if indent == 0:
             if _QUERY_GPU.fullmatch(line.rstrip()):
                 close()
-                current = {"uuid": None, "mig_current": None, "mig_pending": None, "instances": {}, "processes": []}
+                current = {"uuid": None, "mig_current": None, "mig_pending": None, "instances": {}, "processes": [],
+                           "processes_listed": False}
             section = None
             continue
         if current is None:
@@ -125,8 +126,10 @@ def parse_query(text: str) -> dict[str, dict]:
                 current["uuid"] = value
             elif key == "MIG Device":
                 device = {"gpu_instance_id": None, "compute_instance_id": None, "total_mib": None, "used_mib": None}
-            elif key == "Processes" and value not in ("", "None"):
-                raise InventoryError(f"GPU process listing unavailable: {value}")
+            elif key == "Processes":
+                if value not in ("", "None"):
+                    raise InventoryError(f"GPU process listing unavailable: {value}")
+                current["processes_listed"] = True  # a GPU section without it: ownership unknown (fail closed)
             continue
         if section == "MIG Mode" and key in ("Current", "Pending"):
             current["mig_current" if key == "Current" else "mig_pending"] = value
@@ -181,8 +184,10 @@ def build_inventory(list_text: str, query_text: str, *, authorized=REMOTE_PHYSIC
             excluded += [{"uuid": mig["uuid"], "parent": parent, "reason": "parent MIG mode not Enabled/Enabled"}
                          for mig in listed["mig"]]
             continue
-        busy = {}
-        for proc in info["processes"]:
+        busy = {} if info.get("processes_listed") else None
+        if busy is None:
+            problems.append(f"{parent}: no process listing in nvidia-smi -q (ownership unknown)")
+        for proc in (info["processes"] if busy is not None else []):
             if proc["pid"] is None or proc["gpu_instance_id"] is None:
                 problems.append(f"{parent}: a process without a readable PID / GPU instance (ownership unknown)")
                 busy = None
