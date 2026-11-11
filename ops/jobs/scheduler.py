@@ -871,6 +871,45 @@ def _remote_completed(current: dict) -> bool:
                 and verified.get("attempt") == current["attempts"] == final))
 
 
+VERIFICATION_FILES = ("exit.json", "provenance.json", "console.log")
+
+
+def verification_adopted(job_id: str, current: dict, repo: Path = REPO) -> bool:
+    """A completed typed-verification attempt whose evidence is adopted (user decision 2026-11-11: such containers are
+    archived and removed): the job is done with its final results synced and verified, and the release's acceptance
+    manifest (runs/remote/acceptance/<short>/manifest.json, assemble_remote_acceptance.py) references an artifact of
+    this job (``job``) whose checksum matches the manifest and whose report equals the job's synced evidence file."""
+    purpose = current.get("verification_purpose")
+    sync = current.get("sync") or {}
+    if (purpose not in ("native_suite", "gpu_isolation") or current.get("status") != DONE or current.get("code") != 0
+            or sync.get("final") is not True or sync.get("verified") is not True):
+        return False
+    match = re.fullmatch(r"verify-native-(.+)" if purpose == "native_suite" else r"verify-isolation-\d+-(.+)", job_id)
+    name = "tests.json" if purpose == "native_suite" else "gpu_isolation.json"
+    if match is None:
+        return False
+    try:
+        manifest = json.loads((repo / "runs/remote/acceptance" / match[1] / "manifest.json").read_text())
+        if manifest.get("commit") != current.get("commit") or manifest.get("image_digest") != current.get("image_digest"):
+            return False
+        references = ([manifest["full_suite"]] if purpose == "native_suite"
+                      else list((manifest.get("gpu_isolation") or {}).values()))
+        evidence = repo / "runs" / job_id / "evidence" / name
+        if hashlib.sha256(evidence.read_bytes()).hexdigest() != (sync.get("files") or {}).get(f"evidence/{name}"):
+            return False
+        report = json.loads(evidence.read_text())
+        for reference in references:
+            artifact = repo / reference["path"]
+            if hashlib.sha256(artifact.read_bytes()).hexdigest() != reference["sha256"]:
+                continue
+            payload = json.loads(artifact.read_text())
+            if payload.get("job") == job_id and payload.get("report") == report:
+                return True
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
+    return False
+
+
 def _cleanup_targets(job_id: str, current: dict) -> list[tuple[int, str, str, int, tuple[str, ...]]]:
     """Containers of a remote campaign job that automatic cleanup may remove, as (attempt, name, id, expected exit code,
     required run files):
@@ -886,8 +925,19 @@ def _cleanup_targets(job_id: str, current: dict) -> list[tuple[int, str, str, in
     Verification jobs and containers already removed, kept or found absent are excluded (verification containers whose
     registry rows predate the purpose field are recognised by their labels in ``_cleanup_completed_containers`` and in
     the removal command)."""
-    if (current.get("host") != "remote" or current.get("verification_purpose") is not None
-            or current.get("campaign_eligible") is False):
+    if current.get("host") != "remote":
+        return []
+    if current.get("verification_purpose") is not None:
+        # typed verification: only a completed attempt whose evidence is adopted (verification_adopted); failed or
+        # not-yet-adopted verification containers are kept
+        settled = {value for key in ("containers_removed", "containers_kept", "containers_absent")
+                   for value in current.get(key, [])}
+        if (current.get("container_id") and current["container_id"] not in settled
+                and verification_adopted(job_id, current)):
+            final = int(current.get("attempt", current["attempts"]))
+            return [(final, current["container"], current["container_id"], 0, VERIFICATION_FILES)]
+        return []
+    if current.get("campaign_eligible") is False:
         return []
     targets: dict[str, tuple[int, str, str, int, tuple[str, ...]]] = {}
     codes = current.get("attempt_codes", {})
@@ -933,8 +983,10 @@ def _cleanup_completed_containers(backend, snapshot, state: dict, registry: Path
                     "container": name, "container_id": container_id}
             item = snapshot.containers.get(name)
             labels = ((item or {}).get("Config") or {}).get("Labels") or {}
-            if labels.get("s4d.verification_purpose") or labels.get("s4d.campaign_eligible") == "false":
-                continue  # verification containers are kept (early ones predate the registry's purpose field)
+            purpose = current.get("verification_purpose")
+            if (labels.get("s4d.verification_purpose") or labels.get("s4d.campaign_eligible") == "false") and (
+                    purpose is None or labels.get("s4d.verification_purpose") != purpose):
+                continue  # kept: early verification containers predate the registry's purpose field
             if item is not None and (item.get("Id") != container_id or item.get("State", {}).get("Status") != "exited"
                                      or item.get("State", {}).get("ExitCode") != code):
                 record({**base, "event": "container_kept", "reason": "identity or state differs from the record"},
@@ -943,7 +995,10 @@ def _cleanup_completed_containers(backend, snapshot, state: dict, registry: Path
                 continue
             calls += 1
             try:  # a container missing from the snapshot is checked by the command itself (absent, or refused)
-                result = backend.remove_container(job_id, attempt, name, container_id, code, list(required))
+                result = (backend.remove_container(job_id, attempt, name, container_id, code, list(required),
+                                                   verification_purpose=current.get("verification_purpose"))
+                          if current.get("verification_purpose") else
+                          backend.remove_container(job_id, attempt, name, container_id, code, list(required)))
             except RemoteUnreachable:
                 _host_reachability(registry, False, "RemoteUnreachable")
                 return False
@@ -1264,6 +1319,10 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
             if "role" in spec:
                 # The launcher preserves input-only role evidence here; reconciliation must use the same decision.
                 event["role"] = spec["role"]
+            if spec.get("enforce_limits") is True:  # reconciliation checks the container's enforced limits
+                from ops.jobs.remote_backend import resource_limits  # noqa: PLC0415
+
+                event["enforce_limits"] = resource_limits(spec["ram_gb"], spec.get("cpu_threads", 8))
             if purpose is not None:
                 event.update(verification_purpose=purpose, campaign_eligible=False, args=spec["args"],
                              verification_timeout_seconds=spec["verification_timeout_seconds"],

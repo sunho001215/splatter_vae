@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import shlex
 import subprocess
@@ -1167,3 +1168,19 @@ def test_mig_mode_preflight_refuses_physical_gpus_in_mig_mode_and_unreadable_mod
     module.mig_mode_preflight(Modes(f"{gpu}, Enabled, Enabled\n"), mig)
     with pytest.raises(ValueError, match="not Enabled"):
         module.mig_mode_preflight(Modes(f"{gpu}, Enabled, Disabled\n"), mig)
+
+
+def test_enforced_limits_reach_docker_run_and_the_reuse_check():
+    """ARCH Phase 2: --memory = --memory-swap and --cpus on a campaign attempt that carries enforce_limits; the
+    lost-response reuse check verifies them; verification-only flags are refused on campaign rows."""
+    spec = job_spec()
+    spec.update(enforce_limits=True, cpu_threads=6)
+    checked = validate_spec(spec)
+    command = build_remote_command(checked, DATA_ID, "e" * 40, "f" * 64, {"tests.json": "1" * 64},
+                                   [(REMOTE_ROOT + "/data/metaworld/splatter4d_v1/hammer.hdf5", "d" * 64)])
+    ram = str(math.ceil(13 * 1024**3))
+    assert f"--memory {ram} --memory-swap {ram} --cpus 6" in command
+    assert "{{.HostConfig.NanoCpus}}" in command and "6000000000" in command
+    for bad in (False, "yes", 1):
+        with pytest.raises(ValueError, match="enforce_limits"):
+            validate_spec({**spec, "enforce_limits": bad})

@@ -137,6 +137,8 @@ def validate_spec(spec: dict) -> dict:
         expected_labels.update({"s4d.verification_purpose": purpose, "s4d.campaign_eligible": "false"})
     if spec.get("labels") != expected_labels:
         raise ValueError("Container ownership labels differ from the job identity")
+    if "enforce_limits" in spec and (spec["enforce_limits"] is not True or purpose is not None):
+        raise ValueError("enforce_limits is an explicit flag of campaign attempts")
     if "repinned_from" in spec:  # a recorded release re-pin (ops/jobs/release_repin.py) of a campaign run
         source = spec["repinned_from"]
         if (purpose is not None or not isinstance(source, dict) or set(source) != {"commit", "image_digest"}
@@ -323,7 +325,7 @@ def build_remote_command(spec: dict, data_identity: str, origin_commit: str, pro
               "--oom-score-adj", str(spec["oom_score_adj"]),
               "--workdir", CONTAINER_REPO, "--init", "--shm-size", "8g"]
     purpose = spec.get("verification_purpose")
-    if purpose is not None:
+    if purpose is not None or spec.get("enforce_limits") is True:  # verification, or ARCH Phase 2 campaign limits
         docker += ["--memory", str(spec["ram_bytes"]), "--memory-swap", str(spec["ram_bytes"]),
                    "--cpus", str(spec["cpu_threads"])]
     if spec["gpu_backend"] == "cdi":
@@ -408,6 +410,12 @@ def build_remote_command(spec: dict, data_identity: str, origin_commit: str, pro
                                                       separators=(",", ":")))):
             template = "{{json ." + field + "}}" if field.startswith("Config.") else "{{." + field + "}}"
             lines.append('  test "$(docker inspect --format ' + q(template) + ' "$container")" = '
+                         + q(value) + ' || exit 1')
+    if purpose is None and spec.get("enforce_limits") is True:  # lost-response reuse re-checks the enforced limits
+        for field, value in (("HostConfig.Memory", str(spec["ram_bytes"])),
+                             ("HostConfig.MemorySwap", str(spec["ram_bytes"])),
+                             ("HostConfig.NanoCpus", str(spec["cpu_threads"] * 10**9))):
+            lines.append('  test "$(docker inspect --format ' + q("{{." + field + "}}") + ' "$container")" = '
                          + q(value) + ' || exit 1')
     expected_mounts = "\n".join(sorted(f"bind|{source}|{target}|{'false' if readonly else 'true'}"
                                       for source, target, readonly in mounts))

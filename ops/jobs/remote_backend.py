@@ -275,11 +275,12 @@ printf '{"removed": true, "log_sha256": "%s", "inspect_sha256": "%s"}\n' "$logsu
 
 
 def removal_command(root: str, run_id: str, attempt: int, container: str, container_id: str, expected_code: int,
-                    required: list[str]) -> str:
+                    required: list[str], verification_purpose: str | None = None) -> str:
     """Remove one completed container of ours by its explicit id, after preserving its Docker log and inspect record
     under the run directory. Refuses (non-zero exit) unless the container still is exactly that id, stopped
     ("exited") with the expected exit code, labelled ours for this run and attempt, with a read-only root filesystem,
-    not labelled as a verification container, and every required run file is present and non-empty under the authorized root. Identity and state are checked
+    not labelled as a verification container (unless ``verification_purpose`` names exactly its typed purpose: an adopted
+    verification, scheduler.verification_adopted), and every required run file is present and non-empty under the authorized root. Identity and state are checked
     first, again under a per-container lock (overlapping executions, e.g. an SSH retry while a timed-out first
     execution still runs, are serialized), and once more immediately before ``docker rm`` (no force, no volume
     removal). The archive goes to unique temporary files, is checksummed (a checksum failure refuses), moved in place
@@ -298,8 +299,14 @@ def removal_command(root: str, run_id: str, attempt: int, container: str, contai
     log, record = f"{keep}/{container}.docker.log", f"{keep}/{container}.inspect.json"
     receipt = f"{keep}/{container}.removal-receipt"
     # read-only root filesystem: every output was written to the bind-mounted run directory, none only inside it;
-    # verification containers (s4d.verification_purpose / s4d.campaign_eligible labels) are never removed
+    # verification containers (s4d.verification_purpose / s4d.campaign_eligible labels) only via verification_purpose
     expected = f"{container_id}|exited|{int(expected_code)}|true|remote|{run_id}|{int(attempt)}|/{container}|true||"
+    if verification_purpose is not None:
+        # an adopted typed verification (scheduler.verification_adopted, user decision 2026-11-11): exactly its labels
+        if verification_purpose not in ("native_suite", "gpu_isolation") or int(expected_code) != 0:
+            raise ValueError("Invalid verification container removal request")
+        expected = (f"{container_id}|exited|0|true|remote|{run_id}|{int(attempt)}|/{container}|true|"
+                    f"{verification_purpose}|false")
     values = {
         "@ID@": q(container_id), "@FORMAT@": q(_INSPECT_IDENTITY), "@EXPECTED@": q(expected), "@RUN_DIR@": q(run_dir),
         "@KEEP@": q(keep), "@LOCK@": q(f"{keep}/.{container}.lock"), "@LOG@": q(log), "@RECORD@": q(record),
@@ -531,6 +538,12 @@ def parse_snapshot(output: str) -> RemoteSnapshot:
                           cotenants, gpu_memory, hold)
 
 
+def resource_limits(ram_gb: float, cpu_threads: int) -> dict:
+    """The enforced per-attempt container limits (ARCH Phase 2): --memory = --memory-swap = ceil(ram_gb GiB) (no swap),
+    --cpus = cpu_threads; the same rounding as ops/containers/launch.validate_spec."""
+    return {"memory_bytes": math.ceil(float(ram_gb) * 1024**3), "nano_cpus": int(cpu_threads) * 10**9}
+
+
 def validate_container(item: dict, run_id: str, state: dict) -> None:
     expected = labels(run_id, state["attempts"], state["commit"], state["image_digest"])
     actual = item.get("Config", {}).get("Labels", {}) or {}
@@ -551,6 +564,12 @@ def validate_container(item: dict, run_id: str, state: dict) -> None:
                       and env.get("NVIDIA_VISIBLE_DEVICES") == state["gpu"])
     else:
         request_ok = False
+    limits = state.get("enforce_limits")
+    if limits is not None:  # recorded at launch for attempts launched with enforced limits (ARCH Phase 2)
+        request_ok = (request_ok and isinstance(limits, dict)
+                      and config.get("Memory") == limits.get("memory_bytes")
+                      and config.get("MemorySwap") == limits.get("memory_bytes")
+                      and config.get("NanoCpus") == limits.get("nano_cpus"))
     if (item.get("Name", "").removeprefix("/") != state["container"]
             or any(actual.get(key) != value for key, value in expected.items())
             or any(key in actual and actual[key] != value for key, value in OWNERSHIP_LABELS.items())
@@ -872,6 +891,12 @@ class RemoteBackend:
             spec["role"] = classification.cls
         if "cpu_threads" in job:
             spec["cpu_threads"] = job["cpu_threads"]
+        if purpose is None and host.get("enforce_resource_limits") is True:
+            # ARCH Phase 2: campaign containers get --memory/--memory-swap/--cpus like verification and rwprep do;
+            # attempts launched before the switch keep their recorded (unlimited) configuration
+            if float(job.get("ram_gb", 0)) <= 0:
+                raise ValueError("Enforced resource limits need a positive ram_gb")
+            spec["enforce_limits"] = True
         if job.get("repinned_from"):  # set by the scheduler from the registry's release_repinned record
             spec["repinned_from"] = {"commit": job["repinned_from"]["commit"],
                                      "image_digest": job["repinned_from"]["image_digest"]}
@@ -921,7 +946,7 @@ class RemoteBackend:
         return payload
 
     def remove_container(self, run_id: str, attempt: int, container: str, container_id: str, expected_code: int,
-                         required: list[str]) -> dict:
+                         required: list[str], verification_purpose: str | None = None) -> dict:
         """``removal_command`` over SSH; returns {"removed": True, "log_sha256", "inspect_sha256"} or {"absent": True}.
 
         The command writes containers/<name>.docker.log and .inspect.json into the run directory, files the essential
@@ -929,7 +954,8 @@ class RemoteBackend:
         precede the final backup (2026-10-28), it runs under that sync's per-run lock (state_dir/results-<run>.lock,
         ``RemoteClient.sync_results``), taken without blocking: while a sync of the run is in progress the removal is
         deferred to a later tick (RemoteJobError) instead of stalling the scheduler behind a bulk download."""
-        command = removal_command(self.client.root, run_id, attempt, container, container_id, expected_code, required)
+        command = removal_command(self.client.root, run_id, attempt, container, container_id, expected_code, required,
+                                  verification_purpose)
         with (self.client.state_dir / f"results-{run_id}.lock").open("a") as lock:
             try:
                 fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)

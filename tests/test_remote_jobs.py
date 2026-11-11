@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import math
 import importlib.util
 import json
 import subprocess
@@ -2348,3 +2349,66 @@ def test_remote_driver_charges_cotenants_before_any_placement(tmp_path):
     add_cotenant(snapshot, unbounded, pids=(5,))
     names = run(snapshot)
     assert names["candidates"] == [] and names["COTENANT"] is None and "without an enforced RAM limit" in names["messages"][0]
+
+
+def test_enforced_limits_are_recorded_and_reconciled():
+    """ARCH Phase 2 (2026-11-11): an attempt launched with enforced --memory/--cpus is reconciled only if its container
+    carries exactly the recorded limits; attempts without the record keep the former (unlimited) validation."""
+    limits = remote.resource_limits(12, 8)
+    assert limits == {"memory_bytes": 12 * GIB, "nano_cpus": 8 * 10**9}
+    assert remote.resource_limits(12.5, 4)["memory_bytes"] == math.ceil(12.5 * 1024**3)
+    state = {"container": "s4d-r-a1", "attempts": 1, "commit": COMMIT, "image_digest": IMAGE, "gpu": REMOTE,
+             "gpu_backend": "cdi", "container_id": CONTAINER_ID}
+    item = inspected()
+    remote.validate_container(item, "r", state)  # no record: unchanged
+    enforced = {**state, "enforce_limits": limits}
+    with pytest.raises(remote.RemoteJobError):
+        remote.validate_container(item, "r", enforced)
+    item["HostConfig"].update(Memory=12 * GIB, MemorySwap=12 * GIB, NanoCpus=8 * 10**9)
+    remote.validate_container(item, "r", enforced)
+    item["HostConfig"]["MemorySwap"] = 24 * GIB  # swap allowed beyond the limit: refused
+    with pytest.raises(remote.RemoteJobError):
+        remote.validate_container(item, "r", enforced)
+
+
+def test_verification_containers_are_removed_only_after_their_evidence_is_adopted(tmp_path, monkeypatch):
+    """User decision 2026-11-11: an adopted typed verification (its synced evidence is the report of an artifact of
+    the release's acceptance manifest) is archived and removed by exact id; anything else stays."""
+    short = "abc1234-cc"
+    job = f"verify-native-{short}"
+    evidence = tmp_path / "runs" / job / "evidence" / "tests.json"
+    evidence.parent.mkdir(parents=True)
+    evidence.write_text(json.dumps({"full_suite_passed": True}))
+    out = tmp_path / "runs/remote/acceptance" / short
+    out.mkdir(parents=True)
+    artifact = out / "tests.json"
+    artifact.write_text(json.dumps({"commit": COMMIT, "image_digest": IMAGE, "report": {"full_suite_passed": True},
+                                    "job": job}))
+    (out / "manifest.json").write_text(json.dumps({
+        "commit": COMMIT, "image_digest": IMAGE,
+        "full_suite": {"path": str(artifact.relative_to(tmp_path)),
+                       "sha256": hashlib.sha256(artifact.read_bytes()).hexdigest()}}))
+    current = {"host": "remote", "verification_purpose": "native_suite", "status": jobs.DONE, "code": 0,
+               "commit": COMMIT, "image_digest": IMAGE, "attempt": 1, "attempts": 1, "container": f"s4d-{job}-a1",
+               "container_id": CONTAINER_ID,
+               "sync": {"final": True, "verified": True,
+                        "files": {"evidence/tests.json": hashlib.sha256(evidence.read_bytes()).hexdigest()}}}
+    assert jobs.verification_adopted(job, current, tmp_path)
+    for bad in ({**current, "code": 1}, {**current, "status": "sync_pending"}, {**current, "commit": "f" * 40},
+                {**current, "sync": {**current["sync"], "verified": False}}):
+        assert not jobs.verification_adopted(job, bad, tmp_path)
+    evidence.write_text(json.dumps({"full_suite_passed": False}))  # the local copy no longer matches its sync record
+    assert not jobs.verification_adopted(job, current, tmp_path)
+    monkeypatch.setattr(jobs, "verification_adopted", lambda job_id, state, repo=None: True)
+    assert jobs._cleanup_targets(job, current) == [(1, f"s4d-{job}-a1", CONTAINER_ID, 0, jobs.VERIFICATION_FILES)]
+    assert jobs._cleanup_targets(job, {**current, "containers_removed": [CONTAINER_ID]}) == []
+    monkeypatch.setattr(jobs, "verification_adopted", lambda job_id, state, repo=None: False)
+    assert jobs._cleanup_targets(job, current) == []
+    command = remote.removal_command(remote.ROOT, job, 1, f"s4d-{job}-a1", CONTAINER_ID, 0, ["exit.json"],
+                                     verification_purpose="native_suite")
+    assert "|true|native_suite|false" in command
+    assert "|true||" in remote.removal_command(remote.ROOT, "r", 1, "s4d-r-a1", CONTAINER_ID, 0, ["exit.json"])
+    for purpose, code in (("other", 0), ("native_suite", 1)):
+        with pytest.raises(ValueError):
+            remote.removal_command(remote.ROOT, job, 1, f"s4d-{job}-a1", CONTAINER_ID, code, [],
+                                   verification_purpose=purpose)

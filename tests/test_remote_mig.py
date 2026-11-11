@@ -5,6 +5,7 @@ snapshot / launch-guard evidence, the outage guard's hold ownership and the rele
 from __future__ import annotations
 
 import json
+import math
 import os
 import shutil
 import subprocess
@@ -750,3 +751,18 @@ def test_mig_variant_recipe_applies_only_the_container_side_change(tmp_path):
     (configs / mig_variant.CONFIG_FILES[1]).unlink()
     with pytest.raises(mig_variant.VariantError, match="missing rendered"):
         mig_variant.create(repo, old, mig_base, mig_head, configs, ["scripts/train.py"])
+
+
+def test_cgroup_usage_parses_samples_and_proposes_limits():
+    from ops.remote import cgroup_usage as cg
+
+    cid = "a" * 64
+    lines = [f"S4D_CG|s4d-rwcal-x-pre-a1|{cid}|{1000 + 300 * i}|{(4 + i) * 2**30}|{3 * 2**30}|max|0|{i * 3_000_000_00}"
+             for i in range(13)] + ["junk", f"S4D_CG|other|{cid}|1|2|3|max|0|1"]
+    samples = cg.parse_samples("\n".join(lines))
+    assert len(samples) == 13 and samples[0]["memory_max"] is None and samples[-1]["memory_peak"] == 16 * 2**30
+    proposal = cg.propose(samples, {"rwcal-x-pre": {"ram_gb": 20, "cpu_threads": 8}})["s4d-rwcal-x-pre-a1"]
+    assert proposal["job"] == "rwcal-x-pre" and proposal["memory_peak_gib"] == 16.0 and proposal["enough_evidence"]
+    assert proposal["proposed_ram_gb"] == math.ceil(16 * 1.25 + 1) and proposal["declared_ram_gb"] == 20
+    assert proposal["cpu_cores_p95"] == 1.0 and proposal["proposed_cpu_threads"] == 2
+    assert "memory.peak" in cg.SAMPLE_SHELL and "docker ps -q" in cg.SAMPLE_SHELL
