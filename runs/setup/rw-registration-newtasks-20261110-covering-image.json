@@ -1,0 +1,3249 @@
+{
+  "schema": "rw-registration/v1",
+  "status": "published",
+  "task": "covering",
+  "family": "image",
+  "release": {
+    "commit": "fd3405f97be4a26a5a981d7e642feadce60b3c1b",
+    "image": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a"
+  },
+  "release_evidence": {
+    "acceptance_manifest": "runs/remote/acceptance/fd3405f-cc/manifest.json",
+    "acceptance_sha256": "fbc37981fef31d253681adb5160cd586b35dfb263a6b143b8bd357d64951c590",
+    "source_sha256": {
+      "s4d/rwlearn/tasks.py": "cca9e69ba882828c24703880cbd96caab6957e8f0b7ecdf5aded8c01b4942128",
+      "s4d/rwlearn/configs.py": "c2b232a5fbd0d1eefa94ae1daf3fdbdcc197f13253272482777839941a5e65b7",
+      "s4d/rwlearn/gate.py": "f2bb1e5daa6862243e81143696b392cb07f7d2710ed52216f1bef0f8561f22f3",
+      "s4d/rwlearn/outcomes.py": "5ba299660b3546f24b8ad3ad961dd38bf4544f53b37b56cf4c4be683171a53da",
+      "s4d/rwlearn/launch.py": "855184f25ddf6ac4f3edadf67679db2948ed9f305826e56909f1c9e76322d4d6",
+      "ops/jobs/realworld_plan.py": "c8f2fb360689cc7017d0d2975f988459319e848d370c1f0ac82a1903aa463873",
+      "s4d/rwlearn/identity.py": "0b831d613f542992af86c95e05f3f7d374ab4fc2ffc8e0c975375d9a9d7955e5",
+      "s4d/rwlearn/store.py": "3f1da5328ef43ee248cec64d6719fbfa67ed4196a2d33d904c3485e3afca2524",
+      "s4d/rwlearn/baseline_data.py": "0e646b34ef85b30dbc6add4654a7ec6c259e5cd4299b2f231c8cd2f9550bd6a2",
+      "s4d/rwlearn/actions.py": "fe82a73eed28102662de9f6087d18dfa032183be88fa26b93bf9512497c521b5",
+      "s4d/rwlearn/fql_data.py": "d664f4ec89d1ffcea64e2b20f3c06abf10039a63e4f14ee0c0e36f8ef486017b",
+      "configs/realworld/fql/base.yaml": "f4be5afe0463987805d9789638bef86f725b8eb222513e74cced37ed1d13d301",
+      "scripts/realworld_learning.py": "edd4b98722cbd1902a4b712330ef035da15fc71c7a919eca190b06095e7d1f46",
+      "scripts/train_realworld_fql.py": "646aa31d9adc9f805592f4d153db6221a21341697e608301eec3a41b25921d6b",
+      "scripts/realworld_fql_dataset.py": "94bb803beb9c27d23e7f3ed8fd4a224cecbe066eef6b81784c3b833c8b68b530",
+      "scripts/train_snerl.py": "ddcf943046cc91243601d1f45cfcd2a6ab51be962fa348a5d4b1cf0236e8be54",
+      "scripts/train_mvp3d.py": "d68b8673a3298a56508560daff2ee9958b829ccc9e2559ebc55a36422bef33a0",
+      "scripts/train_sincro.py": "6227a74f6e4d643f5237a538752ebe2b7a8dccd83e59c8dc0886dee3e5bd1872",
+      "scripts/train_reviwo.py": "0e4004b3926704c8afedffe4debae43248a38bc2d7de2ba300c82dbc02f58fec",
+      "scripts/train_dynamo.py": "59107b068002f31e4b4e29c9f65a6e23731720c40e54965fafa3782d379cf288",
+      "configs/realworld/baselines/snerl/covering.yaml": "75eea2342df551582ee017c5880e4fa5ad45e4da356d35894246d1a237e2d04d",
+      "configs/realworld/baselines/mvp3d/covering.yaml": "7a3c6608c044198a575f25f6ceb5e926e15bff468eec80e976fe7b0a058518ec",
+      "configs/realworld/baselines/sincro/covering.yaml": "40ed239e6b3d577e1f3fb9fa469a5e504fc87a1580c71b4e9843cc0453571021",
+      "configs/realworld/baselines/reviwo/covering.yaml": "06cf02fee6170cb0d9492a9791891e1267ff6a48277cf4ca9df9e5d604de4d40",
+      "configs/realworld/baselines/dynamo/covering.yaml": "40c0c7c9fd7874ac0d3f3977c54fbfbeaa8dfa68d8c5321d663dd7eaa9dd98de"
+    }
+  },
+  "roles_sha256": "56838d5442611e1e2e4e919ae65c077f9652984933d439aa0d15863776c0bb2d",
+  "gate_evaluation": {
+    "passed": true,
+    "geometry_passed": true,
+    "checked_at_unix": 1794427338.8481538,
+    "schema": "rw-ingest-manifest",
+    "required_stages": [
+      "normalized",
+      "calibrate",
+      "foundation_stereo_depth",
+      "sam3_masks",
+      "qa",
+      "train_data"
+    ],
+    "calibration_stage": "calibration_validated",
+    "target": 100,
+    "tasks": {
+      "covering": {
+        "passed": true,
+        "valid_and_preprocessed": 98,
+        "excluded": [],
+        "target": 98,
+        "amendment": {
+          "path": "/home/ws/ws/splatter4d/configs/realworld/gate_amendments/covering-98-20261110.json",
+          "sha256": "685fdd216aad8f029a7c584fb9ceb68fc470b32efb93ed29a816af58de980566",
+          "target": 98,
+          "base_target": 100,
+          "excluded": [
+            "covering/episode_000057.h5",
+            "covering/episode_000061.h5"
+          ]
+        },
+        "problems": [],
+        "problem_count": 0,
+        "episodes": [
+          "covering/episode_000000.h5",
+          "covering/episode_000001.h5",
+          "covering/episode_000002.h5",
+          "covering/episode_000003.h5",
+          "covering/episode_000004.h5",
+          "covering/episode_000005.h5",
+          "covering/episode_000006.h5",
+          "covering/episode_000007.h5",
+          "covering/episode_000009.h5",
+          "covering/episode_000010.h5",
+          "covering/episode_000011.h5",
+          "covering/episode_000012.h5",
+          "covering/episode_000013.h5",
+          "covering/episode_000014.h5",
+          "covering/episode_000015.h5",
+          "covering/episode_000016.h5",
+          "covering/episode_000017.h5",
+          "covering/episode_000018.h5",
+          "covering/episode_000019.h5",
+          "covering/episode_000020.h5",
+          "covering/episode_000021.h5",
+          "covering/episode_000022.h5",
+          "covering/episode_000023.h5",
+          "covering/episode_000024.h5",
+          "covering/episode_000025.h5",
+          "covering/episode_000026.h5",
+          "covering/episode_000027.h5",
+          "covering/episode_000028.h5",
+          "covering/episode_000029.h5",
+          "covering/episode_000030.h5",
+          "covering/episode_000031.h5",
+          "covering/episode_000032.h5",
+          "covering/episode_000033.h5",
+          "covering/episode_000034.h5",
+          "covering/episode_000035.h5",
+          "covering/episode_000036.h5",
+          "covering/episode_000038.h5",
+          "covering/episode_000039.h5",
+          "covering/episode_000040.h5",
+          "covering/episode_000041.h5",
+          "covering/episode_000042.h5",
+          "covering/episode_000043.h5",
+          "covering/episode_000044.h5",
+          "covering/episode_000046.h5",
+          "covering/episode_000047.h5",
+          "covering/episode_000048.h5",
+          "covering/episode_000049.h5",
+          "covering/episode_000050.h5",
+          "covering/episode_000051.h5",
+          "covering/episode_000053.h5",
+          "covering/episode_000054.h5",
+          "covering/episode_000056.h5",
+          "covering/episode_000058.h5",
+          "covering/episode_000059.h5",
+          "covering/episode_000060.h5",
+          "covering/episode_000062.h5",
+          "covering/episode_000063.h5",
+          "covering/episode_000064.h5",
+          "covering/episode_000065.h5",
+          "covering/episode_000066.h5",
+          "covering/episode_000067.h5",
+          "covering/episode_000068.h5",
+          "covering/episode_000069.h5",
+          "covering/episode_000070.h5",
+          "covering/episode_000071.h5",
+          "covering/episode_000072.h5",
+          "covering/episode_000073.h5",
+          "covering/episode_000074.h5",
+          "covering/episode_000077.h5",
+          "covering/episode_000078.h5",
+          "covering/episode_000079.h5",
+          "covering/episode_000080.h5",
+          "covering/episode_000081.h5",
+          "covering/episode_000082.h5",
+          "covering/episode_000083.h5",
+          "covering/episode_000084.h5",
+          "covering/episode_000085.h5",
+          "covering/episode_000086.h5",
+          "covering/episode_000087.h5",
+          "covering/episode_000088.h5",
+          "covering/episode_000089.h5",
+          "covering/episode_000090.h5",
+          "covering/episode_000091.h5",
+          "covering/episode_000092.h5",
+          "covering/episode_000093.h5",
+          "covering/episode_000094.h5",
+          "covering/episode_000095.h5",
+          "covering/episode_000096.h5",
+          "covering/episode_000097.h5",
+          "covering/episode_000098.h5",
+          "covering/episode_000099.h5",
+          "covering/episode_000100.h5",
+          "covering/episode_000101.h5",
+          "covering/episode_000102.h5",
+          "covering/episode_000103.h5",
+          "covering/episode_000104.h5",
+          "covering/episode_000105.h5",
+          "covering/episode_000106.h5"
+        ],
+        "episode_identities": {
+          "covering/episode_000000.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000000.h5",
+            "raw_sha256": "236633478910e9b055579d42dd85808a8f58f1308c40789bce9d42a1304ef499",
+            "store_episode": null
+          },
+          "covering/episode_000001.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000001.h5",
+            "raw_sha256": "79a60127d3c44e0f63df0e35a4ccc7d7806645cbae4453a513ffae02ccb5fbfe",
+            "store_episode": null
+          },
+          "covering/episode_000002.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000002.h5",
+            "raw_sha256": "2252e82cdf6c2fcf28f95470d1945f1a8331c0d68848a70d3fcee8a5fa557068",
+            "store_episode": null
+          },
+          "covering/episode_000003.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000003.h5",
+            "raw_sha256": "50908d50d521ed3f82774d48fb7c18f617ff48d1ca7fb976af639878c8461c7d",
+            "store_episode": null
+          },
+          "covering/episode_000004.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000004.h5",
+            "raw_sha256": "f74782f5041b22d1c761344ab0cd33e6c8d4b7b7e3dfb7d8c0effb024f0938e1",
+            "store_episode": null
+          },
+          "covering/episode_000005.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000005.h5",
+            "raw_sha256": "d820b0092b0f88d17bcf1bffab81a9e784cb07e2768332ffae5e459f5c9e1e90",
+            "store_episode": null
+          },
+          "covering/episode_000006.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000006.h5",
+            "raw_sha256": "ea318f16d70dffd1e458d2d310451f7a1ab8d3b6693e3d4226572fc823867744",
+            "store_episode": null
+          },
+          "covering/episode_000007.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000007.h5",
+            "raw_sha256": "88f4a018ea62d6ac6fbf92c69cc0858dfe7877b0b0560cc1fee0a2b97839ab78",
+            "store_episode": null
+          },
+          "covering/episode_000009.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000009.h5",
+            "raw_sha256": "e5e371dc79ccadfc5a041f0da45a0ecc8ad7183691f24bf375309fca2bc37228",
+            "store_episode": null
+          },
+          "covering/episode_000010.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000010.h5",
+            "raw_sha256": "6eb2bb6b072d677f5fe1aa1d38c47121b8a92a2b68bbe79100d617bb20bb1605",
+            "store_episode": null
+          },
+          "covering/episode_000011.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000011.h5",
+            "raw_sha256": "4129ceb226dc4dcaf149b721b4ee6f00fed1d9318940abb63dc93d74deb3f1bd",
+            "store_episode": null
+          },
+          "covering/episode_000012.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000012.h5",
+            "raw_sha256": "e140f92fad41b725e89f066c77c64971fbb1c476852449e9e05fdab86152ad96",
+            "store_episode": null
+          },
+          "covering/episode_000013.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000013.h5",
+            "raw_sha256": "6101829fea3a9dcad7221890c1e1388b02827abf4cee3c58870f4c7acc2c4157",
+            "store_episode": null
+          },
+          "covering/episode_000014.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000014.h5",
+            "raw_sha256": "ecad64f4d4a7db70bed673d3810582081867bfec376c6d02debcfa38a6c43be7",
+            "store_episode": null
+          },
+          "covering/episode_000015.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000015.h5",
+            "raw_sha256": "6bb586dc2acd0848f04f1cec6659c79f068c56fd13c77d505d103965eadc12d9",
+            "store_episode": null
+          },
+          "covering/episode_000016.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000016.h5",
+            "raw_sha256": "cb8020cdb15ce7d7d258e766b776ab2f3517d115d3a6532180de3908bc02da25",
+            "store_episode": null
+          },
+          "covering/episode_000017.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000017.h5",
+            "raw_sha256": "1839c3253c1d3342c021bdae56c54629fa1a0cb9ac37905498801410c16f39ca",
+            "store_episode": null
+          },
+          "covering/episode_000018.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000018.h5",
+            "raw_sha256": "132bb9bed8c059561709489ab4b85d3f636ad5fb3c08b16fc019cb3a1ac5f92e",
+            "store_episode": null
+          },
+          "covering/episode_000019.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000019.h5",
+            "raw_sha256": "e3b54fd7cdd5fd8eeca915d7efa009dde403edaa973c63fa4b2b72f6217a0872",
+            "store_episode": null
+          },
+          "covering/episode_000020.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000020.h5",
+            "raw_sha256": "6981bb37d11ecf3ac72eecc18897a286b6a2b693f05bd84cae21663b5ea72b74",
+            "store_episode": null
+          },
+          "covering/episode_000021.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000021.h5",
+            "raw_sha256": "d85abafe6afa3994939b31965b7a038351ffa8562ba176c77bec34fcc5747922",
+            "store_episode": null
+          },
+          "covering/episode_000022.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000022.h5",
+            "raw_sha256": "1330ac4213be442ca130a82beb9db3031b223c354a373c97f42012ee645354d3",
+            "store_episode": null
+          },
+          "covering/episode_000023.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000023.h5",
+            "raw_sha256": "c1e1e2b39caf442d57823ad2939b6dba79469a2978a220d20e2235e4353dd66f",
+            "store_episode": null
+          },
+          "covering/episode_000024.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000024.h5",
+            "raw_sha256": "d1c5747de7b5a0672de842154247caaf0690cefcedeadc1506fc62ce165f2dd5",
+            "store_episode": null
+          },
+          "covering/episode_000025.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000025.h5",
+            "raw_sha256": "418f6b768e364d6f3d2a351b25dde93c46393c8757a352c5fd3e8199ffe62a1a",
+            "store_episode": null
+          },
+          "covering/episode_000026.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000026.h5",
+            "raw_sha256": "8aabf60b5905f9a0fb5acede7f32d720d98177604e454e7ba68a92095303eb74",
+            "store_episode": null
+          },
+          "covering/episode_000027.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000027.h5",
+            "raw_sha256": "2c4a28db85893dd52365ef71ac117ea7649e9a48e936373c0f3cdaef9504d0ba",
+            "store_episode": null
+          },
+          "covering/episode_000028.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000028.h5",
+            "raw_sha256": "421382047a7b1164b1336551e09409e11f1771b926651a42eb737ca45feb02ee",
+            "store_episode": null
+          },
+          "covering/episode_000029.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000029.h5",
+            "raw_sha256": "f5309e9f37565e016d8cbe4d988e3aa7b7b5690c5caed291266b7aad986e9a3a",
+            "store_episode": null
+          },
+          "covering/episode_000030.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000030.h5",
+            "raw_sha256": "92cf1575e7097219e02e65cb08fb6c79701326f39dddd68ab9ad1c0d2d382665",
+            "store_episode": null
+          },
+          "covering/episode_000031.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000031.h5",
+            "raw_sha256": "d695120033094dc50bbbd3c52cd7178728e6f49b49e6c9fedf5c6c6be4ba7239",
+            "store_episode": null
+          },
+          "covering/episode_000032.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000032.h5",
+            "raw_sha256": "e45f2c3b040314f8e2fdf78172746f62b4900e5363862d2ed0a81fff2a70facd",
+            "store_episode": null
+          },
+          "covering/episode_000033.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000033.h5",
+            "raw_sha256": "b03758b8e42bee976995b5a6bc8a51b5ad8f931c3c75fcad3f7c52c2b23c5a02",
+            "store_episode": null
+          },
+          "covering/episode_000034.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000034.h5",
+            "raw_sha256": "6d6370b22fd367b244cb1691fc44c5c3f9ad8921700e42e4b27bdc3df3065f1b",
+            "store_episode": null
+          },
+          "covering/episode_000035.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000035.h5",
+            "raw_sha256": "a6f94308086f49e026f2792215755c830fcb1ba3b2a07a78ebe063fccecbb872",
+            "store_episode": null
+          },
+          "covering/episode_000036.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000036.h5",
+            "raw_sha256": "15938f01ca1aeac0ea3eab07908867c2c372be70c1a3c7bec88f81b8f7907f52",
+            "store_episode": null
+          },
+          "covering/episode_000038.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000038.h5",
+            "raw_sha256": "8500a1b01d3c75cf3dc6471a45268a7395f4d30de20b1e652869b07f61797216",
+            "store_episode": null
+          },
+          "covering/episode_000039.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000039.h5",
+            "raw_sha256": "f9216a1cc2eb599fae80bc3dd7b34538eb4c15ebf61dc66e03eb8a0a9942f4e2",
+            "store_episode": null
+          },
+          "covering/episode_000040.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000040.h5",
+            "raw_sha256": "25620be73c5ae49076678be3801080c1959e8427237088d611c0dbdc37d2d1e4",
+            "store_episode": null
+          },
+          "covering/episode_000041.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000041.h5",
+            "raw_sha256": "9dfbc409239443cc4cd52e1d289f3e565d6b623146c4228caafcb0e5407d6ec9",
+            "store_episode": null
+          },
+          "covering/episode_000042.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000042.h5",
+            "raw_sha256": "e34b725a66c50643ef8c705d91913b690e1495d8cf7ab17544bf84654b05d567",
+            "store_episode": null
+          },
+          "covering/episode_000043.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000043.h5",
+            "raw_sha256": "d170a8e9a42e75192aa2fc6cb82796200386cc505a8558097b64403df72f5e15",
+            "store_episode": null
+          },
+          "covering/episode_000044.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000044.h5",
+            "raw_sha256": "7bd96345cd70cfd6c9daad4cabb355c3cd08f747fadde8f19aa651014dd5c3d9",
+            "store_episode": null
+          },
+          "covering/episode_000046.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000046.h5",
+            "raw_sha256": "0d9cc79157007b400cfead68c85c260a1f7449ca588c6ba2758548a07e792649",
+            "store_episode": null
+          },
+          "covering/episode_000047.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000047.h5",
+            "raw_sha256": "2c74c6637009975bac06a9b0e7c4dd833bfc9090da6e91e28276e9cc83d79f04",
+            "store_episode": null
+          },
+          "covering/episode_000048.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000048.h5",
+            "raw_sha256": "79ba8636b84b9c6f2a756f93344d7f8215dd8d53ac0348f05ce7b96be15dfdfc",
+            "store_episode": null
+          },
+          "covering/episode_000049.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000049.h5",
+            "raw_sha256": "42b6802b73d93429cd1e262a65dc482ddef4972a09106a72ecc2f5010055737a",
+            "store_episode": null
+          },
+          "covering/episode_000050.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000050.h5",
+            "raw_sha256": "b829d041e5cb57d590f7248fd562f9b603dd360bd44b9951813f3243df4c5bb0",
+            "store_episode": null
+          },
+          "covering/episode_000051.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000051.h5",
+            "raw_sha256": "abf130f28914d7ae233436b78fa6b716fdbb3c974ca97401c5c7c5a5d7c96c67",
+            "store_episode": null
+          },
+          "covering/episode_000053.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000053.h5",
+            "raw_sha256": "622a8e30a0f34c79493fbac50c39c53903f05af0d32b8033903515c8b825313c",
+            "store_episode": null
+          },
+          "covering/episode_000054.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000054.h5",
+            "raw_sha256": "2fdac8338c5a905ee4918c3a052afa0693b046a12a89b07a50467c025d7b3d71",
+            "store_episode": null
+          },
+          "covering/episode_000056.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000056.h5",
+            "raw_sha256": "d40f02014678f26ed31e6c35f43ab91429c7f3e5286d08e2c731dbc8d842c28a",
+            "store_episode": null
+          },
+          "covering/episode_000058.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000058.h5",
+            "raw_sha256": "8a6a3251bcb3b029427362e07d0bafc75f6fa921813a9dbef7ecee06a23c3855",
+            "store_episode": null
+          },
+          "covering/episode_000059.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000059.h5",
+            "raw_sha256": "da886b82dc8b2faea2c3f5eee6126a2c889c2eb35f4c1dc8aebb4b68dc21379b",
+            "store_episode": null
+          },
+          "covering/episode_000060.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000060.h5",
+            "raw_sha256": "5b604af32395012c78333e644a4469255444756707e8a9cde47b4ab80899fcfd",
+            "store_episode": null
+          },
+          "covering/episode_000062.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000062.h5",
+            "raw_sha256": "ba4b35430f2aec94f011de37f34aedbac77d597a6516fb15f86bd20237a150e1",
+            "store_episode": null
+          },
+          "covering/episode_000063.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000063.h5",
+            "raw_sha256": "e9b05ca13664b5850d4fed1ef431b9cd6dceab8785b615faa88a39072e15b812",
+            "store_episode": null
+          },
+          "covering/episode_000064.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000064.h5",
+            "raw_sha256": "f9c3be7e856b704bc8bf86e6cef64bcae21c9880576edcb0d5c67ad87ff21ee2",
+            "store_episode": null
+          },
+          "covering/episode_000065.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000065.h5",
+            "raw_sha256": "cd3a8eabaec1a64731e1d438c055304c27e428bdc8022bfaac7df8b1750dd222",
+            "store_episode": null
+          },
+          "covering/episode_000066.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000066.h5",
+            "raw_sha256": "364303b4c3df21743b0a6b6cda66c2b156b9f75164aa141cb5e87a837953dc40",
+            "store_episode": null
+          },
+          "covering/episode_000067.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000067.h5",
+            "raw_sha256": "ad72f7d12d96b493c5cae75b519473c83592add7b1ac8b823a4c488cda75d821",
+            "store_episode": null
+          },
+          "covering/episode_000068.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000068.h5",
+            "raw_sha256": "09b5cdb06a450692f6f7cfb6ca7e9d74d755c7b55a28200de16cd58bfa80a4c0",
+            "store_episode": null
+          },
+          "covering/episode_000069.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000069.h5",
+            "raw_sha256": "8c086f34728a4c146fa75f0af7a18d27f8a456e50764483bbf81e5404817f2ac",
+            "store_episode": null
+          },
+          "covering/episode_000070.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000070.h5",
+            "raw_sha256": "9bbeffe1bda85891737fba7e23a27a59fe776664e877f3c121eac80b412f0761",
+            "store_episode": null
+          },
+          "covering/episode_000071.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000071.h5",
+            "raw_sha256": "8e2629f14e0fa2f0c698b7271696983a8d5976aef49c0be1c0e47d619fa279e9",
+            "store_episode": null
+          },
+          "covering/episode_000072.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000072.h5",
+            "raw_sha256": "19d36333068e19231eb6047cefd70184704677938fcd230596f04ded017d5c05",
+            "store_episode": null
+          },
+          "covering/episode_000073.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000073.h5",
+            "raw_sha256": "7c2b20247639d33118af56a215925987d0c23afde544c5429d85ad9edbe5e7d6",
+            "store_episode": null
+          },
+          "covering/episode_000074.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000074.h5",
+            "raw_sha256": "2d94a714ecb24395434e8bb8eef14cf0920cd2dd9f16d3dc7453aa0145b16652",
+            "store_episode": null
+          },
+          "covering/episode_000077.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000077.h5",
+            "raw_sha256": "6b361c422c3af6252e653732507109180492870eb96a35030d3f48997fc4f256",
+            "store_episode": null
+          },
+          "covering/episode_000078.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000078.h5",
+            "raw_sha256": "e1b50f8dd76ef30c8c39991b99176fccf02b5763efab055125467445c7bb5513",
+            "store_episode": null
+          },
+          "covering/episode_000079.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000079.h5",
+            "raw_sha256": "6b58ae224a4e4ca8da480b0cb19aab8becfb4827e4aaa5cf7de6197f5a1ac469",
+            "store_episode": null
+          },
+          "covering/episode_000080.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000080.h5",
+            "raw_sha256": "2b6b9b9806d684420f7a09b4426c65aa61ba7af98574e2fe3a787eec8cd926f1",
+            "store_episode": null
+          },
+          "covering/episode_000081.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000081.h5",
+            "raw_sha256": "1931ed73a31e6735a3e0160f8c79e8ba169d21ffd11409a75bb1f6282a41a554",
+            "store_episode": null
+          },
+          "covering/episode_000082.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000082.h5",
+            "raw_sha256": "b897e7a8f44f3ee7063df9e078ea152dbe52622e6908257692aa9d41f4a9eb03",
+            "store_episode": null
+          },
+          "covering/episode_000083.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000083.h5",
+            "raw_sha256": "45a7cf1521b5f2e6bc146b8a0d7ac8e30c996491487d278531267a82c5ebf0bc",
+            "store_episode": null
+          },
+          "covering/episode_000084.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000084.h5",
+            "raw_sha256": "ed8a527e34c115c3fd551586a29d914f6e31d8ed06a4e2f10899fb3e8906ea33",
+            "store_episode": null
+          },
+          "covering/episode_000085.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000085.h5",
+            "raw_sha256": "a428f8177235d5cb8ae076564045d29378a83797a85caf83ac2fb15ca830f249",
+            "store_episode": null
+          },
+          "covering/episode_000086.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000086.h5",
+            "raw_sha256": "077b173c08dac9b6ff134f0ac484a2e834064f709bba12d1c1737464160679b3",
+            "store_episode": null
+          },
+          "covering/episode_000087.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000087.h5",
+            "raw_sha256": "6e41fd3697342368889709163af0f1abfbac26f47f9cde81f08a4a6f1adb0a99",
+            "store_episode": null
+          },
+          "covering/episode_000088.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000088.h5",
+            "raw_sha256": "6cc62ef7810338fc398afd62a6eb68ffecbc19d8fdf642e40f82c3ee21a6be67",
+            "store_episode": null
+          },
+          "covering/episode_000089.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000089.h5",
+            "raw_sha256": "b816eab13a682ffe5a93d4bf034284ec0b18bc82cd420a9822dcff389356ddaf",
+            "store_episode": null
+          },
+          "covering/episode_000090.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000090.h5",
+            "raw_sha256": "da89c0df87989a12bacdf640d61393495790644131fa3ba5640a09fe14930c19",
+            "store_episode": null
+          },
+          "covering/episode_000091.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000091.h5",
+            "raw_sha256": "ddedc61ea9b3c9bad5466fa1be328fe79c038ceae39134bc0fc8ac600cd732fc",
+            "store_episode": null
+          },
+          "covering/episode_000092.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000092.h5",
+            "raw_sha256": "49830a81bc967581b0d118b21e20c976337aa6231b5594631e5d89894c82fcd2",
+            "store_episode": null
+          },
+          "covering/episode_000093.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000093.h5",
+            "raw_sha256": "9fdc6fbad1d209d2170df9272cefd5712ec37c92264db50db6ecfdc41bfd037d",
+            "store_episode": null
+          },
+          "covering/episode_000094.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000094.h5",
+            "raw_sha256": "290dcceb52430127dbfb091d55f133fc8e90b979d744be51c84336110da59312",
+            "store_episode": null
+          },
+          "covering/episode_000095.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000095.h5",
+            "raw_sha256": "60c7602fb8d020526250474214fe1f19d86dd281d24736ed9fb9497b5ffcd4d6",
+            "store_episode": null
+          },
+          "covering/episode_000096.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000096.h5",
+            "raw_sha256": "1881b4595e010142f194a2a3dccb8683243459023b1284dd9ce73e0ca935d092",
+            "store_episode": null
+          },
+          "covering/episode_000097.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000097.h5",
+            "raw_sha256": "fc8398621a44cebf3ed401ae4672f71a37008f992c23842aa58a7d7fd65547f6",
+            "store_episode": null
+          },
+          "covering/episode_000098.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000098.h5",
+            "raw_sha256": "3ed7221909ceb25e2df49f3f8edc951f5ca961f0ab392a6e5b9e0a0f9263b153",
+            "store_episode": null
+          },
+          "covering/episode_000099.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000099.h5",
+            "raw_sha256": "92cbd0a3b171a69bb9bccd03ee0a75721735e9a95e966fe365c37deea91a9a39",
+            "store_episode": null
+          },
+          "covering/episode_000100.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000100.h5",
+            "raw_sha256": "a9b5396a6dd5ff8b83272eb2cc7c1de40eb762b3fe4442286cf5a397bfdf654b",
+            "store_episode": null
+          },
+          "covering/episode_000101.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000101.h5",
+            "raw_sha256": "4e9e8f434299e2b6bb6aed1bcc37af1797d477f3b71480f1cfa8af5aec72b493",
+            "store_episode": null
+          },
+          "covering/episode_000102.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000102.h5",
+            "raw_sha256": "817ee0b0c81751a0db8e303359ab10c2bc42c39cdc09ca54374b09beb37f5a44",
+            "store_episode": null
+          },
+          "covering/episode_000103.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000103.h5",
+            "raw_sha256": "9173018537a4dc7b6f2f518d3178aa55170c46c570cb8fa33fa2a1e49dd8113f",
+            "store_episode": null
+          },
+          "covering/episode_000104.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000104.h5",
+            "raw_sha256": "2067e14914b7fe8a2eeb21a2e2a16303c4afa149fe28786feb0a1219a1a2a061",
+            "store_episode": null
+          },
+          "covering/episode_000105.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000105.h5",
+            "raw_sha256": "6c240dbc9d76c28e5dd2cf5e24c34473ccaa967749f6f00c297390e59e1cf639",
+            "store_episode": null
+          },
+          "covering/episode_000106.h5": {
+            "task": "covering",
+            "raw_recording": "episode_000106.h5",
+            "raw_sha256": "d3d3564f8e8713647ff9d591e4cc8655e69565977f19b0545fc19c2296d6f81f",
+            "store_episode": null
+          }
+        },
+        "store_episodes": []
+      }
+    },
+    "calibration_hold": {
+      "covering": {
+        "passed": true,
+        "validated": 98,
+        "problems": [],
+        "problem_count": 0,
+        "episodes": {
+          "covering/episode_000000.h5": {
+            "calibrate_build_id": "9566b24186c94404acde636715118004",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000001.h5": {
+            "calibrate_build_id": "85803d1ddaf841d08d6ae70f6dffb462",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000002.h5": {
+            "calibrate_build_id": "11bd8b1116bf4c448806131382775f0c",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000003.h5": {
+            "calibrate_build_id": "073ae456611a4fb0a616227b01c46aa0",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000004.h5": {
+            "calibrate_build_id": "8aacde92eb9e4cb8ada797b21abfce90",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000005.h5": {
+            "calibrate_build_id": "86375e7deab34ba49f3a2fb9161ffdff",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000006.h5": {
+            "calibrate_build_id": "f2de0c656bf94cbc86e1be7649b5bd01",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000007.h5": {
+            "calibrate_build_id": "3c88b227d4f64586b7c7f169756d295d",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000009.h5": {
+            "calibrate_build_id": "0dbb521a1b9148a59a66002cf4c2dbd9",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000010.h5": {
+            "calibrate_build_id": "df8d9cfb47ff4c8793fca7e686e9c5cc",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000011.h5": {
+            "calibrate_build_id": "4b826c28b0a64f1293016ed315096c4a",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000012.h5": {
+            "calibrate_build_id": "7e7ef4cdcffa4ae294a5270d14fab59e",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000013.h5": {
+            "calibrate_build_id": "0c2d682d63da49c3a610de3db928220b",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000014.h5": {
+            "calibrate_build_id": "b15a087c3fe546de86f29c2aff6d3526",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000015.h5": {
+            "calibrate_build_id": "3a2fe56a9bc0466ea6f1f98177e65391",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000016.h5": {
+            "calibrate_build_id": "b16eb599884c48db9f11258132d37a50",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000017.h5": {
+            "calibrate_build_id": "3839c0df61244daa99ec00d2baf43b5d",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000018.h5": {
+            "calibrate_build_id": "a898e14757e2426198689d8d963982af",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000019.h5": {
+            "calibrate_build_id": "44aea6a0b09241f59f4959f5f08712c1",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000020.h5": {
+            "calibrate_build_id": "698f5c5694f648b8aad0a17d8d9fda67",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000021.h5": {
+            "calibrate_build_id": "6900c542c2ff43128c2f8f6982dd29a8",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000022.h5": {
+            "calibrate_build_id": "4186db57311d403aaf362a6657cd20e6",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000023.h5": {
+            "calibrate_build_id": "ca42405a280b420b8ef57126d5fe2e97",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000024.h5": {
+            "calibrate_build_id": "86285e86a4064d43a6eda9eab10dafb8",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000025.h5": {
+            "calibrate_build_id": "0ca03457d864448bb5be1cf26b2b887f",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000026.h5": {
+            "calibrate_build_id": "08c82ec57b1e44a29fe7597b3b4153ca",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000027.h5": {
+            "calibrate_build_id": "eca06ba49e4d4a9d9ecb27e7f05a66e3",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000028.h5": {
+            "calibrate_build_id": "35dd19e4c89f4654a666765f4e37c94b",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000029.h5": {
+            "calibrate_build_id": "54d0ea05db24476c8f5a2add6b56f11e",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000030.h5": {
+            "calibrate_build_id": "b66bfdc22e5749e48186712fe54885ec",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000031.h5": {
+            "calibrate_build_id": "1171ef8b2999487984c5cba911a20128",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000032.h5": {
+            "calibrate_build_id": "2da4edf073db4aa786159a63b7d5d13c",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000033.h5": {
+            "calibrate_build_id": "86f15b309cff4c6a895c1caa956ce4e1",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000034.h5": {
+            "calibrate_build_id": "838886f3a8c94839a0a67684d177b960",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000035.h5": {
+            "calibrate_build_id": "b07cf7d827094aac942a4870d7bff2e5",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000036.h5": {
+            "calibrate_build_id": "d8f7f5fe476f443ba5bcee4e47f66cd2",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000038.h5": {
+            "calibrate_build_id": "b5d28717b60d4e9cae13541a19f4d9a9",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000039.h5": {
+            "calibrate_build_id": "e2b88dabf3e44370a13ba5c4e370f343",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000040.h5": {
+            "calibrate_build_id": "666b559aed814615a781fefabfef4680",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000041.h5": {
+            "calibrate_build_id": "399f68cea5384f869e87c703c37bcf90",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000042.h5": {
+            "calibrate_build_id": "ba38f9aef4f74e958c50c536ee793a2a",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000043.h5": {
+            "calibrate_build_id": "a2408b00759a486fa3d6a561aaba637f",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000044.h5": {
+            "calibrate_build_id": "ccb5f66dc7e74f47bbed646238d8311b",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000046.h5": {
+            "calibrate_build_id": "86794b0156df4f928a9c76bdeb434c1e",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000047.h5": {
+            "calibrate_build_id": "cddffc165d754f6f9e387468f7553ef1",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000048.h5": {
+            "calibrate_build_id": "ff0aa1230cab4746bd4ba34975aab0ca",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000049.h5": {
+            "calibrate_build_id": "0cd15249cc594f869bed084c8855aa8a",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000050.h5": {
+            "calibrate_build_id": "8e2f7be514c746fabf815012195f37b1",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000051.h5": {
+            "calibrate_build_id": "91fbebb3e5634f69beb6bb92c7974b9a",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000053.h5": {
+            "calibrate_build_id": "3cf9cf564ff4414bbea96ec8684990fc",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000054.h5": {
+            "calibrate_build_id": "b536caf2f6d64dbcb3c9091946dc3366",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000056.h5": {
+            "calibrate_build_id": "72e85e4c9d19450bba5fed15df4a8fc8",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000058.h5": {
+            "calibrate_build_id": "d3543b4537b44b57bfcebb4ba05d704d",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000059.h5": {
+            "calibrate_build_id": "d92d2c46216d41d6b56ef4c60f5f2225",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000060.h5": {
+            "calibrate_build_id": "28f397b4d6c54c85964b74011b0eb60e",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000062.h5": {
+            "calibrate_build_id": "b8c75945756e40e48653daf49e71ac41",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000063.h5": {
+            "calibrate_build_id": "595b725c074b4996a0929db51f8af61d",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000064.h5": {
+            "calibrate_build_id": "2ff5d674860f42f5aaf6bd6d2cf4c89e",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000065.h5": {
+            "calibrate_build_id": "e74a77df6c8749d2ac3d7d235a6f20ab",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000066.h5": {
+            "calibrate_build_id": "d7ee411232004aafb616ad9dcf5fbc72",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000067.h5": {
+            "calibrate_build_id": "9642c35c22414b3b8cf5b7065cd7e522",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000068.h5": {
+            "calibrate_build_id": "2b1cb93af6264685959878e5118634e1",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000069.h5": {
+            "calibrate_build_id": "6d514517c5714a05be2df582e7c4ea5a",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000070.h5": {
+            "calibrate_build_id": "6168dd8292354377a9238b51bdfa79ba",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000071.h5": {
+            "calibrate_build_id": "23b13383e82540e3a9fd345bde720c4f",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000072.h5": {
+            "calibrate_build_id": "725526ba2bae41b0a6c64c1147cc3a68",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000073.h5": {
+            "calibrate_build_id": "298b054ac38e49aea32e0728467e0966",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000074.h5": {
+            "calibrate_build_id": "08155fd8797c43f5bea00d65d193cf18",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000077.h5": {
+            "calibrate_build_id": "d8fadfd181dd450aa555a3424cba6e92",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000078.h5": {
+            "calibrate_build_id": "00a833e769384f6286863c3a8d2d87ac",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000079.h5": {
+            "calibrate_build_id": "f44954b984d44fcab3148393ce765660",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000080.h5": {
+            "calibrate_build_id": "b7e2a12dd95a49e1b407569e960e031d",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000081.h5": {
+            "calibrate_build_id": "e36f1ea7325947db93b9387e0e96d313",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000082.h5": {
+            "calibrate_build_id": "48f76a43064145b4a2dac434f1f7e39a",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000083.h5": {
+            "calibrate_build_id": "379d6e39cccc4c30bd8d1d13c9c516b7",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000084.h5": {
+            "calibrate_build_id": "577422bc0c294f86a88b91bd416252ff",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000085.h5": {
+            "calibrate_build_id": "cb19cee1753c40f58c831fa72322a9a7",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000086.h5": {
+            "calibrate_build_id": "adf0bdfd9af34966bec895efdc12cd90",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000087.h5": {
+            "calibrate_build_id": "4887baf7abc643989d659f4b8a582b44",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000088.h5": {
+            "calibrate_build_id": "cea65c4f6a2c494fbbfd69ac6ab5c253",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000089.h5": {
+            "calibrate_build_id": "e43b0509f2c84f90ba6db855aaa18712",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000090.h5": {
+            "calibrate_build_id": "a3cb32ec9aa3440594a6bf601c4becbf",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000091.h5": {
+            "calibrate_build_id": "7a146ad3c35e4f7e8d37b652753a00a0",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000092.h5": {
+            "calibrate_build_id": "b4a18aafbd014548a829a2d14a9ca609",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000093.h5": {
+            "calibrate_build_id": "24eec0e57ae54239a105c4af3000852e",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000094.h5": {
+            "calibrate_build_id": "d27edb858809465a90d5b6917edec0a2",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000095.h5": {
+            "calibrate_build_id": "1982a720aac64d9dbb36da85ac4badc7",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000096.h5": {
+            "calibrate_build_id": "3732782163df4a77a9b09c6451dbb495",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000097.h5": {
+            "calibrate_build_id": "5cea0235d20e4901b5ba68a0503e02cf",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000098.h5": {
+            "calibrate_build_id": "d7505934fdaa49e8a64c56b1d0249ad6",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000099.h5": {
+            "calibrate_build_id": "75867e01573d4792bc217097abb0e6c0",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000100.h5": {
+            "calibrate_build_id": "359ca27eec9646e0a29001487c21085d",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000101.h5": {
+            "calibrate_build_id": "362e35d70d8a412a8ff187e9af1dc7c8",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000102.h5": {
+            "calibrate_build_id": "9da16a09fd0f46e0aad6edee46d1e8bf",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000103.h5": {
+            "calibrate_build_id": "d8a1cfbc189549118bbf8afb4acd1ab5",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000104.h5": {
+            "calibrate_build_id": "57cbaeaf2d904e2a987cce88b2705380",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000105.h5": {
+            "calibrate_build_id": "bb5dc05ef4fa4695a658dbe2d35cb46f",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          },
+          "covering/episode_000106.h5": {
+            "calibrate_build_id": "cea6c72bce8841909eb035e2120ad9ae",
+            "cameras": [
+              "135122070988",
+              "135122073201",
+              "135122076054"
+            ]
+          }
+        }
+      }
+    },
+    "families": {
+      "covering": {
+        "singleview": {
+          "passed": true,
+          "failed_count": 0,
+          "failed_episodes": []
+        },
+        "multiview": {
+          "passed": true,
+          "failed_count": 0,
+          "failed_episodes": []
+        },
+        "geometry": {
+          "passed": true,
+          "failed_count": 0,
+          "failed_episodes": []
+        }
+      }
+    },
+    "consumer_families": {
+      "ours": [
+        "singleview",
+        "multiview",
+        "geometry"
+      ],
+      "snerl": [
+        "singleview",
+        "multiview",
+        "geometry"
+      ],
+      "mvp3d": [
+        "singleview",
+        "multiview",
+        "geometry"
+      ],
+      "sincro": [
+        "singleview",
+        "multiview",
+        "geometry"
+      ],
+      "reviwo": [
+        "singleview",
+        "multiview"
+      ],
+      "dynamo": [
+        "singleview"
+      ],
+      "e2e_cnn": [
+        "singleview"
+      ],
+      "fql_reviwo": [
+        "singleview"
+      ],
+      "fql_sincro": [
+        "singleview",
+        "geometry"
+      ],
+      "fql_ours": [
+        "singleview",
+        "geometry"
+      ],
+      "mvp3d_single": [
+        "singleview",
+        "geometry"
+      ]
+    },
+    "consumers": {
+      "ours": {
+        "geometry_dependent": true,
+        "uses": "dynamic 3D tracks in the robot base frame, depth fused across cameras, camera poses",
+        "reason": "tracks are lifted to the base frame and depth is fused with the camera-to-robot extrinsics (Original pretraining s4d/rwlearn/ours.py; offline FQL reads its export, consumer fql_ours)"
+      },
+      "snerl": {
+        "geometry_dependent": true,
+        "uses": "3 RGB views + normalised camera poses (encoder input); RGB / semantic / DINO targets rendered along rays",
+        "reason": "the encoder input poses and every rendered ray come from the extrinsics; a wrong calibration changes inputs and targets"
+      },
+      "mvp3d": {
+        "geometry_dependent": true,
+        "uses": "RGB-D back-projected into the robot base frame, base-frame scene bounds",
+        "reason": "the fused point cloud and its bounds are built with the extrinsics"
+      },
+      "sincro": {
+        "geometry_dependent": true,
+        "uses": "RGB windows + per-sample K / c2w rays for its rendering loss",
+        "reason": "the rendering targets are cast along rays from the extrinsics (sincro_forward_per_sample_cameras); its encoder is therefore trained on calibration-dependent targets"
+      },
+      "reviwo": {
+        "geometry_dependent": false,
+        "uses": "synchronised multi-view RGB (timestamps only)",
+        "reason": "no camera pose, depth or track enters inputs or targets"
+      },
+      "dynamo": {
+        "geometry_dependent": false,
+        "uses": "single-camera RGB videos",
+        "reason": "no camera pose, depth or track enters inputs or targets"
+      },
+      "e2e_cnn": {
+        "geometry_dependent": false,
+        "uses": "single-view RGB history + proprioception + recorded commands",
+        "reason": "pixels, the robot's own kinematics and the sent commands only"
+      },
+      "fql_reviwo": {
+        "geometry_dependent": false,
+        "uses": "synchronised multi-view RGB (timestamps only)",
+        "reason": "no camera pose, depth or track enters inputs or targets"
+      },
+      "fql_sincro": {
+        "geometry_dependent": true,
+        "uses": "RGB windows + per-sample K / c2w rays for its rendering loss",
+        "reason": "the rendering targets are cast along rays from the extrinsics (sincro_forward_per_sample_cameras); its encoder is therefore trained on calibration-dependent targets"
+      },
+      "fql_ours": {
+        "geometry_dependent": true,
+        "uses": "dynamic 3D tracks in the robot base frame, depth fused across cameras, camera poses",
+        "reason": "tracks are lifted to the base frame and depth is fused with the camera-to-robot extrinsics (Original pretraining s4d/rwlearn/ours.py; offline FQL reads its export, consumer fql_ours)"
+      },
+      "mvp3d_single": {
+        "geometry_dependent": true,
+        "uses": "RGB-D back-projected into the robot base frame, base-frame scene bounds",
+        "reason": "the fused point cloud and its bounds are built with the extrinsics"
+      }
+    },
+    "manifest": {
+      "path": "/home/ws/ws/realworld-ops/ingest/manifest.json",
+      "sha256": "b4a7e1f0a791c4a5d28fcf1189a2af3c2c34e496d7fc2706ae63ffd686195252"
+    }
+  },
+  "learning_inputs": {
+    "copy": "/home/ws/ws/realworld-ops/rwx/results/inputs/learning_inputs/covering",
+    "remote_dir": "/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering",
+    "sha256": {
+      "store.yaml": "c22c70309ee739080eef58dc56ba1c21262d3379fe1a861d73f342df6b69335a",
+      "gate_report.json": "9438b135a192dd296cc995e05e617cff06fef66968861ea1a8172777da9bcef9",
+      "split_seed0.json": "39f8733faa49583d5ad4088cacaa03e9fe65b79d39ef0ecb104b200a69205128",
+      "outcomes.json": "289dfe46ec9a37b09ef7574462d6b97a04efef8d8540afcae369f6bbd3c06bb1"
+    },
+    "staged_manifest_sha256": "7c1dd616fc567f6a7e4b6c51811a2a5cb319296307e49e60bfddc28fd388adfc"
+  },
+  "jobs": [
+    {
+      "id": "rwnt-20261110-reviwo-covering-pre",
+      "script": "scripts/train_reviwo.py",
+      "args": [
+        "--config",
+        "configs/realworld/baselines/reviwo/covering.yaml",
+        "--name",
+        "rwnt-20261110-reviwo-covering-pre",
+        "--output-root",
+        "runs",
+        "--set",
+        "dataset.hdf5_path=/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering/store.yaml",
+        "data_interface.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering/split_seed0.json",
+        "data_interface.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering/gate_report.json"
+      ],
+      "role": "realworld_pretrain",
+      "host": "remote",
+      "gpu": "any",
+      "mem_gb": 4,
+      "ram_gb": 16,
+      "priority": 1,
+      "deps": [],
+      "max_restarts": 2,
+      "oom_score_adj": 0,
+      "baseline": "reviwo",
+      "realworld_target": "covering",
+      "pretraining": "task-specific, documented protocol (configs/realworld/baselines)",
+      "realworld_consumer": "reviwo",
+      "calibration_dependent": false,
+      "gate_level": "image (100-episode gate)",
+      "realworld_gate_sha256": "9f479a2332ece3b4f3edec1283bc4905e8eab42dab0bb59967dec1c5c4b1e916",
+      "planned_commit": "fd3405f97be4a26a5a981d7e642feadce60b3c1b",
+      "remote_host": "192.168.10.22",
+      "inputs": [
+        "/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering/store.yaml",
+        "/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering/gate_report.json",
+        "/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering/split_seed0.json"
+      ],
+      "pin_host": "remote",
+      "planned_image": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a",
+      "disk_gb": 20,
+      "realworld_inputs": "/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering",
+      "plan_row_id": "rw-reviwo-covering-pre",
+      "realworld_manifest_sha256": "b4a7e1f0a791c4a5d28fcf1189a2af3c2c34e496d7fc2706ae63ffd686195252",
+      "registration_tool": "runs/setup/tools/register_realworld_newtasks_20261110.py",
+      "evidence_manifest": "runs/remote/acceptance/fd3405f-cc/manifest.json",
+      "required_results": [
+        "encoder.pt",
+        "metrics.jsonl",
+        "completion.json"
+      ]
+    },
+    {
+      "id": "rwnt-20261110-dynamo-covering-pre",
+      "script": "scripts/train_dynamo.py",
+      "args": [
+        "--config",
+        "configs/realworld/baselines/dynamo/covering.yaml",
+        "--name",
+        "rwnt-20261110-dynamo-covering-pre",
+        "--output-root",
+        "runs",
+        "--resume",
+        "auto",
+        "--set",
+        "dataset.hdf5_path=/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering/store.yaml",
+        "data_interface.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering/split_seed0.json",
+        "data_interface.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering/gate_report.json"
+      ],
+      "role": "realworld_pretrain",
+      "host": "remote",
+      "gpu": "any",
+      "mem_gb": 12,
+      "ram_gb": 32,
+      "priority": 1,
+      "deps": [],
+      "max_restarts": 2,
+      "oom_score_adj": 0,
+      "baseline": "dynamo",
+      "realworld_target": "covering",
+      "pretraining": "task-specific, documented protocol (configs/realworld/baselines)",
+      "realworld_consumer": "dynamo",
+      "calibration_dependent": false,
+      "gate_level": "image (100-episode gate)",
+      "realworld_gate_sha256": "9f479a2332ece3b4f3edec1283bc4905e8eab42dab0bb59967dec1c5c4b1e916",
+      "planned_commit": "fd3405f97be4a26a5a981d7e642feadce60b3c1b",
+      "remote_host": "192.168.10.22",
+      "inputs": [
+        "/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering/store.yaml",
+        "/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering/gate_report.json",
+        "/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering/split_seed0.json"
+      ],
+      "pin_host": "remote",
+      "planned_image": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a",
+      "disk_gb": 20,
+      "realworld_inputs": "/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering",
+      "plan_row_id": "rw-dynamo-covering-pre",
+      "realworld_manifest_sha256": "b4a7e1f0a791c4a5d28fcf1189a2af3c2c34e496d7fc2706ae63ffd686195252",
+      "registration_tool": "runs/setup/tools/register_realworld_newtasks_20261110.py",
+      "evidence_manifest": "runs/remote/acceptance/fd3405f-cc/manifest.json",
+      "required_results": [
+        "encoder.pt",
+        "metrics.jsonl",
+        "completion.json"
+      ]
+    },
+    {
+      "id": "rwnt-20261110-fqldata-dynamo-covering",
+      "script": "scripts/realworld_fql_dataset.py",
+      "args": [
+        "build",
+        "--store",
+        "/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering/store.yaml",
+        "--condition",
+        "dynamo",
+        "--out",
+        "runs/rwnt-20261110-fqldata-dynamo-covering/dataset.h5",
+        "--gate-report",
+        "/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering/gate_report.json",
+        "--outcomes",
+        "/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering/outcomes.json",
+        "--export",
+        "runs/rwnt-20261110-dynamo-covering-pre/encoder.pt",
+        "--device",
+        "cuda"
+      ],
+      "role": "realworld_fql",
+      "host": "remote",
+      "gpu": "any",
+      "mem_gb": 8,
+      "ram_gb": 16,
+      "priority": 2,
+      "deps": [
+        "rwnt-20261110-dynamo-covering-pre"
+      ],
+      "max_restarts": 1,
+      "oom_score_adj": 0,
+      "realworld_target": "covering",
+      "fql_condition": "dynamo",
+      "realworld_consumer": "dynamo",
+      "calibration_dependent": false,
+      "gate_level": "image (100-episode gate)",
+      "realworld_gate_sha256": "9f479a2332ece3b4f3edec1283bc4905e8eab42dab0bb59967dec1c5c4b1e916",
+      "planned_commit": "fd3405f97be4a26a5a981d7e642feadce60b3c1b",
+      "remote_host": "192.168.10.22",
+      "pin_host": "remote",
+      "planned_image": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a",
+      "disk_gb": 20,
+      "realworld_inputs": "/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering",
+      "plan_row_id": "rw-fqldata-dynamo-covering",
+      "realworld_manifest_sha256": "b4a7e1f0a791c4a5d28fcf1189a2af3c2c34e496d7fc2706ae63ffd686195252",
+      "registration_tool": "runs/setup/tools/register_realworld_newtasks_20261110.py",
+      "evidence_manifest": "runs/remote/acceptance/fd3405f-cc/manifest.json",
+      "required_results": [
+        "dataset.h5"
+      ]
+    },
+    {
+      "id": "rwnq-20261111-fql-dynamo-covering-s0",
+      "script": "scripts/train_realworld_fql.py",
+      "args": [
+        "--config",
+        "configs/realworld/fql/base.yaml",
+        "--name",
+        "rwnq-20261111-fql-dynamo-covering-s0",
+        "--output-root",
+        "runs",
+        "--set",
+        "condition=dynamo",
+        "data.dataset=runs/rwnt-20261110-fqldata-dynamo-covering/dataset.h5",
+        "data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering/split_seed0.json",
+        "data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering/gate_report.json",
+        "train.seed=0",
+        "agent.alpha=10.0",
+        "agent.batch_size=256",
+        "train.offline_steps=1000000",
+        "train.log_interval=5000",
+        "train.eval_interval=100000",
+        "agent.normalize_q_loss=true"
+      ],
+      "role": "realworld_fql",
+      "host": "remote",
+      "gpu": "any",
+      "mem_gb": 6,
+      "ram_gb": 12,
+      "priority": 2,
+      "deps": [
+        "rwnt-20261110-fqldata-dynamo-covering"
+      ],
+      "max_restarts": 2,
+      "oom_score_adj": 0,
+      "realworld_target": "covering",
+      "fql_condition": "dynamo",
+      "fql_seed": 0,
+      "fql_budget": {
+        "offline_steps": 1000000,
+        "batch_size": 256,
+        "alpha": 10.0,
+        "log_interval": 5000,
+        "eval_interval": 100000,
+        "normalize_q_loss": true
+      },
+      "realworld_consumer": "dynamo",
+      "calibration_dependent": false,
+      "gate_level": "image (100-episode gate)",
+      "realworld_gate_sha256": "9f479a2332ece3b4f3edec1283bc4905e8eab42dab0bb59967dec1c5c4b1e916",
+      "planned_commit": "fd3405f97be4a26a5a981d7e642feadce60b3c1b",
+      "remote_host": "192.168.10.22",
+      "pin_host": "remote",
+      "planned_image": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a",
+      "disk_gb": 10,
+      "realworld_inputs": "/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering",
+      "plan_row_id": "rw-fql-dynamo-covering-s0",
+      "realworld_manifest_sha256": "b4a7e1f0a791c4a5d28fcf1189a2af3c2c34e496d7fc2706ae63ffd686195252",
+      "registration_tool": "runs/setup/tools/register_realworld_newtasks_20261110.py",
+      "evidence_manifest": "runs/remote/acceptance/fd3405f-cc/manifest.json",
+      "required_results": [
+        "policy.pt",
+        "metrics.jsonl",
+        "completion.json"
+      ],
+      "fql_setting": "a10nq",
+      "purpose": "FQLNQ 2026-11-11 (user): adopted pretrained-encoder FQL setting agent.alpha=10.0 + agent.normalize_q_loss=true"
+    },
+    {
+      "id": "rwnq-20261111-fql-dynamo-covering-s1",
+      "script": "scripts/train_realworld_fql.py",
+      "args": [
+        "--config",
+        "configs/realworld/fql/base.yaml",
+        "--name",
+        "rwnq-20261111-fql-dynamo-covering-s1",
+        "--output-root",
+        "runs",
+        "--set",
+        "condition=dynamo",
+        "data.dataset=runs/rwnt-20261110-fqldata-dynamo-covering/dataset.h5",
+        "data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering/split_seed0.json",
+        "data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering/gate_report.json",
+        "train.seed=1",
+        "agent.alpha=10.0",
+        "agent.batch_size=256",
+        "train.offline_steps=1000000",
+        "train.log_interval=5000",
+        "train.eval_interval=100000",
+        "agent.normalize_q_loss=true"
+      ],
+      "role": "realworld_fql",
+      "host": "remote",
+      "gpu": "any",
+      "mem_gb": 6,
+      "ram_gb": 12,
+      "priority": 2,
+      "deps": [
+        "rwnt-20261110-fqldata-dynamo-covering"
+      ],
+      "max_restarts": 2,
+      "oom_score_adj": 0,
+      "realworld_target": "covering",
+      "fql_condition": "dynamo",
+      "fql_seed": 1,
+      "fql_budget": {
+        "offline_steps": 1000000,
+        "batch_size": 256,
+        "alpha": 10.0,
+        "log_interval": 5000,
+        "eval_interval": 100000,
+        "normalize_q_loss": true
+      },
+      "realworld_consumer": "dynamo",
+      "calibration_dependent": false,
+      "gate_level": "image (100-episode gate)",
+      "realworld_gate_sha256": "9f479a2332ece3b4f3edec1283bc4905e8eab42dab0bb59967dec1c5c4b1e916",
+      "planned_commit": "fd3405f97be4a26a5a981d7e642feadce60b3c1b",
+      "remote_host": "192.168.10.22",
+      "pin_host": "remote",
+      "planned_image": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a",
+      "disk_gb": 10,
+      "realworld_inputs": "/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering",
+      "plan_row_id": "rw-fql-dynamo-covering-s1",
+      "realworld_manifest_sha256": "b4a7e1f0a791c4a5d28fcf1189a2af3c2c34e496d7fc2706ae63ffd686195252",
+      "registration_tool": "runs/setup/tools/register_realworld_newtasks_20261110.py",
+      "evidence_manifest": "runs/remote/acceptance/fd3405f-cc/manifest.json",
+      "required_results": [
+        "policy.pt",
+        "metrics.jsonl",
+        "completion.json"
+      ],
+      "fql_setting": "a10nq",
+      "purpose": "FQLNQ 2026-11-11 (user): adopted pretrained-encoder FQL setting agent.alpha=10.0 + agent.normalize_q_loss=true"
+    },
+    {
+      "id": "rwnq-20261111-fql-dynamo-covering-s2",
+      "script": "scripts/train_realworld_fql.py",
+      "args": [
+        "--config",
+        "configs/realworld/fql/base.yaml",
+        "--name",
+        "rwnq-20261111-fql-dynamo-covering-s2",
+        "--output-root",
+        "runs",
+        "--set",
+        "condition=dynamo",
+        "data.dataset=runs/rwnt-20261110-fqldata-dynamo-covering/dataset.h5",
+        "data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering/split_seed0.json",
+        "data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering/gate_report.json",
+        "train.seed=2",
+        "agent.alpha=10.0",
+        "agent.batch_size=256",
+        "train.offline_steps=1000000",
+        "train.log_interval=5000",
+        "train.eval_interval=100000",
+        "agent.normalize_q_loss=true"
+      ],
+      "role": "realworld_fql",
+      "host": "remote",
+      "gpu": "any",
+      "mem_gb": 6,
+      "ram_gb": 12,
+      "priority": 2,
+      "deps": [
+        "rwnt-20261110-fqldata-dynamo-covering"
+      ],
+      "max_restarts": 2,
+      "oom_score_adj": 0,
+      "realworld_target": "covering",
+      "fql_condition": "dynamo",
+      "fql_seed": 2,
+      "fql_budget": {
+        "offline_steps": 1000000,
+        "batch_size": 256,
+        "alpha": 10.0,
+        "log_interval": 5000,
+        "eval_interval": 100000,
+        "normalize_q_loss": true
+      },
+      "realworld_consumer": "dynamo",
+      "calibration_dependent": false,
+      "gate_level": "image (100-episode gate)",
+      "realworld_gate_sha256": "9f479a2332ece3b4f3edec1283bc4905e8eab42dab0bb59967dec1c5c4b1e916",
+      "planned_commit": "fd3405f97be4a26a5a981d7e642feadce60b3c1b",
+      "remote_host": "192.168.10.22",
+      "pin_host": "remote",
+      "planned_image": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a",
+      "disk_gb": 10,
+      "realworld_inputs": "/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering",
+      "plan_row_id": "rw-fql-dynamo-covering-s2",
+      "realworld_manifest_sha256": "b4a7e1f0a791c4a5d28fcf1189a2af3c2c34e496d7fc2706ae63ffd686195252",
+      "registration_tool": "runs/setup/tools/register_realworld_newtasks_20261110.py",
+      "evidence_manifest": "runs/remote/acceptance/fd3405f-cc/manifest.json",
+      "required_results": [
+        "policy.pt",
+        "metrics.jsonl",
+        "completion.json"
+      ],
+      "fql_setting": "a10nq",
+      "purpose": "FQLNQ 2026-11-11 (user): adopted pretrained-encoder FQL setting agent.alpha=10.0 + agent.normalize_q_loss=true"
+    },
+    {
+      "id": "rwnt-20261110-fqldata-reviwo-covering",
+      "script": "scripts/realworld_fql_dataset.py",
+      "args": [
+        "build",
+        "--store",
+        "/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering/store.yaml",
+        "--condition",
+        "reviwo",
+        "--out",
+        "runs/rwnt-20261110-fqldata-reviwo-covering/dataset.h5",
+        "--gate-report",
+        "/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering/gate_report.json",
+        "--outcomes",
+        "/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering/outcomes.json",
+        "--export",
+        "runs/rwnt-20261110-reviwo-covering-pre/encoder.pt",
+        "--device",
+        "cuda"
+      ],
+      "role": "realworld_fql",
+      "host": "remote",
+      "gpu": "any",
+      "mem_gb": 8,
+      "ram_gb": 16,
+      "priority": 2,
+      "deps": [
+        "rwnt-20261110-reviwo-covering-pre"
+      ],
+      "max_restarts": 1,
+      "oom_score_adj": 0,
+      "realworld_target": "covering",
+      "fql_condition": "reviwo",
+      "realworld_consumer": "fql_reviwo",
+      "calibration_dependent": false,
+      "gate_level": "image (100-episode gate)",
+      "realworld_gate_sha256": "9f479a2332ece3b4f3edec1283bc4905e8eab42dab0bb59967dec1c5c4b1e916",
+      "planned_commit": "fd3405f97be4a26a5a981d7e642feadce60b3c1b",
+      "remote_host": "192.168.10.22",
+      "pin_host": "remote",
+      "planned_image": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a",
+      "disk_gb": 20,
+      "realworld_inputs": "/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering",
+      "plan_row_id": "rw-fqldata-reviwo-covering",
+      "realworld_manifest_sha256": "b4a7e1f0a791c4a5d28fcf1189a2af3c2c34e496d7fc2706ae63ffd686195252",
+      "registration_tool": "runs/setup/tools/register_realworld_newtasks_20261110.py",
+      "evidence_manifest": "runs/remote/acceptance/fd3405f-cc/manifest.json",
+      "required_results": [
+        "dataset.h5"
+      ]
+    },
+    {
+      "id": "rwnq-20261111-fql-reviwo-covering-s0",
+      "script": "scripts/train_realworld_fql.py",
+      "args": [
+        "--config",
+        "configs/realworld/fql/base.yaml",
+        "--name",
+        "rwnq-20261111-fql-reviwo-covering-s0",
+        "--output-root",
+        "runs",
+        "--set",
+        "condition=reviwo",
+        "data.dataset=runs/rwnt-20261110-fqldata-reviwo-covering/dataset.h5",
+        "data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering/split_seed0.json",
+        "data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering/gate_report.json",
+        "train.seed=0",
+        "agent.alpha=10.0",
+        "agent.batch_size=256",
+        "train.offline_steps=1000000",
+        "train.log_interval=5000",
+        "train.eval_interval=100000",
+        "agent.normalize_q_loss=true"
+      ],
+      "role": "realworld_fql",
+      "host": "remote",
+      "gpu": "any",
+      "mem_gb": 6,
+      "ram_gb": 12,
+      "priority": 2,
+      "deps": [
+        "rwnt-20261110-fqldata-reviwo-covering"
+      ],
+      "max_restarts": 2,
+      "oom_score_adj": 0,
+      "realworld_target": "covering",
+      "fql_condition": "reviwo",
+      "fql_seed": 0,
+      "fql_budget": {
+        "offline_steps": 1000000,
+        "batch_size": 256,
+        "alpha": 10.0,
+        "log_interval": 5000,
+        "eval_interval": 100000,
+        "normalize_q_loss": true
+      },
+      "realworld_consumer": "fql_reviwo",
+      "calibration_dependent": false,
+      "gate_level": "image (100-episode gate)",
+      "realworld_gate_sha256": "9f479a2332ece3b4f3edec1283bc4905e8eab42dab0bb59967dec1c5c4b1e916",
+      "planned_commit": "fd3405f97be4a26a5a981d7e642feadce60b3c1b",
+      "remote_host": "192.168.10.22",
+      "pin_host": "remote",
+      "planned_image": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a",
+      "disk_gb": 10,
+      "realworld_inputs": "/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering",
+      "plan_row_id": "rw-fql-reviwo-covering-s0",
+      "realworld_manifest_sha256": "b4a7e1f0a791c4a5d28fcf1189a2af3c2c34e496d7fc2706ae63ffd686195252",
+      "registration_tool": "runs/setup/tools/register_realworld_newtasks_20261110.py",
+      "evidence_manifest": "runs/remote/acceptance/fd3405f-cc/manifest.json",
+      "required_results": [
+        "policy.pt",
+        "metrics.jsonl",
+        "completion.json"
+      ],
+      "fql_setting": "a10nq",
+      "purpose": "FQLNQ 2026-11-11 (user): adopted pretrained-encoder FQL setting agent.alpha=10.0 + agent.normalize_q_loss=true"
+    },
+    {
+      "id": "rwnq-20261111-fql-reviwo-covering-s1",
+      "script": "scripts/train_realworld_fql.py",
+      "args": [
+        "--config",
+        "configs/realworld/fql/base.yaml",
+        "--name",
+        "rwnq-20261111-fql-reviwo-covering-s1",
+        "--output-root",
+        "runs",
+        "--set",
+        "condition=reviwo",
+        "data.dataset=runs/rwnt-20261110-fqldata-reviwo-covering/dataset.h5",
+        "data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering/split_seed0.json",
+        "data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering/gate_report.json",
+        "train.seed=1",
+        "agent.alpha=10.0",
+        "agent.batch_size=256",
+        "train.offline_steps=1000000",
+        "train.log_interval=5000",
+        "train.eval_interval=100000",
+        "agent.normalize_q_loss=true"
+      ],
+      "role": "realworld_fql",
+      "host": "remote",
+      "gpu": "any",
+      "mem_gb": 6,
+      "ram_gb": 12,
+      "priority": 2,
+      "deps": [
+        "rwnt-20261110-fqldata-reviwo-covering"
+      ],
+      "max_restarts": 2,
+      "oom_score_adj": 0,
+      "realworld_target": "covering",
+      "fql_condition": "reviwo",
+      "fql_seed": 1,
+      "fql_budget": {
+        "offline_steps": 1000000,
+        "batch_size": 256,
+        "alpha": 10.0,
+        "log_interval": 5000,
+        "eval_interval": 100000,
+        "normalize_q_loss": true
+      },
+      "realworld_consumer": "fql_reviwo",
+      "calibration_dependent": false,
+      "gate_level": "image (100-episode gate)",
+      "realworld_gate_sha256": "9f479a2332ece3b4f3edec1283bc4905e8eab42dab0bb59967dec1c5c4b1e916",
+      "planned_commit": "fd3405f97be4a26a5a981d7e642feadce60b3c1b",
+      "remote_host": "192.168.10.22",
+      "pin_host": "remote",
+      "planned_image": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a",
+      "disk_gb": 10,
+      "realworld_inputs": "/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering",
+      "plan_row_id": "rw-fql-reviwo-covering-s1",
+      "realworld_manifest_sha256": "b4a7e1f0a791c4a5d28fcf1189a2af3c2c34e496d7fc2706ae63ffd686195252",
+      "registration_tool": "runs/setup/tools/register_realworld_newtasks_20261110.py",
+      "evidence_manifest": "runs/remote/acceptance/fd3405f-cc/manifest.json",
+      "required_results": [
+        "policy.pt",
+        "metrics.jsonl",
+        "completion.json"
+      ],
+      "fql_setting": "a10nq",
+      "purpose": "FQLNQ 2026-11-11 (user): adopted pretrained-encoder FQL setting agent.alpha=10.0 + agent.normalize_q_loss=true"
+    },
+    {
+      "id": "rwnq-20261111-fql-reviwo-covering-s2",
+      "script": "scripts/train_realworld_fql.py",
+      "args": [
+        "--config",
+        "configs/realworld/fql/base.yaml",
+        "--name",
+        "rwnq-20261111-fql-reviwo-covering-s2",
+        "--output-root",
+        "runs",
+        "--set",
+        "condition=reviwo",
+        "data.dataset=runs/rwnt-20261110-fqldata-reviwo-covering/dataset.h5",
+        "data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering/split_seed0.json",
+        "data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering/gate_report.json",
+        "train.seed=2",
+        "agent.alpha=10.0",
+        "agent.batch_size=256",
+        "train.offline_steps=1000000",
+        "train.log_interval=5000",
+        "train.eval_interval=100000",
+        "agent.normalize_q_loss=true"
+      ],
+      "role": "realworld_fql",
+      "host": "remote",
+      "gpu": "any",
+      "mem_gb": 6,
+      "ram_gb": 12,
+      "priority": 2,
+      "deps": [
+        "rwnt-20261110-fqldata-reviwo-covering"
+      ],
+      "max_restarts": 2,
+      "oom_score_adj": 0,
+      "realworld_target": "covering",
+      "fql_condition": "reviwo",
+      "fql_seed": 2,
+      "fql_budget": {
+        "offline_steps": 1000000,
+        "batch_size": 256,
+        "alpha": 10.0,
+        "log_interval": 5000,
+        "eval_interval": 100000,
+        "normalize_q_loss": true
+      },
+      "realworld_consumer": "fql_reviwo",
+      "calibration_dependent": false,
+      "gate_level": "image (100-episode gate)",
+      "realworld_gate_sha256": "9f479a2332ece3b4f3edec1283bc4905e8eab42dab0bb59967dec1c5c4b1e916",
+      "planned_commit": "fd3405f97be4a26a5a981d7e642feadce60b3c1b",
+      "remote_host": "192.168.10.22",
+      "pin_host": "remote",
+      "planned_image": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a",
+      "disk_gb": 10,
+      "realworld_inputs": "/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering",
+      "plan_row_id": "rw-fql-reviwo-covering-s2",
+      "realworld_manifest_sha256": "b4a7e1f0a791c4a5d28fcf1189a2af3c2c34e496d7fc2706ae63ffd686195252",
+      "registration_tool": "runs/setup/tools/register_realworld_newtasks_20261110.py",
+      "evidence_manifest": "runs/remote/acceptance/fd3405f-cc/manifest.json",
+      "required_results": [
+        "policy.pt",
+        "metrics.jsonl",
+        "completion.json"
+      ],
+      "fql_setting": "a10nq",
+      "purpose": "FQLNQ 2026-11-11 (user): adopted pretrained-encoder FQL setting agent.alpha=10.0 + agent.normalize_q_loss=true"
+    },
+    {
+      "id": "rwnt-20261110-fqldata-e2e_cnn-covering",
+      "script": "scripts/realworld_fql_dataset.py",
+      "args": [
+        "build",
+        "--store",
+        "/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering/store.yaml",
+        "--condition",
+        "e2e_cnn",
+        "--out",
+        "runs/rwnt-20261110-fqldata-e2e_cnn-covering/dataset.h5",
+        "--gate-report",
+        "/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering/gate_report.json",
+        "--outcomes",
+        "/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering/outcomes.json",
+        "--device",
+        "cpu"
+      ],
+      "role": "realworld_fql",
+      "host": "remote",
+      "gpu": "any",
+      "mem_gb": 1,
+      "ram_gb": 8,
+      "priority": 2,
+      "deps": [
+        "rwnt-20261110-dynamo-covering-pre",
+        "rwnt-20261110-reviwo-covering-pre"
+      ],
+      "max_restarts": 1,
+      "oom_score_adj": 0,
+      "realworld_target": "covering",
+      "fql_condition": "e2e_cnn",
+      "realworld_consumer": "e2e_cnn",
+      "calibration_dependent": false,
+      "gate_level": "image (100-episode gate)",
+      "realworld_gate_sha256": "9f479a2332ece3b4f3edec1283bc4905e8eab42dab0bb59967dec1c5c4b1e916",
+      "planned_commit": "fd3405f97be4a26a5a981d7e642feadce60b3c1b",
+      "remote_host": "192.168.10.22",
+      "pin_host": "remote",
+      "planned_image": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a",
+      "disk_gb": 20,
+      "realworld_inputs": "/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering",
+      "plan_row_id": "rw-fqldata-e2e_cnn-covering",
+      "realworld_manifest_sha256": "b4a7e1f0a791c4a5d28fcf1189a2af3c2c34e496d7fc2706ae63ffd686195252",
+      "registration_tool": "runs/setup/tools/register_realworld_newtasks_20261110.py",
+      "evidence_manifest": "runs/remote/acceptance/fd3405f-cc/manifest.json",
+      "required_results": [
+        "dataset.h5"
+      ]
+    },
+    {
+      "id": "rwnt-20261110-fql-e2e_cnn-covering-s0",
+      "script": "scripts/train_realworld_fql.py",
+      "args": [
+        "--config",
+        "configs/realworld/fql/base.yaml",
+        "--name",
+        "rwnt-20261110-fql-e2e_cnn-covering-s0",
+        "--output-root",
+        "runs",
+        "--set",
+        "condition=e2e_cnn",
+        "data.dataset=runs/rwnt-20261110-fqldata-e2e_cnn-covering/dataset.h5",
+        "data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering/split_seed0.json",
+        "data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering/gate_report.json",
+        "train.seed=0",
+        "data.store=/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering/store.yaml",
+        "agent.alpha=10.0",
+        "agent.batch_size=256",
+        "train.offline_steps=1000000",
+        "train.log_interval=5000",
+        "train.eval_interval=100000"
+      ],
+      "role": "realworld_fql",
+      "host": "remote",
+      "gpu": "any",
+      "mem_gb": 12,
+      "ram_gb": 24,
+      "priority": 2,
+      "deps": [
+        "rwnt-20261110-fqldata-e2e_cnn-covering"
+      ],
+      "max_restarts": 2,
+      "oom_score_adj": 0,
+      "realworld_target": "covering",
+      "fql_condition": "e2e_cnn",
+      "fql_seed": 0,
+      "fql_budget": {
+        "offline_steps": 1000000,
+        "batch_size": 256,
+        "alpha": 10.0,
+        "log_interval": 5000,
+        "eval_interval": 100000
+      },
+      "realworld_consumer": "e2e_cnn",
+      "calibration_dependent": false,
+      "gate_level": "image (100-episode gate)",
+      "realworld_gate_sha256": "9f479a2332ece3b4f3edec1283bc4905e8eab42dab0bb59967dec1c5c4b1e916",
+      "planned_commit": "fd3405f97be4a26a5a981d7e642feadce60b3c1b",
+      "remote_host": "192.168.10.22",
+      "pin_host": "remote",
+      "planned_image": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a",
+      "disk_gb": 10,
+      "realworld_inputs": "/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering",
+      "plan_row_id": "rw-fql-e2e_cnn-covering-s0",
+      "realworld_manifest_sha256": "b4a7e1f0a791c4a5d28fcf1189a2af3c2c34e496d7fc2706ae63ffd686195252",
+      "registration_tool": "runs/setup/tools/register_realworld_newtasks_20261110.py",
+      "evidence_manifest": "runs/remote/acceptance/fd3405f-cc/manifest.json",
+      "required_results": [
+        "policy.pt",
+        "metrics.jsonl",
+        "completion.json"
+      ]
+    },
+    {
+      "id": "rwnt-20261110-fql-e2e_cnn-covering-s1",
+      "script": "scripts/train_realworld_fql.py",
+      "args": [
+        "--config",
+        "configs/realworld/fql/base.yaml",
+        "--name",
+        "rwnt-20261110-fql-e2e_cnn-covering-s1",
+        "--output-root",
+        "runs",
+        "--set",
+        "condition=e2e_cnn",
+        "data.dataset=runs/rwnt-20261110-fqldata-e2e_cnn-covering/dataset.h5",
+        "data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering/split_seed0.json",
+        "data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering/gate_report.json",
+        "train.seed=1",
+        "data.store=/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering/store.yaml",
+        "agent.alpha=10.0",
+        "agent.batch_size=256",
+        "train.offline_steps=1000000",
+        "train.log_interval=5000",
+        "train.eval_interval=100000"
+      ],
+      "role": "realworld_fql",
+      "host": "remote",
+      "gpu": "any",
+      "mem_gb": 12,
+      "ram_gb": 24,
+      "priority": 2,
+      "deps": [
+        "rwnt-20261110-fqldata-e2e_cnn-covering"
+      ],
+      "max_restarts": 2,
+      "oom_score_adj": 0,
+      "realworld_target": "covering",
+      "fql_condition": "e2e_cnn",
+      "fql_seed": 1,
+      "fql_budget": {
+        "offline_steps": 1000000,
+        "batch_size": 256,
+        "alpha": 10.0,
+        "log_interval": 5000,
+        "eval_interval": 100000
+      },
+      "realworld_consumer": "e2e_cnn",
+      "calibration_dependent": false,
+      "gate_level": "image (100-episode gate)",
+      "realworld_gate_sha256": "9f479a2332ece3b4f3edec1283bc4905e8eab42dab0bb59967dec1c5c4b1e916",
+      "planned_commit": "fd3405f97be4a26a5a981d7e642feadce60b3c1b",
+      "remote_host": "192.168.10.22",
+      "pin_host": "remote",
+      "planned_image": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a",
+      "disk_gb": 10,
+      "realworld_inputs": "/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering",
+      "plan_row_id": "rw-fql-e2e_cnn-covering-s1",
+      "realworld_manifest_sha256": "b4a7e1f0a791c4a5d28fcf1189a2af3c2c34e496d7fc2706ae63ffd686195252",
+      "registration_tool": "runs/setup/tools/register_realworld_newtasks_20261110.py",
+      "evidence_manifest": "runs/remote/acceptance/fd3405f-cc/manifest.json",
+      "required_results": [
+        "policy.pt",
+        "metrics.jsonl",
+        "completion.json"
+      ]
+    },
+    {
+      "id": "rwnt-20261110-fql-e2e_cnn-covering-s2",
+      "script": "scripts/train_realworld_fql.py",
+      "args": [
+        "--config",
+        "configs/realworld/fql/base.yaml",
+        "--name",
+        "rwnt-20261110-fql-e2e_cnn-covering-s2",
+        "--output-root",
+        "runs",
+        "--set",
+        "condition=e2e_cnn",
+        "data.dataset=runs/rwnt-20261110-fqldata-e2e_cnn-covering/dataset.h5",
+        "data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering/split_seed0.json",
+        "data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering/gate_report.json",
+        "train.seed=2",
+        "data.store=/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering/store.yaml",
+        "agent.alpha=10.0",
+        "agent.batch_size=256",
+        "train.offline_steps=1000000",
+        "train.log_interval=5000",
+        "train.eval_interval=100000"
+      ],
+      "role": "realworld_fql",
+      "host": "remote",
+      "gpu": "any",
+      "mem_gb": 12,
+      "ram_gb": 24,
+      "priority": 2,
+      "deps": [
+        "rwnt-20261110-fqldata-e2e_cnn-covering"
+      ],
+      "max_restarts": 2,
+      "oom_score_adj": 0,
+      "realworld_target": "covering",
+      "fql_condition": "e2e_cnn",
+      "fql_seed": 2,
+      "fql_budget": {
+        "offline_steps": 1000000,
+        "batch_size": 256,
+        "alpha": 10.0,
+        "log_interval": 5000,
+        "eval_interval": 100000
+      },
+      "realworld_consumer": "e2e_cnn",
+      "calibration_dependent": false,
+      "gate_level": "image (100-episode gate)",
+      "realworld_gate_sha256": "9f479a2332ece3b4f3edec1283bc4905e8eab42dab0bb59967dec1c5c4b1e916",
+      "planned_commit": "fd3405f97be4a26a5a981d7e642feadce60b3c1b",
+      "remote_host": "192.168.10.22",
+      "pin_host": "remote",
+      "planned_image": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a",
+      "disk_gb": 10,
+      "realworld_inputs": "/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering",
+      "plan_row_id": "rw-fql-e2e_cnn-covering-s2",
+      "realworld_manifest_sha256": "b4a7e1f0a791c4a5d28fcf1189a2af3c2c34e496d7fc2706ae63ffd686195252",
+      "registration_tool": "runs/setup/tools/register_realworld_newtasks_20261110.py",
+      "evidence_manifest": "runs/remote/acceptance/fd3405f-cc/manifest.json",
+      "required_results": [
+        "policy.pt",
+        "metrics.jsonl",
+        "completion.json"
+      ]
+    },
+    {
+      "id": "rwnt-20261110-fql-e2e_cnn_noaug-covering-s0",
+      "script": "scripts/train_realworld_fql.py",
+      "args": [
+        "--config",
+        "configs/realworld/fql/base.yaml",
+        "--name",
+        "rwnt-20261110-fql-e2e_cnn_noaug-covering-s0",
+        "--output-root",
+        "runs",
+        "--set",
+        "condition=e2e_cnn",
+        "data.dataset=runs/rwnt-20261110-fqldata-e2e_cnn-covering/dataset.h5",
+        "data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering/split_seed0.json",
+        "data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering/gate_report.json",
+        "train.seed=0",
+        "data.store=/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering/store.yaml",
+        "agent.alpha=10.0",
+        "agent.batch_size=256",
+        "train.offline_steps=1000000",
+        "train.log_interval=5000",
+        "train.eval_interval=100000",
+        "pixel.p_aug=0.0"
+      ],
+      "role": "realworld_fql",
+      "host": "remote",
+      "gpu": "any",
+      "mem_gb": 12,
+      "ram_gb": 24,
+      "priority": 2,
+      "deps": [
+        "rwnt-20261110-fqldata-e2e_cnn-covering"
+      ],
+      "max_restarts": 2,
+      "oom_score_adj": 0,
+      "realworld_target": "covering",
+      "fql_condition": "e2e_cnn",
+      "fql_seed": 0,
+      "fql_budget": {
+        "offline_steps": 1000000,
+        "batch_size": 256,
+        "alpha": 10.0,
+        "log_interval": 5000,
+        "eval_interval": 100000
+      },
+      "realworld_consumer": "e2e_cnn",
+      "calibration_dependent": false,
+      "gate_level": "image (100-episode gate)",
+      "realworld_gate_sha256": "9f479a2332ece3b4f3edec1283bc4905e8eab42dab0bb59967dec1c5c4b1e916",
+      "planned_commit": "fd3405f97be4a26a5a981d7e642feadce60b3c1b",
+      "remote_host": "192.168.10.22",
+      "pin_host": "remote",
+      "planned_image": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a",
+      "disk_gb": 10,
+      "realworld_inputs": "/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering",
+      "plan_row_id": "rw-fql-e2e_cnn_noaug-covering-s0",
+      "realworld_manifest_sha256": "b4a7e1f0a791c4a5d28fcf1189a2af3c2c34e496d7fc2706ae63ffd686195252",
+      "registration_tool": "runs/setup/tools/register_realworld_newtasks_20261110.py",
+      "evidence_manifest": "runs/remote/acceptance/fd3405f-cc/manifest.json",
+      "required_results": [
+        "policy.pt",
+        "metrics.jsonl",
+        "completion.json"
+      ],
+      "derived_from": "rwnt-20261110-fql-e2e_cnn-covering-s0",
+      "fql_variant": "noaug",
+      "purpose": "End-to-End CNN + FQL WITHOUT random cropping (pixel.p_aug=0.0, the original inherits 0.5); everything else identical to derived_from (directive O / R)"
+    },
+    {
+      "id": "rwnt-20261110-fql-e2e_cnn_noaug-covering-s1",
+      "script": "scripts/train_realworld_fql.py",
+      "args": [
+        "--config",
+        "configs/realworld/fql/base.yaml",
+        "--name",
+        "rwnt-20261110-fql-e2e_cnn_noaug-covering-s1",
+        "--output-root",
+        "runs",
+        "--set",
+        "condition=e2e_cnn",
+        "data.dataset=runs/rwnt-20261110-fqldata-e2e_cnn-covering/dataset.h5",
+        "data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering/split_seed0.json",
+        "data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering/gate_report.json",
+        "train.seed=1",
+        "data.store=/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering/store.yaml",
+        "agent.alpha=10.0",
+        "agent.batch_size=256",
+        "train.offline_steps=1000000",
+        "train.log_interval=5000",
+        "train.eval_interval=100000",
+        "pixel.p_aug=0.0"
+      ],
+      "role": "realworld_fql",
+      "host": "remote",
+      "gpu": "any",
+      "mem_gb": 12,
+      "ram_gb": 24,
+      "priority": 2,
+      "deps": [
+        "rwnt-20261110-fqldata-e2e_cnn-covering"
+      ],
+      "max_restarts": 2,
+      "oom_score_adj": 0,
+      "realworld_target": "covering",
+      "fql_condition": "e2e_cnn",
+      "fql_seed": 1,
+      "fql_budget": {
+        "offline_steps": 1000000,
+        "batch_size": 256,
+        "alpha": 10.0,
+        "log_interval": 5000,
+        "eval_interval": 100000
+      },
+      "realworld_consumer": "e2e_cnn",
+      "calibration_dependent": false,
+      "gate_level": "image (100-episode gate)",
+      "realworld_gate_sha256": "9f479a2332ece3b4f3edec1283bc4905e8eab42dab0bb59967dec1c5c4b1e916",
+      "planned_commit": "fd3405f97be4a26a5a981d7e642feadce60b3c1b",
+      "remote_host": "192.168.10.22",
+      "pin_host": "remote",
+      "planned_image": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a",
+      "disk_gb": 10,
+      "realworld_inputs": "/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering",
+      "plan_row_id": "rw-fql-e2e_cnn_noaug-covering-s1",
+      "realworld_manifest_sha256": "b4a7e1f0a791c4a5d28fcf1189a2af3c2c34e496d7fc2706ae63ffd686195252",
+      "registration_tool": "runs/setup/tools/register_realworld_newtasks_20261110.py",
+      "evidence_manifest": "runs/remote/acceptance/fd3405f-cc/manifest.json",
+      "required_results": [
+        "policy.pt",
+        "metrics.jsonl",
+        "completion.json"
+      ],
+      "derived_from": "rwnt-20261110-fql-e2e_cnn-covering-s1",
+      "fql_variant": "noaug",
+      "purpose": "End-to-End CNN + FQL WITHOUT random cropping (pixel.p_aug=0.0, the original inherits 0.5); everything else identical to derived_from (directive O / R)"
+    },
+    {
+      "id": "rwnt-20261110-fql-e2e_cnn_noaug-covering-s2",
+      "script": "scripts/train_realworld_fql.py",
+      "args": [
+        "--config",
+        "configs/realworld/fql/base.yaml",
+        "--name",
+        "rwnt-20261110-fql-e2e_cnn_noaug-covering-s2",
+        "--output-root",
+        "runs",
+        "--set",
+        "condition=e2e_cnn",
+        "data.dataset=runs/rwnt-20261110-fqldata-e2e_cnn-covering/dataset.h5",
+        "data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering/split_seed0.json",
+        "data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering/gate_report.json",
+        "train.seed=2",
+        "data.store=/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering/store.yaml",
+        "agent.alpha=10.0",
+        "agent.batch_size=256",
+        "train.offline_steps=1000000",
+        "train.log_interval=5000",
+        "train.eval_interval=100000",
+        "pixel.p_aug=0.0"
+      ],
+      "role": "realworld_fql",
+      "host": "remote",
+      "gpu": "any",
+      "mem_gb": 12,
+      "ram_gb": 24,
+      "priority": 2,
+      "deps": [
+        "rwnt-20261110-fqldata-e2e_cnn-covering"
+      ],
+      "max_restarts": 2,
+      "oom_score_adj": 0,
+      "realworld_target": "covering",
+      "fql_condition": "e2e_cnn",
+      "fql_seed": 2,
+      "fql_budget": {
+        "offline_steps": 1000000,
+        "batch_size": 256,
+        "alpha": 10.0,
+        "log_interval": 5000,
+        "eval_interval": 100000
+      },
+      "realworld_consumer": "e2e_cnn",
+      "calibration_dependent": false,
+      "gate_level": "image (100-episode gate)",
+      "realworld_gate_sha256": "9f479a2332ece3b4f3edec1283bc4905e8eab42dab0bb59967dec1c5c4b1e916",
+      "planned_commit": "fd3405f97be4a26a5a981d7e642feadce60b3c1b",
+      "remote_host": "192.168.10.22",
+      "pin_host": "remote",
+      "planned_image": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a",
+      "disk_gb": 10,
+      "realworld_inputs": "/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering",
+      "plan_row_id": "rw-fql-e2e_cnn_noaug-covering-s2",
+      "realworld_manifest_sha256": "b4a7e1f0a791c4a5d28fcf1189a2af3c2c34e496d7fc2706ae63ffd686195252",
+      "registration_tool": "runs/setup/tools/register_realworld_newtasks_20261110.py",
+      "evidence_manifest": "runs/remote/acceptance/fd3405f-cc/manifest.json",
+      "required_results": [
+        "policy.pt",
+        "metrics.jsonl",
+        "completion.json"
+      ],
+      "derived_from": "rwnt-20261110-fql-e2e_cnn-covering-s2",
+      "fql_variant": "noaug",
+      "purpose": "End-to-End CNN + FQL WITHOUT random cropping (pixel.p_aug=0.0, the original inherits 0.5); everything else identical to derived_from (directive O / R)"
+    },
+    {
+      "id": "rwa100-20261111-fql-dynamo-covering-s0",
+      "script": "scripts/train_realworld_fql.py",
+      "args": [
+        "--config",
+        "configs/realworld/fql/base.yaml",
+        "--name",
+        "rwa100-20261111-fql-dynamo-covering-s0",
+        "--output-root",
+        "runs",
+        "--set",
+        "condition=dynamo",
+        "data.dataset=runs/rwnt-20261110-fqldata-dynamo-covering/dataset.h5",
+        "data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering/split_seed0.json",
+        "data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering/gate_report.json",
+        "train.seed=0",
+        "agent.alpha=100.0",
+        "agent.batch_size=256",
+        "train.offline_steps=1000000",
+        "train.log_interval=5000",
+        "train.eval_interval=100000",
+        "agent.normalize_q_loss=false"
+      ],
+      "role": "realworld_fql",
+      "host": "remote",
+      "gpu": "any",
+      "mem_gb": 6,
+      "ram_gb": 12,
+      "priority": 4,
+      "deps": [
+        "rwnt-20261110-fqldata-dynamo-covering"
+      ],
+      "max_restarts": 2,
+      "oom_score_adj": 0,
+      "realworld_target": "covering",
+      "fql_condition": "dynamo",
+      "fql_seed": 0,
+      "fql_budget": {
+        "offline_steps": 1000000,
+        "batch_size": 256,
+        "alpha": 100.0,
+        "log_interval": 5000,
+        "eval_interval": 100000,
+        "normalize_q_loss": false
+      },
+      "realworld_consumer": "dynamo",
+      "calibration_dependent": false,
+      "gate_level": "image (100-episode gate)",
+      "realworld_gate_sha256": "9f479a2332ece3b4f3edec1283bc4905e8eab42dab0bb59967dec1c5c4b1e916",
+      "planned_commit": "fd3405f97be4a26a5a981d7e642feadce60b3c1b",
+      "remote_host": "192.168.10.22",
+      "pin_host": "remote",
+      "planned_image": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a",
+      "disk_gb": 10,
+      "realworld_inputs": "/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering",
+      "plan_row_id": "rw-fql-dynamo-covering-s0",
+      "realworld_manifest_sha256": "b4a7e1f0a791c4a5d28fcf1189a2af3c2c34e496d7fc2706ae63ffd686195252",
+      "registration_tool": "runs/setup/tools/register_realworld_newtasks_20261110.py",
+      "evidence_manifest": "runs/remote/acceptance/fd3405f-cc/manifest.json",
+      "required_results": [
+        "policy.pt",
+        "metrics.jsonl",
+        "completion.json"
+      ],
+      "fql_setting": "a100",
+      "purpose": "FQLNQ 2026-11-11 (user): comparison baseline agent.alpha=100.0 + agent.normalize_q_loss=false, lowest priority; never staged unless asked"
+    },
+    {
+      "id": "rwa100-20261111-fql-dynamo-covering-s1",
+      "script": "scripts/train_realworld_fql.py",
+      "args": [
+        "--config",
+        "configs/realworld/fql/base.yaml",
+        "--name",
+        "rwa100-20261111-fql-dynamo-covering-s1",
+        "--output-root",
+        "runs",
+        "--set",
+        "condition=dynamo",
+        "data.dataset=runs/rwnt-20261110-fqldata-dynamo-covering/dataset.h5",
+        "data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering/split_seed0.json",
+        "data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering/gate_report.json",
+        "train.seed=1",
+        "agent.alpha=100.0",
+        "agent.batch_size=256",
+        "train.offline_steps=1000000",
+        "train.log_interval=5000",
+        "train.eval_interval=100000",
+        "agent.normalize_q_loss=false"
+      ],
+      "role": "realworld_fql",
+      "host": "remote",
+      "gpu": "any",
+      "mem_gb": 6,
+      "ram_gb": 12,
+      "priority": 4,
+      "deps": [
+        "rwnt-20261110-fqldata-dynamo-covering"
+      ],
+      "max_restarts": 2,
+      "oom_score_adj": 0,
+      "realworld_target": "covering",
+      "fql_condition": "dynamo",
+      "fql_seed": 1,
+      "fql_budget": {
+        "offline_steps": 1000000,
+        "batch_size": 256,
+        "alpha": 100.0,
+        "log_interval": 5000,
+        "eval_interval": 100000,
+        "normalize_q_loss": false
+      },
+      "realworld_consumer": "dynamo",
+      "calibration_dependent": false,
+      "gate_level": "image (100-episode gate)",
+      "realworld_gate_sha256": "9f479a2332ece3b4f3edec1283bc4905e8eab42dab0bb59967dec1c5c4b1e916",
+      "planned_commit": "fd3405f97be4a26a5a981d7e642feadce60b3c1b",
+      "remote_host": "192.168.10.22",
+      "pin_host": "remote",
+      "planned_image": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a",
+      "disk_gb": 10,
+      "realworld_inputs": "/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering",
+      "plan_row_id": "rw-fql-dynamo-covering-s1",
+      "realworld_manifest_sha256": "b4a7e1f0a791c4a5d28fcf1189a2af3c2c34e496d7fc2706ae63ffd686195252",
+      "registration_tool": "runs/setup/tools/register_realworld_newtasks_20261110.py",
+      "evidence_manifest": "runs/remote/acceptance/fd3405f-cc/manifest.json",
+      "required_results": [
+        "policy.pt",
+        "metrics.jsonl",
+        "completion.json"
+      ],
+      "fql_setting": "a100",
+      "purpose": "FQLNQ 2026-11-11 (user): comparison baseline agent.alpha=100.0 + agent.normalize_q_loss=false, lowest priority; never staged unless asked"
+    },
+    {
+      "id": "rwa100-20261111-fql-dynamo-covering-s2",
+      "script": "scripts/train_realworld_fql.py",
+      "args": [
+        "--config",
+        "configs/realworld/fql/base.yaml",
+        "--name",
+        "rwa100-20261111-fql-dynamo-covering-s2",
+        "--output-root",
+        "runs",
+        "--set",
+        "condition=dynamo",
+        "data.dataset=runs/rwnt-20261110-fqldata-dynamo-covering/dataset.h5",
+        "data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering/split_seed0.json",
+        "data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering/gate_report.json",
+        "train.seed=2",
+        "agent.alpha=100.0",
+        "agent.batch_size=256",
+        "train.offline_steps=1000000",
+        "train.log_interval=5000",
+        "train.eval_interval=100000",
+        "agent.normalize_q_loss=false"
+      ],
+      "role": "realworld_fql",
+      "host": "remote",
+      "gpu": "any",
+      "mem_gb": 6,
+      "ram_gb": 12,
+      "priority": 4,
+      "deps": [
+        "rwnt-20261110-fqldata-dynamo-covering"
+      ],
+      "max_restarts": 2,
+      "oom_score_adj": 0,
+      "realworld_target": "covering",
+      "fql_condition": "dynamo",
+      "fql_seed": 2,
+      "fql_budget": {
+        "offline_steps": 1000000,
+        "batch_size": 256,
+        "alpha": 100.0,
+        "log_interval": 5000,
+        "eval_interval": 100000,
+        "normalize_q_loss": false
+      },
+      "realworld_consumer": "dynamo",
+      "calibration_dependent": false,
+      "gate_level": "image (100-episode gate)",
+      "realworld_gate_sha256": "9f479a2332ece3b4f3edec1283bc4905e8eab42dab0bb59967dec1c5c4b1e916",
+      "planned_commit": "fd3405f97be4a26a5a981d7e642feadce60b3c1b",
+      "remote_host": "192.168.10.22",
+      "pin_host": "remote",
+      "planned_image": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a",
+      "disk_gb": 10,
+      "realworld_inputs": "/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering",
+      "plan_row_id": "rw-fql-dynamo-covering-s2",
+      "realworld_manifest_sha256": "b4a7e1f0a791c4a5d28fcf1189a2af3c2c34e496d7fc2706ae63ffd686195252",
+      "registration_tool": "runs/setup/tools/register_realworld_newtasks_20261110.py",
+      "evidence_manifest": "runs/remote/acceptance/fd3405f-cc/manifest.json",
+      "required_results": [
+        "policy.pt",
+        "metrics.jsonl",
+        "completion.json"
+      ],
+      "fql_setting": "a100",
+      "purpose": "FQLNQ 2026-11-11 (user): comparison baseline agent.alpha=100.0 + agent.normalize_q_loss=false, lowest priority; never staged unless asked"
+    },
+    {
+      "id": "rwa100-20261111-fql-reviwo-covering-s0",
+      "script": "scripts/train_realworld_fql.py",
+      "args": [
+        "--config",
+        "configs/realworld/fql/base.yaml",
+        "--name",
+        "rwa100-20261111-fql-reviwo-covering-s0",
+        "--output-root",
+        "runs",
+        "--set",
+        "condition=reviwo",
+        "data.dataset=runs/rwnt-20261110-fqldata-reviwo-covering/dataset.h5",
+        "data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering/split_seed0.json",
+        "data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering/gate_report.json",
+        "train.seed=0",
+        "agent.alpha=100.0",
+        "agent.batch_size=256",
+        "train.offline_steps=1000000",
+        "train.log_interval=5000",
+        "train.eval_interval=100000",
+        "agent.normalize_q_loss=false"
+      ],
+      "role": "realworld_fql",
+      "host": "remote",
+      "gpu": "any",
+      "mem_gb": 6,
+      "ram_gb": 12,
+      "priority": 4,
+      "deps": [
+        "rwnt-20261110-fqldata-reviwo-covering"
+      ],
+      "max_restarts": 2,
+      "oom_score_adj": 0,
+      "realworld_target": "covering",
+      "fql_condition": "reviwo",
+      "fql_seed": 0,
+      "fql_budget": {
+        "offline_steps": 1000000,
+        "batch_size": 256,
+        "alpha": 100.0,
+        "log_interval": 5000,
+        "eval_interval": 100000,
+        "normalize_q_loss": false
+      },
+      "realworld_consumer": "fql_reviwo",
+      "calibration_dependent": false,
+      "gate_level": "image (100-episode gate)",
+      "realworld_gate_sha256": "9f479a2332ece3b4f3edec1283bc4905e8eab42dab0bb59967dec1c5c4b1e916",
+      "planned_commit": "fd3405f97be4a26a5a981d7e642feadce60b3c1b",
+      "remote_host": "192.168.10.22",
+      "pin_host": "remote",
+      "planned_image": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a",
+      "disk_gb": 10,
+      "realworld_inputs": "/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering",
+      "plan_row_id": "rw-fql-reviwo-covering-s0",
+      "realworld_manifest_sha256": "b4a7e1f0a791c4a5d28fcf1189a2af3c2c34e496d7fc2706ae63ffd686195252",
+      "registration_tool": "runs/setup/tools/register_realworld_newtasks_20261110.py",
+      "evidence_manifest": "runs/remote/acceptance/fd3405f-cc/manifest.json",
+      "required_results": [
+        "policy.pt",
+        "metrics.jsonl",
+        "completion.json"
+      ],
+      "fql_setting": "a100",
+      "purpose": "FQLNQ 2026-11-11 (user): comparison baseline agent.alpha=100.0 + agent.normalize_q_loss=false, lowest priority; never staged unless asked"
+    },
+    {
+      "id": "rwa100-20261111-fql-reviwo-covering-s1",
+      "script": "scripts/train_realworld_fql.py",
+      "args": [
+        "--config",
+        "configs/realworld/fql/base.yaml",
+        "--name",
+        "rwa100-20261111-fql-reviwo-covering-s1",
+        "--output-root",
+        "runs",
+        "--set",
+        "condition=reviwo",
+        "data.dataset=runs/rwnt-20261110-fqldata-reviwo-covering/dataset.h5",
+        "data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering/split_seed0.json",
+        "data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering/gate_report.json",
+        "train.seed=1",
+        "agent.alpha=100.0",
+        "agent.batch_size=256",
+        "train.offline_steps=1000000",
+        "train.log_interval=5000",
+        "train.eval_interval=100000",
+        "agent.normalize_q_loss=false"
+      ],
+      "role": "realworld_fql",
+      "host": "remote",
+      "gpu": "any",
+      "mem_gb": 6,
+      "ram_gb": 12,
+      "priority": 4,
+      "deps": [
+        "rwnt-20261110-fqldata-reviwo-covering"
+      ],
+      "max_restarts": 2,
+      "oom_score_adj": 0,
+      "realworld_target": "covering",
+      "fql_condition": "reviwo",
+      "fql_seed": 1,
+      "fql_budget": {
+        "offline_steps": 1000000,
+        "batch_size": 256,
+        "alpha": 100.0,
+        "log_interval": 5000,
+        "eval_interval": 100000,
+        "normalize_q_loss": false
+      },
+      "realworld_consumer": "fql_reviwo",
+      "calibration_dependent": false,
+      "gate_level": "image (100-episode gate)",
+      "realworld_gate_sha256": "9f479a2332ece3b4f3edec1283bc4905e8eab42dab0bb59967dec1c5c4b1e916",
+      "planned_commit": "fd3405f97be4a26a5a981d7e642feadce60b3c1b",
+      "remote_host": "192.168.10.22",
+      "pin_host": "remote",
+      "planned_image": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a",
+      "disk_gb": 10,
+      "realworld_inputs": "/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering",
+      "plan_row_id": "rw-fql-reviwo-covering-s1",
+      "realworld_manifest_sha256": "b4a7e1f0a791c4a5d28fcf1189a2af3c2c34e496d7fc2706ae63ffd686195252",
+      "registration_tool": "runs/setup/tools/register_realworld_newtasks_20261110.py",
+      "evidence_manifest": "runs/remote/acceptance/fd3405f-cc/manifest.json",
+      "required_results": [
+        "policy.pt",
+        "metrics.jsonl",
+        "completion.json"
+      ],
+      "fql_setting": "a100",
+      "purpose": "FQLNQ 2026-11-11 (user): comparison baseline agent.alpha=100.0 + agent.normalize_q_loss=false, lowest priority; never staged unless asked"
+    },
+    {
+      "id": "rwa100-20261111-fql-reviwo-covering-s2",
+      "script": "scripts/train_realworld_fql.py",
+      "args": [
+        "--config",
+        "configs/realworld/fql/base.yaml",
+        "--name",
+        "rwa100-20261111-fql-reviwo-covering-s2",
+        "--output-root",
+        "runs",
+        "--set",
+        "condition=reviwo",
+        "data.dataset=runs/rwnt-20261110-fqldata-reviwo-covering/dataset.h5",
+        "data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering/split_seed0.json",
+        "data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering/gate_report.json",
+        "train.seed=2",
+        "agent.alpha=100.0",
+        "agent.batch_size=256",
+        "train.offline_steps=1000000",
+        "train.log_interval=5000",
+        "train.eval_interval=100000",
+        "agent.normalize_q_loss=false"
+      ],
+      "role": "realworld_fql",
+      "host": "remote",
+      "gpu": "any",
+      "mem_gb": 6,
+      "ram_gb": 12,
+      "priority": 4,
+      "deps": [
+        "rwnt-20261110-fqldata-reviwo-covering"
+      ],
+      "max_restarts": 2,
+      "oom_score_adj": 0,
+      "realworld_target": "covering",
+      "fql_condition": "reviwo",
+      "fql_seed": 2,
+      "fql_budget": {
+        "offline_steps": 1000000,
+        "batch_size": 256,
+        "alpha": 100.0,
+        "log_interval": 5000,
+        "eval_interval": 100000,
+        "normalize_q_loss": false
+      },
+      "realworld_consumer": "fql_reviwo",
+      "calibration_dependent": false,
+      "gate_level": "image (100-episode gate)",
+      "realworld_gate_sha256": "9f479a2332ece3b4f3edec1283bc4905e8eab42dab0bb59967dec1c5c4b1e916",
+      "planned_commit": "fd3405f97be4a26a5a981d7e642feadce60b3c1b",
+      "remote_host": "192.168.10.22",
+      "pin_host": "remote",
+      "planned_image": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a",
+      "disk_gb": 10,
+      "realworld_inputs": "/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering",
+      "plan_row_id": "rw-fql-reviwo-covering-s2",
+      "realworld_manifest_sha256": "b4a7e1f0a791c4a5d28fcf1189a2af3c2c34e496d7fc2706ae63ffd686195252",
+      "registration_tool": "runs/setup/tools/register_realworld_newtasks_20261110.py",
+      "evidence_manifest": "runs/remote/acceptance/fd3405f-cc/manifest.json",
+      "required_results": [
+        "policy.pt",
+        "metrics.jsonl",
+        "completion.json"
+      ],
+      "fql_setting": "a100",
+      "purpose": "FQLNQ 2026-11-11 (user): comparison baseline agent.alpha=100.0 + agent.normalize_q_loss=false, lowest priority; never staged unless asked"
+    }
+  ],
+  "plan_refused": {
+    "rw-snerl-covering-pre": [
+      "scene parameters not measured for covering: lookat, pose_scale (configs.SCENE_PARAMETERS)"
+    ],
+    "rw-mvp3d-covering-pre": [
+      "scene parameters not measured for covering: bounds (configs.SCENE_PARAMETERS)"
+    ],
+    "rw-fql-snerl-covering": [
+      "scene parameters not measured for covering: lookat, pose_scale (configs.SCENE_PARAMETERS)"
+    ],
+    "rw-fql-mvp3d_multiview-covering": [
+      "scene parameters not measured for covering: bounds (configs.SCENE_PARAMETERS)"
+    ],
+    "rw-fql-mvp3d_single-covering": [
+      "scene parameters not measured for covering: bounds (configs.SCENE_PARAMETERS)"
+    ]
+  },
+  "counts": {
+    "image-pretrain": 2,
+    "image-dataset": 3,
+    "image-fql": 18
+  },
+  "holds": [
+    {
+      "name": "newtasks-fqlnq-hold-covering-20261112",
+      "active": true,
+      "prefixes": [
+        "rwnq-20261111-fql-dynamo-covering-",
+        "rwnq-20261111-fql-reviwo-covering-"
+      ],
+      "reason": "FQLNQ (user 2026-11-11 ~23:10): the a10nq frozen-encoder FQL rows are released by the coordinator per placement / capacity, as fqlnq-await-placement-20261111; e2e_cnn and e2e_cnn_noaug keep alpha 10 and may run",
+      "rows": [
+        "rwnq-20261111-fql-dynamo-covering-s0",
+        "rwnq-20261111-fql-dynamo-covering-s1",
+        "rwnq-20261111-fql-dynamo-covering-s2",
+        "rwnq-20261111-fql-reviwo-covering-s0",
+        "rwnq-20261111-fql-reviwo-covering-s1",
+        "rwnq-20261111-fql-reviwo-covering-s2"
+      ]
+    },
+    {
+      "name": "newtasks-fqla100-hold-covering-20261112",
+      "active": true,
+      "prefixes": [
+        "rwa100-20261111-fql-dynamo-covering-",
+        "rwa100-20261111-fql-reviwo-covering-"
+      ],
+      "reason": "FQLNQ: alpha=100 / normalize_q_loss=false comparison rows (lowest priority) run after the task's a10nq rows, as fqla100-after-nq-20261111; lift once those are launched (or never, to drop them)",
+      "rows": [
+        "rwa100-20261111-fql-dynamo-covering-s0",
+        "rwa100-20261111-fql-dynamo-covering-s1",
+        "rwa100-20261111-fql-dynamo-covering-s2",
+        "rwa100-20261111-fql-reviwo-covering-s0",
+        "rwa100-20261111-fql-reviwo-covering-s1",
+        "rwa100-20261111-fql-reviwo-covering-s2"
+      ]
+    }
+  ],
+  "jobs_sha256": "d70d530a078f3a7a9959fbf2705998ad5c900aec08de9d1a7bd76efec6c66642",
+  "tool_sha256": "e7371b7c31ce6bcc4d0f6ff5d5abb2abb50de5309bdf962acb14de2a841ccd3b",
+  "registered": true,
+  "not_registered": {
+    "ours": "no plan row: our own real-world pretraining stays deferred (user decision)"
+  },
+  "decisions": {
+    "alpha": 10,
+    "frozen_encoder_fql": "a10nq (alpha 10 + normalize_q_loss) + a100 comparison at priority 4 (FQLNQ 2026-11-11); e2e_cnn / e2e_cnn_noaug alpha 10 unchanged",
+    "gripper": "continuous",
+    "encoders": "task-specific",
+    "snerl_inputs": 3,
+    "single_view": "random camera per sample, fixed through history + paired next obs",
+    "fql_seeds": [
+      0,
+      1,
+      2
+    ],
+    "fql_budget": {
+      "offline_steps": 1000000,
+      "batch_size": 256,
+      "alpha": 10.0,
+      "log_interval": 5000,
+      "eval_interval": 100000
+    },
+    "reward": "success(s') - 1, success at the final frame; every demo labelled success"
+  },
+  "queue_sha256_before": "44df59c9f7cd6bd51132989b33dec5e2c1a67019208b40e7e577e03dd6bd6237",
+  "queue_sha256_after": "0476fb34b77078aece290eb10c0e9bcff8c0a0aafd07ba97435356b29f0764f8",
+  "proof_file": "rw-registration-newtasks-20261110-covering-image.json"
+}

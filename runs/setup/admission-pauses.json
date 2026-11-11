@@ -368,9 +368,6 @@
    "by": "coordinator (user FQL decision 2026-11-11 ~23:10)",
    "reason": "hold the 30 a10nq frozen-encoder FQL rows (alpha=10 + normalize_q_loss) at registration; released id by id: local placement first (idle MIG slices), remote rows as preprocessing/pretraining free GPUs (preprocessing priority; do not delay ongoing pretraining)",
    "ids": [
-    "rwnq-20261111-fql-reviwo-mug-hanging-s0",
-    "rwnq-20261111-fql-reviwo-mug-hanging-s1",
-    "rwnq-20261111-fql-reviwo-mug-hanging-s2",
     "rwnq-20261111-fql-sincro-drawer-open-s1",
     "rwnq-20261111-fql-sincro-drawer-open-s2",
     "rwnq-20261111-fql-sincro-mug-hanging-s0",
@@ -395,12 +392,32 @@
     "rwnq-20261111-fql-mvp3d_multiview-mug-hanging-s1",
     "rwnq-20261111-fql-mvp3d_multiview-mug-hanging-s2",
     "rwnq-20261111b-fql-reviwo-drawer-open-s0",
-    "rwnq-20261111b-fql-reviwo-drawer-open-s1"
+    "rwnq-20261111b-fql-reviwo-drawer-open-s1",
+    "rwnq-20261111-fql-dynamo-covering-s0",
+    "rwnq-20261111-fql-dynamo-covering-s1",
+    "rwnq-20261111-fql-dynamo-covering-s2",
+    "rwnq-20261111-fql-reviwo-covering-s0",
+    "rwnq-20261111-fql-reviwo-covering-s1",
+    "rwnq-20261111-fql-reviwo-covering-s2",
+    "rwnq-20261111-fql-sincro-covering-s0",
+    "rwnq-20261111-fql-sincro-covering-s1",
+    "rwnq-20261111-fql-sincro-covering-s2",
+    "rwnq-20261111-fql-snerl-covering-s0",
+    "rwnq-20261111-fql-snerl-covering-s1",
+    "rwnq-20261111-fql-snerl-covering-s2",
+    "rwnq-20261111-fql-mvp3d_multiview-covering-s0",
+    "rwnq-20261111-fql-mvp3d_multiview-covering-s1",
+    "rwnq-20261111-fql-mvp3d_multiview-covering-s2",
+    "rwnq-20261111-fql-mvp3d_single-covering-s0",
+    "rwnq-20261111-fql-mvp3d_single-covering-s1",
+    "rwnq-20261111-fql-mvp3d_single-covering-s2"
    ],
    "history": [
     "2026-11-11 23:57:50: prefix -> id list; released for local placement: ['rwnq-20261111-fql-reviwo-drawer-open-s0', 'rwnq-20261111-fql-reviwo-drawer-open-s1']",
     "2026-11-12 02:31:03: + replacements ['rwnq-20261111b-fql-reviwo-drawer-open-s0', 'rwnq-20261111b-fql-reviwo-drawer-open-s1']",
-    "2026-11-12 02:44:48: released for local placement (fd3405f local release, thread quota): ['rwnq-20261111-fql-reviwo-drawer-open-s2', 'rwnq-20261111-fql-sincro-drawer-open-s0']"
+    "2026-11-12 02:44:48: released for local placement (fd3405f local release, thread quota): ['rwnq-20261111-fql-reviwo-drawer-open-s2', 'rwnq-20261111-fql-sincro-drawer-open-s0']",
+    "2026-11-12T05:03:52+0900: + covering 6 ids (moved from newtasks-fqlnq-hold-covering-20261112; staged by remote_release.py)",
+    "2026-11-12T06:48:27+0900: + covering geometry 12 ids (moved from newtasks-fqlnq-hold-covering-20261112; staged by remote_release.py; feature-check / native holds still apply)"
    ]
   },
   {
@@ -451,11 +468,31 @@
     "rwa100-20261111-fql-snerl-drawer-open-s2",
     "rwa100-20261111-fql-snerl-mug-hanging-s0",
     "rwa100-20261111-fql-snerl-mug-hanging-s1",
-    "rwa100-20261111-fql-snerl-mug-hanging-s2"
+    "rwa100-20261111-fql-snerl-mug-hanging-s2",
+    "rwa100-20261111-fql-dynamo-covering-s0",
+    "rwa100-20261111-fql-dynamo-covering-s1",
+    "rwa100-20261111-fql-dynamo-covering-s2",
+    "rwa100-20261111-fql-reviwo-covering-s0",
+    "rwa100-20261111-fql-reviwo-covering-s1",
+    "rwa100-20261111-fql-reviwo-covering-s2",
+    "rwa100-20261111-fql-sincro-covering-s0",
+    "rwa100-20261111-fql-sincro-covering-s1",
+    "rwa100-20261111-fql-sincro-covering-s2",
+    "rwa100-20261111-fql-snerl-covering-s0",
+    "rwa100-20261111-fql-snerl-covering-s1",
+    "rwa100-20261111-fql-snerl-covering-s2",
+    "rwa100-20261111-fql-mvp3d_multiview-covering-s0",
+    "rwa100-20261111-fql-mvp3d_multiview-covering-s1",
+    "rwa100-20261111-fql-mvp3d_multiview-covering-s2",
+    "rwa100-20261111-fql-mvp3d_single-covering-s0",
+    "rwa100-20261111-fql-mvp3d_single-covering-s1",
+    "rwa100-20261111-fql-mvp3d_single-covering-s2"
    ],
    "history": [
     "2026-11-11 23:57:50: prefix -> id list (staged release by realworld-ops/fqlnq/tools/remote_release.py)",
-    "2026-11-12 02:26:46: + 12 ours/SNeRL rwa100 ids (follow-up registrar)"
+    "2026-11-12 02:26:46: + 12 ours/SNeRL rwa100 ids (follow-up registrar)",
+    "2026-11-12T05:03:52+0900: + covering 6 ids (moved from newtasks-fqla100-hold-covering-20261112; staged by remote_release.py)",
+    "2026-11-12T06:48:27+0900: + covering geometry 12 ids (moved from newtasks-fqla100-hold-covering-20261112; staged by remote_release.py; feature-check / native holds still apply)"
    ]
   },
   {
@@ -473,12 +510,17 @@
    "name": "fqlnq-snerl-feature-check-20261111",
    "active": true,
    "prefixes": [
-    "rwnq-20261111-fql-snerl-",
-    "rwa100-20261111-fql-snerl-"
+    "rwnq-20261111-fql-snerl-drawer-open-",
+    "rwnq-20261111-fql-snerl-mug-hanging-",
+    "rwa100-20261111-fql-snerl-drawer-open-",
+    "rwa100-20261111-fql-snerl-mug-hanging-"
    ],
    "since": "2026-11-12T02:25:38+0900",
    "by": "coordinator",
-   "reason": "SNeRL a10nq/a100 FQL rows: hold until fqlfeat-snerl-<task>.json passes (realworld-ops/serving/evidence); lifted per task"
+   "reason": "SNeRL a10nq/a100 FQL rows: hold until fqlfeat-snerl-<task>.json passes (realworld-ops/serving/evidence); lifted per task",
+   "history": [
+    "2026-11-12T06:47:33+0900: narrowed to drawer-open/mug-hanging per-task prefixes (same held rows) so covering SNeRL rows are governed by fqlnq-covering-feature-check-20261112"
+   ]
   },
   {
    "name": "fqlnq-stalled-local-attempt-20261112",
@@ -490,6 +532,76 @@
    "since": "2026-11-12T02:31:03+0900",
    "by": "coordinator",
    "reason": "local attempt 1 (00:03) ran without any thread limit (local launch path, fixed in 37bfd30): 325 threads, main thread ~9 % of a core, no step-5000 record after 50+ min, no result. Stopped; never retried under this id (a retry keeps its first pin, refused by the local placement check after fd3405f). Replaced by rwnq-20261111b-fql-reviwo-drawer-open-s0, rwnq-20261111b-fql-reviwo-drawer-open-s1"
+  },
+  {
+   "name": "newtasks-fqlnq-hold-covering-20261112",
+   "active": false,
+   "prefixes": [
+    "rwnq-20261111-fql-mvp3d_multiview-covering-",
+    "rwnq-20261111-fql-mvp3d_single-covering-",
+    "rwnq-20261111-fql-sincro-covering-",
+    "rwnq-20261111-fql-snerl-covering-"
+   ],
+   "since": "2026-11-12T06:47:33+0900",
+   "by": "coordinator",
+   "reason": "FQLNQ (user 2026-11-11 ~23:10): the a10nq frozen-encoder FQL rows are released by the coordinator per placement / capacity, as fqlnq-await-placement-20261111; e2e_cnn and e2e_cnn_noaug keep alpha 10 and may run | published before the covering image-family registration (COV gate 98/98, 2026-11-12 05:05)",
+   "history": [
+    "2026-11-12T06:47:33+0900: image-family prefixes ['rwnq-20261111-fql-dynamo-covering-', 'rwnq-20261111-fql-reviwo-covering-'] retired (ids moved to the staged id lists); reactivated with the geometry-family prefixes before its registration"
+   ],
+   "lifted": "2026-11-12T06:48:27+0900: geometry rows moved into the id-list pause fqlnq-await-placement-20261111 (same hold, staged release)"
+  },
+  {
+   "name": "newtasks-fqla100-hold-covering-20261112",
+   "active": false,
+   "prefixes": [
+    "rwa100-20261111-fql-mvp3d_multiview-covering-",
+    "rwa100-20261111-fql-mvp3d_single-covering-",
+    "rwa100-20261111-fql-sincro-covering-",
+    "rwa100-20261111-fql-snerl-covering-"
+   ],
+   "since": "2026-11-12T06:47:33+0900",
+   "by": "coordinator",
+   "reason": "FQLNQ: alpha=100 / normalize_q_loss=false comparison rows (lowest priority) run after the task's a10nq rows, as fqla100-after-nq-20261111; lift once those are launched (or never, to drop them) | published before the covering image-family registration (COV gate 98/98, 2026-11-12 05:05)",
+   "history": [
+    "2026-11-12T06:47:33+0900: image-family prefixes ['rwa100-20261111-fql-dynamo-covering-', 'rwa100-20261111-fql-reviwo-covering-'] retired (ids moved to the staged id lists); reactivated with the geometry-family prefixes before its registration"
+   ],
+   "lifted": "2026-11-12T06:48:27+0900: geometry rows moved into the id-list pause fqla100-after-nq-20261111 (same hold, staged release)"
+  },
+  {
+   "name": "newtasks-mvp3d-native-fql-feature-check-covering-20261111",
+   "active": true,
+   "prefixes": [
+    "rwnq-20261111-fql-mvp3d_multiview-covering-",
+    "rwnq-20261111-fql-mvp3d_single-covering-",
+    "rwa100-20261111-fql-mvp3d_multiview-covering-",
+    "rwa100-20261111-fql-mvp3d_single-covering-"
+   ],
+   "since": "2026-11-12T06:47:33+0900",
+   "by": "coordinator",
+   "reason": "held until the cell's native fqldata passes the standardised A1 feature check"
+  },
+  {
+   "name": "fqlnq-covering-feature-check-20261112",
+   "active": true,
+   "since": "2026-11-12T06:47:33+0900",
+   "by": "coordinator",
+   "prefixes": [
+    "rwnq-20261111-fql-sincro-covering-",
+    "rwa100-20261111-fql-sincro-covering-",
+    "rwnq-20261111-fql-snerl-covering-",
+    "rwa100-20261111-fql-snerl-covering-"
+   ],
+   "reason": "covering SinCro / SNeRL frozen-encoder FQL rows: hold until rwnt-20261110-fqldata-<cond>-covering passes the frozen-feature check (offset/signal <= 10, LN unit std >= 0.5; rule fixed 2026-11-09, as SinCro/SNeRL/ours on drawer-open + mug-hanging); lifted per cell by realworld-ops/fqlnq/tools/feature_hold_lift.py"
+  },
+  {
+   "name": "covering-mvp3d-pre-native-bounds-check-20261112",
+   "active": true,
+   "since": "2026-11-12T06:47:33+0900",
+   "by": "coordinator",
+   "ids": [
+    "rwnt-20261110-mvp3d-covering-pre"
+   ],
+   "reason": "Codex residual risk (COV d518e31 review): covering MVP3D_BOUNDS were verified on FoundationStereo depth only; re-check robot/object/fixture >= 99 % inside the bounds with scene-stats on the native-depth store (rwnt-20261110-nativedepth-mvp3d-covering store-native.yaml) before 3D-MVP covering pretraining starts"
   }
  ]
 }
