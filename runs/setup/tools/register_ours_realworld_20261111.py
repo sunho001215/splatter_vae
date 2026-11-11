@@ -191,7 +191,7 @@ def task_rows(task, inputs, report, release):
           '--resume', 'auto', '--set', f'data.store={inputs}/store.yaml',
           f'data.split_manifest={inputs}/split_seed0.json', f'data.gate_report={inputs}/gate_report.json',
           f'model.anchor_stats=runs/{stats}/workspace_stats.json'], [stats],
-         ['completion.json', 'metrics.jsonl', 'checkpoints/step_0200000.pt', 'config.yaml']),
+         ['completion.json', 'metrics.jsonl', 'checkpoints/step_0200000.pt']),  # config.yaml is wrapper-written; ops/containers/launch.py refuses it
         ('export', 'scripts/export_encoder.py',
          ['--run', f'runs/{pre}', '--checkpoint', f'runs/{pre}/checkpoints/step_0200000.pt',
           '--out', f'runs/{export}/encoder.pt'], [pre], ['encoder.pt'])]

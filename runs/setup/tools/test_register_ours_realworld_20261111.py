@@ -95,7 +95,7 @@ def test_stdout_dry_run_exact_rows_resources_and_proof(fake, capsys):
     assert rows[2]['args'] == ['--run', f'runs/{pre}', '--checkpoint',
                                f'runs/{pre}/checkpoints/step_0200000.pt', '--out', f'runs/{export}/encoder.pt']
     assert [r['required_results'] for r in rows] == [['workspace_stats.json'],
-        ['completion.json', 'metrics.jsonl', 'checkpoints/step_0200000.pt', 'config.yaml'], ['encoder.pt']]
+        ['completion.json', 'metrics.jsonl', 'checkpoints/step_0200000.pt'], ['encoder.pt']]
     for kind, row in zip(('stats', 'pre', 'export'), rows):
         assert {k: row[k] for k in R.FOOTPRINT[kind]} == R.FOOTPRINT[kind]
         assert row['max_restarts'] == (2 if kind == 'pre' else 1)
