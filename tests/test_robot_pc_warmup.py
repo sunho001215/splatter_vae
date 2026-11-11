@@ -6,6 +6,7 @@ import json
 import threading
 from collections import Counter
 from dataclasses import asdict
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -227,5 +228,29 @@ def test_disabled_gate_never_reads_cameras(cfg):
     assert r["status"] == "disabled" and r["cameras"]["a"]["frames_seen"] == 0
 
 
+def _frames_with_mean(mean_rgb, n=100):
+    """A uint8 frame of n pixels whose per-channel mean equals ``mean_rgb`` to 1/n (the gate reads only means)."""
+    lo = np.floor(mean_rgb)
+    ups = np.rint((mean_rgb - lo) * n).astype(int)
+    px = np.repeat(lo[None], n, 0)
+    for c in range(3):
+        px[: ups[c], c] += 1
+    return px.reshape(10, n // 10, 3).astype(np.uint8)
+
+
 def test_real_recorded_transient():
-    pytest.skip("No small recorded colour transient fixture is available in this worktree")
+    """The worst recorded start-up transient of the 2026-11-11 robot trials (R/B 0.53 -> 1.14; fixture source in the
+    npz): never stable during the cast, stable at the time the gate gave on the full recorded frames (5.80 s)."""
+    z = np.load(Path(__file__).parent / "fixtures/robot_pc/warmup_transient.npz")
+    assert "reviwo/seed0/left/run002" in str(z["source"])
+    gate = ColourStabilityGate(["a"], WarmupConfig(), fps=FPS)
+    settle = None
+    for t, m in zip(z["capture_ns"], z["mean_rgb"]):
+        gate.feed("a", int(t), _frames_with_mean(m))
+        if gate.stable and settle is None:
+            settle = int(t) / 1e9
+        if int(t) < 3_000_000_000:
+            assert not gate.stable  # R/B still rising through 1.06
+    assert settle is not None and abs(settle - 5.80) < 0.07
+    r = gate.result()["a"]
+    assert r["rb_range"] <= 0.02 and 1.13 < r["last_rb"] < 1.15
