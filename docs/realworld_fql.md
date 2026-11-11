@@ -424,7 +424,7 @@ real-world pretraining stays deferred until the architecture is final. 33 rows p
 mug-hanging; the preview lists all four targets, 132): 5 pretraining + 7 dataset builds + 21 FQL runs. Under the
 calibration hold the plan emits only the image-level rows (per task 2 pretraining + 3 dataset builds + 9 FQL runs) and
 lists the rest as refused with the gate's reasons; SNeRL / 3D-MVP are also refused while a task's scene geometry is
-unmeasured (covering, pick-and-place; below).
+unmeasured (pick-and-place; covering was measured 2026-11-12; below).
 
 | Task | FQL condition | Encoder pretraining (task-specific, documented protocol, 1 run) | Observation (extra vs single view) | FQL seeds x budget | GPU / RAM GB | Calibration-dependent |
 |---|---|---|---|---|---|---|

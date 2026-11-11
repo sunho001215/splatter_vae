@@ -13,8 +13,8 @@ final.
 Gating per row: the 100-episode gate of its task, plus the calibration hold for GEOMETRY-DEPENDENT consumers
 (``s4d.rwlearn.gate.CONSUMERS``). A plan under the hold emits the non-geometric rows and lists the held ones under
 ``refused`` with the gate's reasons. A baseline whose scene geometry is not measured for the task yet
-(``s4d.rwlearn.configs.pending_scene_parameters``: SNeRL / 3D-MVP on covering and pick-and-place) is refused the same
-way, with its FQL conditions; the gate-passed tasks with measured scenes plan exactly as before.
+(``s4d.rwlearn.configs.pending_scene_parameters``: SNeRL / 3D-MVP on pick-and-place; covering was measured 2026-11-12) is
+refused the same way, with its FQL conditions; the gate-passed tasks with measured scenes plan exactly as before.
 """
 
 from __future__ import annotations

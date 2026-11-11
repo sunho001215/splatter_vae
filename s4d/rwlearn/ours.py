@@ -45,6 +45,9 @@ VAL_STRIDES = [1, 3]  # Meta-World [2, 6] = 1 and 3 RL steps
 # SCENE_PARAMETERS; least-squares optical-axis intersection, median camera distance 1.055 m), used ONLY for the
 # evaluator's orbit video (a diagnostic panel). None = not measured for the target: the orbit video is skipped.
 ORBIT_DISTANCE_M = 1.055
+# Targets whose rig was measured on their own store (covering 2026-11-12, scene-stats on the 98-episode validated
+# store: median camera distance 1.070 m, configs.COVERING_POSE_SCALE = 4 / 1.070); the other targets use the value above.
+ORBIT_DISTANCES_M = {"covering": 1.070}
 
 
 def sim_original() -> dict:
@@ -105,7 +108,7 @@ def overrides(target: str) -> list[tuple[str, object, str]]:
         ("eval.orbit_center", lookat,
          "diagnostic orbit video only: the rig's measured optical-axis intersection in the robot base frame "
          "(SCENE_PARAMETERS; null = not measured for this target, the orbit video is skipped)"),
-        ("eval.orbit_distance", ORBIT_DISTANCE_M if lookat is not None else None,
+        ("eval.orbit_distance", ORBIT_DISTANCES_M.get(target, ORBIT_DISTANCE_M) if lookat is not None else None,
          "diagnostic orbit video only: the measured median camera distance"),
         ("wandb.project", "splatter4d-realworld", "real-world runs are logged apart from the Meta-World project"),
     ]
