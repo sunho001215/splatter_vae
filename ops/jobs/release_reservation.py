@@ -79,7 +79,7 @@ def validate(doc: dict) -> dict:
     if not isinstance(gpus, dict) or not gpus:
         raise ValueError("release reservation: gpus")
     for uuid, charge in gpus.items():
-        if not isinstance(uuid, str) or not uuid.startswith("GPU-") or not isinstance(charge, dict):
+        if not isinstance(uuid, str) or re.fullmatch(r"(?:GPU|MIG)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", uuid) is None or not isinstance(charge, dict):
             raise ValueError("release reservation: gpu entry")
         for key in ("mem_gb", "load"):
             value = charge.get(key)

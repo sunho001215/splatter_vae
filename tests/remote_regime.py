@@ -41,6 +41,8 @@ def physical_regime(monkeypatch, test_module) -> None:
                 monkeypatch.setattr(module, name, swaps[id(value)])
         if getattr(module, "REMOTE_MIG_ACTIVE", None) is True:
             monkeypatch.setattr(module, "REMOTE_MIG_ACTIVE", False)
+    from ops.containers import verification
+    monkeypatch.setitem(verification.POLICIES, "native_suite", verification.PHYSICAL_NATIVE_POLICY)
     def mapped(value):
         return physical[mig.index(value) % len(physical)] if isinstance(value, str) and value in mig else value
 

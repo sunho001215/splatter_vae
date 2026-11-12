@@ -487,7 +487,9 @@ def test_remote_controllers_take_their_devices_from_the_guard():
         assert "4391fcee" not in text, relative
     driver = (REPO / "ops/campaign/remote_campaign_driver.py").read_text()
     assert "GPUS = tuple(APPROVED_HOST_GPUS['remote'])" in driver and "<= 90" not in driver and "GPU_CAP[g]" in driver
-    assert "range(len(APPROVED_HOST_GPUS['remote']))" in (REPO / "ops/campaign/release_chain.py").read_text()
+    source = (REPO / "ops/campaign/release_chain.py").read_text()
+    assert "self.gpus = list(APPROVED_HOST_GPUS['remote'])" in source
+    assert "range(len(self.gpus))" in source
 
 
 def test_snapshot_mig_mode_conflicts():
@@ -1011,3 +1013,28 @@ def test_slot_guard_rechecks_the_parent_mig_mode_inside_the_lock(slot_evidence, 
     (tmp_path / "query").write_text(render_query([(PARENTS[0], True)], mode=("Enabled", "Disabled")))
     code, verdict = run_slot(slot_evidence)
     assert code != 0 and not verdict["admit"]
+
+
+def test_release_reservation_accepts_all_16_mig_slots_and_charges_exclusively(monkeypatch):
+    from ops.jobs import release_reservation as rr, scheduler
+    from ops.resources import gpu_guard
+    import importlib.util
+
+    monkeypatch.setattr(gpu_guard, 'REMOTE_MIG_ACTIVE', True)
+    spec = importlib.util.spec_from_file_location('mig_verification_policy', REPO / 'ops/containers/verification.py')
+    verification = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(verification)
+    assert verification.POLICIES['native_suite'][3] == 12
+    gpus = [i['uuid'] for i in inv.validate_allowlist(allowlist())]
+    native = dict(mem_gb=verification.POLICIES['native_suite'][3], load=1, ram_gb=96, cpu_threads=32, disk_gb=1)
+    isolation = dict(mem_gb=4, load=0, ram_gb=8, cpu_threads=8, disk_gb=1)
+    for stage in ('native', 'isolation'):
+        doc = rr.validate(rr.plan(C1, C1[:7], stage, gpus[0], gpus, native=native, isolation=isolation))
+        assert len(doc['gpus']) == 16 and len(doc['jobs']) == (17 if stage == 'native' else 16)
+        charges = rr.charges(doc)
+        limits = inv.queue_limits(inv.validate_allowlist(allowlist()))
+        assert max(c['mem_gb'] for c in charges['gpus'].values()) <= 22.625
+        phantom = [dict(host='remote', gpu=g, mem_gb=c['mem_gb']) for g, c in charges['gpus'].items()]
+        assert scheduler.choose_gpu(dict(host='remote', gpu='any', mem_gb=1), limits, phantom, set()) is None
+    with pytest.raises(ValueError, match='gpu entry'):
+        rr.validate({**doc, 'gpus': {'MIG-malformed': dict(mem_gb=1, load=0)}})

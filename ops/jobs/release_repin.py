@@ -36,7 +36,7 @@ from ops.jobs.migration import commit_reader, import_closure  # noqa: E402
 REPIN_OPERATIONAL = frozenset({"ops/resources/gpu_guard.py", "ops/resources/mig_inventory.py", "mujoco_mig_setup.py",
                                "configs/hosts/remote.yaml", "configs/hosts/remote-mig.yaml",
                                # runtime provenance: accepts exactly the recorded re-pin transition (Codex #6)
-                               "ops/jobs/run_identity.py"})
+                               "ops/jobs/run_identity.py", "ops/containers/verification.py"})
 REPIN_CONFIG_SCOPE = ("configs/realworld/", "configs/metaworld/", "configs/rl/", "configs/baselines/")
 REPIN_ENVIRONMENT = ("uv.lock", "pyproject.toml")
 STOPPED = {"crashed", "pending", "failed"}
@@ -126,7 +126,7 @@ def main(argv=None) -> int:
     parser.add_argument("--to-commit", required=True)
     parser.add_argument("--to-image", required=True)
     parser.add_argument("--authorization", default="")
-    parser.add_argument("--mig-base", required=True, help="the commit the reviewed MIG patch is based on (8299442)")
+    parser.add_argument("--mig-base", required=True, help="the main commit the rebased reviewed MIG patch is based on (c7d0538)")
     parser.add_argument("--mig-head", required=True, help="the reviewed MIG head whose patch the variant carries")
     parser.add_argument("job_id")
     args = parser.parse_args(argv)

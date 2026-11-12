@@ -33,7 +33,7 @@ from ops.jobs.migration import commit_reader  # noqa: E402
 from ops.jobs.release_repin import scope_comparison  # noqa: E402
 
 VARIANT_FILES = ("ops/resources/gpu_guard.py", "ops/resources/mig_inventory.py", "mujoco_mig_setup.py",
-                 "ops/jobs/run_identity.py", "scripts/check_gpu_isolation.py")
+                 "ops/jobs/run_identity.py", "scripts/check_gpu_isolation.py", "ops/containers/verification.py")
 CONFIG_FILES = ("configs/hosts/remote.yaml", "configs/hosts/remote-mig.yaml")
 CONFTEST_MARKER = "from remote_regime import _s4d_remote_regime"
 # the base's own test suite keeps testing the physical launch-side regime it was written for (tests/remote_regime.py
@@ -59,11 +59,17 @@ def mig_patch(root: Path, mig_base: str, mig_head: str, files=VARIANT_FILES) -> 
     return git(root, "diff", "--binary", "--full-index", mig_base, mig_head, "--", *files)
 
 
+def scratch_root(root: Path) -> Path:
+    path = root / "runs/setup/mig-variants"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
 def expected_operational(root: Path, base: str, mig_base: str, mig_head: str) -> dict[str, bytes | None]:
     """The container-side files a MIG variant of ``base`` must contain: ``base`` + exactly the MIG patch (computed in a
     temporary worktree). release_repin accepts an operational difference only when it equals this."""
     patch = mig_patch(root, mig_base, mig_head)
-    work = Path(tempfile.mkdtemp(prefix="mig-expected-"))
+    work = Path(tempfile.mkdtemp(prefix="mig-expected-", dir=scratch_root(root)))
     tree = work / "tree"
     try:
         git(root, "worktree", "add", "--detach", str(tree), base)
@@ -86,7 +92,7 @@ def create(root: Path, base: str, mig_base: str, mig_head: str, configs: Path, s
     for name in CONFIG_FILES:
         if not (configs / name).is_file():
             raise VariantError(f"missing rendered {name} (ops/resources/mig_inventory.py render)")
-    work = Path(tempfile.mkdtemp(prefix="mig-variant-"))
+    work = Path(tempfile.mkdtemp(prefix="mig-variant-", dir=scratch_root(root)))
     tree = work / "tree"
     try:
         git(root, "worktree", "add", "--detach", str(tree), base)
@@ -108,7 +114,9 @@ def create(root: Path, base: str, mig_base: str, mig_head: str, configs: Path, s
             git(tree, "add", name)
         message = (f"MIG variant of {base[:7]}: the remote MIG allowlist and its container-side consumers only\n\n"
                    f"Applied: git diff {mig_base[:7]}..{mig_head[:7]} -- {' '.join(VARIANT_FILES)}; rendered "
-                   f"{' + '.join(CONFIG_FILES)}. Science, configs and data paths are those of {base[:7]}.")
+                   f"{' + '.join(CONFIG_FILES)}. Science, configs and data paths are those of {base[:7]}.\n\n"
+                   "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>\n"
+                   "Claude-Session: https://claude.ai/code/session_01BEbT9ktFZP79xBaM3VYaeK\n")
         git(tree, "-c", f"user.name={author[0]}", "-c", f"user.email={author[1]}", "commit", "-q", "-m", message)
         variant = git(tree, "rev-parse", "HEAD").decode().strip()
     finally:

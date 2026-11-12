@@ -12,7 +12,7 @@ from collections.abc import Mapping
 from pathlib import Path, PurePosixPath
 
 from ops.containers import suite_partition
-from ops.resources.gpu_guard import APPROVED_HOST_GPUS, LOCAL_MIG_PARENTS
+from ops.resources.gpu_guard import APPROVED_HOST_GPUS, LOCAL_MIG_PARENTS, REMOTE_MIG_ACTIVE
 
 ROOT = "/home/compu/kaist/sunho"
 # CPU threads a typed verification job is prepared with (prepare_remote_verification) and reserved for (release_chain)
@@ -23,6 +23,12 @@ POLICIES = {
     "native_suite": ("scripts/run_tests.py", 7200, 96, 32, ("tests.json", "tests.log", "tests.junit.xml")),
     "gpu_isolation": ("scripts/check_gpu_isolation.py", 1200, 8, 4, ("gpu_isolation.json",)),
 }
+# A native suite executes on one exclusive 1g.24gb slice. Keep the established 12 GiB
+# verification declaration in MIG mode; the physical-host policy remains unchanged.
+PHYSICAL_NATIVE_POLICY = POLICIES["native_suite"]
+if REMOTE_MIG_ACTIVE:
+    POLICIES["native_suite"] = (*PHYSICAL_NATIVE_POLICY[:3], 12, PHYSICAL_NATIVE_POLICY[4])
+
 HEX64 = re.compile(r"[0-9a-f]{64}\Z")
 LOCAL_DEVICES = set(APPROVED_HOST_GPUS["local"]) | set(LOCAL_MIG_PARENTS)
 
