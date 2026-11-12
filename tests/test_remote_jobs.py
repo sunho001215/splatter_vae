@@ -1883,12 +1883,22 @@ def test_pretraining_budget_must_be_complete_before_same_host_release(tmp_path, 
     assert [payload["id"] for payload in backend.launches] == (["dependent"] if released else [])
 
 
-@pytest.mark.parametrize("steps,configured,released", [(10, 10, True), (9, 10, False), (10, None, False),
-                                                        (10, "10", False)])
+@pytest.mark.parametrize("steps,configured,released", [
+    (10, 10, True), (9, 10, False), (10, None, False), (10, "10", False), (1, True, False), (10, 10.0, False),
+    (0, 0, False), (-10, -10, False),
+    (10, {"steps": 10, "stop_step": 5}, False),  # early stop: completion.json still records train.steps
+    (10, {"steps": 10, "stop_step": 10}, True), (10, {"steps": 10, "stop_step": None}, True),
+    (10, {"steps": 10, "stop_step": 5.5}, False), (10, {"steps": 10, "stop_step": True}, False),
+    (10, {"steps": 10, "stop_step": "5"}, False),
+    # falsy stop_step is no early stop in s4d/train/loop.py; a float stop ends at int(stop_step) (Codex re-review)
+    (10, {"steps": 10, "stop_step": 0}, True), (10, {"steps": 10, "stop_step": False}, True),
+    (10, {"steps": 10, "stop_step": 10.0}, True), (10, {"steps": 10, "stop_step": 12}, True),
+    (10, {"steps": 10, "stop_step": 10 ** 309}, True)])  # beyond float range: no OverflowError (Codex re-review)
 def test_pretraining_without_a_steps_override_is_held_to_its_recorded_configured_budget(tmp_path, monkeypatch, steps,
                                                                                         configured, released):
     """2026-11-12: the real-world ours rows set no train.steps= override (their budget is the configuration file's);
-    the budget is then the provenance numeric_config's train.steps, never a missing or non-integer value."""
+    the budget is then the provenance numeric_config's train.steps, never a missing, non-integer or nonpositive value,
+    and never for a run whose train.stop_step ends it before that budget (Codex review 2026-11-12)."""
     args = ["--config", "x.yaml", "--set", "train.seed=0"]
     required = ["completion.json", "metrics.jsonl"]
     queued = write_queue(tmp_path, [job(script="scripts/train.py", args=args, required_results=required),
@@ -1897,7 +1907,8 @@ def test_pretraining_without_a_steps_override_is_held_to_its_recorded_configured
     backend.value.containers["s4d-r-a1"] = inspected(status="exited")
     launch_event(tmp_path, script="scripts/train.py", args=args, required_results=required)
     original = backend.sync_results
-    numeric = {"train": {"seed": 0, **({} if configured is None else {"steps": configured})}}
+    train = configured if isinstance(configured, dict) else ({} if configured is None else {"steps": configured})
+    numeric = {"train": {"seed": 0, **train}}
     digest = hashlib.sha256(json.dumps(numeric, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
     def trained(run_id, final=False, **kwargs):
@@ -1918,6 +1929,8 @@ def test_pretraining_without_a_steps_override_is_held_to_its_recorded_configured
     assert ("remote_verified" in state["r"]) is released
     if released:
         assert state["r"]["remote_verified"]["checks"]["steps"] == 10
+    else:
+        assert "did not complete its configured budget" in state["r"]["remote_verification_failed"]["reason"]
     assert [payload["id"] for payload in backend.launches] == (["dependent"] if released else [])
 
 

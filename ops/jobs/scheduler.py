@@ -622,7 +622,13 @@ def _verify_remote_exit(run_id: str, state: dict, report: dict, registry_state: 
             numeric = record_of("provenance.json").get("numeric_config")
             train = numeric.get("train") if isinstance(numeric, dict) else None
             configured = train.get("steps") if isinstance(train, dict) else None
-            target = configured if type(configured) is int and configured > 0 else None
+            # completion.json records train.steps even when train.stop_step ends the loop earlier (s4d/train/loop.py
+            # end_step), so a fallback budget is accepted only for a run with no early stop (Codex review 2026-11-12)
+            # As the loop reads it: a falsy stop_step is no early stop, else training ends at int(stop_step)
+            stop = train.get("stop_step") if isinstance(train, dict) else None
+            full = not stop or ((type(stop) is int or (type(stop) is float and math.isfinite(stop)))
+                                and type(configured) is int and int(stop) >= configured)
+            target = configured if type(configured) is int and configured > 0 and full else None
         if target is None or completion.get("status") != "completed" or completion.get("steps") != int(target):
             raise RemoteJobError("Remote pretraining did not complete its configured budget")
         checks["steps"] = int(target)
