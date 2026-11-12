@@ -241,7 +241,8 @@ def test_watcher_internal_error_prints_marker(tmp_path):
     script.write_text((REPO / "ops/resources/watch_events.py").read_text())
     for name in ("ops/__init__.py", "ops/resources/__init__.py", "ops/resources/nvidia_query.py",
                  "ops/resources/gpu_guard.py", "ops/resources/mig_inventory.py",
-                 "configs/hosts/local.yaml"):  # the query helper and allowlist source (+ the remote MIG allowlist loader)
+                 "configs/hosts/local.yaml", "configs/hosts/remote.yaml",
+                 "configs/hosts/remote-mig.yaml"):  # the query helper and allowlist sources (local + remote MIG allowlist)
         (tmp_path / name).parent.mkdir(parents=True, exist_ok=True)
         (tmp_path / name).write_text((REPO / name).read_text())
     (tmp_path / "experiments").mkdir()
