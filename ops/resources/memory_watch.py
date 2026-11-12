@@ -5,8 +5,11 @@ memory.current minus verified clean disk-backed file cache).
                                     memory and I/O pressure, host MemAvailable, and the latest step time of every
                                     running local pretraining run (training speed)
     memory_watch.py fits BYTES      exit 0 when BYTES more (e.g. a test suite: memory_budget.SUITE_RESERVE +
-                                    SUITE_HEADROOM) fit: budget usage + the running jobs' remaining growth + BYTES +
-                                    transient overhead <= ceiling, and host MemAvailable - BYTES >= the host reserve
+                                    SUITE_HEADROOM) fit: budget usage + the running jobs' remaining growth + BYTES <=
+                                    TRAINING_CEILING, and host MemAvailable - BYTES >= the host reserve
+    memory_watch.py fits-staging BYTES  policy staging: BYTES <= STAGING_RESERVE, actual budget usage + BYTES +
+                                    transient overhead <= the unchanged 150 GB ceiling, and the same host reserve.
+                                    Measured actual usage includes staging; unused training reservations do not block it.
     memory_watch.py alert           print MEMORY_ALERT and exit 0 when budget usage >= 147 GB, memory pressure
                                     (PSI full avg60) >= 5 %, I/O pressure (PSI full avg60) >= 20 %, or host
                                     MemAvailable < 60 GiB (the scheduler's host reserve); else exit 1
@@ -24,11 +27,7 @@ ROOT = Path('/home/ws/ws/splatter4d')
 ALERT_BUDGET = 147_000_000_000
 ALERT_PSI_FULL_AVG60 = 5.0
 ALERT_IO_FULL_AVG60 = 20.0
-# scripts/train_sac.py (2026-10-28): measured 2.0-2.2 GB RSS for frozen-encoder SAC (csw4, ReViWo, 3D-MVP A, 100k-latent replay);
-# charged as the DrM trainer's 3.5 GB
-MEASURED = {'scripts/train.py': 10.77e9, 'scripts/train_rl.py': 3.5e9, 'scripts/train_sac.py': 3.5e9,
-            'scripts/eval_rl.py': 4.5e9,
-            'scripts/evaluate.py': 10.0e9}
+from ops.jobs.footprints import MEASURED, local_footprint
 
 
 def running_local():
@@ -41,11 +40,16 @@ def running_local():
 
 
 def remaining_growth(active):
+    """Same footprint as baseline admission: current queue (including measured
+    FQL policy), not stale launch-time RAM. Unknown queue rows keep registry RAM.
+    Subtract measured non-file PSS, so already-used memory is never charged twice.
+    """
     pss = mb.session_nonfile_pss()
     total = 0
+    by_id = {i: job for i, (_, job) in active.items() if job}
     for _, (s, job) in active.items():
-        footprint = MEASURED.get(job.get('script'), float(s.get('ram_gb', job.get('ram_gb', 0))) * 2**30)
-        total += max(0, int(footprint) - pss.get(int(s.get('pid', -1)), 0))
+        footprint = local_footprint(job, by_id) if job else float(s.get('ram_gb', 0)) * 2**30
+        total += max(0, int(footprint) - pss.get(int(s.get('pid') or -1), 0))
     return total
 
 
@@ -82,13 +86,18 @@ def main():
                           'io_psi_some_avg60': s['io_pressure'].get('some', {}).get('avg60'), 'io_psi_full_avg60': io_full,
                           'host_mem_available': s['host_mem_available'], 'step_time': step_times(running_local())}))
         return 0
-    if mode == 'fits':
+    if mode in ('fits', 'fits-staging'):
         extra = int(float(sys.argv[2]))
-        growth = remaining_growth(running_local())
+        staging = mode == 'fits-staging'
+        growth = 0 if staging else remaining_growth(running_local())
         total = s['budget_usage'] + growth + extra + mb.TRANSIENT_OVERHEAD
-        ok = total <= mb.CEILING and s['host_mem_available'] - extra >= mb.HOST_RESERVE
+        limit = mb.CEILING if staging else mb.TRAINING_CEILING + mb.TRANSIENT_OVERHEAD
+        ok = (extra >= 0 and total <= limit and (not staging or extra <= mb.STAGING_RESERVE)
+              and s['host_mem_available'] - extra >= mb.HOST_RESERVE)
         print(json.dumps({'fits': ok, 'budget_usage': s['budget_usage'], 'remaining_growth': growth, 'extra': extra,
                           'transient': mb.TRANSIENT_OVERHEAD, 'projected': total, 'ceiling': mb.CEILING,
+                          'mode': mode, 'staging_reserve': mb.STAGING_RESERVE,
+                          'training_ceiling': mb.TRAINING_CEILING, 'admission_ceiling': limit,
                           'host_mem_available': s['host_mem_available']}))
         return 0 if ok else 1
     if mode == 'alert':

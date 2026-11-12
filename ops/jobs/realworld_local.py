@@ -8,6 +8,7 @@ mtime at admission, small files are hashed again. ``verify`` can audit every byt
 
 Placement compares the pinned release's execution scope once, under the placement locks, and records the digests in
 both ownership and pool records. Launch compares that scope against the tick's source identity without git reads.
+Training capacity uses TRAINING_CEILING, leaving the fixed 2 GB staging reserve inside 150 GB.
 No campaign driver is imported here. Network access is confined to the explicitly requested plan/fetch operations;
 remote commands only read files, and downloads use RemoteClient's shared budget and verified atomic placement.
 """
@@ -940,13 +941,14 @@ def closeout(job_id: str, state: dict, job: dict, finished_dir: Path = FINISHED_
 
 
 def _capacity(queue: dict, state: dict) -> dict:
+    """Training capacity leaves the fixed policy-staging reserve inside 150 GB."""
     from ops.resources import memory_budget as mb
     pss = mb.session_nonfile_pss()
     by_id = {j["id"]: j for j in queue["jobs"]}
     growth = sum(max(0, max(float(s.get("ram_gb", 0)), float(by_id.get(i, {}).get("ram_gb", 0))) * 2**30
                      - pss.get(int(s.get("pid") or -1), 0)) for i, s in state.items()
                  if s.get("host", "local") == "local" and s.get("status") in ("running", "launching", "sync_pending"))
-    return {"ram_free_bytes": max(0, mb.CEILING - mb.TRANSIENT_OVERHEAD - mb.snapshot()["budget_usage"] - growth)}
+    return {"ram_free_bytes": max(0, mb.TRAINING_CEILING - mb.snapshot()["budget_usage"] - growth)}
 
 
 def main() -> None:

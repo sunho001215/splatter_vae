@@ -1,5 +1,6 @@
 """One pass of the local Stage 2 driver: verify finished pretraining/evaluations/exports/RL, prepare evaluation configs,
-admit eligible jobs one by one under the local full-charge cap through scripts/jobs.py. Never deletes anything.
+admit eligible jobs one by one under TRAINING_CEILING (150 GB less transient
+overhead and the fixed 2 GB policy-staging reserve), less validation reservations, through scripts/jobs.py. Never deletes anything.
 
     python -I stage2_local_driver.py [--dry-run]
 """
@@ -32,7 +33,7 @@ from ops.resources.reservations import validation_reservation as _validation_res
 
 
 VALIDATION_RESERVATION = _validation_reservation()
-CAP = mb.CEILING - mb.TRANSIENT_OVERHEAD - VALIDATION_RESERVATION
+CAP = mb.TRAINING_CEILING - VALIDATION_RESERVATION
 TRAINER_PSS = 10.77e9  # measured trainer peak PSS (user rule)
 # Measured splatter4d DrM peaks (2026-10-14): trainer RSS <= 2.65 GB at 1M (runs/s3-drm-splatter4d-*/final.json),
 # local session PSS 2.80 GB at 667k; evaluator session PSS 3.5-3.8 GB. ~25% margin. Other jobs: declared ram_gb.

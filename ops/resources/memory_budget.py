@@ -13,9 +13,14 @@ can drop at any time without writeback. (Earlier definitions, kept in memory_bud
 set max(0, memory.current - inactive_file), which counted clean active dataset cache; that share swung 2.6-62 GB with
 the multi-generational LRU's aging.)
 
-The ceiling stays 150,000,000,000 bytes. Admission (baseline/stage2 local drivers) requires
+The ceiling stays 150,000,000,000 bytes. A fixed 2,000,000,000-byte policy-staging
+reserve sits inside that budget. Training/suite admission uses TRAINING_CEILING
+(ceiling minus transient overhead minus staging reserve); staging measures actual
+budget usage, fits within STAGING_RESERVE, retains transient overhead, and must
+also respect host MemAvailable. Training reservations cannot block staging.
+Admission (baseline/stage2 local drivers) requires
 
-    budget_usage + remaining growth of every running job + candidate peak footprint + transient overhead <= ceiling,
+    budget_usage + remaining growth of every running job + candidate peak footprint <= TRAINING_CEILING,
 
 where a running job's remaining growth is its measured peak footprint minus its current non-file PSS
 (Pss_Anon + Pss_Shmem). No dataset-cache allowance is needed: clean dataset cache is excluded. A full native test
@@ -30,6 +35,8 @@ from pathlib import Path
 CGROUP = Path('/sys/fs/cgroup')
 CEILING = 150_000_000_000
 TRANSIENT_OVERHEAD = 10_000_000_000  # the previous 140 GB admission ceiling kept the same 10 GB margin
+STAGING_RESERVE = 2_000_000_000
+TRAINING_CEILING = CEILING - TRANSIENT_OVERHEAD - STAGING_RESERVE
 SUITE_RESERVE = 40_000_000_000  # full native suite (scripts/run_tests.py): +40 GB measured 2026-10-21
 SUITE_HEADROOM = 10_000_000_000
 HOST_RESERVE = 60 * 2**30  # the scheduler's host MemAvailable reserve

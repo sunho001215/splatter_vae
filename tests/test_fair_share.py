@@ -126,7 +126,7 @@ def test_driver_integration_uses_all_active_local_jobs_and_preserves_order():
     assert "trainer_blocked = fair['blocked']" in source
     assert "for i, current in state.items() if current.get('host', 'local') == 'local'" in source
     assert "jobs.reservation(current, by_queue.get(i, {}), 'mem_gb')" in source
-    assert "max(MEASURED[job['script']], float(job.get('ram_gb', 0)) * 2**30)" in source
+    assert "return local_footprint(job," in source  # shared with memory_watch remaining growth
     assert "job_class(job, by_queue).domain or 'metaworld'" in source
     assert source.index("candidates.sort(") < source.index("fair_candidates =")
 

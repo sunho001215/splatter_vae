@@ -1,6 +1,6 @@
 """One pass of local admission for the new-baseline jobs (registrations listed below), job by job under the local
 full-charge cap through the scheduler. Same accounting as stage2_local_driver.py (cgroup budget usage + remaining
-growth of every active local job, 150 GB budget less transient/validation reservations) and the same lock file, so the two
+growth of every active local job, 150 GB budget less transient, fixed 2 GB staging, and validation reservations) and the same lock file, so the two
 drivers never admit at the same time. Never deletes anything.
 
     python -I baseline_local_driver.py [--dry-run]
@@ -33,7 +33,7 @@ from ops.resources.reservations import validation_reservation as _validation_res
 
 
 VALIDATION_RESERVATION = _validation_reservation()
-CAP = mb.CEILING - mb.TRANSIENT_OVERHEAD - VALIDATION_RESERVATION
+CAP = mb.TRAINING_CEILING - VALIDATION_RESERVATION
 # The local sanity set moved to the remote (baselines-sanity-remote-registration-20261016.json). Only the evaluator of the
 # kept local pair `bxs-dynamo-hammer-rand-s1000` (trainer done locally) is still admitted here (2026-10-17).
 # Eight-task runs (2026-10-17): the local rows of baselines-eight-task-registration-20261017.json (DynaMo and 3D-MVP
@@ -174,30 +174,9 @@ def session_pss():
 
 
 def footprint(job):
-    from ops.jobs.footprints import fql_ram_gb
+    from ops.jobs.footprints import local_footprint
 
-    measured = fql_ram_gb(job)
-    if measured is not None:
-        return int(measured * 2**30)
-    # DrM rows use the measured campaign footprints (scheduling rule: measured, not declared; observed baseline DrM
-    # trainers 2.7-3.4 GB and evaluators ~1.9 GB RSS on 2026-10-17); other new-baseline jobs: declared ram_gb.
-    args = job['args']
-    if job['script'] == 'scripts/train_rl.py' and '--encoder' in args and args[args.index('--encoder') + 1] == 'cnn':
-        # end-to-end CNN DrM (2026-10-24): its pixel replay (49 GB at 1M steps) is a mapped memmap whose resident
-        # pages count in the budget (Pss_File) and grow with the steps; charge the declared ram_gb (48)
-        return int(float(job['ram_gb']) * 2**30)
-    if job['script'] in ('scripts/train_rl.py', 'scripts/eval_rl.py'):
-        # + the trainer's preallocated replay file, which DrM sampling keeps resident in the page cache (measured
-        # 2026-10-17: DynaMo 1.1 GB, 3D-MVP 2.5 GB; evicting it refills within minutes)
-        # (the replay file's clean page cache is excluded from the budget since 2026-10-21, option (b))
-        return int(MEASURED[job['script']])
-    if job['script'] == 'scripts/train.py':  # our pretraining trainer: measured 10.77 GB max sampled PSS (rule 2026-10-11)
-        return int(max(MEASURED[job['script']], float(job.get('ram_gb', 0)) * 2**30)
-                   if host_roles.job_class(job, by_queue).domain in ('realworld', 'droid')
-                   else MEASURED[job['script']])
-    if job['script'] == 'scripts/train_sac.py' and job.get('host', 'local') == 'local':  # frozen-encoder SAC (2026-10-28)
-        return int(MEASURED[job['script']])
-    return int(float(job['ram_gb']) * 2**30)
+    return local_footprint(job, globals().get('by_queue', {}))
 
 
 # Baselines rank below the registered Stage 2 work (user 2026-10-13): yield while any local Stage 2 job is waiting
