@@ -72,6 +72,15 @@ RESOLVERS[FQL_DATASET] = {"inputs": ("--store", "--gate-report", "--outcomes", "
 # ingestion verified (realworld-ops/ingest/manifest.json); the builder checks each file's sha256 before reading it.
 REMOTE_RAW_ROOT = "/home/compu/kaist/sunho/data/real_world"
 LOCAL_RAW_ROOT = Path("/home/ws/data/real_world")
+# the image family's dataset conditions (pick-and-place, 2026-11-13); other conditions read further store fields (e.g.
+# native depth overlays) that this resolver does not inventory (Codex review)
+LOCAL_DATASET_CONDITIONS = ("dynamo", "reviwo", "e2e_cnn")
+# the consumed configuration fields of the baseline trainers that name inputs: each must be a mirrored remote path
+BASELINE_INPUT_FIELDS = (("dataset", "hdf5_path"), ("data_interface", "split_manifest"),
+                         ("data_interface", "gate_report"))
+# consumers whose LOCAL run dependencies must carry a matching closeout record (realworld_local.py closeout: required
+# results present, nonempty, hashed) - the scheduler marks a local exit-0 run done without that check (Codex review)
+CLOSEOUT_CONSUMERS = ("scripts/realworld_fql_dataset.py", "scripts/train_realworld_fql.py")
 REMOTE_LOCK = REPO / "runs/setup/remote-driver.lock"
 
 
@@ -206,6 +215,10 @@ def _arguments(job: dict):
         if not output.startswith(f"runs/{job['id']}/"):
             raise LocalInputError("local output must be runs/<own id>/<file>")
     if script == FQL_DATASET:
+        if known.condition not in LOCAL_DATASET_CONDITIONS:
+            raise LocalInputError(f"local dataset construction supports {LOCAL_DATASET_CONDITIONS} only")
+        if _rel(known.out) != f"runs/{job['id']}/dataset.h5":
+            raise LocalInputError("local dataset --out must be runs/<own id>/dataset.h5")
         if _mapped(known.store) is None or PurePosixPath(known.store).name != "store.yaml":
             raise LocalInputError("local dataset --store must name a mirrored compact store.yaml")
         for option, value in (("--gate-report", known.gate_report), ("--outcomes", known.outcomes)):
@@ -609,9 +622,52 @@ def _resolved_paths(job: dict, root: Path, remote_prefix: str = REMOTE_PREFIX, *
     return found
 
 
+def _baseline_fields(job: dict, root: Path, remote_prefix: str) -> None:
+    """The configuration a baseline trainer resolves from the QUEUE arguments must name its store / split / gate as
+    mirrored remote files (no relative, local or inline spelling) and load no external pretrained weights."""
+    from s4d.config import load_config
+
+    args = [str(a) for a in job.get("args", [])]
+    parser = argparse.ArgumentParser(add_help=False, allow_abbrev=False, exit_on_error=False)
+    parser.add_argument("--config", required=True)
+    parser.add_argument("--set", nargs="*", default=[])
+    try:
+        known, _ = parser.parse_known_args(args)
+        cfg = load_config([root / known.config], known.set)
+    except (argparse.ArgumentError, SystemExit, OSError, ValueError, TypeError, AttributeError, yaml.YAMLError) as exc:
+        raise LocalInputError(f"cannot resolve the trainer configuration: {exc}") from exc
+    for section, key in BASELINE_INPUT_FIELDS:
+        value = (cfg.get(section) or {}).get(key)
+        if not isinstance(value, str) or _mapped(value, remote_prefix) is None:
+            raise LocalInputError(f"{section}.{key} must name a mirrored remote input, not {value!r}")
+    if PurePosixPath(cfg["dataset"]["hdf5_path"]).name != "store.yaml":
+        raise LocalInputError("dataset.hdf5_path must name a mirrored compact store.yaml")
+    todo = [cfg]
+    while todo:
+        node = todo.pop()
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if key == "pretrained" and value is not False:
+                    raise LocalInputError("local baseline pretraining loads no external pretrained weights "
+                                          "(every 'pretrained' must be false)")
+                todo.append(value)
+        elif isinstance(node, list):
+            todo += node
+
+
+def _plain_descriptor(path: Path) -> None:
+    """The new resolvers read only ``kind`` + ``paths`` of a compact descriptor (no overlays / extra sources)."""
+    spec = yaml.safe_load(path.read_bytes())
+    if not isinstance(spec, dict) or set(spec) != {"kind", "paths"}:
+        raise LocalInputError("local baseline / dataset rows need a plain compact store.yaml (kind + paths only)")
+
+
 def _inputs(job: dict, state: dict, mirror: Path, manifest: Path, runs: Path,
-            remote_prefix: str = REMOTE_PREFIX, root: Path = REPO) -> tuple[list, dict]:
+            remote_prefix: str = REMOTE_PREFIX, root: Path = REPO, finished_dir: Path = FINISHED_DIR
+            ) -> tuple[list, dict]:
     needed = needed_inputs(job, remote_prefix=remote_prefix)
+    if job.get("script") in BASELINE_OPTIONS:
+        _baseline_fields(job, root, remote_prefix)
     checked = {f"runs/{dep}" + (f"/{relative}" if relative != "." else "")
                for dep, relative in needed["dependency_files"]} | {
         remote_prefix + ("" if relative == "." else "/" + relative) for relative in needed["mirror"]}
@@ -626,6 +682,9 @@ def _inputs(job: dict, state: dict, mirror: Path, manifest: Path, runs: Path,
         relative = _mapped(value, remote_prefix)
         if relative is not None:
             inputs[value] = _check(relative, files, mirror, closure, remote_prefix=remote_prefix)
+            if (job.get("script") in BASELINE_OPTIONS or job.get("script") == FQL_DATASET) \
+                    and PurePosixPath(relative).name == "store.yaml":
+                _plain_descriptor(mirror / relative)
     for dep, relative in needed["dependency_files"]:
         current = state.get(dep, {})
         name = f"runs/{dep}" + (f"/{relative}" if relative != "." else "")
@@ -637,9 +696,19 @@ def _inputs(job: dict, state: dict, mirror: Path, manifest: Path, runs: Path,
             else:
                 _regular(path)
                 dependencies[name] = _hash(path)
+                if job.get("script") in CLOSEOUT_CONSUMERS:
+                    record = Path(finished_dir) / f"{dep}.json"
+                    try:
+                        closed = json.loads(record.read_bytes())
+                    except (OSError, ValueError) as exc:
+                        raise LocalInputError(f"local dependency without a closeout record: {dep}") from exc
+                    if closed.get("job_id") != dep or (closed.get("files") or {}).get(relative) != dependencies[name]:
+                        raise LocalInputError(f"local dependency differs from its closeout record: {name}")
             continue
         if current.get("host") != "remote" or current.get("status") != "done":
             raise LocalInputError(f"dependency must be done on its recorded host: {name}")
+        if job.get("script") == FQL_DATASET:
+            raise LocalInputError(f"local dataset construction needs a LOCAL encoder producer: {name}")
         if relative == ".":
             raise LocalInputError(f"remote dependency run directory cannot be consumed locally: {name}")
         _regular(path)
@@ -660,8 +729,8 @@ def _inputs(job: dict, state: dict, mirror: Path, manifest: Path, runs: Path,
     if job.get("script") == FQL_DATASET:
         # actions come from the raw recordings: the local read-only originals, sha256-verified by the builder against
         # each episode's recorded raw identity before use (scripts/realworld_fql_dataset.py --raw-root)
-        if not LOCAL_RAW_ROOT.is_dir():
-            raise LocalInputError(f"local raw recordings root missing: {LOCAL_RAW_ROOT}")
+        if not LOCAL_RAW_ROOT.is_dir() or any(p.is_symlink() for p in (LOCAL_RAW_ROOT, *LOCAL_RAW_ROOT.parents)):
+            raise LocalInputError(f"local raw recordings root missing or a symlink: {LOCAL_RAW_ROOT}")
         raw_map = {"from": REMOTE_RAW_ROOT, "to": str(LOCAL_RAW_ROOT)}
         effective += ["--raw-root", f"{REMOTE_RAW_ROOT}={LOCAL_RAW_ROOT}"]
     # The configuration the trainer will ACTUALLY resolve (config files + the effective, mapped arguments) may hold no
@@ -716,7 +785,8 @@ def placement_scope(job: dict, *, root: Path = REPO) -> dict:
 
 def localize(job: dict, state: dict, *, roles: dict, by_id=None, runs: Path | None = None,
              mirror: Path | None = None, manifest: Path | None = None, source_identity: dict | None = None,
-             ownership: dict | None = None, root: Path = REPO, remote_prefix: str = REMOTE_PREFIX) -> tuple[list, dict]:
+             ownership: dict | None = None, root: Path = REPO, remote_prefix: str = REMOTE_PREFIX,
+             finished_dir: Path | None = None) -> tuple[list, dict]:
     """Validate the complete input closure and placed scope, returning effective args without modifying the row."""
     try:
         if not applies(job, roles, by_id):
@@ -725,7 +795,8 @@ def localize(job: dict, state: dict, *, roles: dict, by_id=None, runs: Path | No
         manifest = Path(manifest or (Path(mirror) / "MANIFEST.json" if mirror is not None else MANIFEST))
         mirror = Path(mirror or MIRROR)
         effective, record = _inputs(job, state, mirror, manifest,
-                                    Path(runs or root / "runs"), remote_prefix, root)
+                                    Path(runs or root / "runs"), remote_prefix, root,
+                                    Path(finished_dir or FINISHED_DIR))
         owned = ownership if ownership is not None else host_roles.read_ownership()
         placed = owned.get(job["id"]) or {}
         # Only rows moved by ``apply`` (locked, recorded, release scope proven) launch here: a row registered or

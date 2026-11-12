@@ -43,7 +43,9 @@ def mapped_raw_recordings(store, episodes, mapping: str) -> dict:
     recorded, sep, local = mapping.partition("=")
     if not sep or not recorded.startswith("/") or not local.startswith("/"):
         raise SystemExit("--raw-root must be RECORDED_ROOT=LOCAL_ROOT (absolute paths)")
-    recorded_root, local_root = Path(recorded), Path(local).resolve(strict=True)
+    recorded_root, local_root = Path(recorded), Path(local)
+    if any(p.is_symlink() for p in (local_root, *local_root.parents)) or local_root.resolve(strict=True) != local_root:
+        raise SystemExit(f"--raw-root local root {local_root} must be a real directory path without symlinks")
     out = {}
     for ep in episodes:
         source = Path(store.raw_recording(ep))

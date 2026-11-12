@@ -1241,16 +1241,25 @@ def test_measured_realworld_fql_ram_is_shared_by_admission_and_running_growth(co
 # ---- baseline pretraining + local dataset construction (pick-and-place image family, 2026-11-13; user directive
 # 2026-11-12 local capacity)
 OUTCOMES = "learning_inputs/cal/task/outcomes.json"
+PLAIN = "learning_inputs/cal/plain/store.yaml"  # what make_learning_inputs writes: kind + paths only
+
+
+def plain_store(f):
+    if not (f.mirror / PLAIN).exists():
+        (f.remote / PLAIN).parent.mkdir(parents=True, exist_ok=True)
+        (f.remote / PLAIN).write_bytes(("kind: compact\npaths:\n- " + PREFIX + "/" + EPISODE + "\n").encode())
+        rw.fetch([PLAIN], f.client, mirror=f.mirror)
 
 
 def baseline_rows(f, *, source="realworld"):
+    plain_store(f)
     for b in ("dynamo", "reviwo"):
         config = f.root / f"configs/realworld/baselines/{b}/task.yaml"
         config.parent.mkdir(parents=True, exist_ok=True)
         config.write_text("dataset: {hdf5_path: " + PREFIX + "/learning_inputs/old/store.yaml, batch_size: 4}\n"
                           "data_interface: {source: " + source + ", split_manifest: " + PREFIX + "/old/split.json, "
                           "gate_report: " + PREFIX + "/old/gate.json, frame_spacing: 1}\ntrain: {seed: 0}\n")
-    sets = ["--set", "dataset.hdf5_path=" + PREFIX + "/" + STORE, "data_interface.split_manifest=" + PREFIX + "/" + SPLIT,
+    sets = ["--set", "dataset.hdf5_path=" + PREFIX + "/" + PLAIN, "data_interface.split_manifest=" + PREFIX + "/" + SPLIT,
             "data_interface.gate_report=" + PREFIX + "/" + GATE]
     dynamo = row("dyn-pre", role="realworld_pretrain", script="scripts/train_dynamo.py", deps=[], args=[
         "--config", "configs/realworld/baselines/dynamo/task.yaml", "--name", "dyn-pre", "--output-root", "runs",
@@ -1261,10 +1270,11 @@ def baseline_rows(f, *, source="realworld"):
 
 
 def dataset_row(f, condition="dynamo", export=True):
+    plain_store(f)
     if not (f.mirror / OUTCOMES).exists():
         (f.remote / OUTCOMES).write_bytes(b'{"schema": "rw-outcomes/1"}\n')
         rw.fetch([OUTCOMES], f.client, mirror=f.mirror)
-    args = ["build", "--store", PREFIX + "/" + STORE, "--condition", condition, "--out", "runs/data-row/dataset.h5",
+    args = ["build", "--store", PREFIX + "/" + PLAIN, "--condition", condition, "--out", "runs/data-row/dataset.h5",
             "--gate-report", PREFIX + "/" + GATE, "--outcomes", PREFIX + "/" + OUTCOMES]
     args += ["--export", "runs/dyn-pre/encoder.pt", "--device", "cuda"] if export else ["--device", "cpu"]
     return row("data-row", role="realworld_fql", script=rw.FQL_DATASET, deps=["dyn-pre"], args=args)
@@ -1276,8 +1286,8 @@ def test_baseline_pretraining_resolvers_map_inputs_and_pin_outputs(mirrored):
         assert rw.applies(job, ROLES) and host_roles.role_hosts(job, ROLES) == ("local", "remote")
         effective, record = localize(f, job)
         assert effective == [a.replace(PREFIX, str(f.mirror)) for a in job["args"]]
-        assert set(record["input_closure"]) >= {STORE, EPISODE + "/episode.h5"} and "raw_map" not in record
-        assert rw.needed_inputs(job) == {"mirror": sorted([STORE, SPLIT, GATE]), "dependency_files": []}
+        assert set(record["input_closure"]) >= {PLAIN, EPISODE + "/episode.h5"} and "raw_map" not in record
+        assert rw.needed_inputs(job) == {"mirror": sorted([PLAIN, SPLIT, GATE]), "dependency_files": []}
 
 
 @pytest.mark.parametrize("edit,reason", [
@@ -1285,6 +1295,10 @@ def test_baseline_pretraining_resolvers_map_inputs_and_pin_outputs(mirrored):
     ("reviwo_resume", "unsupported local input options"), ("abbreviation", "invalid local resolver"),
     ("init_export", "unsupported local input options"), ("unset_override", "not plain checked arguments"),
     ("config_outside", "configs/realworld/baselines"), ("source", "data_interface.source realworld"),
+    ("relative_store", "dataset.hdf5_path must name a mirrored remote input"),
+    ("inline_store", "dataset.hdf5_path must name a mirrored remote input"),
+    ("relative_split", "data_interface.split_manifest must name a mirrored remote input"),
+    ("pretrained", "no external pretrained weights"), ("descriptor_extra", "plain compact store.yaml"),
 ])
 def test_baseline_pretraining_resolvers_fail_closed(mirrored, edit, reason):
     f = mirrored
@@ -1306,6 +1320,16 @@ def test_baseline_pretraining_resolvers_fail_closed(mirrored, edit, reason):
     elif edit == "config_outside":
         (f.root / "configs/realworld/fql/b.yaml").write_text((f.root / args[1]).read_text())
         args[1] = "configs/realworld/fql/b.yaml"
+    elif edit == "relative_store":
+        args[args.index("dataset.hdf5_path=" + PREFIX + "/" + PLAIN)] = "dataset.hdf5_path=data/store.yaml"
+    elif edit == "inline_store":
+        args[args.index("dataset.hdf5_path=" + PREFIX + "/" + PLAIN)] = "dataset.hdf5_path={kind: compact, paths: []}"
+    elif edit == "relative_split":
+        args[args.index("data_interface.split_manifest=" + PREFIX + "/" + SPLIT)] = "data_interface.split_manifest=s.json"
+    elif edit == "pretrained":
+        args += ["encoder.pretrained=true"]
+    elif edit == "descriptor_extra":  # e.g. native-depth overlays: fields the resolvers do not inventory
+        args[args.index("dataset.hdf5_path=" + PREFIX + "/" + PLAIN)] = "dataset.hdf5_path=" + PREFIX + "/" + STORE
     if edit == "config_outside":
         assert not rw.has_resolver(job)
         with pytest.raises(rw.LocalInputError, match="no local input resolver|no explicit"):
@@ -1324,18 +1348,35 @@ def test_local_dataset_construction_maps_inputs_dependency_and_raw_root(mirrored
     assert rw.applies(job, ROLES) and host_roles.role_hosts(job, ROLES) == ("local", "remote")
     with pytest.raises(rw.LocalInputError, match="dependency must be done"):
         localize(f, job)
-    dependency(f, "dyn-pre", "encoder.pt")
-    effective, record = localize(f, job)
+    finished = tmp_path / "finished"
+    dependency(f, "dyn-pre", "encoder.pt", host="remote")
+    with pytest.raises(rw.LocalInputError, match="needs a LOCAL encoder producer"):
+        localize(f, job, finished_dir=finished)
+    f.state["dyn-pre"]["host"] = "local"
+    with pytest.raises(rw.LocalInputError, match="without a closeout record"):
+        localize(f, job, finished_dir=finished)
+    rw.closeout("dyn-pre", f.state, {"id": "dyn-pre", "required_results": ["encoder.pt"]}, finished, runs=f.runs)
+    (f.runs / "dyn-pre/encoder.pt").write_text("replaced after closeout")
+    with pytest.raises(rw.LocalInputError, match="differs from its closeout record"):
+        localize(f, job, finished_dir=finished)
+    (f.runs / "dyn-pre/encoder.pt").write_text("verified output")
+    effective, record = localize(f, job, finished_dir=finished)
     assert effective == [a.replace(PREFIX, str(f.mirror)) for a in job["args"]] + [
         "--raw-root", f"{rw.REMOTE_RAW_ROOT}={raw_root}"]
     assert record["raw_map"] == {"from": rw.REMOTE_RAW_ROOT, "to": str(raw_root)}
     assert record["dependency_inputs"] == {"runs/dyn-pre/encoder.pt": sha(b"verified output")}
-    assert set(record["inputs"]) == {PREFIX + "/" + STORE, PREFIX + "/" + GATE, PREFIX + "/" + OUTCOMES}
+    assert set(record["inputs"]) == {PREFIX + "/" + PLAIN, PREFIX + "/" + GATE, PREFIX + "/" + OUTCOMES}
     e2e = dataset_row(f, "e2e_cnn", export=False)
-    assert localize(f, e2e)[0][-2:] == ["--raw-root", f"{rw.REMOTE_RAW_ROOT}={raw_root}"]
+    assert localize(f, e2e, finished_dir=finished)[0][-2:] == ["--raw-root", f"{rw.REMOTE_RAW_ROOT}={raw_root}"]
+    link = tmp_path / "raw-link"
+    link.symlink_to(raw_root)
+    monkeypatch.setattr(rw, "LOCAL_RAW_ROOT", link)
+    with pytest.raises(rw.LocalInputError, match="missing or a symlink"):
+        localize(f, job, finished_dir=finished)
+    monkeypatch.setattr(rw, "LOCAL_RAW_ROOT", raw_root)
     raw_root.rmdir()
-    with pytest.raises(rw.LocalInputError, match="local raw recordings root missing"):
-        localize(f, job)
+    with pytest.raises(rw.LocalInputError, match="missing or a symlink"):
+        localize(f, job, finished_dir=finished)
 
 
 @pytest.mark.parametrize("edit,reason", [
@@ -1344,7 +1385,9 @@ def test_local_dataset_construction_maps_inputs_dependency_and_raw_root(mirrored
     ("assume", "invalid local resolver|unsupported local input options"),
     ("raw_root", "invalid local resolver|unsupported local input options"),
     ("export_other", "runs/<declared dependency>/encoder.pt"), ("out", "runs/<own id>/"),
+    ("out_name", "runs/<own id>/dataset.h5"), ("condition", "supports"),
     ("store_local", "mirrored compact store.yaml"), ("no_outcomes", "--outcomes must name a mirrored remote input"),
+    ("descriptor_extra", "plain compact store.yaml"),
 ])
 def test_local_dataset_construction_fails_closed(mirrored, monkeypatch, tmp_path, edit, reason):
     f = mirrored
@@ -1364,6 +1407,12 @@ def test_local_dataset_construction_fails_closed(mirrored, monkeypatch, tmp_path
         args[args.index("--export") + 1] = "runs/other/encoder.pt"
     elif edit == "out":
         args[args.index("--out") + 1] = "runs/elsewhere/dataset.h5"
+    elif edit == "out_name":
+        args[args.index("--out") + 1] = "runs/data-row/other.h5"
+    elif edit == "condition":
+        args[args.index("--condition") + 1] = "mvp3d_single"
+    elif edit == "descriptor_extra":
+        args[args.index("--store") + 1] = PREFIX + "/" + STORE
     elif edit == "store_local":
         args[args.index("--store") + 1] = "runs/x/store.yaml"
     else:
@@ -1408,3 +1457,7 @@ def test_dataset_builder_raw_root_mapping_verifies_every_file(tmp_path):
     for bad in ("no-separator", "relative=/x", "/x=relative"):
         with pytest.raises(SystemExit, match="RECORDED_ROOT=LOCAL_ROOT"):
             script.mapped_raw_recordings(store, ["episode_000001"], bad)
+    (tmp_path / "root-link").symlink_to(local)  # a symlinked root could redirect the whole mapping (Codex review)
+    with pytest.raises(SystemExit, match="without symlinks"):
+        script.mapped_raw_recordings(store, ["episode_000001"],
+                                     f"/home/compu/kaist/sunho/data/real_world={tmp_path}/root-link")
