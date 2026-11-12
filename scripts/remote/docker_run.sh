@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# The Python launcher preserves 20 (verified pre-create refusal) and 75 (unknown outcome).
 set -euo pipefail
 repo="$(realpath -- "$(dirname -- "${BASH_SOURCE[0]}")/../..")"
 python="${S4D_REMOTE_PYTHON:-$repo/.venv/bin/python}"

@@ -6,6 +6,7 @@ import math
 import os
 import shlex
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -1204,7 +1205,7 @@ def test_mig_launch_uses_shared_slot_guard_under_existing_lock(monkeypatch):
                                    [(REMOTE_ROOT + '/data/hammer.hdf5', 'd' * 64)])
     guard = 'python3 -I -c ' + shlex.quote(SOURCE)
     start = command.index(guard)
-    invocation = command[start:command.index(' >&2', start)]
+    invocation = command[start:command.index('); then', start)]
     argv = shlex.split(invocation)
     data = json.loads(argv[-1])
     assert argv[:3] == ['python3', '-I', '-c'] and argv[3] == SOURCE
@@ -1236,3 +1237,55 @@ def test_a_repinned_spec_launches_only_with_its_recorded_registry_transition(tmp
     registry.write_text("")
     with pytest.raises(ValueError, match="not recorded"):
         launch(path, FakeClient(tmp_path, "{}"), wait=False)
+
+
+@pytest.mark.parametrize('valid', [True, False])
+def test_launcher_maps_only_verified_final_guard_refusal(tmp_path, monkeypatch, valid):
+    from ops.containers import launch as launcher
+    from ops.jobs.remote_backend import AdmissionRefused
+    spec = job_spec()
+    spec['evidence'] = make_evidence(tmp_path / 'acceptance')
+    path = tmp_path / 'job.json'
+    path.write_text(json.dumps(spec))
+    proof = {'version': 1, 'container': spec['container'], 'guard': {
+        'admit': False, 'uuid': spec['gpu'], 'reasons': ['host RAM reserve'],
+        'containers': 0, 'used_mib': 67, 'gpu_reserved_bytes': 0, 'gpu_pending_bytes': 0,
+        'pending_ram_bytes': 0, 'reserved_disk_bytes': 0}}
+    response = subprocess.CompletedProcess([], 20, json.dumps(proof) if valid else '{}', '')
+    client = FakeClient(tmp_path, RemoteCommandError('guard refused', response))
+    with pytest.raises(AdmissionRefused if valid else RemoteUnreachable):
+        launcher.launch(path, client, wait=False)
+    monkeypatch.setattr(launcher, 'launch', lambda _: (_ for _ in ()).throw(
+        AdmissionRefused(proof) if valid else RemoteUnreachable('ambiguous')))
+    monkeypatch.setattr(sys, 'argv', ['launcher', str(path)])
+    assert launcher.main() == (20 if valid else 75)
+
+
+@pytest.mark.parametrize('guard_code', [0, 1, 20])
+def test_mig_shell_maps_only_guard_refusal_before_create(tmp_path, monkeypatch, guard_code):
+    """Execute only the admission fragment with a fake Python guard; no Docker."""
+    from ops.containers import launch as launcher
+    from ops.containers.slot_guard import SOURCE
+    uuid = 'MIG-00000000-0000-5000-8000-000000000000'
+    monkeypatch.setattr(launcher, 'APPROVED_HOST_GPUS', {**launcher.APPROVED_HOST_GPUS, 'remote': (uuid,)})
+    monkeypatch.setattr(launcher, 'REMOTE_MIG_DEVICES', {uuid: ('GPU-4391fcee-537f-d408-d138-10d8a3866eea', 3, 0)})
+    spec = job_spec()
+    spec.update(gpu=uuid, max_mem_gb=21.5, max_jobs=4)
+    command = build_remote_command(spec, DATA_ID, 'e' * 40, 'f' * 64, {'tests.json': '1' * 64},
+                                   [(REMOTE_ROOT + '/data/hammer.hdf5', 'd' * 64)])
+    start = command.index('if verdict=$(')
+    fragment = command[start:command.index('\nfi', start) + 3]
+    invocation = fragment[len('if verdict=$('):fragment.index('); then')]
+    verdict = {'admit': guard_code == 0, 'reasons': ['host RAM reserve'], 'uuid': uuid,
+               'containers': 0, 'used_mib': 67, 'gpu_reserved_bytes': 0, 'gpu_pending_bytes': 0,
+               'pending_ram_bytes': 0, 'reserved_disk_bytes': 0}
+    fake = shlex.join([sys.executable, '-c', f'import sys; print({json.dumps(verdict)!r}); sys.exit({guard_code})'])
+    fragment = fragment.replace(invocation, fake)
+    result = subprocess.run(['bash', '-c', 'set -eu\n' + fragment + '\nprintf CREATED'],
+                            capture_output=True, text=True)
+    assert result.returncode == guard_code
+    assert ('CREATED' in result.stdout) is (guard_code == 0)
+    if guard_code == 20:
+        assert json.loads(result.stdout) == {'version': 1, 'container': spec['container'], 'guard': verdict}
+    elif guard_code == 1:
+        assert result.stdout == ''

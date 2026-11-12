@@ -2143,7 +2143,8 @@ def test_snapshot_identifies_only_positively_labelled_and_bound_cotenants():
     # an inspect failure other than removal marks the snapshot not ready (no co-tenant reservation silently lost)
     assert not remote.parse_snapshot(cotenant_snapshot_output([("__S4D_QUERY_ERROR__", [5])])).resources_ready
     command = remote.snapshot_command(remote.ROOT)
-    assert "label=s4d.managed=false" in command and "memory.total,memory.used" in command
+    assert "--filter label=s4d.project=splatter4d" in command and "memory.total,memory.used" in command
+    assert "__S4D_NAMES__" in command and "docker ps -a --format" in command
     assert "|| ids=" not in command and "No such object" in command  # a failed listing fails the snapshot
     assert subprocess.run(["bash", "-n"], input=command, text=True, capture_output=True).returncode == 0
 

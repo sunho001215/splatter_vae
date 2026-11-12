@@ -1156,3 +1156,138 @@ def test_local_gpu_query_requires_measured_usable_capacity(monkeypatch):
     monkeypatch.setattr(scheduler, 'mig_query', lambda *a, **kw: {gpu: {'processes': []}})
     with pytest.raises(ValueError, match='framebuffer evidence unavailable'):
         scheduler.gpu_usage()
+
+
+@pytest.mark.parametrize('managed', ['true', 'false'])
+def test_scheduler_and_guard_same_snapshot_boundaries(slot_evidence, tmp_path, monkeypatch, managed):
+    """Exact parity (stronger than fits => admit), including sincro's 961/965 MiB.
+
+    Every item/measurement is shared by the scheduler fit and decide's test_paths.
+    The grid exercises measured excess, pending growth, count, foreign/idle,
+    exclusivity, RAM, CPU, disk and byte-rounding boundaries without Docker/SSH.
+    """
+    import itertools
+    from ops.jobs import scheduler, remote_backend as remote
+    gpu = slot_evidence['uuid']
+    monkeypatch.setattr(scheduler, 'APPROVED_HOST_GPUS', {'remote': (gpu,)})
+    base = dict(total=24192, used=961, measured=450, declared=6 * 2**30,
+                need=int(9.5 * 2**30), tenants=2, jobs=4, available=1000 * 2**30,
+                cpu=320, disk_free=800 * 2**30, exclusive=False, foreign=False)
+    cases = [dict(base, used=used, need=need) for used, need in itertools.product(
+        [900, 961, 965, 1024], [int(9.5 * 2**30) - 128 * 2**20, int(9.5 * 2**30), int(9.5 * 2**30) + 1])]
+    cases += [dict(base, **override) for override in [
+        dict(measured=7000, declared=2**30, need=8 * 2**30),
+        dict(measured=7000, declared=2**30, need=9 * 2**30),
+        dict(tenants=0, used=256), dict(tenants=0, used=257),
+        dict(jobs=2), dict(exclusive=True), dict(foreign=True),
+        dict(available=216 * 2**30), dict(available=216 * 2**30 - 1024),
+        dict(cpu=24), dict(cpu=23),
+        dict(disk_free=(174 if managed == 'true' else 154) * 2**30),
+        dict(disk_free=(174 if managed == 'true' else 154) * 2**30 - 1),
+        dict(need=22 * 2**30), dict(total=22016), dict(total=22015),
+    ]]
+    # Run decide directly with the same synthetic commands; no entry-point execution.
+    from ops.containers.slot_guard import SOURCE
+    namespace = {}
+    exec(SOURCE[:SOURCE.index('\ntry:\n')], namespace)
+    for case in cases:
+        data = dict(slot_evidence, max_jobs=case['jobs'], gpu_bytes=case['need'],
+                    cpu_thread_budget=case['cpu'], exclusive_gpu=case['exclusive'])
+        records, items, own, state = [], {}, [], {}
+        processes = [(3, 777 + i, case['measured']) for i in range(case['tenants'])]
+        if case['foreign']:
+            processes.append((3, 999, 1))
+        (tmp_path / 'query').write_text(render_query([(PARENTS[0], True)], memory=case['total'],
+            processes={0: processes}).replace(': 67 MiB', f": {case['used']} MiB"))
+        for i in range(case['tenants']):
+            item = slot_container(tmp_path, gpu=gpu, managed=managed,
+                                  **{'s4d.mem_bytes': str(case['declared'])})
+            item['Id'] = str(i + 1) * 64
+            item['Pids'] = [777 + i]
+            item['Name'] = '/s4d-old' + str(i)
+            folder = tmp_path / ('docker-' + item['Id'] + '.scope')
+            folder.mkdir(exist_ok=True)
+            (folder / 'memory.stat').write_text(f'anon {16 * 2**30}\nshmem 0\n')
+            records.append((item, set(item['Pids']), 16 * 2**30))
+            items[item['Id']] = item
+            if managed == 'true':
+                state[str(i)] = dict(host='remote', status='running', gpu=gpu,
+                                     container=item['Name'][1:], mem_gb=case['declared'] / 2**30)
+        (tmp_path / 'containers').write_text(json.dumps(items))
+        (tmp_path / 'meminfo').write_text(f"MemAvailable: {case['available'] // 1024} kB\n")
+        (tmp_path / 'disk').write_text(f"Size Avail\n{1000 * 2**30} {case['disk_free']}\n")
+        containers = {item['Name'][1:]: {**item, 'pids': pids} for item, pids, _ in records if managed == 'true'}
+        snapshot = remote.RemoteSnapshot({gpu: [(pid, mem) for _, pid, mem in processes]},
+            case['available'] / 2**30, 1000 * 2**30, case['disk_free'], containers,
+            gpu_memory={gpu: (case['total'], case['used'])}, admission_records=records)
+        resource = {'snapshot': snapshot, 'available': snapshot.available_gb,
+                    'disk_total': snapshot.disk_total_bytes, 'disk_free': snapshot.disk_free_bytes}
+        scheduler._charge_cotenants({'remote': resource}, state, {}, [])
+        running = [dict(host='remote', gpu=gpu, mem_gb=value['mem_gb']) for value in state.values()]
+        job = dict(id='new', host='remote', mem_gb=case['need'] / 2**30, ram_gb=32, disk_gb=4,
+                   exclusive_gpu=case['exclusive'])
+        host = dict(host_ram_reserve_gb=120, disk_floor_gb=100, disk_floor_fraction=.15,
+                    cpu_thread_budget=case['cpu'])
+        limits = {gpu: dict(max_jobs=case['jobs'], max_mem_gb=21.5)}
+        fits = (scheduler.choose_gpu(job, limits, running, set(), resource['cotenant']) is not None
+                and not scheduler.remote_host_refusals(resource, job, host, resource['guard_cpu_used']))
+        try:
+            verdict = namespace['decide'](data)
+        except ValueError:
+            assert not fits, case
+        else:
+            assert fits == verdict['admit'], (case, verdict)
+            if case['used'] in (961, 965) and case['need'] == int(9.5 * 2**30):
+                assert not fits and 'measured free GPU memory/headroom' in verdict['reasons']
+
+
+@pytest.mark.parametrize('damage', [None, 'ram', 'pids', 'cpu', 'binding'])
+def test_complete_snapshot_preserves_guard_evidence(slot_evidence, tmp_path, monkeypatch, damage):
+    from ops.jobs import remote_backend as remote
+    from tests.test_remote_jobs import snapshot_output
+    gpu = slot_evidence['uuid']
+    monkeypatch.setattr(remote, 'APPROVED_HOST_GPUS', {'remote': (gpu,)})
+    monkeypatch.setattr(remote, 'REMOTE_MIG_PARENTS', (PARENTS[0],))
+    monkeypatch.setattr(remote, 'REMOTE_MIG_DEVICES', {gpu: (PARENTS[0], 3, 0)})
+    item = slot_container(tmp_path, gpu=gpu, managed='true')
+    item['Name'] = '/s4d-owned'
+    if damage == 'cpu':
+        item['HostConfig']['NanoCpus'] = 0
+    if damage == 'binding':
+        item['HostConfig']['DeviceRequests'][0]['Driver'] = 'nvidia'
+    listing, query = render_list([(PARENTS[0], True)]), render_query([(PARENTS[0], True)])
+    text = snapshot_output().replace('__S4D_GPUS__\n', '__S4D_GPUS__\n99, ' + PARENTS[0] + '\n')
+    text = text.replace('__S4D_END__', '\n'.join([
+        '__S4D_NAMES__', 's4d-owned', 's4d-unowned-exited', '__S4D_MIG_LIST__', listing,
+        '__S4D_MIG_QUERY__', query, '__S4D_COTENANTS__', json.dumps(item),
+        '__S4D_TOP__ ' + item['Id'], 'PID' if damage != 'pids' else 'unreadable',
+        '__S4D_RAM_USED__ ' + str(16 * 2**30) if damage != 'ram' else '',
+        '__S4D_END_TOP__', '__S4D_END__']))
+    value = remote.parse_snapshot(text)
+    assert value.container_names == {'s4d-owned', 's4d-unowned-exited'}
+    if damage == 'ram':
+        assert not value.resources_ready
+    elif damage == 'cpu':
+        with pytest.raises(ValueError):
+            remote.cotenant_charges(value)
+    else:
+        assert value.resources_ready
+        charge = remote.cotenant_charges(value)
+        if damage in ('pids', 'binding'):
+            assert charge['gpus'][gpu]['admission_error']
+        else:
+            assert charge['guard_accounted'] and charge['ram_pending_bytes'] == 32 * 2**30
+            assert charge['cpus'] == 8 and charge['reserved_disk_bytes'] == 10 * 2**30
+
+
+def test_snapshot_uses_guard_identity_mode_and_process_memory_requirements():
+    from ops.jobs import remote_backend as remote
+    devices = devices_of(allowlist())
+    listing, query = remote_host(processes={0: [(3, 11, 100)]})
+    assert remote.mig_usage(listing.splitlines(), query.splitlines(), devices)[2]
+    for bad_listing, bad_query in [
+        (listing + next(line for line in listing.splitlines() if mig_uuid(0, 0) in line) + '\n', query),
+        (listing, query.replace(': Enabled', ': Disabled', 1)),
+        (listing, query.replace(': 100 MiB', ': N/A')),
+    ]:
+        assert not remote.mig_usage(bad_listing.splitlines(), bad_query.splitlines(), devices)[2]

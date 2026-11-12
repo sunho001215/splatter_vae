@@ -1,3 +1,8 @@
+"""Remote transport primitives.
+
+Confirmed command errors retain their structured result so the container launcher
+can verify pre-create admission refusals. Transport ambiguity still exits 75.
+"""
 from __future__ import annotations
 
 import argparse
@@ -59,7 +64,10 @@ class RemoteUnreachable(RuntimeError):
 
 
 class RemoteCommandError(RuntimeError):
-    pass
+    """Confirmed remote command failure; optional result preserves structured outcomes."""
+    def __init__(self, message, result=None):
+        super().__init__(message)
+        self.result = result
 
 
 @dataclass(frozen=True)
@@ -224,7 +232,7 @@ class RemoteClient:
     def checked_ssh(self, command: str, **kwargs) -> subprocess.CompletedProcess:
         result = self.ssh(command, **kwargs)
         if result.returncode:
-            raise RemoteCommandError(f"Remote operation exited {result.returncode}: {self._redact(result.stderr)[-1000:]}")
+            raise RemoteCommandError(f"Remote operation exited {result.returncode}: {self._redact(result.stderr)[-1000:]}", result)
         return result
 
     def remote_path(self, path: str | Path, *, allow_root: bool = False) -> str:

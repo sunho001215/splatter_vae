@@ -1,3 +1,9 @@
+"""Validated remote container launcher.
+
+Exit 20 carries a checked guard refusal envelope, emitted inside admission.lock
+before docker run/create and only after both deterministic-name existence checks.
+Exit 75 remains an unknown transport/outcome; every malformed refusal fails closed.
+"""
 from __future__ import annotations
 
 import argparse
@@ -16,7 +22,7 @@ from ops.remote.access import (ORIGIN_REF, RELEASE_ORIGIN_REFS, REMOTE_ROOT, Rem
 from ops.jobs.host_roles import job_class
 from ops.jobs.retired import retired_reason
 from ops.jobs.remote_backend import (COTENANT_GPU_MARGIN_GB, COTENANT_LABELS, COTENANT_ROLES, OWNERSHIP_LABELS,
-                                     commit_source_sha256)
+                                     commit_source_sha256, AdmissionRefused, GUARD_REFUSED_EXIT, validate_guard_refusal)
 from ops.containers import suite_partition
 from ops.containers.slot_guard import SOURCE as SLOT_GUARD_SOURCE
 from ops.containers.verification import validate_verification, verification_artifacts, verification_output
@@ -502,9 +508,15 @@ def build_remote_command(spec: dict, data_identity: str, origin_commit: str, pro
                        "reserve_bytes": spec["reserve_bytes"], "disk_bytes": spec["disk_bytes"],
                        "floor_bytes": spec["floor_bytes"], "disk_floor_fraction": spec["disk_floor_fraction"],
                        "root": root}
-        # The JSON verdict goes to stderr; stdout remains the launch identity protocol.
-        # set -e propagates both a resource refusal (20) and evidence errors (1).
-        lines.append("python3 -I -c " + q(SLOT_GUARD_SOURCE) + " " + q(json.dumps(guard_input)) + " >&2")
+        # Only this branch emits exit 20 and the versioned refusal protocol. No
+        # docker run/create has occurred; existing() ran again inside admission.lock.
+        prefix = json.dumps({'version': 1, 'container': spec['container']})[:-1] + ', "guard": '
+        lines += ["if verdict=$(python3 -I -c " + q(SLOT_GUARD_SOURCE) + " " + q(json.dumps(guard_input)) + "); then",
+                  '  printf \'%s\\n\' "$verdict" >&2',
+                  'else', '  guard_code=$?',
+                  '  if [ "$guard_code" -eq 20 ]; then',
+                  "    printf '%s%s}\\n' " + q(prefix) + ' "$verdict"; exit 20',
+                  '  fi', '  printf \'%s\\n\' "$verdict" >&2; exit 1', 'fi']
     else:
         cotenant_filters = " ".join("--filter " + q(f"label={key}={value}")
                                     for key, value in sorted(COTENANT_LABELS.items()))
@@ -817,7 +829,16 @@ def launch(spec_path: Path, client: RemoteClient | None = None, *, wait: bool | 
     data_files = [(item["target"], item["sha256"]) for item in payloads["data.json"]["files"]]
     command = build_remote_command(spec, data_identity, origin_commit, sha256(local_proof), checksums, data_files,
                                    origin_ref=proof["origin_ref"])
-    result = client.checked_ssh(command, wait=wait, idempotent=False, timeout=900)
+    try:
+        result = client.checked_ssh(command, wait=wait, idempotent=False, timeout=900)
+    except RemoteCommandError as exc:
+        if exc.result is not None and exc.result.returncode == GUARD_REFUSED_EXIT:
+            try:
+                proof = validate_guard_refusal(json.loads(exc.result.stdout), spec['container'], spec['gpu'])
+            except (ValueError, KeyError, TypeError):
+                raise RemoteUnreachable('Remote refusal evidence is ambiguous; reconcile the deterministic container') from None
+            raise AdmissionRefused(proof) from None
+        raise
     try:
         launched = json.loads(result.stdout)
     except (ValueError, TypeError):
@@ -835,6 +856,9 @@ def main() -> int:
     try:
         print(json.dumps(launch(args.spec), sort_keys=True))
         return 0
+    except AdmissionRefused as exc:
+        print(json.dumps(exc.proof, sort_keys=True))
+        return GUARD_REFUSED_EXIT
     except RemoteUnreachable as exc:
         print(str(exc), file=sys.stderr)
         return exc.exit_code

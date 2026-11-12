@@ -1,3 +1,9 @@
+"""Remote execution and fresh admission evidence.
+
+MIG placement and the launch guard share admission.py's byte-exact tenant
+accounting. Only a validated pre-create guard refusal has a retryable outcome;
+unknown transport/JSON/container evidence always requires reconciliation.
+"""
 from __future__ import annotations
 
 import base64
@@ -48,6 +54,39 @@ class RemoteJobError(RuntimeError):
     pass
 
 
+GUARD_REFUSED_EXIT = 20
+
+
+def validate_guard_refusal(payload, container, gpu):
+    """Strict, versioned proof emitted only before docker run/create."""
+    allowed = {'declared GPU need exceeds capacity', 'foreign processes on instance',
+               'instance framebuffer above idle threshold', 'exclusive GPU placement',
+               'GPU reservation sum exceeds capacity', 'measured free GPU memory/headroom',
+               'slot container limit reached', 'host CPU thread budget', 'host RAM reserve', 'disk floor'}
+    if (not isinstance(payload, dict) or set(payload) != {'version', 'container', 'guard'}
+            or payload['version'] != 1 or type(payload['version']) is not int
+            or payload['container'] != container):
+        raise ValueError('invalid guard refusal envelope')
+    guard = payload['guard']
+    counters = {'containers', 'used_mib', 'gpu_reserved_bytes', 'gpu_pending_bytes',
+                'pending_ram_bytes', 'reserved_disk_bytes'}
+    if (not isinstance(guard, dict) or set(guard) != counters | {'admit', 'reasons', 'uuid'}
+            or guard['admit'] is not False or guard['uuid'] != gpu
+            or not isinstance(guard['reasons'], list) or not guard['reasons']
+            or any(not isinstance(reason, str) or reason not in allowed for reason in guard['reasons'])
+            or len(set(guard['reasons'])) != len(guard['reasons'])
+            or any(type(guard[key]) is not int or guard[key] < 0 for key in counters)):
+        raise ValueError('invalid guard refusal verdict')
+    return payload
+
+
+class AdmissionRefused(RemoteJobError):
+    """Verifiable guard exit 20 before any create for this deterministic name."""
+    def __init__(self, proof):
+        super().__init__('remote admission guard refused')
+        self.proof = proof
+
+
 class ContainerRemovalRefused(RemoteJobError):
     """``removal_command`` refused for a lasting reason: the container differs from the record (exit 3) or required run
     files are missing (exit 4). The container is kept."""
@@ -72,6 +111,10 @@ class RemoteSnapshot:
     # durable remote launch hold (ops/remote/launch_hold.py): {"boot_id", "hold", "resumed", "held"}; None only for a
     # snapshot format without the line (pre-2026-11-11 fixtures); the real command always emits it
     launch_hold: dict | None = None
+    # None denotes legacy/test evidence. Production snapshots include every live owned
+    # inspect, its verified PID set and cgroup anon+shmem, plus ALL Docker names (all states).
+    admission_records: list | None = None
+    container_names: set[str] | None = None
 
 
 def container_name(run_id: str, attempt: int) -> str:
@@ -182,6 +225,7 @@ def cotenant_charges(snapshot: RemoteSnapshot, own=()) -> dict:
     memory reading (nothing fits). Host: the co-tenants' declared RAM limits, the part of them not yet in use (limit -
     measured anon + shmem; the whole limit when unmeasured), containers without an enforced RAM limit (``unbounded``:
     their RAM cannot be accounted; remote admission is then held) and declared CPUs (None: unlimited)."""
+    own = list(own)
     gpus, ram_declared, ram_pending, unbounded, cpus = {}, 0, 0, [], 0.0
     for name, item in sorted(snapshot.cotenants.items()):
         if item["ram_limit_bytes"] is None:
@@ -211,10 +255,45 @@ def cotenant_charges(snapshot: RemoteSnapshot, own=()) -> dict:
         if gpu in gpus:
             pids = (snapshot.containers.get(container) or {}).get("pids", set())
             measured = sum(memory for pid, memory in snapshot.usage.get(gpu, []) if pid in pids) * MIB
-            gpus[gpu]["pending_gb"] += max(0.0, float(mem_gb) * GIB - measured) / GIB
+            gpus[gpu]["pending_gb"] += max(0.0, math.ceil(float(mem_gb) * GIB) - measured) / GIB
+            gpus[gpu]['mem_gb'] += max(0, measured - math.ceil(float(mem_gb) * GIB)) / GIB
     for gpu, charge in gpus.items():
         total, used = snapshot.gpu_memory.get(gpu, (0, 0))
+        charge.update(total_mib=total, used_mib=used)
         charge["free_gb"] = ((total - used) * MIB / GIB - charge["pending_gb"]) if gpu in snapshot.gpu_memory else 0.0
+    if snapshot.admission_records is not None and any(g.startswith('MIG-') for g in snapshot.gpu_memory):
+        from ops.containers.admission import tenant_totals
+        for gpu, (total, used) in snapshot.gpu_memory.items():
+            if not gpu.startswith('MIG-'):
+                continue
+            processes = {pid: int(memory * MIB) for pid, memory in snapshot.usage.get(gpu, [])}
+            try:
+                totals = tenant_totals(gpu, processes, snapshot.admission_records)
+            except (ValueError, KeyError, TypeError):
+                gpus[gpu]['admission_error'] = True
+                continue
+            live_names = {item['Name'].removeprefix('/') for item, _, _ in snapshot.admission_records}
+            own_here = [(container, mem) for device, container, mem in own
+                        if device == gpu and container in live_names]
+            # choose_gpu separately adds the reserving registry rows (and new launches
+            # during this tick). The residual includes measured excess of OWN tenants.
+            charge = gpus[gpu]
+            charge.update(mem_gb=totals['gpu_reserved'] / GIB - sum(mem for _, mem in own_here),
+                          jobs=totals['count'] - len(own_here), pending_gb=totals['gpu_pending'] / GIB,
+                          free_gb=((total-used)*MIB-totals['gpu_pending']) / GIB,
+                          total_mib=total, used_mib=used,
+                          exclusive_gpu=totals['tenant_exclusive'],
+                          pids=totals['known'], foreign=bool(set(processes) - totals['known']))
+        # Host charges are independent of the selected GPU; include every live owned
+        # container, even CPU-only tools and jobs absent from the registry.
+        try:
+            totals = tenant_totals('', {}, snapshot.admission_records)
+        except (KeyError, TypeError) as exc:
+            raise ValueError('unreadable owned host resource evidence') from exc
+        ram_pending, cpus = totals['pending_ram'], totals['cpu_used'] / 1e9
+        return {'gpus': gpus, 'ram_declared_bytes': ram_declared, 'ram_pending_bytes': ram_pending,
+                'unbounded': [], 'cpus': cpus, 'reserved_disk_bytes': totals['reserved_disk'],
+                'guard_accounted': True}
     return {"gpus": gpus, "ram_declared_bytes": ram_declared, "ram_pending_bytes": ram_pending, "unbounded": unbounded,
             "cpus": cpus}
 
@@ -361,6 +440,11 @@ def mig_usage(list_lines: list[str], query_lines: list[str], devices=None) -> tu
         return usage, memory, False
     for uuid, (parent, instance, device) in devices.items():
         found = query.get(parent, {}).get("instances", {}).get(device)
+        mode = query.get(parent, {})
+        if (mode.get('mig_current'), mode.get('mig_pending')) != ('Enabled', 'Enabled'):
+            ready = False
+        if '\n'.join(list_lines).count('(UUID: ' + uuid + ')') != 1:
+            ready = False
         if listed.get(uuid) != (parent, device) or found is None or found.get("gpu_instance_id") != instance:
             ready = False
             continue
@@ -373,13 +457,14 @@ def mig_usage(list_lines: list[str], query_lines: list[str], devices=None) -> tu
             ready = False  # no process listing for the parent: ownership of its instances unknown
             continue
         for proc in query.get(parent, {}).get("processes", []):
-            if proc["pid"] is None or proc["gpu_instance_id"] is None:
+            if proc["pid"] is None or proc["gpu_instance_id"] is None or proc["used_mib"] is None:
                 ready = False
                 continue
             owner = next((uuid for uuid, (p, instance, _) in devices.items()
                           if p == parent and instance == proc["gpu_instance_id"]), None)
             if owner is not None:
                 usage[owner].append((proc["pid"], float(proc["used_mib"] or 0.0)))
+    usage = {gpu: list(dict(rows).items()) for gpu, rows in usage.items()}
     return usage, memory, ready
 
 
@@ -413,6 +498,7 @@ def snapshot_command(root: str) -> str:
         "printf '__S4D_GRAPHICS__\\n'; if ! nvidia-smi; then printf '__S4D_QUERY_ERROR__\\n'; fi; "
         "printf '__S4D_MEMORY__\\n'; cat /proc/meminfo; "
         "printf '__S4D_DISK__\\n'; df -B1 --output=size,avail -- " + shlex.quote(root) + "; "
+        "printf '__S4D_NAMES__\\n'; docker ps -a --format '{{.Names}}'; "
         "printf '__S4D_CONTAINERS__\\n'; "
         "ids=$(docker ps -aq --no-trunc --filter label=s4d.managed=true --filter label=s4d.host=remote);"
         "for id in $ids; do docker inspect --format '{{json .}}' \"$id\" || true; "
@@ -431,14 +517,14 @@ def snapshot_command(root: str) -> str:
         "printf '__S4D_COTENANTS__\\n'; "
         # the listing fails the whole snapshot like the managed listing above; an inspect failure other than the
         # container's removal since the listing marks the snapshot not ready (no co-tenant reservation is lost)
-        "ids=$(docker ps -q --no-trunc --filter label=s4d.managed=false --filter label=s4d.project=splatter4d "
+        "ids=$(docker ps -q --no-trunc --filter label=s4d.project=splatter4d "
         "--filter label=s4d.owner=kaist-sunho); "
         "for id in $ids; do if out=$(docker inspect --format '{{json .}}' \"$id\" 2>&1); then printf '%s\\n' \"$out\"; "
         "else case \"$out\" in *'No such object'*|*'No such container'*) ;; *) printf '__S4D_QUERY_ERROR__\\n';; esac; fi; "
-        "printf '__S4D_TOP__ %s\\n' \"$id\"; docker top \"$id\" -eo pid 2>/dev/null || true; "
+        "printf '__S4D_TOP__ %s\\n' \"$id\"; docker top \"$id\" -eo pid 2>/dev/null || printf '__S4D_TOP_ERROR__\\n'; "
         "stat=\"/sys/fs/cgroup/system.slice/docker-$id.scope/memory.stat\"; "
         "if [ -r \"$stat\" ]; then printf '__S4D_RAM_USED__ %s\\n' "
-        "\"$(awk '$1==\"anon\" || $1==\"shmem\" {s+=$2} END {printf \"%.0f\", s}' \"$stat\")\"; fi; "
+        "\"$(awk '$1==\"anon\" || $1==\"shmem\" {if (NF!=2 || $2 !~ /^(0|[1-9][0-9]*)$/) bad=1; s+=$2; seen[$1]++} END {if (bad || seen[\"anon\"]!=1 || seen[\"shmem\"]!=1) exit 1; printf \"%.0f\", s}' \"$stat\")\"; fi; "
         "printf '__S4D_END_TOP__\\n'; done; " + launch_hold.status_shell(root) + "printf '__S4D_END__\\n'"
     )
 
@@ -448,7 +534,11 @@ def parse_snapshot(output: str) -> RemoteSnapshot:
     tops: dict[str, set[int]] = {}
     ram_used: dict[str, int] = {}
     section, top = "", None
+    top_header, top_valid = False, True
     for line in output.splitlines():
+        if line == '__S4D_QUERY_ERROR__':
+            sections.setdefault('__S4D_ERRORS__', []).append(line)
+            continue
         if line.startswith("__S4D_LAUNCH_HOLD__ "):
             continue  # read by launch_hold.parse_status from the whole output, never part of a section
         if line.startswith("__S4D_TOP__ "):
@@ -456,7 +546,10 @@ def parse_snapshot(output: str) -> RemoteSnapshot:
             if not SHA256.fullmatch(top):
                 raise RemoteJobError("Invalid Docker container id in snapshot")
             tops[top] = set()
+            top_header, top_valid = False, True
         elif line == "__S4D_END_TOP__":
+            if top is not None and not (top_header and top_valid):
+                tops[top] = None
             top = None
         elif line.startswith("__S4D_RAM_USED__ ") and top is not None:
             value = line.removeprefix("__S4D_RAM_USED__ ").strip()
@@ -464,12 +557,16 @@ def parse_snapshot(output: str) -> RemoteSnapshot:
                 ram_used[top] = int(value)
         elif line in {"__S4D_GPUS__", "__S4D_USAGE__", "__S4D_GRAPHICS__", "__S4D_MEMORY__",
                       "__S4D_DISK__", "__S4D_CONTAINERS__", "__S4D_GPU_MEMORY__", "__S4D_COTENANTS__", "__S4D_END__",
-                      "__S4D_MIG_LIST__", "__S4D_MIG_QUERY__", "__S4D_MIG_MODE__"}:
+                      "__S4D_MIG_LIST__", "__S4D_MIG_QUERY__", "__S4D_MIG_MODE__", "__S4D_NAMES__"}:
             section = line
             sections.setdefault(section, [])
         elif top is not None:
-            if line.strip().isdigit():
+            if not top_header and line.strip().lower() == 'pid':
+                top_header = True
+            elif top_header and line.strip().isdigit():
                 tops[top].add(int(line.strip()))
+            elif line.strip():
+                top_valid = False
         elif section:
             sections[section].append(line)
     required = {"__S4D_GPUS__", "__S4D_USAGE__", "__S4D_GRAPHICS__", "__S4D_MEMORY__",
@@ -523,7 +620,7 @@ def parse_snapshot(output: str) -> RemoteSnapshot:
             name, identity = item["Name"].removeprefix("/"), item["Id"]
             if not name.startswith("s4d-") or not SHA256.fullmatch(identity) or name in containers:
                 raise ValueError("Invalid container identity")
-            item["pids"] = tops.get(identity, set())
+            item["pids"] = tops.get(identity) or set()
             containers[name] = item
         except (KeyError, TypeError, ValueError) as exc:
             raise RemoteJobError("Invalid Docker inspect snapshot") from exc
@@ -535,19 +632,28 @@ def parse_snapshot(output: str) -> RemoteSnapshot:
         if len(parts) == 3 and parts[0] in usage and parts[1].isdigit() and parts[2].isdigit():
             gpu_memory[parts[0]] = (int(parts[1]), int(parts[2]))
     cotenants = {}
+    admission_records = [] if "__S4D_NAMES__" in sections else None
     for line in sections.get("__S4D_COTENANTS__", []):
         try:
             item = json.loads(line)
         except ValueError:
+            if admission_records is not None:
+                ready = False
             continue  # unreadable: not identified, its processes stay foreign
         identity = item.get("Id") if isinstance(item, dict) and isinstance(item.get("Id"), str) else None
-        found = identify_cotenant(item, tops.get(identity, set()), ram_used.get(identity)) if identity else None
+        if admission_records is not None:
+            if identity is None or identity not in tops or identity not in ram_used:
+                ready = False
+            else:
+                admission_records.append((item, tops[identity], ram_used[identity]))
+        found = identify_cotenant(item, tops.get(identity) or set(), ram_used.get(identity)) if identity else None
         name = item["Name"].removeprefix("/") if found else None
         if found and name not in containers and name not in cotenants:
             cotenants[name] = found
     hold = launch_hold.parse_status(output) if "__S4D_LAUNCH_HOLD__" in output else None
     return RemoteSnapshot(usage, int(memory) / 2**20, int(disk[0][0]), int(disk[0][1]), containers, ready,
-                          cotenants, gpu_memory, hold)
+                          cotenants, gpu_memory, hold, admission_records,
+                          set(sections['__S4D_NAMES__']) if '__S4D_NAMES__' in sections else None)
 
 
 def resource_limits(ram_gb: float, cpu_threads: int) -> dict:
@@ -944,6 +1050,14 @@ class RemoteBackend:
         if result.returncode == 75:
             self._save_snapshot(reachable=False, query_ok=False)
             raise RemoteUnreachable("Remote launch response unknown; reconcile its deterministic container")
+        if result.returncode == GUARD_REFUSED_EXIT:
+            try:
+                spec = json.loads(path.read_text())
+                proof = validate_guard_refusal(json.loads(result.stdout), spec['container'], spec['gpu'])
+            except (ValueError, KeyError, TypeError):
+                pass  # an exit code alone is never proof
+            else:
+                raise AdmissionRefused(proof)
         if result.returncode:
             diagnostic = {"returncode": result.returncode,
                           "stdout": self.client._redact(result.stdout)[-8000:],

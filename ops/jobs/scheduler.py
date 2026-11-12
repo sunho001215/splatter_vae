@@ -1,4 +1,12 @@
-"""Authoritative file-based scheduler with independent local and remote resource admission."""
+"""Authoritative file-based scheduler with independent local and remote admission.
+
+Confirmed MIG snapshots use admission.py's guard formulas and checked tenant
+limits, in bytes (queue GB fields mean GiB, NVIDIA readings MiB). A verified
+pre-create refusal returns to pending only under the registry lock after a fresh
+all-state Docker name listing proves absence. It charges no failure, preserves
+executed-run pins/resume history, and backs off that job/GPU for ten minutes.
+Ambiguous evidence retains the unknown/reconciliation path.
+"""
 
 from __future__ import annotations
 
@@ -20,6 +28,7 @@ import yaml
 
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
+from ops.containers.admission import gpu_reasons, host_reasons  # noqa: E402
 from ops.containers.verification import validate_report, validate_verification, verification_resources  # noqa: E402
 from ops.jobs.footprints import exclusive, fql_ram_gb, ram_gb  # noqa: E402
 from ops.jobs import host_roles, realworld_local  # noqa: E402
@@ -32,6 +41,9 @@ from ops.jobs.remote_backend import ROOT as REMOTE_ROOT  # noqa: E402
 from ops.jobs.remote_backend import (  # noqa: E402
     COTENANT_GPU_MARGIN_GB,
     ContainerRemovalRefused,
+    AdmissionRefused,
+    validate_guard_refusal,
+    container_name,
     RemoteBackend,
     RemoteJobError,
     RemoteUnreachable,
@@ -47,7 +59,9 @@ QUEUE = REPO / "experiments/queue.yaml"
 REGISTRY = REPO / "experiments/registry.jsonl"
 RUNS = REPO / "runs"
 PYTHON = sys.executable
+
 GIB = 2**30
+REFUSAL_BACKOFF_SECONDS = 600
 GUARD_CALL = re.compile(r"^(\w+\s*=\s*)?(guard_gpus|enforce_allowed_gpus)\(\)\s*$", re.MULTILINE)
 DONE, FAILED, RUNNING, PENDING = "done", "failed", "running", "pending"
 ACTIVE = {RUNNING, "launching", "sync_pending"}
@@ -236,6 +250,33 @@ def read_registry(path: Path = REGISTRY) -> dict[str, dict]:
                         job["status"] = "crashed"
             elif kind == "failed":
                 job.update(status=FAILED)
+            elif kind == 'admission_refused':
+                attempt, gpu = event.get('attempt'), event.get('gpu')
+                checked = event.get('checked_at')
+                if (set(event) != {'event', 'id', 'host', 'gpu', 'attempt', 'container', 'time',
+                                   'checked_at', 'snapshot_confirmed', 'containers_with_name', 'proof'}
+                        or job['status'] != 'launching' or job.get('host') != 'remote'
+                        or event.get('host') != 'remote' or type(attempt) is not int
+                        or attempt < 1 or attempt != job.get('attempt') or gpu != job.get('gpu')
+                        or not isinstance(gpu, str) or not re.fullmatch(r'MIG-[0-9a-f-]+', gpu)
+                        or job.get('container_id') or str(attempt) in job.get('attempt_containers', {})
+                        or str(attempt) in job.get('attempt_codes', {})
+                        or event.get('container') != job.get('container')
+                        or event.get('container') != container_name(event['id'], attempt)
+                        or event.get('snapshot_confirmed') is not True
+                        or type(event.get('containers_with_name')) is not int or event['containers_with_name'] != 0
+                        or type(checked) not in (int, float) or not math.isfinite(checked)
+                        or type(event['time']) not in (int, float) or not math.isfinite(event['time'])
+                        or not job.get('attempt_since', float('inf')) <= checked <= event['time']
+                        or event['time'] - checked > 120):
+                    raise ValueError(f"invalid automatic admission refusal for {event['id']}")
+                validate_guard_refusal(event.get('proof'), event['container'], gpu)
+                job.setdefault('placement_backoff', {})[gpu] = event['time'] + REFUSAL_BACKOFF_SECONDS
+                job.update(status=PENDING, unknown=False)
+                job.pop('reason', None)
+                if event['id'] not in executed:
+                    for key in ('job_sha256', 'commit', 'image_digest'):
+                        job.pop(key, None)
             elif kind == "reset":
                 reconciliation = event.get("reconciliation", {})
                 if reconciliation.get("conclusion") == (
@@ -380,9 +421,27 @@ def choose_gpu(job: dict, limits: dict, running: list[dict], foreign: set[str],
             count, memory = count + shared["jobs"], memory + shared["mem_gb"]
             if shared.get("exclusive_gpu") or (exclusive(job) and shared["jobs"]):
                 continue
-            margin = 2.0 if uuid.startswith("MIG-") else COTENANT_GPU_MARGIN_GB
-            if shared["free_gb"] - margin < float(job["mem_gb"]):
-                continue
+            if host == 'remote' and uuid.startswith('MIG-'):
+                if float(job['mem_gb']) <= 0:
+                    continue
+                if shared.get('admission_error'):
+                    continue
+                try:
+                    reasons = gpu_reasons(shared['total_mib'], shared['used_mib'],
+                                          math.ceil(float(job['mem_gb']) * GIB),
+                                          math.floor(float(limits[uuid]['max_mem_gb']) * GIB),
+                                          round((memory-float(job['mem_gb'])) * GIB),
+                                          round(shared['pending_gb'] * GIB), count,
+                                          limits[uuid]['max_jobs'], exclusive(job),
+                                          shared.get('exclusive_gpu', False), uuid in foreign or shared.get('foreign', False))
+                except (KeyError, ValueError):
+                    continue
+                if reasons:
+                    continue
+            else:
+                margin = 2.0 if uuid.startswith('MIG-') else COTENANT_GPU_MARGIN_GB
+                if shared['free_gb'] - margin < float(job['mem_gb']):
+                    continue
         if count < limits[uuid]["max_jobs"] and memory <= limits[uuid]["max_mem_gb"]:
             if best is None or memory < best[0]:
                 best = (memory, uuid)
@@ -1052,25 +1111,56 @@ def _cleanup_completed_containers(backend, snapshot, state: dict, registry: Path
     return True
 
 
+def remote_host_refusals(resource, job, host, cpu_used):
+    """Exact guard host checks after measured pending RAM/disk have been charged."""
+    return host_reasons(
+        round(resource['available'] * GIB), 0, math.ceil(ram_gb(job) * GIB),
+        math.ceil(float(host.get('host_ram_reserve_gb', 0)) * GIB),
+        round(cpu_used * 1e9), thread_limit(job.get('cpu_threads', DEFAULT_REMOTE_CPU_THREADS)) * 10**9,
+        int(host.get('cpu_thread_budget', REMOTE_CPU_THREAD_BUDGET)) * 10**9,
+        resource['disk_total'], resource['disk_free'], 0,
+        math.ceil(float(job.get('disk_gb', 0)) * GIB),
+        math.ceil(float(host.get('disk_floor_gb', 0)) * GIB),
+        max(.15, float(host.get('disk_floor_fraction', .15))))
+
+
 def _charge_cotenants(resources: dict, state: dict, jobs: dict, messages: list[str]) -> None:
-    """Campaign-owned co-tenants on the remote (remote_backend.identify_cotenant: the real-world preprocessing
-    containers, 2026-11-06): their processes are already known (not foreign) on the GPU each is bound to; here their
-    resources are charged. Per GPU: container count and memory (max of measured and declared) against the GPU's limits,
-    and the measured free memory less every known tenant's declared but not yet allocated reservation, which must hold
-    a job's mem_gb plus COTENANT_GPU_MARGIN_GB (choose_gpu). Host RAM: the part of their RAM limits not yet in use. A
-    co-tenant without an enforced RAM limit cannot be accounted: no remote launch. Without co-tenants nothing changes."""
+    """Charge the guard's complete measured inventory when available.
+
+    Legacy physical snapshots retain their previous co-tenant/ramp policy. MIG
+    host charges include every live owned container; own GPU declarations remain
+    in running, with measured excess accounted in the shared residual.
+    """
     snapshot = resources["remote"].pop("snapshot", None)
     if snapshot is None:
         return
     own = [(current["gpu"], current.get("container"), reservation(current, jobs.get(job_id, {}), "mem_gb"))
            for job_id, current in state.items() if current.get("host") == "remote" and current["status"] in RESERVING]
-    charges = cotenant_charges(snapshot, own)
+    try:
+        charges = cotenant_charges(snapshot, own)
+    except (ValueError, KeyError, TypeError):
+        messages.append('remote admission inventory is unreadable; no remote jobs launched')
+        del resources['remote']
+        return
     if charges["unbounded"]:
         messages.append(f"remote co-tenants without an enforced RAM limit {charges['unbounded']}; no remote jobs launched")
         del resources["remote"]
         return
     resources["remote"]["available"] -= charges["ram_pending_bytes"] / GIB
     resources["remote"]["cotenant"] = charges["gpus"]
+    if charges.get('guard_accounted'):
+        resources['remote']['guard_accounted'] = True
+        resources['remote']['guard_cpu_used'] = charges['cpus']
+        resources['remote']['disk_free'] -= charges['reserved_disk_bytes']
+        live_names = {item['Name'].removeprefix('/') for item, _, _ in snapshot.admission_records}
+        for job_id, current in state.items():
+            if (current.get('host') == 'remote' and current['status'] in RESERVING
+                    and current.get('container') not in live_names):
+                row = jobs.get(job_id, {})
+                resources['remote']['available'] -= reservation(current, row, 'ram_gb')
+                resources['remote']['disk_free'] -= math.ceil(reservation(current, row, 'disk_gb') * GIB)
+                resources['remote']['guard_cpu_used'] += (reservation(current, row, 'cpu_threads')
+                                                         or DEFAULT_REMOTE_CPU_THREADS)
     resources["remote"]["cotenant_cpus"] = charges["cpus"]  # their CPU quotas; None if any is unlimited
     messages.append(f"remote co-tenants: {len(snapshot.cotenants)} known, {charges['ram_pending_bytes'] / GIB:.0f} GB "
                     "RAM not yet in use charged; " + ", ".join(
@@ -1222,7 +1312,8 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
         host = queue["hosts"].get(host_name, {})
         ramp = 60 * float(host.get("host_ram_ramp_minutes", 10))
         for job_id, current in state.items():
-            if current.get("host", "local") == host_name and current["status"] in RESERVING:
+            if (not resource.get('guard_accounted') and current.get("host", "local") == host_name
+                    and current["status"] in RESERVING):
                 if now - float(current.get("since", 0)) < ramp:
                     resource["available"] -= reservation(current, jobs.get(job_id, {}), "ram_gb")
                 resource["disk_free"] -= reservation(current, jobs.get(job_id, {}), "disk_gb") * GIB
@@ -1258,6 +1349,8 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
                     for job_id, current in state.items()
                     if current.get("host") == "remote" and current["status"] in RESERVING)
                 + (cotenant_cpus or 0.0))
+    if resources.get('remote', {}).get('guard_accounted'):
+        cpu_used = resources['remote']['guard_cpu_used']
     local_cpu_used = sum(reservation(current, jobs.get(job_id, {}), "cpu_threads") or DEFAULT_REMOTE_CPU_THREADS
                          for job_id, current in state.items()
                          if current.get("host", "local") == "local" and current["status"] in RESERVING)
@@ -1282,16 +1375,27 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
         if refused is not None:
             messages.append(f"{job['id']}: not admitted on {host_name}: {refused}")
             continue
-        gpu = choose_gpu(job, host.get("limits", {}), running + (phantom if held_back else []), resource["foreign"],
+        backed_off = {gpu for gpu, until in state.get(job['id'], {}).get('placement_backoff', {}).items()
+                      if until > now} if host_name == 'remote' else set()
+        gpu = choose_gpu(job, host.get("limits", {}), running + (phantom if held_back else []), resource["foreign"] | backed_off,
                          resource.get("cotenant"))
         if gpu is None:
             if held_back and choose_gpu(job, host.get("limits", {}), running, resource["foreign"],
                                         resource.get("cotenant")) is not None:
                 messages.append(f"{job['id']}: waiting for GPU capacity reserved for release {release_hold['short']}")
             continue
+        if resource.get('guard_accounted'):
+            try:
+                problems = remote_host_refusals(resource, job, host, cpu_used)
+            except ValueError as exc:
+                messages.append(f"{job['id']}: invalid remote resource request: {exc}")
+                continue
+            if problems:
+                messages.append(f"{job['id']}: waiting for remote guard resources: {', '.join(problems)}")
+                continue
         need, reserve = ram_gb(job), float(host.get("host_ram_reserve_gb", 0))
         available = resource["available"] - (release_charge["ram_gb"] if held_back else 0.0)
-        if available - need < reserve:
+        if (not resource.get('guard_accounted') or held_back) and available - need < reserve:
             messages.append(f"{job['id']}: waiting for host RAM ({available:.0f} GB available"
                             + (f" after {release_charge['ram_gb']:.0f} GB reserved for release {release_hold['short']}"
                                if held_back else "") + f", needs {need:.0f} + {reserve:.0f}) on {host_name}")
@@ -1311,7 +1415,7 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
         if host_name == "remote":  # every shared admission must fit the host thread budget
             budget = float(host.get("cpu_thread_budget", REMOTE_CPU_THREAD_BUDGET))
             charged = release_charge["cpu_threads"] if held_back else 0
-            if cpu_used + threads + charged > budget:
+            if (not resource.get('guard_accounted') or held_back) and cpu_used + threads + charged > budget:
                 messages.append(f"{job['id']}: waiting for CPU threads ({cpu_used:.0f} used + {threads:.0f}"
                                 + (f" + {charged:.0f} reserved for release {release_hold['short']}" if held_back else "")
                                 + f" > {budget:.0f}) on {host_name}")
@@ -1321,7 +1425,7 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
                                               if host_name == "remote" else float(host.get("disk_floor_fraction", 0))))
         disk_need = float(job.get("disk_gb", 0)) * GIB
         disk_free = resource["disk_free"] - (release_charge["disk_gb"] * GIB if held_back else 0.0)
-        if disk_free - disk_need < floor:
+        if (not resource.get('guard_accounted') or held_back) and disk_free - disk_need < floor:
             messages.append(f"{job['id']}: waiting for {host_name} disk floor/reservation")
             if host_name == "remote":
                 record({"event": "host_disk_low", "id": HOST_EVENT_ID, "host": host_name,
@@ -1383,16 +1487,36 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
                              verification_timeout_seconds=spec["verification_timeout_seconds"],
                              cpu_threads=spec.get("cpu_threads", 8), source_sha256=evidence["source_sha256"])
             record({"event": "launching", **event}, registry)
-            resource["available"] -= need
-            resource["disk_free"] -= disk_need
-            running.append({"host": "remote", "gpu": gpu, "mem_gb": float(job["mem_gb"]), "pid": None, "exclusive_gpu": exclusive(job)})
+            resource["available"] -= math.ceil(need * GIB) / GIB
+            resource["disk_free"] -= math.ceil(disk_need)
+            running.append({"host": "remote", "gpu": gpu, "mem_gb": math.ceil(float(job["mem_gb"]) * GIB) / GIB, "pid": None, "exclusive_gpu": exclusive(job)})
             cpu_used += threads
             if gpu in resource.get("cotenant", {}):
                 resource["cotenant"][gpu]["free_gb"] -= float(job["mem_gb"])
+                resource['cotenant'][gpu]['pending_gb'] += math.ceil(float(job['mem_gb']) * GIB) / GIB
             try:
                 launched = remote_backend.launch(path)
                 record({"event": "launched", **event, "container_id": launched["container_id"]}, registry)
                 messages.append(f"launched {job['id']} on remote/{gpu} ({spec['container']}, attempt {attempt})")
+            except AdmissionRefused as exc:
+                try:
+                    # tick holds registry.lock throughout launch and this fresh confirmation.
+                    fresh = remote_backend.snapshot()
+                    checked = time.time()
+                    if (not fresh.resources_ready or fresh.container_names is None
+                            or spec['container'] in fresh.container_names
+                            or spec['container'] in fresh.containers or spec['container'] in fresh.cotenants):
+                        raise ValueError('refused container absence is unconfirmed')
+                    refusal = {'event': 'admission_refused', 'id': job['id'], 'host': 'remote',
+                               'attempt': attempt, 'gpu': gpu, 'container': spec['container'],
+                               'proof': validate_guard_refusal(exc.proof, spec['container'], gpu),
+                               'snapshot_confirmed': True, 'containers_with_name': 0, 'checked_at': checked}
+                    record(refusal, registry)
+                    messages.append(f"{job['id']}: admission refused; pending with ten-minute back-off on {gpu}")
+                except (RemoteJobError, OSError, ValueError, RuntimeError, subprocess.SubprocessError):
+                    _unknown(job['id'], registry, 'guard refusal absence requires reconciliation', messages)
+                # All placement evidence predates the refusal. Recompute it next tick.
+                resources.pop('remote', None)
             except RemoteUnreachable:
                 _host_reachability(registry, False, "RemoteUnreachable")
                 _unknown(job["id"], registry, "launch response unknown", messages)
