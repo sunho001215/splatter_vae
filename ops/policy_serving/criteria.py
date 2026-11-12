@@ -81,11 +81,16 @@ def pretraining_complete(config: dict, completion: dict | None) -> dict:
 
 def checkpoint_matches_completion(check_b: dict, checkpoint_step, policy_record: dict) -> dict:
     """b (artefact part): the evaluated policy.pt IS the completed run's final artefact: its recorded training step
-    equals the budget and its sha256 equals the remote-verified one of the final sync."""
+    equals the budget and its sha256 equals the remote-verified one of the final sync (remote runs) or it is the local
+    run's own artefact (``local_completion``: a local run that exited 0)."""
     reasons = []
     if checkpoint_step is None or int(checkpoint_step) != int(check_b.get("budget", -1)):
         reasons.append(f"policy.pt step {checkpoint_step} != completion budget {check_b.get('budget')}")
-    if policy_record.get("matches_remote") is not True:
+    if policy_record.get("local_completion") is True:
+        # a LOCAL run (exited 0, no sync step): its runs/<id>/policy.pt is the artefact in place; the step == budget
+        # check above binds it to the completed run (staging.Lifecycle 'completed_local')
+        pass
+    elif policy_record.get("matches_remote") is not True:
         reasons.append(f"policy.pt sha256 does not match the remote-verified final sync "
                        f"(matches_remote={policy_record.get('matches_remote')})")
     if not reasons:

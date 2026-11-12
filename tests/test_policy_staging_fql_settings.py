@@ -164,8 +164,16 @@ def _entry(condition, setting=None, status="deployable", validation=None):
         {"condition": condition}, validation)
 
 
-VALIDATED = {"checkpoint_sha256": "c" * 64, "pass": True, "at": "t", "record": "r.json",
-             "checks": {k: {"pass": True} for k in S.VALIDATION_CHECKS}}
+def _validated(condition, setting="a10nq"):
+    from ops.policy_serving.config import input_spec_digest
+
+    run = f"{'rwnq-1' if setting == 'a10nq' else 'rwa100-1' if setting == 'a100' else 'r'}-fql-{condition}-t-s0"
+    return {"run": run, "checkpoint_sha256": "c" * 64, "pass": True, "at": "t", "record": "r.json",
+            "training_contract_sha256": "a" * 64, "input_spec_sha256": input_spec_digest({"condition": condition}),
+            "checks": {k: {"pass": True} for k in S.VALIDATION_CHECKS}}
+
+
+VALIDATED = _validated("reviwo")
 
 
 @pytest.mark.parametrize("condition", ["mvp3d_single", "mvp3d_multiview"])
@@ -178,7 +186,7 @@ def test_3d_mvp_follows_the_setting_rules_without_a_blanket_block(condition):
     assert legacy["usage_reasons"] == [S.LEGACY_FROZEN_REASON, S.NOT_ELIGIBLE] and legacy["execution_decision"] is None
     pending = _entry(condition, "a10nq")
     assert pending["execution_eligible"] is False and pending["usage_reasons"] == [S.AWAITING_VALIDATION, S.NOT_ELIGIBLE]
-    ok = _entry(condition, "a10nq", validation=VALIDATED)
+    ok = _entry(condition, "a10nq", validation=_validated(condition))
     assert ok["execution_eligible"] is True and ok["execution_decision"]["text"] == S.AUTO_NQ_DECISION["text"]
     assert S.quarantine_decision(f"rwcal-20261109-fql-{condition}-drawer-open-s0")
     validate_catalog(json.loads(json.dumps(S.build_catalog(

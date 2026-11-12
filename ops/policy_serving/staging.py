@@ -280,12 +280,15 @@ def fql_row(src: Sources, run: str, life: Lifecycle | None, job: dict | None) ->
     if (wrong := setting_check(run, config)) is not None:
         b = {**b, "pass": False, "reason": wrong + (f"; {b['reason']}" if "reason" in b else "")}
     dataset = ((config.get("data") or {}).get("dataset")) or _arg(job, "data.dataset")
+    policy = _file_record(src, life, run, "policy.pt")
+    if state == "completed_local":
+        policy["local_completion"] = True  # criteria.checkpoint_matches_completion: no remote sync for local runs
     return {"run": run, "kind": "fql", "condition": m["condition"], "task": m["task"], "seed": int(m["seed"]),
             "fql_setting": setting,
             "policy_id": policy_id(m["condition"], m["task"], int(m["seed"]), setting), "registry_state": state,
             "superseded": superseded(run), "quarantine_decision": quarantine_decision(run), "dataset": dataset,
             "budget_steps": b.get("budget"), "completed": completion, "b": b,
-            "policy": _file_record(src, life, run, "policy.pt")}
+            "policy": policy}
 
 
 def inventory(src: Sources) -> dict:
@@ -380,6 +383,14 @@ def evaluate(src: Sources, rows: list[dict], pre_rows: dict[str, dict], *, sidec
         payload = torch.load(ck, map_location="cpu", weights_only=False)
         meta, norm = payload["meta"], C.feature_norm_of(payload)
         checks["b"] = C.checkpoint_matches_completion(checks["b"], payload.get("step"), r["policy"])
+        from ops.policy_serving.config import LEGACY_SETTING, agent_setting_matches
+
+        agent_cfg = (payload.get("agent") or {}).get("config")
+        if checks["b"]["pass"] and not agent_setting_matches(r.get("fql_setting") or LEGACY_SETTING, agent_cfg):
+            # the WEIGHTS must have trained with the run id's FQL setting (eligibility follows the setting)
+            got = {k: (agent_cfg or {}).get(k) for k in ("alpha", "normalize_q_loss")}
+            checks["b"] = {**checks["b"], "pass": False, "reason": f"checkpoint agent.config {got} is not the "
+                           f"{r.get('fql_setting') or LEGACY_SETTING} setting"}
         del payload
         if not checks["b"]["pass"]:  # not the completed artefact: no further criteria
             continue
@@ -525,9 +536,13 @@ def exclusions(condition: str | None, setting: str | None) -> list[str]:
     return [] if setting == "a10nq" else [setting_reason(setting)]
 
 
-def validation_record(path: Path | None, run: str, checkpoint_sha256: str) -> dict | None:
+def validation_record(path: Path | None, run: str, checkpoint_sha256: str, *, training_contract_sha256: str | None = None,
+                      input_spec: dict | None = None) -> dict | None:
     """The deployment-validation record of a run (``<dir>/<run>.json``, written by the auto-eligibility pipeline) as a
-    compact catalog summary, or None when absent / not passed / bound to other weights."""
+    compact catalog summary, or None unless it is well formed, passed overall and in every check, and bound to this
+    run, these weights, this training contract and this input_spec (a re-staged contract or spec needs a new record)."""
+    from ops.policy_serving.config import input_spec_digest, valid_sha256
+
     if path is None:
         return None
     f = Path(path) / f"{run}.json"
@@ -537,11 +552,17 @@ def validation_record(path: Path | None, run: str, checkpoint_sha256: str) -> di
         rec = json.loads(f.read_text())
     except ValueError:
         return None
-    checks = rec.get("checks") or {}
-    if rec.get("checkpoint_sha256") != checkpoint_sha256 or rec.get("run") != run or \
-            not all((checks.get(k) or {}).get("pass") is True for k in VALIDATION_CHECKS):
+    checks = rec.get("checks") if isinstance(rec, dict) else None
+    if not isinstance(checks, dict) or set(checks) != set(VALIDATION_CHECKS) or rec.get("pass") is not True or \
+            not all(isinstance(checks[k], dict) and checks[k].get("pass") is True for k in VALIDATION_CHECKS) or \
+            rec.get("run") != run or rec.get("checkpoint_sha256") != checkpoint_sha256 or \
+            not valid_sha256(rec.get("training_contract_sha256")) or \
+            (training_contract_sha256 is not None and rec.get("training_contract_sha256") != training_contract_sha256) or \
+            (input_spec is not None and rec.get("input_spec_sha256") != input_spec_digest(input_spec)):
         return None
-    return {"checkpoint_sha256": checkpoint_sha256, "pass": True, "at": rec.get("at"), "record": str(f),
+    return {"run": run, "checkpoint_sha256": checkpoint_sha256, "pass": True, "at": rec.get("at"),
+            "code": rec.get("code"), "record": str(f), "training_contract_sha256": rec["training_contract_sha256"],
+            "input_spec_sha256": rec.get("input_spec_sha256"),
             "checks": {k: {kk: vv for kk, vv in checks[k].items() if kk in ("pass", "compared", "equal", "windows")}
                        for k in VALIDATION_CHECKS}}
 
@@ -1096,9 +1117,11 @@ def cmd_stage(a, *, hook: bool = False) -> int:
                 if row["class"]["status"] in ("deployable", "restricted") or labelled(row):
                     files.update(staging_files(src, row, a.sidecar_dir))
                     evaluated.update(_evaluated_shas(row, a.sidecar_dir))
-                    entries[row["policy_id"]] = catalog_entry(
-                        row, local_input_spec(src, row, a.sidecar_dir),
-                        validation_record(getattr(a, "validation_dir", None), run, row["policy"]["sha256"]))
+                    spec = local_input_spec(src, row, a.sidecar_dir)
+                    entries[row["policy_id"]] = catalog_entry(row, spec, validation_record(
+                        getattr(a, "validation_dir", None), run, row["policy"]["sha256"],
+                        training_contract_sha256=((row.get("checks") or {}).get("d") or {}).get("sha256"),
+                        input_spec=spec))
                     report[run]["staged"] = bool(a.execute)
                     report[run]["catalog_status"] = row["class"]["status"]
             if files:
@@ -1127,7 +1150,11 @@ def relabel_entry(pid: str, entry: dict, validation_dir: Path | None) -> dict:
         return dict(entry)
     setting = fql_setting(str(entry.get("run") or ""))
     failed = {k for k, v in (entry.get("criteria") or {}).items() if isinstance(v, dict) and v.get("pass") is False}
-    validation = validation_record(validation_dir, entry["run"], entry["sha256"]) if setting == "a10nq" else None
+    validation = validation_record(validation_dir, entry["run"], entry["sha256"],
+                                   input_spec=entry.get("input_spec")) if setting == "a10nq" else None
+    if validation is not None and (entry.get("deploy_validation") or {}).get("training_contract_sha256") not in \
+            (None, validation["training_contract_sha256"]):
+        validation = None  # a record for another training contract than the one this entry was validated with
     u = usage_of(entry["status"], entry.get("condition"), setting, checkpoint_sha256=entry.get("sha256"),
                  failed_criteria=failed, validation=validation)
     if entry["status"] == "restricted" and u["execution_eligible"] and \

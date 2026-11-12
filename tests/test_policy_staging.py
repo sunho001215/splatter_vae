@@ -323,9 +323,17 @@ def _vrow(condition="reviwo", status="deployable", run=None, seed=0, task="t"):
     return row
 
 
-def _validation(sha="c" * 64):
-    return {"checkpoint_sha256": sha, "pass": True, "at": "t", "record": "r.json",
+def _validation(sha="c" * 64, run=None, spec=None):
+    """A passed deployment-validation summary (as staging publishes it), bound to run / weights / contract / spec."""
+    from ops.policy_serving.config import input_spec_digest
+
+    return {"run": run, "checkpoint_sha256": sha, "pass": True, "at": "t", "record": "r.json",
+            "training_contract_sha256": "a" * 64, "input_spec_sha256": input_spec_digest(spec),
             "checks": {k: {"pass": True} for k in S.VALIDATION_CHECKS}}
+
+
+def _vfor(row, spec):
+    return _validation(row["policy"]["sha256"], row["run"], spec)
 
 
 def _cat(pid, e):
@@ -364,7 +372,7 @@ def test_validator_allows_only_e2e_legacy_and_validated_new_setting_entries():
     e2e = S.catalog_entry(e2e_row, {"condition": "e2e_cnn"})
     assert e2e["execution_eligible"] is True
     validate_catalog(_cat("e2e_cnn-t-s0", e2e))
-    nq = S.catalog_entry(_vrow("reviwo"), {"condition": "reviwo"}, _validation())
+    nq = S.catalog_entry(_vrow("reviwo"), {"condition": "reviwo"}, _vfor(_vrow("reviwo"), {"condition": "reviwo"}))
     assert nq["execution_eligible"] is True and "fql_setting_a10nq" in nq["flags"]
     validate_catalog(_cat("reviwo-t-s0-a10nq", nq))
     legacy = {**nq, "run": "r-fql-reviwo-t-s0", "flags": [], "deploy_validation": _validation()}
@@ -375,7 +383,10 @@ def test_validator_allows_only_e2e_legacy_and_validated_new_setting_entries():
         validate_catalog(_cat("reviwo-t-s0-a100", a100))
     for bad in ({**nq, "deploy_validation": None}, {**nq, "deploy_validation": _validation("d" * 64)},
                 {**nq, "deploy_validation": {**_validation(), "pass": False}},
-                {**nq, "deploy_validation": {**_validation(), "checks": {"l2_offline": {"pass": True}}}}):
+                {**nq, "deploy_validation": {**nq["deploy_validation"], "checks": {"l2_offline": {"pass": True}}}},
+                {**nq, "deploy_validation": {**nq["deploy_validation"], "run": "other-run"}},
+                {**nq, "deploy_validation": {**nq["deploy_validation"], "input_spec_sha256": "0" * 64}},
+                {**nq, "deploy_validation": {**nq["deploy_validation"], "training_contract_sha256": None}}):
         with pytest.raises(ValueError, match="deploy_validation"):
             validate_catalog(_cat("reviwo-t-s0-a10nq", bad))
     with pytest.raises(ValueError, match="non-eligible"):  # a record never decorates a non-eligible entry
@@ -410,21 +421,55 @@ def test_validator_allows_only_e2e_legacy_and_validated_new_setting_entries():
         validate_catalog(cat(sha256="x"))
 
 
-def test_validation_records_are_bound_to_run_and_checkpoint(tmp_path):
-    rec = {"run": "rwnq-20261111-fql-reviwo-t-s0", "checkpoint_sha256": "c" * 64, "at": "t",
+def test_validation_records_are_strict_and_bound_to_run_checkpoint_contract_and_spec(tmp_path):
+    from ops.policy_serving.config import input_spec_digest
+
+    spec = {"condition": "reviwo", "views": 1}
+    rec = {"run": "rwnq-20261111-fql-reviwo-t-s0", "checkpoint_sha256": "c" * 64, "at": "t", "pass": True,
+           "training_contract_sha256": "a" * 64, "input_spec_sha256": input_spec_digest(spec),
            "checks": {k: {"pass": True, "compared": 30, "equal": 30, "noise": "x"} for k in S.VALIDATION_CHECKS}}
-    (tmp_path / f"{rec['run']}.json").write_text(json.dumps(rec))
-    v = S.validation_record(tmp_path, rec["run"], "c" * 64)
-    assert v["pass"] is True and v["checks"]["server_network"] == {"pass": True, "compared": 30, "equal": 30}
+    f = tmp_path / f"{rec['run']}.json"
+    f.write_text(json.dumps(rec))
+    v = S.validation_record(tmp_path, rec["run"], "c" * 64, training_contract_sha256="a" * 64, input_spec=spec)
+    assert v["pass"] is True and v["run"] == rec["run"] and v["checks"]["server_network"] == \
+        {"pass": True, "compared": 30, "equal": 30}
     assert S.validation_record(tmp_path, rec["run"], "d" * 64) is None  # other weights
+    assert S.validation_record(tmp_path, rec["run"], "c" * 64, training_contract_sha256="b" * 64) is None
+    assert S.validation_record(tmp_path, rec["run"], "c" * 64, input_spec={**spec, "views": 3}) is None
     assert S.validation_record(tmp_path, "other-run", "c" * 64) is None
     assert S.validation_record(None, rec["run"], "c" * 64) is None
-    for broken in ({**rec, "run": "x"}, {**rec, "checks": {**rec["checks"], "robotpc_client": {"pass": False}}},
-                   {k: v for k, v in rec.items() if k != "checks"}):
-        (tmp_path / f"{rec['run']}.json").write_text(json.dumps(broken))
-        assert S.validation_record(tmp_path, rec["run"], "c" * 64) is None
-    (tmp_path / f"{rec['run']}.json").write_text("{not json")
+    for broken in ({**rec, "run": "x"}, {**rec, "pass": False},  # an aggregate failure is never converted to a pass
+                   {**rec, "checks": {**rec["checks"], "robotpc_client": {"pass": False}}},
+                   {**rec, "checks": {**rec["checks"], "extra": {"pass": True}}},
+                   {**rec, "checks": {k: v for k, v in rec["checks"].items() if k != "l2_offline"}},
+                   {**rec, "training_contract_sha256": "short"},
+                   {k: v for k, v in rec.items() if k != "checks"}, ["not", "a", "record"]):
+        f.write_text(json.dumps(broken))
+        assert S.validation_record(tmp_path, rec["run"], "c" * 64) is None, broken
+    f.write_text("{not json")
     assert S.validation_record(tmp_path, rec["run"], "c" * 64) is None
+
+
+def test_eligibility_follows_the_setting_the_weights_trained_with():
+    """Codex review of 7518c4f: the checkpoint's stored agent.config must be the run id's FQL setting."""
+    from ops.policy_serving.config import agent_setting_matches
+
+    assert agent_setting_matches("a10nq", {"alpha": 10.0, "normalize_q_loss": True})
+    assert not agent_setting_matches("a10nq", {"alpha": 10.0, "normalize_q_loss": False})
+    assert not agent_setting_matches("a10nq", {"alpha": 100.0, "normalize_q_loss": False})
+    assert agent_setting_matches("legacy", {"alpha": 10})  # earlier checkpoints: no normalize_q_loss key = false
+    assert not agent_setting_matches("legacy", {"alpha": 10.0, "normalize_q_loss": True})
+    assert agent_setting_matches("a100", {"alpha": 100.0, "normalize_q_loss": False})
+    assert not agent_setting_matches("a10nq", None) and not agent_setting_matches("other", {"alpha": 10.0})
+
+
+def test_local_completion_is_the_artefact_in_place_for_criterion_b():
+    b = {"pass": True, "budget": 1_000_000, "kind": "steps"}
+    remote_unverified = C.checkpoint_matches_completion(b, 1_000_000, {"matches_remote": None})
+    assert remote_unverified["pass"] is False  # a remote run still needs its verified final sync
+    local = C.checkpoint_matches_completion(b, 1_000_000, {"matches_remote": None, "local_completion": True})
+    assert local["pass"] is True and local["checkpoint_step"] == 1_000_000
+    assert C.checkpoint_matches_completion(b, 999_000, {"local_completion": True})["pass"] is False  # not final
 
 
 LN_FAIL = {"pass": False, "value": 0.355, "threshold": ">= 0.5"}
@@ -451,7 +496,7 @@ def test_new_setting_dynamo_executes_by_the_scoped_decision_after_the_deployment
     assert row["class"]["status"] == "restricted" and row["class"]["reasons"][-1] == C.LN_SPREAD_DECISION
     pending = S.catalog_entry(row, DYNAMO_SPEC)
     assert pending["execution_eligible"] is False and S.AWAITING_VALIDATION in pending["usage_reasons"]
-    e = S.catalog_entry(row, DYNAMO_SPEC, _validation())
+    e = S.catalog_entry(row, DYNAMO_SPEC, _vfor(row, DYNAMO_SPEC))
     assert e["status"] == "restricted" and e["criteria"]["e1_layernorm_spread"]["pass"] is False
     assert e["execution_eligible"] is True and e["usage"] == "execution"
     d = e["execution_decision"]
@@ -483,7 +528,7 @@ def test_restricted_grant_needs_every_failed_criterion_acknowledged_and_the_chec
                       failed_criteria={"e1_layernorm_spread"})["execution_eligible"] is True
     assert S.usage_of("restricted", "dynamo", None, checkpoint_sha256="c" * 64, validation=v,
                       failed_criteria={"e1_layernorm_spread"})["execution_eligible"] is False  # legacy DynaMo
-    good = S.catalog_entry(_restricted_dynamo_row(), DYNAMO_SPEC, v)
+    good = S.catalog_entry(_restricted_dynamo_row(), DYNAMO_SPEC, _vfor(_restricted_dynamo_row(), DYNAMO_SPEC))
     pid = "dynamo-t-s0-a10nq"
 
     def cat(**over):
@@ -523,8 +568,9 @@ def test_restricted_grant_needs_every_failed_criterion_acknowledged_and_the_chec
     ("dynamo", "rwnq-20261111-fql-dynamo-u-s0", "dynamo-t-s0-a10nq", ("fql_setting_a10nq",), "run id"),
     ("dynamo", "rwnq-20261111-fql-dynamo-t-s0", "dynamo-t-s1-a10nq", ("fql_setting_a10nq",), "own id")])
 def test_the_validator_enforces_the_restricted_grant_scope_from_entry_identity(condition, run, pid, flags, match):
-    good = S.catalog_entry(_restricted_dynamo_row(), DYNAMO_SPEC, _validation())
+    good = S.catalog_entry(_restricted_dynamo_row(), DYNAMO_SPEC, _vfor(_restricted_dynamo_row(), DYNAMO_SPEC))
     e = {**good, "condition": condition, "run": run, "flags": list(flags), "input_spec": {"condition": condition}}
+    e["deploy_validation"] = _validation(run=run, spec=e["input_spec"])
     with pytest.raises(ValueError, match=match):
         validate_catalog(_cat(pid, e))
     validate_catalog(_cat("dynamo-t-s0-a10nq", good))
@@ -546,12 +592,15 @@ def test_a_restricted_grant_needs_the_checkpoint_bound_input_spec_of_its_conditi
     for spec in (None, {"condition": "reviwo"}, {}):
         e = S.catalog_entry(row, spec, _validation())
         assert e["status"] == "restricted" and e["execution_eligible"] is False and not e.get("execution_decision")
-    good = S.catalog_entry(row, DYNAMO_SPEC, _validation())
+    good = S.catalog_entry(row, DYNAMO_SPEC, _vfor(row, DYNAMO_SPEC))
     assert good["execution_eligible"] is True
+    from ops.policy_serving.config import input_spec_digest
+
     for spec, match in (({"condition": "reviwo"}, "differs from its input_spec"), (None, "input_spec")):
         bad = {k: v for k, v in good.items() if k != "input_spec"}
         if spec is not None:
             bad["input_spec"] = spec
+        bad["deploy_validation"] = {**good["deploy_validation"], "input_spec_sha256": input_spec_digest(spec)}
         with pytest.raises(ValueError, match=match):
             validate_catalog(_cat("dynamo-t-s0-a10nq", bad))
 
@@ -570,7 +619,10 @@ def test_relabel_applies_the_current_rules_to_an_existing_catalog(tmp_path):
     assert nq["execution_eligible"] is False
     old = S.build_catalog({"e2e_cnn-t-s0": e2e, "reviwo-t-s0": legacy, "dynamo-t-s0": old_dyn,
                            "sincro-t-s0-a10nq": nq}, aliases={"reviwo-t": "reviwo-t-s0"}, criteria_sha256="f" * 64)
-    rec = {"run": nq["run"], "checkpoint_sha256": nq["sha256"], "at": "t",
+    from ops.policy_serving.config import input_spec_digest
+
+    rec = {"run": nq["run"], "checkpoint_sha256": nq["sha256"], "at": "t", "pass": True,
+           "training_contract_sha256": "a" * 64, "input_spec_sha256": input_spec_digest(nq["input_spec"]),
            "checks": {k: {"pass": True} for k in S.VALIDATION_CHECKS}}
     (tmp_path / f"{nq['run']}.json").write_text(json.dumps(rec))
     new = S.relabel_catalog(json.loads(json.dumps(old)), tmp_path)

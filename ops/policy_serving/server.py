@@ -136,6 +136,7 @@ class CatalogEntry:
     spec: dict | None = None  # advertised unbound InputSpec JSON (normalised)
     source: str = "config"  # config | catalog | preloaded
     spec_checked: bool = False  # spec == the one described from the checkpoint files (not only catalog-supplied)
+    setting_checked: bool = False  # the checkpoint's stored agent config is the FQL setting of the entry's identity
 
     def identity(self) -> str:
         """What the loaded object depends on: the staged artefacts and whether the entry may be served at all. Labels
@@ -432,7 +433,7 @@ class PolicyServer:
             old = previous.get(pid)
             if old is not None and old.source == source and old.identity() == entry.identity():
                 entry.spec = old.spec  # same artefacts: keep the described spec; labels come from the new entry
-                entry.spec_checked = old.spec_checked
+                entry.spec_checked, entry.setting_checked = old.spec_checked, old.setting_checked
                 if old.status == "error":
                     entry.status, entry.reasons = old.status, old.reasons
             elif entry.spec is None:
@@ -454,6 +455,15 @@ class PolicyServer:
                     why = None if described == entry.spec else "catalog input_spec differs from the checkpoint's"
                 if why is None:
                     entry.spec_checked = True
+                else:
+                    LOG.error("policy %s: %s; not offered", pid, why)
+                    entry.status, entry.reasons = "error", (why,)
+            if entry.status != "error" and entry.entry.get("execution_eligible") is True and not entry.setting_checked:
+                # eligibility follows the FQL setting: the WEIGHTS must have trained with the setting of the entry's
+                # identity (checkpoint agent.config; Codex review of 7518c4f)
+                why = checkpoint_setting_refusal(pid, entry.entry, self.checkpoint_root)
+                if why is None:
+                    entry.setting_checked = True
                 else:
                     LOG.error("policy %s: %s; not offered", pid, why)
                     entry.status, entry.reasons = "error", (why,)
@@ -1470,6 +1480,24 @@ def describe_entry(entry: dict, root=None) -> dict:
     contract = entry.get("training_contract") or entry.get("dataset")
     training = read_training_contract(meta, None if contract is None else str(resolve(root, contract)))
     return spec_json(InputSpec.from_meta(meta, training))
+
+
+def checkpoint_setting_refusal(pid, entry: dict, root=None) -> str | None:
+    """Why an entry's checkpoint did not train with the FQL setting of the entry's identity (None: it did)."""
+    import torch
+
+    from ops.policy_serving.config import agent_setting_matches, entry_fql_setting, resolve
+
+    try:
+        setting = entry_fql_setting(pid, entry)
+        payload = torch.load(resolve(root, entry["checkpoint"]), map_location="cpu", weights_only=False, mmap=True)
+        cfg = (payload.get("agent") or {}).get("config")
+    except Exception as exc:  # noqa: BLE001 - an unreadable checkpoint is never advertised as eligible
+        return f"checkpoint setting cannot be read: {type(exc).__name__}: {exc}"
+    if not agent_setting_matches(setting, cfg):
+        got = {k: (cfg or {}).get(k) for k in ("alpha", "normalize_q_loss")}
+        return f"checkpoint agent.config {got} is not the {setting} FQL setting of the entry"
+    return None
 
 
 def policy_footprint_bytes(policy) -> int:

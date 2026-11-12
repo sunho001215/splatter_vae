@@ -68,7 +68,7 @@ def _export(condition: str, export: Path, hw: int):
                     {"bounds": [-1, -1, -1, 1, 1, 2], "radius": 0.012}, 0, random_init=True)
 
 
-def make_fixture_policy(root, condition: str, *, device="cpu") -> DeployPolicy:
+def make_fixture_policy(root, condition: str, *, device="cpu", normalize_q_loss: bool = False) -> DeployPolicy:
     """A tiny random checkpoint of ``condition`` under ``root`` (created), loaded through the real ``DeployPolicy``
     path (``ours``: an injected labelled fixture through ``DeployPolicy.from_fixture``). Deterministic (seed 4)."""
     from s4d.rwlearn.fql import FQLAgent
@@ -109,7 +109,8 @@ def make_fixture_policy(root, condition: str, *, device="cpu") -> DeployPolicy:
         def enc():
             return ObsEncoder(feat_dim, sequence, proj=8)
 
-    agent = FQLAgent.create(1, enc().out_dim, 7, {"actor_hidden_dims": (8,), "value_hidden_dims": (8,)}, encoder=enc)
+    agent = FQLAgent.create(1, enc().out_dim, 7, {"actor_hidden_dims": (8,), "value_hidden_dims": (8,),
+                                                   "normalize_q_loss": bool(normalize_q_loss)}, encoder=enc)
     if condition == "ours":
         offline = OfflinePolicy.__new__(OfflinePolicy)
         offline.meta, offline.condition, offline.device = meta, condition, torch.device(device)

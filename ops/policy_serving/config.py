@@ -90,6 +90,25 @@ E2E_CONDITIONS = frozenset({"e2e_cnn"})
 E2E_ELIGIBLE_SETTINGS = (LEGACY_SETTING,)
 FROZEN_ELIGIBLE_SETTINGS = ("a10nq",)
 DEPLOY_VALIDATION_CHECKS = ("l2_offline", "server_network", "robotpc_client")
+# The FQL agent configuration each setting trains with (checkpoint ``agent.config``; a missing normalize_q_loss = the
+# earlier code = false): eligibility is bound to the WEIGHTS' setting, not only to the run id (Codex review of 7518c4f).
+SETTING_AGENT_CONFIG = {LEGACY_SETTING: (10.0, False), "a10nq": (10.0, True), "a100": (100.0, False)}
+
+
+def agent_setting_matches(setting: str, agent_config: dict | None) -> bool:
+    """True when a checkpoint's stored agent configuration is exactly the FQL setting's (alpha, normalize_q_loss)."""
+    want = SETTING_AGENT_CONFIG.get(setting)
+    if want is None or not isinstance(agent_config, dict) or agent_config.get("alpha") is None:
+        return False
+    return float(agent_config["alpha"]) == want[0] and bool(agent_config.get("normalize_q_loss", False)) is want[1]
+
+
+def input_spec_digest(spec) -> str | None:
+    """sha256 of an input_spec as published in the catalog (deployment-validation binding)."""
+    import hashlib
+
+    return None if not isinstance(spec, dict) else \
+        hashlib.sha256(json.dumps(spec, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 # The ONLY (condition, FQL setting) pairs whose ``restricted`` entries (a criterion FAILED, not waived) may be
 # execution-eligible, each under its recorded user decision. User decisions 2026-11-12 (Task 3, extended ~16:00):
 # DynaMo must execute; its representation quality / failed LN-spread criterion alone must not block it -> the
@@ -217,10 +236,14 @@ def _check_deploy_validation(source, pid, entry: dict) -> None:
     v = entry.get("deploy_validation")
     checks = v.get("checks") if isinstance(v, dict) else None
     if not isinstance(checks, dict) or v.get("pass") is not True or v.get("checkpoint_sha256") != entry.get("sha256") \
+            or v.get("run") != entry.get("run") or not valid_sha256(v.get("training_contract_sha256")) \
+            or v.get("input_spec_sha256") != input_spec_digest(entry.get("input_spec")) \
+            or set(checks) != set(DEPLOY_VALIDATION_CHECKS) \
             or not all(isinstance(checks.get(k), dict) and checks[k].get("pass") is True
                        for k in DEPLOY_VALIDATION_CHECKS):
         raise ValueError(f"{source}: policy {pid}: an execution-eligible new-setting entry needs a passed "
-                         "deploy_validation {checkpoint_sha256 (== sha256), pass, checks "
+                         "deploy_validation {run, checkpoint_sha256 (== sha256), training_contract_sha256, "
+                         "input_spec_sha256 (== the entry's input_spec), pass, checks "
                          f"{list(DEPLOY_VALIDATION_CHECKS)}}}")
 
 

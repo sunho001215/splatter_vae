@@ -7,6 +7,8 @@ parameters are frozen and committed; then only for an independent cross-validati
 
 ## 0. Setting
 * 3 fixed RealSense D435I: c0 = 135122070988 (left), c1 = 135122073201 (right), c2 = 135122076054 (front-centre).
+  (left / right here = the ROBOT's perspective, base +y; the robot-PC user-facing names follow the OPERATOR's view
+  since 2026-11-11: left = 135122073201, right = 135122070988, see configs/robot_pc/camera_names.yaml.)
   RGB 640x480 @ 15 Hz, pinhole (zero distortion reported), fx ~609. Inter-camera timestamp offsets constant
   (+6.5 ms, -12.5 ms); robot state ~100 Hz on the same host clock. FS metric depth from the IR pair registered to the
   RGB grid (factory colour<-IR extrinsic); sensor depth likewise. SAM 3 masks per frame: robot (arm + end effector),

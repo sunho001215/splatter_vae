@@ -217,23 +217,29 @@ late-phase q_mean <= +1. Explicit decisions (rwcal-20261109 3D-MVP: quarantined)
 
 **Usage restriction (fail closed).** Every catalog entry carries `usage` (`dry_run_replay_only` / `none` /
 `execution`), `usage_reasons` and `execution_eligible`; WELCOME and SPEC `info` publish them (`execution_eligible` is
-true only if the entry says exactly true). User decision 2026-11-10 21:10: every `deployable` entry (all criteria
-passed) is staged with `execution_eligible: true`, `usage: execution` and an `execution_decision` record
-{decided_by: user, at, text}; the validator accepts `true` ONLY for a deployable entry with usage execution and that
-record, and refuses it for `quarantined` entries. Every eligible entry names a valid checkpoint sha256 (the server
-verifies the weights against it). A `restricted` entry (its failed criterion stays FAILED and published, never waived)
-is eligible ONLY (`config._check_restricted_grant`) within the validator's own allowlist
-`config.RESTRICTED_EXECUTION_SCOPES` (condition + FQL setting derived from the entry's identity: run-id prefix,
-policy-id suffix and flags, all consistent; currently only `dynamo` / `legacy`), under a user decision whose `scope`
-names exactly that condition + setting, whose `acknowledged_failures` name every failed criterion of the entry and
-whose `checkpoint_sha256` equals the entry's. User decision 2026-11-12: the DynaMo entries of the legacy setting
-(`staging.RESTRICTED_EXECUTION_DECISIONS`, acknowledging `e1_layernorm_spread`, with the warning
-`RESTRICTED_EXECUTION_WARNINGS` in `usage_reasons`); a restricted entry of a new FQL setting (a10nq / a100) stays dry
-run / replay only. The server publishes such a grant with `requires_client: ["restricted-execution-notice/1"]` and
-binds the entry only for a HELLO declaring that capability (the robot-PC client declares it only when required and
-prints the failed criterion, warning and decision before START); an older client is refused at HELLO. Deployment
-order for a grant: server code -> robot-PC client -> catalog (an older server refuses the whole new catalog and keeps
-its previous registry); roll back the catalog before older server code. Withdrawn entries are never eligible. Execution on the robot PC additionally needs its own manual execution mode. A withdrawn policy's remaining
+true only if the entry says exactly true). **Execution eligibility (user decisions 2026-11-12 ~16:00, superseding
+2026-11-10 21:10 / 2026-11-12 ~00:20; validator allowlist in `ops/policy_serving/config.py`):**
+* end-to-end CNN entries (legacy E2E setting) that are `deployable` stay eligible (`staging.EXECUTION_DECISION`);
+* legacy frozen-encoder entries (every other condition trained with alpha 10, normalize_q_loss false) are NOT
+  eligible and the validator refuses re-enabling them (artefacts and results kept; `staging.py relabel` applies the
+  rule to an existing catalog); the a100 comparison setting is never eligible; quarantined entries never;
+* new-setting (a10nq: alpha 10 + normalize_q_loss true) entries of every condition, 3D-MVP included, become eligible
+  automatically (`staging.AUTO_NQ_DECISION`) once `deployable` and once their deployment validation passed: a record
+  `<validation dir>/<run>.json` (auto-eligibility watcher `realworld-ops/serving/tools/pol/stage_watch_v2.sh` +
+  `tools/autoelig/validate_run.py`: offline deploy-vs-training equality, in-container server direct == network,
+  robot-PC client replay == direct; never a robot command) bound to the run, the checkpoint sha256, the training
+  contract sha256 and the input_spec digest, published as the entry's `deploy_validation`; the server additionally
+  checks that the checkpoint's stored `agent.config` (alpha, normalize_q_loss) is the setting of the entry's identity
+  and advertises nothing eligible otherwise;
+* a `restricted` entry (its failed criterion stays FAILED and published, never waived) is eligible only within
+  `config.RESTRICTED_EXECUTION_SCOPES` (currently DynaMo a10nq: its representation quality / failed LN-spread
+  criterion alone must not block it) under a scoped user decision bound to its checkpoint, with every other check and
+  the deployment validation; the server binds it only for a HELLO declaring `restricted-execution-notice/1`;
+* `+bcflow` variants are eligible only on an explicitly eligible base under a decision naming bc_flow (never on an
+  a10nq base: no deployment validation of their own).
+Local FQL runs that exited 0 count as completed for staging (`completed_local`; results_synced is remote-only).
+Deployment order for rule changes: server code -> robot-PC client -> catalog; roll back the catalog before older
+server code. Withdrawn entries are never eligible. Execution on the robot PC additionally needs its own manual execution mode. A withdrawn policy's remaining
 sessions see `status: withdrawn`, `usage: none`; non-finite numbers are refused in catalog entries (JSON wire safety). The robot-PC client refuses execution mode for any other policy. A
 re-evaluation that no longer passes withdraws the run's catalog entry (quarantined, usage none). Label changes
 (status / criteria / usage) refresh on reload without reloading the model; the catalog transaction is serialised by a

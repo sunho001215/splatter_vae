@@ -1105,9 +1105,10 @@ def test_gpu_is_enforced_by_the_guard_not_the_container(monkeypatch):
 
 
 # ------------------------------------------------------------------------------------------------ catalog registry
-def stage_fixture(root: Path, name: str, condition: str = "reviwo", **extra):
-    """A FIXTURE checkpoint (+ export) written under ``root/name`` and its catalog entry (paths relative to root)."""
-    policy = make_fixture_policy(root / name, condition)
+def stage_fixture(root: Path, name: str, condition: str = "reviwo", normalize_q_loss: bool = False, **extra):
+    """A FIXTURE checkpoint (+ export) written under ``root/name`` and its catalog entry (paths relative to root);
+    ``normalize_q_loss``: an a10nq-trained checkpoint (agent.config)."""
+    policy = make_fixture_policy(root / name, condition, normalize_q_loss=normalize_q_loss)
     entry = {"checkpoint": f"{name}/policy.pt", "sha256": sha256_file(root / name / "policy.pt"),
              "condition": condition, "task": "fixture-task", "seed": 0, "run": f"fixture-{name}",
              "status": "deployable", "flags": ["fixture"], "reasons": [], **extra}
@@ -1161,7 +1162,9 @@ def staged(tmp_path_factory):
     root = tmp_path_factory.mktemp("serving-catalog")
     out = {name: stage_fixture(root, name, cond) for name, cond in
            (("r1", "reviwo"), ("r2", "reviwo"), ("r3", "reviwo"), ("r1b", "reviwo"), ("s1", "sincro"),
-            ("e1", "e2e_cnn"), ("d1", "dynamo"))}
+            ("e1", "e2e_cnn"))}
+    out["d1"] = stage_fixture(root, "d1", "dynamo", normalize_q_loss=True)  # an a10nq-trained DynaMo checkpoint
+    out["d0"] = stage_fixture(root, "d0", "dynamo")  # the same architecture trained in the legacy setting
     yield root, out
     torch.set_num_threads(old)
 
@@ -1411,7 +1414,11 @@ def _dynamo_grant_entries(root, fx):
     grant = {"decided_by": "user", "at": "2026-11-12", "text": "fixture DynaMo decision",
              "scope": {"condition": "dynamo", "fql_setting": "a10nq"},
              "acknowledged_failures": ["e1_layernorm_spread"], "checkpoint_sha256": e["sha256"]}
-    validation = {"checkpoint_sha256": e["sha256"], "pass": True, "at": "fixture", "record": "fixture.json",
+    from ops.policy_serving.config import input_spec_digest
+
+    validation = {"run": restricted["run"], "checkpoint_sha256": e["sha256"], "pass": True, "at": "fixture",
+                  "record": "fixture.json", "training_contract_sha256": "a" * 64,
+                  "input_spec_sha256": input_spec_digest(spec),
                   "checks": {k: {"pass": True} for k in ("l2_offline", "server_network", "robotpc_client")}}
     granted = {**restricted, "usage": "execution", "execution_eligible": True, "execution_decision": grant,
                "deploy_validation": validation}
@@ -1506,6 +1513,29 @@ def test_a_grant_published_while_a_session_is_being_bound_is_enforced_at_the_fin
         assert not sp.sessions
 
 
+def test_a_legacy_trained_checkpoint_under_a_new_setting_identity_is_never_advertised_eligible(staged, tmp_path):
+    """Codex review of 7518c4f: eligibility follows the setting the WEIGHTS trained with (agent.config)."""
+    root, fx = staged
+    _, _, _, grant, granted = _dynamo_grant_entries(root, fx)
+    lpol, le = fx["d0"]  # same architecture, legacy setting (normalize_q_loss false)
+    pid = "dynamo-fixture-task-s0-a10nq"
+    forged = {**granted, "checkpoint": le["checkpoint"], "sha256": le["sha256"], "export": le.get("export"),
+              "input_spec": describe_entry(le, root),
+              "execution_decision": {**grant, "checkpoint_sha256": le["sha256"]},
+              "deploy_validation": {**granted["deploy_validation"], "checkpoint_sha256": le["sha256"]}}
+    from ops.policy_serving.config import input_spec_digest
+
+    forged["deploy_validation"]["input_spec_sha256"] = input_spec_digest(forged["input_spec"])
+    validate_catalog({"schema": CATALOG_SCHEMA, "policies": {pid: forged}, "aliases": {}})  # labels are consistent
+    cat = write_catalog(tmp_path / "catalog.json", {pid: forged})
+    with serve_catalog(root, cat) as srv:
+        w = welcome(srv)
+        assert pid not in w["policies"] and "is not the a10nq FQL setting" in str(w["unavailable"][pid]["reasons"])
+    cat = write_catalog(tmp_path / "catalog2.json", {pid: granted})  # the a10nq-trained checkpoint: offered
+    with serve_catalog(root, cat) as srv:
+        assert welcome(srv)["policies"][pid]["info"]["execution_eligible"] is True
+
+
 def test_a_condition_label_that_differs_from_the_checkpoint_is_never_offered_or_granted(staged, tmp_path):
     """Codex review of 0f61212 (P0): a DynaMo grant on a ReViWo checkpoint must not publish condition=dynamo."""
     root, fx = staged
@@ -1516,9 +1546,13 @@ def test_a_condition_label_that_differs_from_the_checkpoint_is_never_offered_or_
     relabelled = {**granted, "checkpoint": re_["checkpoint"], "sha256": re_["sha256"], "export": re_.get("export"),
                   "execution_decision": {**grant, "checkpoint_sha256": re_["sha256"]},
                   "deploy_validation": {**granted["deploy_validation"], "checkpoint_sha256": re_["sha256"]}}
+    from ops.policy_serving.config import input_spec_digest
+
     with pytest.raises(ValueError, match="differs from its input_spec"):  # label vs the ReViWo checkpoint's spec
-        validate_catalog({"schema": CATALOG_SCHEMA, "policies": {pid: {**relabelled, "input_spec": reviwo_spec}},
-                          "aliases": {}})
+        validate_catalog({"schema": CATALOG_SCHEMA, "policies": {pid: {
+            **relabelled, "input_spec": reviwo_spec,
+            "deploy_validation": {**relabelled["deploy_validation"], "input_spec_sha256": input_spec_digest(reviwo_spec)}}},
+            "aliases": {}})
     # a deployable entry labelled dynamo without input_spec: described from the ReViWo checkpoint -> not offered
     plain = {k: v for k, v in re_.items()}
     cat = write_catalog(tmp_path / "catalog.json", {"dynamo-fixture-task-s0-a10nq": {**plain, "condition": "dynamo"}})
@@ -1528,6 +1562,8 @@ def test_a_condition_label_that_differs_from_the_checkpoint_is_never_offered_or_
     # labels AND input_spec edited to dynamo on ReViWo weights: the eligible entry's spec is checked against the
     # checkpoint before it is advertised (never published as an eligible DynaMo), and the load would refuse it too
     forged = {**relabelled, "input_spec": {**reviwo_spec, "condition": "dynamo"}}
+    forged["deploy_validation"] = {**relabelled["deploy_validation"],
+                                   "input_spec_sha256": input_spec_digest(forged["input_spec"])}
     validate_catalog({"schema": CATALOG_SCHEMA, "policies": {pid: forged}, "aliases": {}})
     cat = write_catalog(tmp_path / "catalog2.json", {pid: forged})
     with serve_catalog(root, cat) as srv:
