@@ -20,9 +20,11 @@ from pathlib import Path
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from ops.robot_pc import cli  # noqa: E402
+from ops.robot_pc import (
+    cli,  # noqa: E402
+    selection,  # noqa: E402
+)
 from ops.robot_pc import config as C  # noqa: E402
-from ops.robot_pc import selection  # noqa: E402
 
 
 def main(argv=None) -> int:

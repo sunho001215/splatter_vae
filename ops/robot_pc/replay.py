@@ -164,9 +164,8 @@ def replay_episode(cfg: dict, args, *, episode, pace: str, start: int = 0, count
                    pings: int = 0) -> tuple[list, dict]:
     """Everything of one recorded replay: policy selection from the server, session choices from the recording and
     the task's rig document, the persistent link, the live M5 helper (multi-view), validation and the MockSink."""
-    from ops.robot_pc import cli, safety
+    from ops.robot_pc import cli, safety, selection
     from ops.robot_pc import config as C
-    from ops.robot_pc import selection
     from ops.robot_pc.cameras import RecordedCameras
     from ops.robot_pc.loop import PolicyLoop, percentiles, summarize
     from ops.robot_pc.robot_state import RecordedRobotState
