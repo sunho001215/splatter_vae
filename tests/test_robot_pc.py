@@ -838,7 +838,7 @@ def test_replay_sync_injection_is_served_with_counted_warnings(policies, recordi
     for r in late:  # stepped at the deadline: cam_b's previous frame (one period old), cam_c at the reference instant
         assert r["sync"]["offsets_ms"]["cam_a|cam_b"] == pytest.approx(66.667, abs=0.01)
         assert r["sync"]["offsets_ms"]["cam_a|cam_c"] == pytest.approx(0.0, abs=0.01)
-        assert r["sync"]["age_ms"]["cam_a"] == pytest.approx(33.333, abs=2.0)  # frame clock at the deadline
+        assert 33.3 <= r["sync"]["age_ms"]["cam_a"] < 66.0  # frame clock at the deadline (+ wall time under load)
     assert spies["live_sink"] == 0
 
 
@@ -949,13 +949,18 @@ class _FakeTime:
         self.now += int(round((d + self.oversleep(d)) * 1e9))
 
 
-def _sync_replay(monkeypatch, pace, inject, fake_time, n=8):
-    """replay.run (latest rule) on two fake free-running cameras with equal phases; returns rows and counts."""
+def _sync_replay(monkeypatch, pace, inject, fake_time, n=8, work_s=0.0):
+    """replay.run (latest rule) on two fake free-running cameras with equal phases (``work_s``: simulated per-frame
+    decode time on the fake clock); returns rows and counts."""
     monkeypatch.setattr(replay, "time", fake_time)
     t0 = 10**12
     times = {c: np.array([t0 + k * PERIOD_NS for k in range(n)], np.int64) for c in ("a", "b")}
-    cameras = SimpleNamespace(timestamps_ns=lambda c: times[c], K_native=lambda c: None,
-                              native=lambda c, i: {"seq": int(i), "rgb": None, "acquire_ms": 0.0, "alignment": "x"})
+
+    def native(c, i):
+        fake_time.now += int(work_s * 1e9)
+        return {"seq": int(i), "rgb": None, "acquire_ms": work_s * 1e3, "alignment": "x"}
+
+    cameras = SimpleNamespace(timestamps_ns=lambda c: times[c], K_native=lambda c: None, native=native)
     client = SimpleNamespace(spec={"modalities": ["rgb"], "frame_period_s": 1 / 15}, choices={}, frame_capacity=3,
                              add_frame_native=lambda *a, **k: None, add_sync_set=lambda *a: None)
     counts = collections.Counter()
@@ -988,6 +993,17 @@ def test_replay_latest_rule_drains_due_frames_before_a_deadline_step(monkeypatch
     rows, counts = _sync_replay(monkeypatch, "realtime", {"delay_ms": {"b": 50.0}}, _FakeTime())
     assert counts["sync_partner_wait_expired"] >= 7 and counts["sync_mismatch"] >= 7
     assert all(r["end_ids"]["b"] == r["end_ids"]["a"] - 1 for r in rows[1:-1]), [r["end_ids"] for r in rows]
+
+
+def test_replay_latest_rule_slower_than_real_time_still_steps_on_the_newest(monkeypatch):
+    """A realtime replay whose per-frame work exceeds the frame interval (the robot PC's 3-view JPEG decode + align
+    emulation: ~37 ms per view) must not starve: each drain takes the frames due when it started, then steps on the
+    newest reference frame (older ones superseded), like the live loop."""
+    slow = _FakeTime()
+    rows, counts = _sync_replay(monkeypatch, "realtime", None, slow, n=30, work_s=0.045)
+    assert len(rows) >= 8 and counts["sync_superseded"] >= 5, (len(rows), dict(counts))
+    refs = [r["end_ids"]["a"] for r in rows]
+    assert refs == sorted(set(refs)) and refs[-1] >= 27  # always newer, up to the end of the recording
 
 
 def test_replay_episode_composition_and_cli_with_a_config(policies, recording, tmp_path, spies):

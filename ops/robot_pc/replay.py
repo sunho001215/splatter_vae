@@ -165,6 +165,7 @@ def run(client, loop, cameras, state, clock: ReplayClock, *, cams: list, start: 
             emit(*s[:3], sync=s[3])
 
     end_of_recording = count is None or start + count >= len(cameras.timestamps_ns(cams[0]))
+    drain_from = None  # realtime latest rule: wall time when the current drain started (frames due by then are drained)
     for i, (t_rel, _, cam, idx, t_cap) in enumerate(events):
         service_deadline(t_rel)
         nxt = events[i + 1][0] if i + 1 < len(events) else None
@@ -194,10 +195,15 @@ def run(client, loop, cameras, state, clock: ReplayClock, *, cams: list, start: 
             continue
         if latest is not None:
             latest.add_frame(cam, int(n["seq"]), t, clock.now())
-            if behind(idx):
-                continue  # a newer reference frame is already due: it supersedes this one (sync_superseded)
-            if nxt is not None and (nxt == t_rel or due(nxt)):
-                continue  # drain every frame released at the same time / already due before deciding (live drain)
+            # the live loop drains every frame queued when it polls, then decides: frames released at the same time,
+            # or (realtime) already due when this drain started, are drained first (a newer reference frame among
+            # them supersedes this one: sync_superseded); frames that become due while draining wait for the next
+            # iteration, so a replay slower than real time still steps on the newest frames instead of starving
+            drain_from = time.monotonic_ns() if drain_from is None else drain_from
+            if nxt is not None and (nxt == t_rel or (clock.pace == "realtime" and
+                                                     int(nxt) + clock.offset_ns <= drain_from)):
+                continue
+            drain_from = None
             s = latest.newest_step(clock.now())
             if s is not None:
                 emit(*s[:3], sync=s[3])
