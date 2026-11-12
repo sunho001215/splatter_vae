@@ -15,6 +15,8 @@ from ops.containers import suite_partition
 from ops.resources.gpu_guard import APPROVED_HOST_GPUS, LOCAL_MIG_PARENTS
 
 ROOT = "/home/compu/kaist/sunho"
+# CPU threads a typed verification job is prepared with (prepare_remote_verification) and reserved for (release_chain)
+CPU_THREADS = {"native_suite": 32, "gpu_isolation": 8}
 GIB = 2**30
 # Script, maximum seconds, fixed RAM/GPU GiB, required original reports.
 POLICIES = {

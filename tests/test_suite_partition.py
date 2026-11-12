@@ -94,3 +94,37 @@ def test_a_local_partition_alone_is_never_a_full_suite():
         validate_report("native_suite", remote(), {**SOURCE, "x": "0" * 64}, COMMIT, IMAGE, "")
     with pytest.raises(ValueError):
         validate_report("native_suite", remote(), SOURCE, "f" * 40, IMAGE, "")
+
+
+def test_every_gate_consumer_re_derives_a_combined_report(tmp_path, monkeypatch):
+    """Codex review 2026-11-12: docs/tests.json consumers (scheduler.tested_source, _bootstrap.require_passed_tests)
+    and the acceptance manifest never trust a combined report's aggregate fields alone."""
+    import json
+    import sys
+
+    from ops.jobs import scheduler
+    combined = sp.combine(remote(), local())
+    tampered = copy.deepcopy(combined)
+    tampered["partitions"][sp.LOCAL]["counts"]["skipped"] = 1  # aggregate fields left passing
+    good, bad = tmp_path / "good.json", tmp_path / "bad.json"
+    good.write_text(json.dumps(combined))
+    bad.write_text(json.dumps(tampered))
+    assert scheduler.tested_source(good) == SOURCE
+    assert scheduler.tested_source(bad) is None
+
+    sys.path.insert(0, str(sp.__file__).rsplit("/ops/", 1)[0] + "/scripts")
+    import _bootstrap
+    monkeypatch.setattr(_bootstrap, "source_fingerprints", lambda: SOURCE)
+    for report, ok in ((combined, True), (tampered, False)):
+        evidence = tmp_path / "evidence"
+        evidence.mkdir(exist_ok=True)
+        (evidence / "tests.json").write_text(json.dumps(report))
+        monkeypatch.setattr(_bootstrap, "test_evidence_directory", lambda directory=evidence: directory)
+        if ok:
+            _bootstrap.require_passed_tests()
+        else:
+            with pytest.raises(RuntimeError, match="partitions are inconsistent"):
+                _bootstrap.require_passed_tests()
+    from pathlib import Path
+    source = Path(sp.__file__).resolve().parents[2] / "ops/jobs/remote_backend.py"
+    assert "suite_partition.check_combined(suite)" in source.read_text()  # acceptance_manifest applies it too

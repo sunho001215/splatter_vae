@@ -22,7 +22,7 @@ ROOT = Path('/home/ws/ws/splatter4d')
 sys.path.insert(0, str(ROOT))
 from ops.resources.gpu_guard import APPROVED_HOST_GPUS  # noqa: E402
 from ops.jobs.remote_backend import commit_source_sha256  # noqa: E402
-from ops.containers.verification import POLICIES, validate_development_data, validate_report  # noqa: E402
+from ops.containers.verification import CPU_THREADS, POLICIES, validate_development_data, validate_report  # noqa: E402
 
 IMAGE = 'sha256:c3ffea7f7c114dd12755f9d537f760a6d5b31c96c923233185b775e0324799b7'
 if '--image' in sys.argv:
@@ -56,7 +56,8 @@ jobs_out = []
 if suite_path is None:
     jobs_out.append({'id': f'verify-native-{short}', 'host': 'remote', 'gpu': gpus[0], 'script': POLICIES['native_suite'][0],
                      'args': [], 'verification_purpose': 'native_suite', 'campaign_eligible': False,
-                     'ram_gb': 96, 'mem_gb': 32, 'cpu_threads': 32, 'disk_gb': 1, 'priority': 0,
+                     'ram_gb': POLICIES['native_suite'][2], 'mem_gb': POLICIES['native_suite'][3],
+                     'cpu_threads': CPU_THREADS['native_suite'], 'disk_gb': 1, 'priority': 0,
                      'required_results': ['evidence/' + n for n in POLICIES['native_suite'][4]]})
 else:
     suite = json.loads(suite_path.read_text())

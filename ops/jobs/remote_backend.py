@@ -17,6 +17,7 @@ from ops.provenance import upstreams as third_party
 from ops.jobs.host_roles import DOMAIN, job_class
 from ops.resources.gpu_guard import APPROVED_HOST_GPUS, LOCAL_MIG_PARENTS
 from ops.remote.access import ORIGIN_BRANCH, RemoteClient, RemoteUnreachable
+from ops.containers import suite_partition
 from ops.containers.mounts import realworld_mounts
 from ops.containers.verification import (
     POLICIES,
@@ -610,6 +611,11 @@ def acceptance_manifest(host: dict, repo: Path) -> dict:
             or suite.get("source_changed_during_suite") is not False
             or suite.get("source_sha256_before") != suite.get("source_sha256")):
         raise RemoteJobError("Remote full native suite is not accepted")
+    if suite.get("partition", "all") != "all":  # 2026-11-12: a partitioned suite counts only as its exact combination
+        try:
+            suite_partition.check_combined(suite)
+        except ValueError as exc:
+            raise RemoteJobError(f"Remote full native suite partitions are inconsistent ({exc})") from None
     if suite["source_sha256"] != commit_source_sha256(repo, commit):
         raise RemoteJobError("Remote suite source fingerprints do not match the pushed commit")
     isolation = manifest.get("gpu_isolation", {})

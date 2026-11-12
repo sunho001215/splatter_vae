@@ -612,6 +612,7 @@ def test_started_remote_metaworld_run_retries_in_place_only_by_explicit_exceptio
     roles = host_roles.load_roles()
     if "metaworld" in roles["hosts"]["remote"]["admit"]:  # shipped without it since 2026-11-12
         roles["hosts"]["remote"]["admit"].remove("metaworld")
+    roles["hosts"]["remote"]["drain_evaluators"] = True  # the retained drain machinery (shipped off 2026-11-12)
     monkeypatch.setattr(host_roles, "load_roles", lambda: roles)
     monkeypatch.setattr(host_roles, "EXCEPTIONS_PATH", tmp_path / "role-exceptions.json")
     meta = job("r", script="scripts/train_rl.py", args=["--task", "hammer", "--run-dir", "runs/r"], max_restarts=2)
@@ -641,6 +642,7 @@ def test_drain_exception_admits_the_evaluator_of_a_meta_world_trainer_running_on
     roles = host_roles.load_roles()
     if "metaworld" in roles["hosts"]["remote"]["admit"]:  # shipped without it since 2026-11-12
         roles["hosts"]["remote"]["admit"].remove("metaworld")
+    roles["hosts"]["remote"]["drain_evaluators"] = True  # the retained drain machinery (shipped off 2026-11-12)
     monkeypatch.setattr(host_roles, "load_roles", lambda: roles)
     trainer = job("t", script="scripts/train_rl.py", args=["--task", "hammer", "--run-dir", "runs/t"])
     evaluator = job("t-eval", script="scripts/eval_rl.py", args=["--run-dir", "runs/t", "--train-job", "t",

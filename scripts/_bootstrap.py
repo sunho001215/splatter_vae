@@ -81,5 +81,12 @@ def require_passed_tests() -> None:
         or counts.get("passed", 0) <= 0
     ):
         raise RuntimeError("all tests must pass before long work; native errors are not skipped")
+    if evidence.get("partition", "all") != "all":  # 2026-11-12: a partitioned suite counts only as its exact combination
+        from ops.containers.suite_partition import check_combined
+
+        try:
+            check_combined(evidence)
+        except ValueError as exc:
+            raise RuntimeError(f"all tests must pass before long work; suite partitions are inconsistent ({exc})") from None
     if evidence.get("source_sha256") != source_fingerprints():
         raise RuntimeError("test evidence is stale for these sources; rerun scripts/run_tests.py")

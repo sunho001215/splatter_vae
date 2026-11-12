@@ -25,6 +25,7 @@ EXCLUSIVE_ROLES = copy.deepcopy(ROLES)
 if "metaworld" in EXCLUSIVE_ROLES["hosts"]["remote"]["admit"]:  # shipped without it since 2026-11-12
     EXCLUSIVE_ROLES["hosts"]["remote"]["admit"].remove("metaworld")
 EXCLUSIVE_ROLES["hosts"]["remote"]["unknown"] = "allow"
+EXCLUSIVE_ROLES["hosts"]["remote"]["drain_evaluators"] = True  # the retained drain machinery (shipped off 2026-11-12)
 LOCAL_GPU = jobs.APPROVED_HOST_GPUS["local"][0]
 REMOTE_GPU = jobs.APPROVED_HOST_GPUS["remote"][0]
 
@@ -72,7 +73,7 @@ def test_shipped_role_declaration():
     # user 2026-11-12: the Meta-World development data was removed from the remote; Meta-World rows run locally
     assert set(hosts["remote"]["admit"]) == {"realworld_preprocess", "droid_preprocess", "realworld_pretrain",
                                              "droid_pretrain", "realworld_fql", "verification"}
-    assert hosts["remote"]["unknown"] == "allow" and hosts["remote"]["drain_evaluators"] is True
+    assert hosts["remote"]["unknown"] == "allow" and hosts["remote"]["drain_evaluators"] is False  # 2026-11-12
     assert "drain_evaluators" not in hosts["local"]
     assert hosts["inference"]["scheduler"] is False and hosts["inference"]["admit"] == []
     assert roles_mod.ROLES_PATH == REPO / "configs/hosts/roles.yaml"

@@ -1310,7 +1310,16 @@ def tested_source(report_path: Path | None = None) -> dict | None:
         report = json.loads((report_path or REPO / "docs/tests.json").read_text())
     except (OSError, ValueError):
         return None
-    return report.get("source_sha256") if report.get("full_suite_passed") is True else None
+    if report.get("full_suite_passed") is not True:
+        return None
+    if report.get("partition", "all") != "all":  # 2026-11-12: a partitioned suite counts only as its exact combination
+        from ops.containers.suite_partition import check_combined
+
+        try:
+            check_combined(report)
+        except ValueError:
+            return None
+    return report.get("source_sha256")
 
 
 def daemon_reexec_needed(loaded: dict, current: dict, tested: dict | None) -> bool:

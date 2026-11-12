@@ -31,7 +31,7 @@ import yaml
 
 ROOT = Path('/home/ws/ws/splatter4d')
 sys.path.insert(0, str(ROOT))
-from ops.containers.verification import POLICIES  # noqa: E402
+from ops.containers.verification import CPU_THREADS, POLICIES  # noqa: E402
 from ops.jobs import release_poll, release_reservation  # noqa: E402
 from ops.jobs import scheduler as jobs  # noqa: E402
 from ops.jobs.remote_backend import COTENANT_GPU_MARGIN_GB, RemoteBackend, cotenant_charges  # noqa: E402
@@ -89,19 +89,24 @@ class Release:
     # ---- reservation (release_reservation) ----
     def isolation_share(self):
         _, _, ram, gpu, _ = POLICIES['gpu_isolation']
-        return {'mem_gb': gpu, 'load': ISOLATION_LOAD, 'ram_gb': ram, 'cpu_threads': 8, 'disk_gb': 1}
+        return {'mem_gb': gpu, 'load': ISOLATION_LOAD, 'ram_gb': ram, 'cpu_threads': CPU_THREADS['gpu_isolation'],
+                'disk_gb': 1}
+
+    def check_deadline(self):
+        """Main thread: past the supported duration the chain fails (its reservation then lapses by itself)."""
+        if time.time() - self.started > DEADLINE_SECONDS:
+            self._stop.set()
+            raise SystemExit(f'release chain deadline ({DEADLINE_SECONDS / 3600:.1f} h) passed; failing the chain')
 
     def renew(self):
         """Write the reservation for the current stage (ownership-checked; created stays the chain's start). Never
-        after clear() (checked under the same mutex) or past the chain's deadline."""
+        after clear() (checked under the same mutex) or past the chain's deadline (the main thread then fails)."""
         with self._lock:
-            if self._stop.is_set():
+            if self._stop.is_set() or time.time() - self.started > DEADLINE_SECONDS:
                 return
-            if time.time() - self.started > DEADLINE_SECONDS:
-                self._stop.set()
-                raise SystemExit(f'release chain deadline ({DEADLINE_SECONDS / 3600:.1f} h) passed; reservation not renewed')
             native = self.native or {'mem_gb': POLICIES['native_suite'][3], 'load': NATIVE_LOAD,
-                                     'ram_gb': POLICIES['native_suite'][2], 'cpu_threads': 8, 'disk_gb': 1}
+                                     'ram_gb': POLICIES['native_suite'][2],
+                                     'cpu_threads': CPU_THREADS['native_suite'], 'disk_gb': 1}
             release_reservation.write(release_reservation.plan(
                 self.commit, self.short, self.stage, self.native_gpu or self.gpus[0], self.gpus, native=native,
                 isolation=self.isolation_share(), created=self.started))
@@ -109,6 +114,7 @@ class Release:
     def publish(self, stage):
         """Publish a new reservation content under the scheduler's registry lock, so that a tick either ran entirely
         before it or sees it (every remote launch goes through the tick under that lock)."""
+        self.check_deadline()
         with open(ROOT / 'experiments/registry.lock', 'w') as lock:
             fcntl.flock(lock, fcntl.LOCK_EX)
             self.stage = stage
@@ -149,6 +155,7 @@ class Release:
         launched_logged = set()
         stage_start = time.time()
         while True:
+            self.check_deadline()
             for m in jobs.tick(queue_path=Path(qpath), registry=ROOT / 'experiments/registry.jsonl', runs=ROOT / 'runs',
                                 remote_backend=backend, scope=scope):
                 log(m)
@@ -167,7 +174,7 @@ class Release:
                 raise SystemExit(2)
             log(f'wait {status}')
             if action == 'watch':
-                release_poll.wait_for_exit(backend.container_states, list(running.values()),
+                release_poll.wait_for_exit(backend.container_states, list(running.values()), renew=self.check_deadline,
                                            poll_seconds=POLL_SECONDS, max_quiet=MAX_QUIET_SECONDS, log=log)
             else:  # admission pending, launching, or an exited job awaiting its result sync: tick again soon
                 time.sleep(PENDING_RETRY_SECONDS)
