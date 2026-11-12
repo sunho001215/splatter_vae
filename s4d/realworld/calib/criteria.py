@@ -263,11 +263,16 @@ def dt_extension(se: dict) -> dict:
         try:
             pa, pb = divmod(int(r["pair"]), 10)
             key = (r["episode"], pair_name(CAMS[pa], CAMS[pb]))
-            dt = float(r["abs_dt_ms"])
+            dt, fi = float(r["abs_dt_ms"]), int(r["file"])
         except (KeyError, IndexError, TypeError, ValueError):
             return {"ok": False, "problem": f"malformed dt row {r}"}
-        if key in table or not _finite(dt):
-            return {"ok": False, "problem": f"dt row {r}: duplicate or non-finite (a pair must come from one file)"}
+        if key in table or not _finite(dt) or dt < 0 or fi < 0:
+            return {"ok": False, "problem": f"dt row {r}: duplicate, negative or non-finite (one file per pair)"}
+        if fi == 0 and dt > RELEASE1_MAX_DT_MS:
+            return {"ok": False, "problem": f"dt row {r}: a release/1 file row beyond {RELEASE1_MAX_DT_MS} ms"}
+        nin = len((se.get("inputs") or {}).get(r["episode"]) or [])
+        if se.get("inputs") is not None and fi >= nin:
+            return {"ok": False, "problem": f"dt row {r}: file index beyond the episode's {nin} input files"}
         table[key] = dt
     if set(table) != measured:
         return {"ok": False, "problem": f"dt table does not reconcile with the measurements "
@@ -613,12 +618,13 @@ def _ref_ok(r) -> bool:
         bool(_HEX64.match(str(r.get("sha256", ""))))
 
 
-def check_static_eval(se: dict, full_path) -> None:
+def check_static_eval(se: dict, full_path, verify_sources: bool = True) -> None:
     """Refuse a static evaluation that is not a complete, timestamp-validated release/2 evaluation of this full.json
     (strict schema: episodes and held-out episodes equal the solve's; one input entry list per episode with path +
     sha256 per file, release/1 first, pairwise supplements after; K sources and code identity with sha256), or that
-    does not reproduce release/1 (recomputed here from the embedded measurements, never a cached flag). The input
-    files themselves are re-hashed by ``rehash_static_eval_inputs`` where they are accessible (the remote job)."""
+    does not reproduce release/1 (recomputed here from the embedded measurements, never a cached flag), or whose input
+    / K-source files are missing, changed or not bound to their release/1 file (``rehash_static_eval_inputs``;
+    ``verify_sources`` is switched off only by unit tests of the schema)."""
     if se.get("format") != "s4d-calib-static-eval/2" or se.get("frames_validated") is not True:
         raise SystemExit("not a timestamp-validated s4d-calib-static-eval/2 evaluation")
     if not _ref_ok(se.get("full")) or se["full"]["sha256"] != _sha256(full_path):
@@ -638,20 +644,44 @@ def check_static_eval(se: dict, full_path) -> None:
     if not all(_ref_ok((se.get("K_sources") or {}).get(k)) for k in ("per_episode", "heldout")):
         raise SystemExit("the static evaluation lacks K-source identity (path + sha256)")
     code = se.get("code")
-    if not (isinstance(code, dict) and code.get("criteria.py") and all(_HEX64.match(str(h)) for h in code.values())):
-        raise SystemExit("the static evaluation lacks code identity (sha256 per file)")
+    need = ("criteria.py", "dw/run.py", "dw/matches.py", "dw/common.py")
+    if not (isinstance(code, dict) and all(_HEX64.match(str(code.get(k, ""))) for k in need)):
+        raise SystemExit(f"the static evaluation lacks code identity (sha256 of {need})")
     probs = check_reproduction(se, full)
     if probs:
         raise SystemExit(f"static evaluation does not reproduce release/1: {probs}")
+    if verify_sources:
+        src = rehash_static_eval_inputs(se)
+        if src:
+            raise SystemExit(f"static evaluation sources not verified ({len(src)} problems, e.g. {src[:3]}); run "
+                             "where the evidence is (remote) or with a complete mirror")
 
 
 def rehash_static_eval_inputs(se: dict) -> list:
-    """Problems if any input / K-source file named by the static evaluation is missing or has another sha256 (run
-    where the files are, i.e. in the remote job right after ``static-eval``)."""
-    refs = [x for v in (se.get("inputs") or {}).values() for x in v] + list((se.get("K_sources") or {}).values())
+    """Problems if any input / K-source file named by the static evaluation is missing or has another sha256, or a
+    supplement's ``supplement_of`` / pairing does not bind it to its episode's release/1 file. Run where the files are:
+    by ``static-eval`` right after evaluating, and by the publisher / ``verdict`` before using the evaluation."""
     out = []
-    for r in refs:
-        p = Path(r.get("path", ""))
+    for e, entries in (se.get("inputs") or {}).items():
+        for i, r in enumerate(entries):
+            p = Path(r.get("path", ""))
+            if not p.is_file():
+                out.append(f"{p}: missing")
+                continue
+            if _sha256(p) != r.get("sha256"):
+                out.append(f"{p}: sha256 differs")
+                continue
+            with np.load(p) as z:
+                meta = json.loads(str(z["meta"]))
+            if meta.get("episode_id") != e:
+                out.append(f"{p}: episode {meta.get('episode_id')!r} != {e}")
+            if i == 0 and meta.get("pairing", "reference") != "reference":
+                out.append(f"{p}: not a release/1 (reference-pairing) file")
+            if i > 0 and (meta.get("pairing") != "pairwise" or
+                          (meta.get("supplement_of") or {}).get("sha256") != entries[0].get("sha256")):
+                out.append(f"{p}: supplement not bound to {entries[0].get('path')}")
+    for r in (se.get("K_sources") or {}).values():
+        p = Path((r or {}).get("path", ""))
         if not p.is_file():
             out.append(f"{p}: missing")
         elif _sha256(p) != r.get("sha256"):

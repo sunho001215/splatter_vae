@@ -179,7 +179,9 @@ What changes (everything else is release/1). Every check fails closed on missing
        the episode's own timestamps. It hashes every input, the K sources and its code, and re-hashes them where they
        are (the remote job).
      * Publication: the publisher checks the strict schema (episodes and held-out set equal the solve's; path +
-       sha256 per input; K-source and code identity). G4 needs finite, non-negative distances and >= 30 matches per
+       sha256 per input; K-source and code identity) AND re-hashes every input and K-source file and re-checks each
+       supplement's ancestry. It therefore runs where the evidence is (a remote CPU container, or with a complete
+       mirror); a missing or changed file refuses publication. G4 needs finite, non-negative distances and >= 30 matches per
        pair.
      * Reproduction: it recomputes the release/1 values from the release/1 files alone. The publisher and `verdict`
        compare these with `full.json` (exact equality) instead of trusting a cached flag. The solves are reused (the
@@ -229,8 +231,8 @@ What changes (everything else is release/1). Every check fails closed on missing
    * unresolved candidates.
 
    Codex review 2 showed that these corrected bounds lack validated coverage near such budgets, so no eligibility is
-   derived from them. The 1/10 level is below the instruments' resolution: it would hold 070988, which release/1
-   validates. A G5a-only camera therefore still needs the release/1 decision (coordinator or user), now with these
+   derived from them. The 1/10 level is below the instruments' resolution: it would hold 070988, which has no G5a flag
+   (release/1 G5a passes it). A G5a-only camera therefore still needs the release/1 decision (coordinator or user), now with these
    numbers attached.
 
 Sanity against known-bad or decided cases:

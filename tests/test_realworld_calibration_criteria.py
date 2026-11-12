@@ -284,6 +284,13 @@ def test_dt_extension_is_validated_per_pair_with_tails_and_reconciliation():
     assert not dt_extension({"per_episode_extext": pe, "dt": {"rows": _dt_rows(eps)[1:]}})["ok"]
     assert not dt_extension({"per_episode_extext": pe, "dt": {"rows": _dt_rows(eps) + _dt_rows(eps)[:1]}})["ok"]
     assert dt_extension({"per_episode_extext": {}, "dt": {"rows": []}})["ok"]  # nothing measured, nothing extended
+    # Codex review 4: negative |dt|, a release/1 row beyond 20 ms, a file index beyond the inputs -> fail closed
+    neg = [{**r, "abs_dt_ms": -r["abs_dt_ms"]} if r["abs_dt_ms"] > 20 else r for r in _dt_rows(eps)]
+    assert not dt_extension({"per_episode_extext": bad, "dt": {"rows": neg}})["ok"]
+    r1 = [{**r, "file": 0} for r in _dt_rows(eps)]
+    assert not dt_extension({"per_episode_extext": pe, "dt": {"rows": r1}})["ok"]
+    one = {e: [{"path": "x", "sha256": "a" * 64}] for e in eps}
+    assert not dt_extension({"per_episode_extext": pe, "dt": {"rows": _dt_rows(eps)}, "inputs": one})["ok"]
 
 
 # ------------------------------------------------------------------------------------------------------------ G5a
@@ -483,13 +490,23 @@ def _se(rdir, per_ep=None):
             r.setdefault("n", 300)
     codes = {p: q for q, p in ((1, PAIRS[0]), (2, PAIRS[1]), (12, PAIRS[2]))}
     dt = [{"episode": e, "pair": codes[p], "file": 0, "abs_dt_ms": 8.0} for e, rows in v2.items() for p in rows]
+    ev = rdir.parent / "evidence"  # real (tiny) source files: the publisher re-hashes them
+    ev.mkdir(exist_ok=True)
+    inputs = {}
+    for e in eps:
+        f = ev / f"{e}.npz"
+        if not f.exists():
+            np.savez(f, meta=json.dumps({"episode_id": e, "cameras": list(CAMS)}), pair=np.zeros(0))
+        inputs[e] = [{"path": str(f), "sha256": _sha256(f), "pairing": "reference"}]
+    for name in ("corr.npz", "ev.npz"):
+        if not (ev / name).exists():
+            np.savez(ev / name, x=np.zeros(1))
     return {"format": "s4d-calib-static-eval/2", "full": {"path": str(rdir / "full.json"),
                                                           "sha256": _sha256(rdir / "full.json")},
-            "frames_validated": True, "inputs": {e: [{"path": f"m1/{e}.npz", "sha256": "a" * 64,
-                                                      "pairing": "reference"}] for e in eps},
-            "K_sources": {"per_episode": {"path": "corr/x.npz", "sha256": "b" * 64},
-                          "heldout": {"path": "ev/y.npz", "sha256": "c" * 64}},
-            "code": {"criteria.py": "d" * 64},
+            "frames_validated": True, "inputs": inputs,
+            "K_sources": {"per_episode": {"path": str(ev / "corr.npz"), "sha256": _sha256(ev / "corr.npz")},
+                          "heldout": {"path": str(ev / "ev.npz"), "sha256": _sha256(ev / "ev.npz")}},
+            "code": {k: "d" * 64 for k in ("criteria.py", "dw/run.py", "dw/matches.py", "dw/common.py")},
             "episodes": eps, "heldout_episodes": full["heldout_episodes"],
             "per_episode_extext": v2, "heldout_extext_sam_static": g4, "dt": {"rows": dt},
             "release1_reproduction": {"per_episode_extext": full["per_episode_extext"],
@@ -545,7 +562,13 @@ def test_publisher_criteria_v2_keeps_release1_and_documents_both(tmp_path):
                            ("se8", {**se, "inputs": {e: [{"sha256": "not-a-hash", "pairing": "reference"}]
                                                     for e in se["episodes"]}}, "manifest"),
                            ("se9", {**se, "heldout_episodes": []}, "held-out"),
-                           ("se10", {**se, "code": {"criteria.py": "x"}}, "code identity")):
+                           ("se10", {**se, "code": {"criteria.py": "x"}}, "code identity"),
+                           ("se11", {**se, "code": {"criteria.py": "d" * 64}}, "code identity"),
+                           ("se12", {**se, "inputs": {e: [{**v[0], "sha256": "e" * 64}] for e, v in se["inputs"].items()}},
+                            "sources not verified"),
+                           ("se13", {**se, "K_sources": {**se["K_sources"], "heldout": {"path": "/nonexistent/x.npz",
+                                                                                         "sha256": "f" * 64}}},
+                            "sources not verified")):
         (tmp_path / "a" / f"{name}.json").write_text(json.dumps(bad))
         b.static_eval, b.out = str(tmp_path / "a" / f"{name}.json"), str(tmp_path / "a" / f"rig-{name}.json")
         with pytest.raises(SystemExit, match=msg):
