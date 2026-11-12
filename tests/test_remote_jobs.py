@@ -1883,6 +1883,44 @@ def test_pretraining_budget_must_be_complete_before_same_host_release(tmp_path, 
     assert [payload["id"] for payload in backend.launches] == (["dependent"] if released else [])
 
 
+@pytest.mark.parametrize("steps,configured,released", [(10, 10, True), (9, 10, False), (10, None, False),
+                                                        (10, "10", False)])
+def test_pretraining_without_a_steps_override_is_held_to_its_recorded_configured_budget(tmp_path, monkeypatch, steps,
+                                                                                        configured, released):
+    """2026-11-12: the real-world ours rows set no train.steps= override (their budget is the configuration file's);
+    the budget is then the provenance numeric_config's train.steps, never a missing or non-integer value."""
+    args = ["--config", "x.yaml", "--set", "train.seed=0"]
+    required = ["completion.json", "metrics.jsonl"]
+    queued = write_queue(tmp_path, [job(script="scripts/train.py", args=args, required_results=required),
+                                    job("dependent", deps=["r"])])
+    backend = FakeBackend(tmp_path / "runs")
+    backend.value.containers["s4d-r-a1"] = inspected(status="exited")
+    launch_event(tmp_path, script="scripts/train.py", args=args, required_results=required)
+    original = backend.sync_results
+    numeric = {"train": {"seed": 0, **({} if configured is None else {"steps": configured})}}
+    digest = hashlib.sha256(json.dumps(numeric, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+    def trained(run_id, final=False, **kwargs):
+        result = original(run_id, final)
+        folder = backend.runs / run_id
+        report = json.loads((folder / "provenance.json").read_text())
+        report.update(numeric_config=numeric, config_sha256=digest)
+        for name, content in (("provenance.json", report), ("completion.json", {"status": "completed", "steps": steps})):
+            data = json.dumps(content).encode()
+            (folder / name).write_bytes(data)
+            result["files"][name] = hashlib.sha256(data).hexdigest()
+        return result
+
+    monkeypatch.setattr(backend, "sync_results", trained)
+    backend.backup_ready = False
+    tick(tmp_path, queued, backend)
+    state = jobs.read_registry(tmp_path / "registry.jsonl")
+    assert ("remote_verified" in state["r"]) is released
+    if released:
+        assert state["r"]["remote_verified"]["checks"]["steps"] == 10
+    assert [payload["id"] for payload in backend.launches] == (["dependent"] if released else [])
+
+
 def test_remote_export_must_be_a_weights_only_export_of_its_source_with_the_configured_signature(tmp_path):
     import dataclasses
     import datetime

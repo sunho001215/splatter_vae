@@ -591,7 +591,8 @@ def _verify_remote_exit(run_id: str, state: dict, report: dict, registry_state: 
     """In-place verification of a finished remote campaign attempt from the remote inspection report
     (``RemoteBackend.verify_remote_artifacts``): every required result present and nonempty with its checksum, the
     exit / provenance identity checks of the local path, the configured training budget (pretraining: completion.json
-    steps = train.steps; RL: final.json completed at train.num_train_steps), training-checkpoint archive integrity and
+    steps = the row's train.steps override, else the configuration's train.steps recorded in provenance.json
+    numeric_config; RL: final.json completed at train.num_train_steps), training-checkpoint archive integrity and
     step, and for an encoder export its archive integrity, weights-only content, step / source / run identity and a
     tensor signature equal to the encoder its configuration builds. Returns the summary recorded with the event."""
     if validate_verification({**state, "id": run_id, "attempt": state["attempts"]}) is not None:
@@ -616,6 +617,12 @@ def _verify_remote_exit(run_id: str, state: dict, report: dict, registry_state: 
     script, args, checks = Path(state.get("script", "")).name, state.get("args", []), {}
     if script == "train.py":
         target, completion = _override(args, "train.steps="), record_of("completion.json")
+        if target is None:  # no override (e.g. the real-world rows of 2026-11-11): the configuration file's budget, as
+            # resolved by the run into its identity-checked provenance.json numeric_config (checksum and digest above)
+            numeric = record_of("provenance.json").get("numeric_config")
+            train = numeric.get("train") if isinstance(numeric, dict) else None
+            configured = train.get("steps") if isinstance(train, dict) else None
+            target = configured if type(configured) is int and configured > 0 else None
         if target is None or completion.get("status") != "completed" or completion.get("steps") != int(target):
             raise RemoteJobError("Remote pretraining did not complete its configured budget")
         checks["steps"] = int(target)
