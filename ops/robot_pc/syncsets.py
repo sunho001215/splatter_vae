@@ -36,7 +36,7 @@ STATE_LEAD_NS = 10**9  # rows from one second before the first frame (the record
 # route or server failure.
 SYNC_REFUSALS = frozenset({"unsynchronized", "incomplete_history"})
 SYNC_COUNTS = ("sync_steps", "sync_mismatch", "sync_motion_over_bound", "sync_partner_wait_expired",
-               "sync_superseded")
+               "sync_superseded", "sync_cap_fallback")
 
 
 class StateFeed:
@@ -151,7 +151,9 @@ class LatestFrames:
         self.half_ns = float(period_s) * 1e9 / 2
         self.wait_ns = int(self.half_ns if wait_s is None else float(wait_s) * 1e9)
         self.latest: dict = dict.fromkeys(cams)  # camera -> newest (frame id, capture ns)
-        self._recent = {c: collections.deque(maxlen=8) for c in cams}  # the last frames (about half a second)
+        # the last frames per camera (~4 s at 15 Hz: longer than the loops' 2 s idle timeout, so a reference
+        # frame's last eligible partner is never evicted while the session runs)
+        self._recent = {c: collections.deque(maxlen=64) for c in cams}
         self._ref_seen_ns = 0
         self._stepped = None  # reference frame id of the last step
         self.state_lead_ns = int(state_lead_ns)  # recorded replay: robot rows reach the host before the frames
@@ -171,10 +173,25 @@ class LatestFrames:
         self._recent[camera_id].append(self.latest[camera_id])
 
     def _member(self, cam: str, t_ref: int) -> tuple:
-        """The camera's newest frame captured no later than half a period after the reference (else its oldest
-        buffered frame: every buffered frame is from a later instant)."""
+        """The camera's newest frame captured no later than half a period after the reference; when it has none
+        (every buffered frame is from a later instant: the reference camera delivers that late), its newest frame,
+        counted ``sync_cap_fallback`` (the step's record shows the offset)."""
         fit = [f for f in self._recent[cam] if f[1] <= t_ref + self.half_ns]
-        return fit[-1] if fit else self._recent[cam][0]
+        if fit:
+            return fit[-1]
+        self.counts["sync_cap_fallback"] += 1
+        return self._recent[cam][-1]
+
+    def deadline_ns(self) -> int | None:
+        """When the pending reference frame's partner wait runs out (loop clock), or None: no step is waiting for a
+        late partner. Recorded replay steps at this time when no frame is released before it, as a live loop
+        polling every millisecond would."""
+        ref = self.latest[self.cams[0]]
+        if ref is None or ref[0] == self._stepped or any(v is None for v in self.latest.values()):
+            return None
+        if not any(self.latest[c][1] < ref[1] - self.half_ns for c in self.cams[1:]):
+            return None
+        return self._ref_seen_ns + self.wait_ns
 
     def newest_step(self, now_ns: int, *, flush: bool = False):
         """The step on the newest reference frame once its partners are no older than half a period before it or the

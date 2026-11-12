@@ -786,6 +786,9 @@ def test_replay_sync_injection_is_served_with_counted_warnings(policies, recordi
     with serve({"mvp3d-mv": policies["mvp3d_multiview"]}) as srv:
         for name, inject in (("offset", {"offset_ms": {"cam_b": 45.0}}),
                              ("lag", {"delay_ms": {"cam_b": 50.0}}),
+                             # equal phases (the fixture's +9 / -11 ms removed) + cam_b delivered 50 ms late: the
+                             # partner wait (33.3 ms) runs out BETWEEN releases; the step is taken at its deadline
+                             ("equal-lag", {"offset_ms": {"cam_b": -9.0, "cam_c": 11.0}, "delay_ms": {"cam_b": 50.0}}),
                              ("jitter", {"arrival_jitter_ms": 30.0, "seed": 7}),
                              ("both", {"offset_ms": {"cam_c": -40.0}, "arrival_jitter_ms": 20.0, "seed": 3})):
             client = PolicyClient("127.0.0.1", srv.port, policy_id="mvp3d-mv", choices=multiview_choices(rec, cams),
@@ -829,6 +832,13 @@ def test_replay_sync_injection_is_served_with_counted_warnings(policies, recordi
         if r["sync"]["mismatch"]:  # only the lagging camera is off; the others stay at the reference instant
             assert r["sync"]["age_ms"]["cam_b"] > r["sync"]["age_ms"]["cam_a"]
             assert abs(r["sync"]["offsets_ms"]["cam_a|cam_c"]) < 33.4
+    rows, counts = results["equal-lag"]
+    late = [r for r in rows[1:] if r["sync"]["mismatch"]]
+    assert len(late) == len(rows) - 1 and counts["sync_partner_wait_expired"] >= len(rows) - 1
+    for r in late:  # stepped at the deadline: cam_b's previous frame (one period old), cam_c at the reference instant
+        assert r["sync"]["offsets_ms"]["cam_a|cam_b"] == pytest.approx(66.667, abs=0.01)
+        assert r["sync"]["offsets_ms"]["cam_a|cam_c"] == pytest.approx(0.0, abs=0.01)
+        assert r["sync"]["age_ms"]["cam_a"] == pytest.approx(33.333, abs=2.0)  # frame clock at the deadline
     assert spies["live_sink"] == 0
 
 
@@ -871,6 +881,17 @@ def test_latest_frames_rule_waits_bounded_and_counts_warnings():
     lf.add_frame("a", 4, T + 4 * P, now_ns=T + 5 * P + 61_000_000)  # the reference camera delivers late
     end_ids, _, _, rec = lf.newest_step(T + 5 * P + 61_000_000)
     assert end_ids == {"a": 4, "b": 4, "c": 4} and not rec["mismatch"] and rec["age_ms"]["a"] == pytest.approx(127.7, 1e-3)
+    assert lf.deadline_ns() is None  # nothing pending
+    lf.add_frame("a", 5, T + 5 * P + 40_000_000, now_ns=T + 6 * P)  # b's newest (T + 4P - 4 ms) is late for it
+    assert lf.deadline_ns() == T + 6 * P + lf.wait_ns and lf.wait_ns == int(P / 2)
+    assert counts["sync_cap_fallback"] == 0
+    cap = syncsets.LatestFrames(client, None, None, cams, period_s=1 / 15, counts=counts)
+    for k, c in enumerate("bc"):  # partners only from LATER instants than the (very late) reference frame
+        cap.add_frame(c, 7, T + 2 * P + k, now_ns=T + 2 * P + 70_000_000)
+        cap.add_frame(c, 8, T + 3 * P + k, now_ns=T + 3 * P + 70_000_000)
+    cap.add_frame("a", 1, T, now_ns=T + 4 * P)
+    end_ids, _, _, rec = cap.newest_step(T + 4 * P)
+    assert end_ids == {"a": 1, "b": 8, "c": 8} and rec["mismatch"] and counts["sync_cap_fallback"] == 2
 
     class M5:  # informational M5: final states -> displacement declared with the step
         sets = SimpleNamespace(cameras=cams)

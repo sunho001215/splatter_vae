@@ -1400,7 +1400,7 @@ class PolicyServer:
                 window = s.history.assemble(dict(end_ids), pad_run_start=pad)
             except ValueError as exc:
                 raise Reject(classify(exc), str(exc)) from exc
-            sync = None
+            sync, declared = None, 0
             if spec.views > 1:
                 # Multi-view: each camera's end frame as sent (the client's latest valid frames). Cross-camera offsets
                 # and declared M5 motion are WARNINGS (user directive 2026-11-12): measured, counted, logged and
@@ -1409,8 +1409,9 @@ class PolicyServer:
                 evidence = [s.sets.get(key) for key in steps]
                 if any(d is not None for d in evidence):
                     window = dataclasses.replace(window, surface_disp_m=tuple(evidence))
-                sync = window.sync_report()
-                self._count_sync(s, seq, sync, declared=sum(d is not None for d in evidence))
+                sync, declared = window.sync_report(), sum(d is not None for d in evidence)
+        if sync is not None:  # counted and logged outside the history lock
+            self._count_sync(s, seq, sync, declared=declared)
         obs_ids = window.binding(ref, pose_time_ns=pose_t, gripper_time_ns=grip_t)
         now = time.monotonic_ns()
         return Job(s, seq, window, np.asarray(pose7, np.float64), float(grip), obs_ids, noise, float(ttl),

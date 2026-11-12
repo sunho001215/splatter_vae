@@ -147,8 +147,22 @@ def run(client, loop, cameras, state, clock: ReplayClock, *, cams: list, start: 
     def take(end_ids, t_obs, ref_id, disp):
         emit(end_ids, t_obs, ref_id, surface_disp_m=disp)
 
+    def service_deadline(until_rec_ns: int) -> None:
+        """Latest-frame rule: a step whose partner wait runs out before the next release is taken AT its deadline
+        (as the live loop does), on the frames released so far."""
+        dl = latest.deadline_ns() if latest is not None else None
+        if dl is None or dl > int(until_rec_ns) + clock.offset_ns:
+            return
+        clock.release(dl - clock.offset_ns)  # realtime: wait until the deadline; max: the frame clock moves there
+        if behind(None):
+            return  # a newer reference frame is already due: it supersedes this one
+        s = latest.newest_step(clock.now())
+        if s is not None:
+            emit(*s[:3], sync=s[3])
+
     end_of_recording = count is None or start + count >= len(cameras.timestamps_ns(cams[0]))
     for t_rel, _, cam, idx, t_cap in events:
+        service_deadline(t_rel)
         n = cameras.native(cam, idx)
         clock.release(t_rel)
         t = t_cap + clock.offset_ns  # capture time on this host's clock (= release time without injection)
@@ -186,7 +200,8 @@ def run(client, loop, cameras, state, clock: ReplayClock, *, cams: list, start: 
         feed.feed(t + FRAME_ARRIVAL_NS)  # robot rows / gripper samples reach the host before the frame
         step_sets(client, live_m5.poll(), cams, take, newest_only=clock.pace == "realtime", counts=loop.counts)
     if latest is not None and end_of_recording:  # the recording ends: the newest reference frame steps on what was
-        s = latest.newest_step(clock.now(), flush=True)  # released (a live stream has no end: no flush mid-recording)
+        service_deadline(2**62)  # released, at its deadline if it waits for a partner (a live stream has no end:
+        s = latest.newest_step(clock.now(), flush=True)  # no flush mid-recording)
         if s is not None:
             emit(*s[:3], sync=s[3])
     elif feed is not None and end_of_recording:  # the recording ends: flush what the stream end decides

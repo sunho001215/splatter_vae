@@ -356,6 +356,20 @@ class LiveSession:
             self.recorder.gripper_command(t, register, "hold" if reason is not None else "target", reason or "")
             self._rec_write_t = t
 
+    def _warn_sync(self, rec: dict) -> None:
+        """Console warning for a served step with a sync mismatch / M5 motion: the first one, then at most one line per
+        5 s with the running count (every step's record is in the session H5 / rows; the operator console is not
+        flooded at 15 Hz)."""
+        if not (rec["mismatch"] or rec["motion_over_bound"]):
+            return
+        now = time.monotonic()
+        if now - getattr(self, "_sync_warned", -1e9) >= 5.0:
+            self._sync_warned = now
+            log.warning("multi-view sync warning (served, not refused): offsets %s ms, M5 %s; so far %d mismatch / "
+                        "%d M5 over 5 mm of %d steps", rec["offsets_ms"], rec["surface_disp_m"],
+                        self.loop.counts["sync_mismatch"], self.loop.counts["sync_motion_over_bound"],
+                        self.loop.counts["sync_steps"])
+
     # ------------------------------------------------------------------------------------------------ main loop
     def run(self, *, steps: int | None = None, duration_s: float | None = None) -> list:
         if self.stop_event.is_set():
@@ -407,9 +421,7 @@ class LiveSession:
                     s = self.sync.newest_step(time.monotonic_ns())
                     if s is not None:
                         newest, extra = s[:3], {"sync": s[3]}
-                        if s[3]["mismatch"] or s[3]["motion_over_bound"]:
-                            log.warning("multi-view sync warning (served): offsets %s ms, M5 %s",
-                                        s[3]["offsets_ms"], s[3]["surface_disp_m"])
+                        self._warn_sync(s[3])
                 if newest is None:
                     time.sleep(0.001)
                     continue

@@ -495,7 +495,9 @@ the action-age bound (`max_action_age_ms`, measured from the newest end frame) a
   contributes its newest frame captured no later than half a frame period after the reference frame (a frame of the
   next instant is never mixed in). A camera whose newest frame is more than half a period older than the reference is
   waited for at most half a period (`sync_partner_wait_expired`), then its newest (stale) frame is used. No step is
-  taken before every camera has delivered a frame.
+  taken before every camera has delivered a frame. A camera with no frame at or before the cap (the reference camera
+  itself delivers that late) contributes its newest frame (`sync_cap_fallback`). Recorded replay takes a waiting step
+  at its deadline when no frame is released before it, as the live loop (1 ms polling) does.
 * **Sync record** (row key `sync`, in the session H5 `policy/row_json` and the rows JSONL): per-camera frame ids and
   capture times, each frame's age at the step (`age_ms`, robot-PC monotonic clock) and relative to the observation
   time (`age_rel_ms`), pairwise offsets (`offsets_ms`, `a|b` = t_a - t_b), the largest offset from the reference camera
@@ -511,7 +513,11 @@ the action-age bound (`max_action_age_ms`, measured from the newest end frame) a
   WARNING with the reason on a mismatch or M5 motion > 5 mm), counts `sync_observations` / `sync_mismatch` /
   `sync_motion_over_bound` (server and session counters) and returns the report as `outputs["sync"]`. The former
   refusals (views not mutual-nearest, missing set evidence, steps not declared as sets, M5 motion > 5 mm) are gone;
-  `unsynchronized` remains only for run-start padding that is not step-aligned (structural).
+  `unsynchronized` remains only for run-start padding that is not step-aligned (structural). Compatibility: an older
+  client (M5 sets) is served by the new server unchanged (its sets annotate the matching steps); the new client
+  against an older server gets the older strict contract (served only when its declared M5 sets cover every
+  assembled step within the bounds, otherwise answered `incomplete_history` / `unsynchronized`): the production switch
+  moves server and robot-PC release together.
 * **Answers without an action** (`syncsets.SYNC_REFUSALS`: `unsynchronized`, `incomplete_history`, e.g. a camera's own
   history broken by a dropped frame) do NOT count as server / route failures (`max_failed_steps`; counted
   `sync_refused`): the executor holds as for any step without a command.
