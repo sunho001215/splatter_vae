@@ -16,10 +16,23 @@ the precision/determinism flags in effect after inference, the sha256 of every t
 path draws no random numbers (upstream ``randperm`` calls are training-only: models/track_everything.py:888 and the
 drop-path blocks check ``self.training``); torch/numpy/random are still seeded with ``SEED`` before every request so
 that any hidden draw is order-independent. GPU kernels stay nondeterministic (no deterministic mode).
+
+CUDA memory (2026-11-12, agent TEMEM; the 1g.24gb MIG fit): one request's LIVE peak (weights + activations,
+``max_memory_allocated``) was <= 4.15 GiB over all 20,802 calrel-6c3b9ec clips, but the persistent stream worker's
+caching allocator never returned freed blocks while the 96-GB device had room, so its RESERVED memory grew
+monotonically over an episode's ~70-90 requests (shapes vary per clip: query count, voxelized scene) to 21 GiB median
+and 49.8 GiB maximum. After every request (also a failed one) this worker therefore drops its references and returns
+the cached, unused blocks to the driver (``torch.cuda.empty_cache``); the loaded model stays resident. Optionally
+``S4D_TE_CUDA_MEMORY_CAP_GIB`` caps the allocator (``torch.cuda.set_per_process_memory_fraction``): above the cap it
+first frees cached blocks and retries, and raises an out-of-memory error (a failed request, never a different result)
+when the live working set itself does not fit. Neither changes a requested computation; ``meta.memory`` and the
+runtime flags record the policy, the allocator configuration and the per-request peaks.
 """
 
 from __future__ import annotations
 
+import gc
+import math
 import os
 import random
 import sys
@@ -35,6 +48,8 @@ from _protocol import git_commit, main, sha256  # noqa: E402
 _CACHE = {}
 SEED = 0
 _RUNTIME = {}
+_MEMORY = {}
+CUDA_MEMORY_CAP_ENV = "S4D_TE_CUDA_MEMORY_CAP_GIB"
 
 
 def runtime_provenance(torch) -> dict:
@@ -60,8 +75,40 @@ def runtime_provenance(torch) -> dict:
              "matmul_allow_tf32": torch.backends.cuda.matmul.allow_tf32,
              "float32_matmul_precision": torch.get_float32_matmul_precision(),
              "deterministic_algorithms": torch.are_deterministic_algorithms_enabled(),
-             **{k: os.environ.get(k) for k in ("CUBLAS_WORKSPACE_CONFIG", "NVIDIA_TF32_OVERRIDE")}}
+             **{k: os.environ.get(k) for k in ("CUBLAS_WORKSPACE_CONFIG", "NVIDIA_TF32_OVERRIDE",
+                                               "PYTORCH_CUDA_ALLOC_CONF", CUDA_MEMORY_CAP_ENV)}}
     return {**_RUNTIME, "flags": flags, "seed": SEED, "deterministic_mode": False}
+
+
+def memory_policy(torch) -> dict:
+    """Apply (once per process) and describe this worker's CUDA memory policy: cached blocks are released after every
+    request; ``S4D_TE_CUDA_MEMORY_CAP_GIB`` (optional, GiB) caps the caching allocator of device 0. An invalid cap is
+    an error (every request fails), never ignored."""
+    if not _MEMORY:
+        raw = os.environ.get(CUDA_MEMORY_CAP_ENV, "").strip()
+        total = int(torch.cuda.get_device_properties(0).total_memory)
+        cap = fraction = None
+        if raw:
+            try:
+                cap = float(raw)
+            except ValueError:
+                cap = math.nan
+            if not math.isfinite(cap) or cap <= 0:
+                raise ValueError(f"{CUDA_MEMORY_CAP_ENV} must be a positive number of GiB, got {raw!r}")
+            fraction = min(1.0, cap * 2**30 / total)
+            torch.cuda.set_per_process_memory_fraction(fraction, 0)
+        _MEMORY.update(release_cached_after_request=True, cuda_memory_cap_gib=cap, memory_fraction=fraction,
+                       device_total_memory=total, pytorch_cuda_alloc_conf=os.environ.get("PYTORCH_CUDA_ALLOC_CONF"))
+    return dict(_MEMORY)
+
+
+def release_cuda_cache(torch) -> dict:
+    """Return every cached, unused CUDA block to the driver; live tensors (the loaded model) stay. Cyclic garbage that
+    may still reference request tensors is collected first."""
+    gc.collect()
+    torch.cuda.empty_cache()
+    return {"allocated_after_release": int(torch.cuda.memory_allocated()),
+            "reserved_after_release": int(torch.cuda.memory_reserved())}
 
 
 def validate_inputs(inputs):
@@ -212,21 +259,27 @@ def handle(request, inputs):
     num_iters = int(request["params"].get("num_iters", 3))
     if num_iters < 1:
         raise ValueError("num_iters must be positive")
-    tracker, identity = _model(request["repo_dir"], request["checkpoint"], "cuda")
     import torch
 
+    memory = memory_policy(torch)
+    tracker, identity = _model(request["repo_dir"], request["checkpoint"], "cuda")
     torch.manual_seed(SEED)  # also seeds every CUDA device
     np.random.seed(SEED)
     random.seed(SEED)
-    torch.cuda.reset_peak_memory_stats()
-    torch.cuda.synchronize()
-    infer_started = time.monotonic()
-    arrays, norm = infer_queries(tracker, video, depth, K, w2c, queries, num_iters)
-    torch.cuda.synchronize()
-    return identity, arrays, {"norm_factor": norm, "inference_s": time.monotonic() - infer_started,
+    try:
+        torch.cuda.reset_peak_memory_stats()
+        torch.cuda.synchronize()
+        infer_started = time.monotonic()
+        arrays, norm = infer_queries(tracker, video, depth, K, w2c, queries, num_iters)
+        torch.cuda.synchronize()
+        inference_s = time.monotonic() - infer_started
+        peak_allocated, peak_reserved = int(torch.cuda.max_memory_allocated()), int(torch.cuda.max_memory_reserved())
+    finally:  # also after a failed request: never keep the request's cache
+        memory.update(release_cuda_cache(torch))
+    return identity, arrays, {"norm_factor": norm, "inference_s": inference_s,
                               "elapsed_s": time.monotonic() - started,
-                              "max_memory_allocated": int(torch.cuda.max_memory_allocated()),
-                              "max_memory_reserved": int(torch.cuda.max_memory_reserved()),
+                              "max_memory_allocated": peak_allocated, "max_memory_reserved": peak_reserved,
+                              "memory": memory,
                               "dynamic_logits_available": "dyn_logit" in arrays, "single_view": True,
                               "geometry": "supplied metric depth, continuous K, OpenCV world-to-camera",
                               "query_depth_lookup": "depth[t, floor(y), floor(x)] on resized grid; no invention",
