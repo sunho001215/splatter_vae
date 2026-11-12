@@ -409,7 +409,8 @@ def test_gpu_query_failure_reconciles_exits_but_launches_nothing(tmp_path, monke
     jobs.record({"event": "launched", "id": "done", "pid": 2**30, "gpu": GPU4, "attempt": 1}, registry)
     (runs / "done").mkdir(parents=True)
     (runs / "done/exit_code").write_text("0")
-    probes = iter([failure, {uuid: {"processes": []} for uuid in jobs.MIG_DEVICES}])
+    # the recovered query carries the measured framebuffer the capacity-aware local admission requires (MIG sharing)
+    probes = iter([failure, {uuid: {"processes": [], "total_mib": 24192.0, "used_mib": 0.0} for uuid in jobs.MIG_DEVICES}])
 
     def query(devices, state_dir, timeout):
         assert devices is jobs.MIG_DEVICES
