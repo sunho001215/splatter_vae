@@ -157,7 +157,7 @@ Measured on all 400 raw episodes (drawer-open, mug-hanging, covering, pick-and-p
 * Flange speed: p95 0.10 m/s, max 0.125 m/s. At the worst offset of 33 ms the flange therefore moves <= 4 mm, which is
   ~2.3 px at the 1.07 m camera distance (0.6 training px).
 
-What changes (everything else is release/1):
+What changes (everything else is release/1). Every check fails closed on missing, malformed or non-finite evidence.
 
 1. **Static-correspondence evidence for G4 / G5b: pairwise-nearest pairing.**
    * The problem: `romav2_match_worker` paired every camera with its frame nearest the reference camera's sample time
@@ -165,47 +165,66 @@ What changes (everything else is release/1):
      episodes. Two cameras on opposite sides of the reference were up to a full period apart even when their own
      nearest frames were < 10 ms apart; this is pick-and-place 000009-000012, where no pair was left, so "G5b:
      per-episode consistency incomplete" held all three cameras. A camera was G5b-verifiable (both of its pairs
-     present) in only 35-92 % of the episodes, so the 20 ms rule weakened the fixedness test instead of strengthening
-     it.
+     present) in only 35-92 % of the episodes, so the 20 ms rule weakened the fixedness test.
    * The new pairing: `--pairing pairwise` takes a's frame nearest the sample time and b's frame nearest a's frame,
      kept iff |dt| <= half the frame period. A larger gap means a missing frame or a pause; that (time, pair) is
      skipped and recorded.
-   * Why dt does not matter here: static correspondences of a static scene seen by fixed cameras do not depend on dt.
-     Dynamic pixels are masked at each end's own frame time. Measured: the per-episode static epipolar median has
-     slope -0.007..+0.014 px per 10 ms over 0-20 ms (935 episode-pairs).
-   * `--supplement-of <release/1 matches>` adds only the missing (time, pair) combinations, each with its own seed. The
-     release/1 matches stay bitwise unchanged; the frames of every pair they already evaluated are checked to equal the
-     pairwise frames.
-   * `criteria static-eval` re-evaluates G4 and G5b at the stored full-solve state from the union of both files. It
-     reproduces the solve's stored release/1 values bitwise from the release/1 files alone; a publication refuses
-     otherwise. The solves are reused (the estimator is unchanged).
-   * The G4 / G5b thresholds are unchanged.
-   * NEW and stricter: every episode needs evidence, and every camera must be verifiable in >= 90 % of the episodes.
+   * `--supplement-of <release/1 matches>` adds only the missing (time, pair) combinations, each with its own seed:
+     * the release/1 files stay bitwise unchanged;
+     * the frames of every combination they already evaluated must equal the pairwise frames;
+     * a supplement tolerance that would drop an existing combination is refused.
+   * `criteria static-eval` re-evaluates G4 and G5b at the stored full-solve state from the union of both files.
+     * Inputs: it validates them (`match_inputs`): exactly one release/1 file per episode; supplements bound to it by
+       `supplement_of` sha256; no (time, pair) combination in two files; every row inside its own plan and tolerance.
+       It hashes every input, the K sources and its code.
+     * Reproduction: it recomputes the release/1 values from the release/1 files alone. The publisher and `verdict`
+       compare these with `full.json` (exact equality) instead of trusting a cached flag. The solves are reused (the
+       estimator is unchanged).
+   * The G4 / G5b thresholds are unchanged. New and stricter:
+     * every episode has evidence;
+     * a camera's TWO pairs are named from the camera list (never discovered from the evidence), and each camera must
+       be verifiable (both pairs, finite values) in >= 90 % of the episodes;
+     * the dt extension is validated on the data: the per-episode-pair medians at |dt| > 20 ms may exceed those at
+       <= 20 ms by at most 0.05 px (1/5 of G5b's excess tolerance). Over 0-20 ms the measured slope is -0.007..+0.014
+       px per 10 ms (935 episode-pairs).
 2. **G1 as the stability radius about the published solution, plus an image-space check.**
-   * The rule: every solve of the complete, unchanged stability set must lie within 0.35 deg and 8 mm (unchanged) of
-     the published `all` pose. Its reprojection displacement over the training crop must also stay at or below one
-     training pixel: p95 <= 3.75 px over an 8 x 8 grid on the 480 x 480 crop, lifted to 0.7 / 1.0 / 1.3 m.
-   * Release/1 used the max PAIRWISE distance (diameter) between two perturbed solves, neither of them published. Its
-     0.35 deg / 8 mm were each defined as one training pixel, separately for rotation and translation.
-   * The radius measures how far the published estimate moves under the perturbations. The image check measures the
-     downstream quantity itself.
-   * It is not uniformly looser: an uncompensated 7 mm lateral translation passes release/1 but fails the image check.
-   * The release/1 diameter is reported next to it.
-3. **G5a materiality for exception eligibility.**
+   * The radius: every solve of the complete, unchanged stability set must lie within 0.35 deg and 8 mm (unchanged)
+     of the published `all` pose.
+   * Release/1 used the max PAIRWISE distance (diameter) between two perturbed solves, neither of them published.
+     Keeping the numbers on the radius admits up to twice the former diameter. Also, 8 mm is ~1.2 training px at the
+     measured 1.07 m camera distance (the derivation assumed 1.3 m). Hence the image-space constraint below, which is
+     the binding downstream quantity.
+   * The image check: probe = a 16^3 lattice over the measured 3D-MVP scene box (`MVP3D_BOUNDS`) in front of the
+     camera and inside the 480 x 480 training crop. For every stability solve, the reprojection displacement against
+     the published pose must have:
+     * p50 <= 1 training px (3.75 px);
+     * p95 <= 2 training px (7.5 px). Release/1's separate one-training-px rotation and translation tolerances jointly
+       admit two.
+   * Probe sensitivity: on camera 073201 the p95 is 3.6-4.7 px depending on the depth weighting, in every task
+     including the accepted drawer-open / mug-hanging rigs. A p95 at one training pixel is therefore not a robust
+     gate. The p50 is stable (1.0-1.3 px).
+   * It is not uniformly looser: an uncompensated 7.5 mm lateral translation passes the 8 mm radius and release/1 but
+     fails the p50.
+3. **G5a materiality (exception eligibility of a camera held by G5a alone).**
    * Unchanged: G5a's detection thresholds (0.25 px / 0.03 deg / 1000 ppm), and the rig-mode per-episode rule.
-   * New: a camera held by G5a ALONE is exception-eligible only if two conditions hold:
-     * every flagged episode is verifiable in FIXREG with peak displacement D + 2.58 SE_D <= 0.375 px (1/10 training
-       pixel, the same bound as `MAX_PERIOD_ROT_DEG` = 0.035 deg);
-     * FIXREG reports no T1-T4 event for the camera.
-   * A persistent or material change is therefore never covered. The coordinator still fills the exception with
-     `fill-exception`, citing the evidence.
+   * Eligible iff the camera's independent pre-registered FIXREG series bounds EVERY episode of the document, not
+     only the flagged ones:
+     * each episode is verifiable, with finite D and SE_D;
+     * the injection-corrected 99 % bound (D + 2.58 SE_D) / r is <= 1/4 training px (0.94 px), where r is the
+       camera's lowest median recovered/injected ratio in FIXREG's own synthetic injections (0.59-0.76);
+     * FIXREG lists no T1-T4 event for the camera (an explicit event list is required).
+   * Why not 1/10 training px (`MAX_PERIOD_ROT_DEG`): it is below the instruments' resolution. Per-episode bounds reach
+     0.65 px (uncorrected) on camera 070988, which release/1 itself validates.
+   * Why 1/4 training px: it is below the 128-px resampling resolution, and ~1/3.5 of the measured multi-view
+     lifting noise floor (held-out static-point 3D consistency 5.7 mm ~ 3.2 px).
+   * The coordinator still fills the exception with `fill-exception`, citing the evidence.
 
-Sanity against known-bad calibrations:
+Sanity against known-bad or decided cases:
 
 * rig_dw, held on 2026-11-08: 5 of 6 cameras still fail G1 v2 on rotation radius (0.51-0.84 deg). The sixth, drawer
   076054, was held by G3 anyway.
-* covering 073201 would NOT be exception-eligible under v2: its 000004 has D + 2.58 SE = 0.44 px. covering 076054 has
-  FIXREG events. Both needed the user's decision then and would still need it.
+* covering 073201 would NOT be exception-eligible under v2: one episode is unverifiable and one bound is 1.01 px.
+  covering 076054 has FIXREG events. Both needed a user or coordinator decision then and still would.
 * Release/1-era evidence fails the new G5b coverage requirement (covering 78-92 %). Any re-release needs the
   pairwise supplement.
 

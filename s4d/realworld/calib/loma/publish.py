@@ -162,18 +162,19 @@ def check_against_frozen(rel: dict, frozen: dict) -> None:
                              f"frozen {fz}")
 
 
-def fixedness_evidence(R: dict, fixed: dict, per_ep: dict | None = None) -> dict:
+def fixedness_evidence(R: dict, fixed: dict, per_ep: dict | None = None, epipolar=None) -> dict:
     """{camera: {episode: {"registration": fixed|moved|not_verifiable, "epipolar": ok|moved|single_pair|
     not_verifiable}}} - the per-episode G5a / G5b classification the verdict used (rig mode reads ``epipolar``).
-    ``per_ep``: the G5b evidence (default: the solve's stored ``per_episode_extext``; criteria v2: the pairwise
-    static evaluation)."""
+    ``per_ep`` / ``epipolar(per_ep, cam, episodes)``: the G5b evidence and rule (default: the solve's stored
+    ``per_episode_extext`` and release/1's ``fixedness_epipolar``; criteria v2: the pairwise static evaluation and
+    ``calib.criteria.epipolar_v2`` with both pairs required)."""
     full = R["full"]
     per_ep = (full.get("per_episode_extext") or {}) if per_ep is None else per_ep
     episodes = sorted(set(full.get("fit_episodes") or []) | set(full.get("heldout_episodes") or []))
     out = {}
     for cam in CAMS:
         reg = fixedness_registration(fixed, cam)
-        epi = fixedness_epipolar(per_ep, cam)
+        epi = fixedness_epipolar(per_ep, cam) if epipolar is None else epipolar(per_ep, cam, episodes)
         single = {e for e, _ in epi["single_pair_violations"]}
         rows = {}
         for ep in episodes:
@@ -233,7 +234,8 @@ def build_document(*, task, R, final, fixed, frozen, ref_files, depth_results, e
                                  f"{(v2[cam]['g5a_materiality'] or {}).get('problems')})")
     check_against_frozen(rel, frozen)
     ds, agree = depth_scales(final, depth_results)
-    evidence = fixedness_evidence(R, fixed, None if v2 is None else criteria_v2["static_eval"]["per_episode_extext"])
+    evidence = fixedness_evidence(R, fixed) if v2 is None else fixedness_evidence(
+        R, fixed, criteria_v2["static_eval"]["per_episode_extext"], C.epipolar_v2)
     if sorted(final["fit_episodes"]) != sorted(next(iter(evidence.values()))):
         raise SystemExit("the published solve and the verdict cover different episodes")
     name = f"rig-loma-{task}-{commit[:7]}" + ("" if v2 is None else "-c2")
@@ -318,15 +320,12 @@ def publish(a) -> dict:
                "depth_results": {s.split("=", 1)[0]: _ref(s.split("=", 1)[1]) for s in a.depth_result or []}}
     crit = None
     if getattr(a, "criteria", "v1") == "v2":
-        from s4d.realworld.calib.criteria import USER_DECISION_V2, _sha256
+        from s4d.realworld.calib.criteria import USER_DECISION_V2, check_static_eval
 
         if not getattr(a, "static_eval", None):
             raise SystemExit("--criteria v2 needs --static-eval")
         se = json.loads(Path(a.static_eval).read_text())
-        if se["full"]["sha256"] != _sha256(Path(a.results) / "full.json"):
-            raise SystemExit("the static evaluation was computed on another full.json")
-        if se.get("release1_reproduction_problems") != []:
-            raise SystemExit(f"static evaluation does not reproduce release/1: {se.get('release1_reproduction_problems')}")
+        check_static_eval(se, Path(a.results) / "full.json")
         crit = {"static_eval": se, "fixreg": json.loads(Path(a.fixreg).read_text()) if getattr(a, "fixreg", None) else None}
         sources["static_eval"] = _ref(a.static_eval)
         if getattr(a, "fixreg", None):
@@ -469,6 +468,10 @@ def split_periods(doc: dict, ev: dict, *, cameras, evidence, decided_by, referen
         new["name"], new["episodes"] = names[p], eps
         new["fixedness_evidence"] = {c: {e: v for e, v in rows.items() if e in keep}
                                      for c, rows in doc["fixedness_evidence"].items()}
+        if isinstance((new.get("criteria") or {}).get("release1_fixedness_evidence"), dict):  # criteria v2 documents
+            new["criteria"]["release1_fixedness_evidence"] = {
+                c: {e: v for e, v in rows.items() if e in keep}
+                for c, rows in doc["criteria"]["release1_fixedness_evidence"].items()}
         new["pool_frames"] = {e: v for e, v in (doc.get("pool_frames") or {}).items() if e in keep}
         for cam, entry in new["cameras"].items():
             entry["provenance"] = {**(entry.get("provenance") or {}), "rig": names[p]}

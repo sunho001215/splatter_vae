@@ -205,6 +205,10 @@ def supplement_plan(stamps: dict, cameras: list, times: int, existing_meta: dict
         raise ValueError("the existing file's frames differ from the reference rule on these timestamps")
     new = plan_pairs(stamps, cameras, times, "pairwise", max_dt_ms)
     done = {(k, pa, pb): (ia, ib) for k, pa, pb, ia, ib, _ in old["pairs"]}
+    planned = {(k, pa, pb) for k, pa, pb, *_ in new["pairs"]}
+    lost = sorted(set(done) - planned)
+    if lost:  # e.g. a supplement tolerance below the existing file's: the union would not be the pairwise evidence
+        raise ValueError(f"combinations {lost[:4]} of the existing file are outside the pairwise plan")
     keep = []
     for row in new["pairs"]:
         k, pa, pb, ia, ib, _ = row
