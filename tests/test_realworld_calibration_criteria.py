@@ -239,9 +239,11 @@ def test_g5b_v2_requires_complete_evidence_and_coverage_and_keeps_the_release1_r
     assert r["epipolar"]["moved"] == [eps[5]] and any("flags 1 episodes" in x for x in r["reasons"])
 
 
-def _dt_rows(eps, long_pair=1, dt_long=30.0):
-    return [{"episode": e, "pair": q, "file": int(q == long_pair), "abs_dt_ms": dt_long if q == long_pair else 8.0}
-            for e in eps for q in (1, 2, 12)]
+def _dt_rows(eps, long_pair=1, dt_long=30.0, n_long=12):
+    """Pair ``long_pair`` is long-offset in the last ``n_long`` episodes (the supplement), short elsewhere."""
+    longs = set(eps[-n_long:])
+    return [{"episode": e, "pair": q, "file": int(q == long_pair and e in longs),
+             "abs_dt_ms": dt_long if (q == long_pair and e in longs) else 8.0} for e in eps for q in (1, 2, 12)]
 
 
 def test_dt_extension_is_validated_per_pair_with_tails_and_reconciliation():
@@ -255,19 +257,27 @@ def test_dt_extension_is_validated_per_pair_with_tails_and_reconciliation():
             pe[e][p]["median_px"] = float(0.25 + rng.normal(0, 0.01))
     se = {"per_episode_extext": pe, "dt": {"rows": _dt_rows(eps)}}
     d = dt_extension(se)
-    assert d["ok"] and d["n_long"] == 24 and d["pairs"][PAIRS[0]]["n_long"] == 24
-    # four long-offset measurements degraded (0.25 -> 0.90 px): median unchanged, but p90 and the per-episode rule
+    assert d["ok"] and d["n_long"] == 12 and d["pairs"][PAIRS[0]]["n_short"] == 12
+    # four long-offset measurements degraded (0.25 -> 0.90 px): per-episode rule against the SHORT baseline
     bad = json.loads(json.dumps(pe))
-    for e in eps[:4]:
+    for e in eps[-4:]:
         bad[e][PAIRS[0]]["median_px"] = 0.90
     d = dt_extension({"per_episode_extext": bad, "dt": {"rows": _dt_rows(eps)}})
-    assert not d["ok"] and d["pairs"][PAIRS[0]]["long_violations"] == eps[:4]
+    assert not d["ok"] and d["pairs"][PAIRS[0]]["long_violations"] == eps[-4:]
     assert any("dt extension" in x for x in g5b_v2(bad, eps, CAMS[0], d)["reasons"])
-    # a uniform 0.08 px degradation of the long-offset pair: median check
+    # a uniform 0.08 px degradation of the long-offset measurements: median check
     worse = json.loads(json.dumps(pe))
-    for e in eps:
+    for e in eps[-12:]:
         worse[e][PAIRS[0]]["median_px"] += 0.08
     assert not dt_extension({"per_episode_extext": worse, "dt": {"rows": _dt_rows(eps)}})["ok"]
+    # Codex review 3: 9 same-pair short measurements, other pairs degraded -> no pooled fallback, unresolved = fail
+    few = _dt_rows(eps, n_long=15)
+    hid = json.loads(json.dumps(pe))
+    for e in eps:
+        for p in PAIRS:
+            hid[e][p]["median_px"] = 0.90 if (p != PAIRS[0] or e in eps[-15:]) else 0.25
+    d = dt_extension({"per_episode_extext": hid, "dt": {"rows": few}})
+    assert not d["ok"] and "cannot be assessed" in d["problem"]
     # fail closed: no table, a table that does not reconcile, a duplicate row
     assert not dt_extension({"per_episode_extext": pe})["ok"]
     assert not dt_extension({"per_episode_extext": pe, "dt": {"rows": []}})["ok"]
@@ -466,6 +476,8 @@ def _se(rdir, per_ep=None):
     full = json.loads((rdir / "full.json").read_text())
     eps = sorted(set(full["fit_episodes"]) | set(full["heldout_episodes"]))
     v2 = json.loads(json.dumps(full["per_episode_extext"] if per_ep is None else per_ep))
+    g4 = json.loads(json.dumps(full["heldout_sam"]["extext_sam_static"]))
+    g4.update({p: {"n": 500} for p in PAIRS})
     for rows in v2.values():
         for r in rows.values():
             r.setdefault("n", 300)
@@ -475,11 +487,11 @@ def _se(rdir, per_ep=None):
                                                           "sha256": _sha256(rdir / "full.json")},
             "frames_validated": True, "inputs": {e: [{"path": f"m1/{e}.npz", "sha256": "a" * 64,
                                                       "pairing": "reference"}] for e in eps},
-            "K_sources": {"per_episode": {"sha256": "b" * 64}, "heldout": {"sha256": "c" * 64}},
+            "K_sources": {"per_episode": {"path": "corr/x.npz", "sha256": "b" * 64},
+                          "heldout": {"path": "ev/y.npz", "sha256": "c" * 64}},
             "code": {"criteria.py": "d" * 64},
             "episodes": eps, "heldout_episodes": full["heldout_episodes"],
-            "per_episode_extext": v2,
-            "heldout_extext_sam_static": full["heldout_sam"]["extext_sam_static"], "dt": {"rows": dt},
+            "per_episode_extext": v2, "heldout_extext_sam_static": g4, "dt": {"rows": dt},
             "release1_reproduction": {"per_episode_extext": full["per_episode_extext"],
                                       "heldout_extext_sam_static": full["heldout_sam"]["extext_sam_static"]},
             "K_nominal": {c: _K().tolist() for c in CAMS}}
@@ -529,11 +541,30 @@ def test_publisher_criteria_v2_keeps_release1_and_documents_both(tmp_path):
                                                                     "per_episode_extext": complete}}, "reproduce"),
                            ("se5", {k: v for k, v in se.items() if k != "inputs"}, "manifest"),
                            ("se6", {**se, "frames_validated": False}, "timestamp-validated"),
-                           ("se7", {k: v for k, v in se.items() if k != "K_sources"}, "K-source")):
+                           ("se7", {k: v for k, v in se.items() if k != "K_sources"}, "K-source"),
+                           ("se8", {**se, "inputs": {e: [{"sha256": "not-a-hash", "pairing": "reference"}]
+                                                    for e in se["episodes"]}}, "manifest"),
+                           ("se9", {**se, "heldout_episodes": []}, "held-out"),
+                           ("se10", {**se, "code": {"criteria.py": "x"}}, "code identity")):
         (tmp_path / "a" / f"{name}.json").write_text(json.dumps(bad))
         b.static_eval, b.out = str(tmp_path / "a" / f"{name}.json"), str(tmp_path / "a" / f"rig-{name}.json")
         with pytest.raises(SystemExit, match=msg):
             publish(b)
+    # impossible G4 distances or missing support -> held by G4
+    for name, mut in (("g4neg", {"line_median_px": -1.0, "transfer_ab_median_px": -1.0, "transfer_ba_median_px": -1.0}),):
+        bad = json.loads(json.dumps(se))
+        bad["heldout_extext_sam_static"]["all"].update(mut)
+        (tmp_path / "a" / f"{name}.json").write_text(json.dumps(bad))
+        b.static_eval, b.out = str(tmp_path / "a" / f"{name}.json"), str(tmp_path / "a" / f"rig-{name}.json")
+        held = publish(b)["cameras"]
+        assert all("G4" in held[c]["held_by"] for c in CAMS)
+    nos = json.loads(json.dumps(se))
+    for p in PAIRS:
+        nos["heldout_extext_sam_static"].pop(p)
+    (tmp_path / "a" / "g4nos.json").write_text(json.dumps(nos))
+    b.static_eval, b.out = str(tmp_path / "a" / "g4nos.json"), str(tmp_path / "a" / "rig-g4nos.json")
+    held = publish(b)["cameras"]
+    assert all("G4" in held[c]["held_by"] for c in CAMS)
     # v2 evidence still missing an episode -> held by G5b (never passes incomplete evidence)
     (tmp_path / "a" / "se4.json").write_text(json.dumps(_se(rdir)))
     b.static_eval, b.out = str(tmp_path / "a" / "se4.json"), str(tmp_path / "a" / "rig4.json")

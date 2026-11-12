@@ -25,9 +25,11 @@ realworld-ops/rwx/CALSYNC-REPORT-20261112.md. Every check fails closed on missin
 2. G1 as the stability RADIUS about the PUBLISHED solution (the ``all`` refit) over release/1's complete, unchanged
    stability set, thresholds unchanged (rotation <= 0.35 deg, camera centre <= 8 mm) - release/1's max-PAIRWISE spread
    (diameter, between two perturbed solves, neither of them published) is reported next to it; keeping the numbers on
-   the radius admits up to twice the former diameter, hence the added image-space constraint: over the scene volume
-   (``SCENE_BOX`` = the measured 3D-MVP bounds, a 16^3 lattice, points in front of the camera that project into the
-   480 x 480 training crop) the reprojection displacement of every stability solve vs the published pose must have
+   the radius admits up to twice the former diameter, hence an added image-space ENGINEERING BACKSTOP (not an
+   independently validated acceptance envelope: historical rig_dw rejections come from the rotation radius): over the
+   scene volume (``SCENE_BOX`` = the 3D-MVP bounds measured on drawer-open / mug-hanging / covering; a new task's own
+   containment is re-checked on its store before 3D-MVP; a 16^3 lattice, points in front of the camera that project
+   into the 480 x 480 training crop) the reprojection displacement of every stability solve vs the published pose must have
    p50 <= 1 training px (3.75 px) and p95 <= 2 training px (7.5 px; release/1's separate rotation and translation
    tolerances of one training px each jointly admit two). An uncompensated 7.5 mm lateral translation passes the 8 mm
    centre radius but fails the image p50.
@@ -74,6 +76,7 @@ G5B_MIN_MATCHES = 30
 G5B_MIN_VERIFIABLE = 0.90
 G5B_DT_MAX_DIFF_PX = 0.05  # long (|dt| > 20 ms) vs short-offset pairs: median excess allowed (1/5 of 0.25 px)
 G5B_DT_MAX_P90_DIFF_PX = 0.10
+G5B_DT_MIN_SHORT = 10  # same-pair short-offset measurements needed to assess a pair's long-offset ones
 RELEASE1_MAX_DT_MS = 20.0
 USER_DECISION_V2 = ("user directive 2026-11-12 ~20:40 KST (agent CALSYNC): evidence-based revision of the calibration "
                     "and camera-synchronization acceptance criteria (rig_loma-release/2, calib.criteria); the release/1 "
@@ -247,9 +250,9 @@ def dt_extension(se: dict) -> dict:
     """Validation of the dt extension on the data (fail closed). The dt table must reconcile exactly with the evaluated
     per-episode measurements (one row per (episode, pair) and vice versa). Per camera pair with long-offset rows
     (|dt| > 20 ms, i.e. pairs only the pairwise supplement evaluates): the long-offset per-episode medians may exceed the
-    short-offset ones (same pair if it has >= 10, else all pairs pooled) by <= ``G5B_DT_MAX_DIFF_PX`` at the median and
-    <= ``G5B_DT_MAX_P90_DIFF_PX`` at p90, and no long-offset episode-pair may violate the per-episode G5b rule against
-    its pair's baseline."""
+    short-offset ones of the SAME pair (>= ``G5B_DT_MIN_SHORT`` of them, else the pair fails) by <=
+    ``G5B_DT_MAX_DIFF_PX`` at the median (upper bound of a 95 % bootstrap interval) and <= ``G5B_DT_MAX_P90_DIFF_PX`` at
+    p90, and no long-offset episode-pair may violate the per-episode G5b rule against the short-offset baseline."""
     pe = se.get("per_episode_extext") or {}
     rows = (se.get("dt") or {}).get("rows")
     if not isinstance(rows, list):
@@ -276,24 +279,29 @@ def dt_extension(se: dict) -> dict:
             return {"ok": False, "problem": f"{e} {p}: non-finite measurement"}
         vals.setdefault(p, {"short": [], "long": []})["long" if dt > RELEASE1_MAX_DT_MS else "short"].append(
             (e, float(r["median_px"]), float(r["se_px"])))
-    pooled_short = [m for v in vals.values() for _, m, _ in v["short"]]
-    out = {"pairs": {}, "max_diff_px": G5B_DT_MAX_DIFF_PX, "max_p90_diff_px": G5B_DT_MAX_P90_DIFF_PX, "problems": []}
+    out = {"pairs": {}, "max_diff_px": G5B_DT_MAX_DIFF_PX, "max_p90_diff_px": G5B_DT_MAX_P90_DIFF_PX,
+           "min_short": G5B_DT_MIN_SHORT, "problems": []}
     for p, v in sorted(vals.items()):
         if not v["long"]:
             continue
-        short = [m for _, m, _ in v["short"]] if len(v["short"]) >= 10 else pooled_short
-        if len(short) < 10:
-            out["problems"].append(f"{p}: fewer than 10 short-offset measurements to compare with")
+        if len(v["short"]) < G5B_DT_MIN_SHORT:  # no pooling over other pairs (Codex review 3): unresolved -> fail
+            out["problems"].append(f"{p}: {len(v['short'])} short-offset measurements of the same pair < "
+                                   f"{G5B_DT_MIN_SHORT}: the dt extension cannot be assessed")
             continue
+        short = [m for _, m, _ in v["short"]]
         long = [m for _, m, _ in v["long"]]
-        base = float(np.median([m for _, m, _ in v["short"] + v["long"]]))
+        base = float(np.median(short))  # baseline independent of the possibly degraded long-offset observations
         viol = [e for e, m, s_ in v["long"] if _violates(m, s_, base)]
-        row = {"n_short": len(short), "n_long": len(long), "short_from": "pair" if short is not pooled_short else "pooled",
+        rng = np.random.default_rng(0)
+        boot = [np.median(rng.choice(long, len(long))) - np.median(rng.choice(short, len(short))) for _ in range(1000)]
+        row = {"n_short": len(short), "n_long": len(long), "short_baseline_px": base,
                "median_diff_px": float(np.median(long) - np.median(short)),
+               "median_diff_ci95_px": [float(np.percentile(boot, 2.5)), float(np.percentile(boot, 97.5))],
                "p90_diff_px": float(np.percentile(long, 90) - np.percentile(short, 90)), "long_violations": viol}
         out["pairs"][p] = row
-        if row["median_diff_px"] > G5B_DT_MAX_DIFF_PX:
-            out["problems"].append(f"{p}: long-offset median {row['median_diff_px']:+.3f} px > {G5B_DT_MAX_DIFF_PX}")
+        if row["median_diff_ci95_px"][1] > G5B_DT_MAX_DIFF_PX:
+            out["problems"].append(f"{p}: long-offset median difference {row['median_diff_px']:+.3f} px (95 % CI upper "
+                                   f"{row['median_diff_ci95_px'][1]:+.3f}) > {G5B_DT_MAX_DIFF_PX}")
         if row["p90_diff_px"] > G5B_DT_MAX_P90_DIFF_PX:
             out["problems"].append(f"{p}: long-offset p90 {row['p90_diff_px']:+.3f} px > {G5B_DT_MAX_P90_DIFF_PX}")
         if viol:
@@ -597,25 +605,58 @@ def check_reproduction(se: dict, full: dict) -> list:
     return probs
 
 
+_HEX64 = __import__("re").compile(r"^[0-9a-f]{64}$")
+
+
+def _ref_ok(r) -> bool:
+    return isinstance(r, dict) and isinstance(r.get("path"), str) and bool(r["path"]) and \
+        bool(_HEX64.match(str(r.get("sha256", ""))))
+
+
 def check_static_eval(se: dict, full_path) -> None:
-    """Refuse a static evaluation that is not a complete, timestamp-validated release/2 evaluation of this full.json,
-    or that does not reproduce release/1 (recomputed here from the embedded measurements, never a cached flag)."""
+    """Refuse a static evaluation that is not a complete, timestamp-validated release/2 evaluation of this full.json
+    (strict schema: episodes and held-out episodes equal the solve's; one input entry list per episode with path +
+    sha256 per file, release/1 first, pairwise supplements after; K sources and code identity with sha256), or that
+    does not reproduce release/1 (recomputed here from the embedded measurements, never a cached flag). The input
+    files themselves are re-hashed by ``rehash_static_eval_inputs`` where they are accessible (the remote job)."""
     if se.get("format") != "s4d-calib-static-eval/2" or se.get("frames_validated") is not True:
         raise SystemExit("not a timestamp-validated s4d-calib-static-eval/2 evaluation")
-    if (se.get("full") or {}).get("sha256") != _sha256(full_path):
+    if not _ref_ok(se.get("full")) or se["full"]["sha256"] != _sha256(full_path):
         raise SystemExit("the static evaluation was computed on another full.json")
     full = json.loads(Path(full_path).read_text())
     episodes = sorted(set(full["fit_episodes"]) | set(full["heldout_episodes"]))
+    if sorted(se.get("episodes") or []) != episodes or \
+            sorted(se.get("heldout_episodes") or []) != sorted(full["heldout_episodes"]):
+        raise SystemExit("the static evaluation's episodes / held-out episodes differ from the solve's")
     inputs = se.get("inputs") or {}
-    if sorted(inputs) != episodes or not all(v and v[0].get("pairing") == "reference" and all(
-            x.get("sha256") for x in v) for v in inputs.values()):
-        raise SystemExit("the static evaluation's input manifest does not cover every episode with hashed files")
-    if not all(((se.get("K_sources") or {}).get(k) or {}).get("sha256") for k in ("per_episode", "heldout")) or \
-            not se.get("code"):
-        raise SystemExit("the static evaluation lacks K-source / code identity")
+    ok = sorted(inputs) == episodes
+    for v in inputs.values() if ok else ():
+        ok &= isinstance(v, list) and bool(v) and all(_ref_ok(x) for x in v) and v[0].get("pairing") == "reference" \
+            and all(x.get("pairing") == "pairwise" for x in v[1:])
+    if not ok:
+        raise SystemExit("the static evaluation's input manifest is malformed or does not cover every episode")
+    if not all(_ref_ok((se.get("K_sources") or {}).get(k)) for k in ("per_episode", "heldout")):
+        raise SystemExit("the static evaluation lacks K-source identity (path + sha256)")
+    code = se.get("code")
+    if not (isinstance(code, dict) and code.get("criteria.py") and all(_HEX64.match(str(h)) for h in code.values())):
+        raise SystemExit("the static evaluation lacks code identity (sha256 per file)")
     probs = check_reproduction(se, full)
     if probs:
         raise SystemExit(f"static evaluation does not reproduce release/1: {probs}")
+
+
+def rehash_static_eval_inputs(se: dict) -> list:
+    """Problems if any input / K-source file named by the static evaluation is missing or has another sha256 (run
+    where the files are, i.e. in the remote job right after ``static-eval``)."""
+    refs = [x for v in (se.get("inputs") or {}).values() for x in v] + list((se.get("K_sources") or {}).values())
+    out = []
+    for r in refs:
+        p = Path(r.get("path", ""))
+        if not p.is_file():
+            out.append(f"{p}: missing")
+        elif _sha256(p) != r.get("sha256"):
+            out.append(f"{p}: sha256 differs")
+    return out
 
 
 # ---------------------------------------------------------------------------------------------------------- verdict
@@ -629,10 +670,16 @@ def release_verdict_v2(R: dict, fixed: dict, se: dict, *, task: str, fixreg: dic
     episodes = sorted(set(full.get("fit_episodes") or []) | set(full.get("heldout_episodes") or []))
     if sorted(se.get("episodes") or []) != episodes:
         raise SystemExit("the static evaluation covers other episodes than the solve")
-    e = (se.get("heldout_extext_sam_static") or {}).get("all") or {}
+    h = se.get("heldout_extext_sam_static") or {}
+    e = h.get("all") or {}
     g4 = {k: e.get(k) for k in ("line_median_px", "transfer_ab_median_px", "transfer_ba_median_px")}
-    g4_ok = _finite(*g4.values()) and g4["line_median_px"] <= GATES["epi_line_px"] and \
-        g4["transfer_ab_median_px"] <= GATES["transfer_px"] and g4["transfer_ba_median_px"] <= GATES["transfer_px"]
+    support = {pair_name(a, b): (h.get(pair_name(a, b)) or {}).get("n") for a, b in combinations(CAMS, 2)}
+    g4["support"] = support
+    g4_ok = _finite(*(g4[k] for k in ("line_median_px", "transfer_ab_median_px", "transfer_ba_median_px"))) and \
+        all(float(g4[k]) >= 0 for k in ("line_median_px", "transfer_ab_median_px", "transfer_ba_median_px")) and \
+        all(_finite(n) and int(n) >= G5B_MIN_MATCHES for n in support.values()) and \
+        g4["line_median_px"] <= GATES["epi_line_px"] and g4["transfer_ab_median_px"] <= GATES["transfer_px"] and \
+        g4["transfer_ba_median_px"] <= GATES["transfer_px"]
     K = {c: np.asarray(k, float) for c, k in (se.get("K_nominal") or {}).items()}
     dtc = dt_extension(se)
     out = {}
@@ -695,7 +742,7 @@ def main(argv=None):
     a = ap.parse_args(argv)
     if a.cmd == "static-eval":
         se = static_eval(a.full, a.corr, a.evidence, a.matches, a.task_root, per_frame_pair=a.per_frame_pair)
-        probs = check_reproduction(se, json.loads(Path(a.full).read_text()))
+        probs = check_reproduction(se, json.loads(Path(a.full).read_text())) + rehash_static_eval_inputs(se)
         Path(a.out).write_text(json.dumps(se, indent=1))
         print(json.dumps({"episodes": len(se["episodes"]), "reproduction_problems": probs,
                           "dt_extension": dt_extension(se)}))

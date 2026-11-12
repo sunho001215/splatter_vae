@@ -209,8 +209,9 @@ def depth_scales(final: dict, others: dict) -> tuple[dict, dict]:
 def build_document(*, task, R, final, fixed, frozen, ref_files, depth_results, eligible, commit, sources,
                    user_decision=USER_DECISION, criteria_v2: dict | None = None) -> dict:
     """``criteria_v2`` = {"static_eval": dict, "fixreg": dict | None} publishes under ``calib.criteria`` release/2
-    (G1 radius + image check, G4 / G5b on the pairwise static evidence, G5a materiality for exception eligibility);
-    the release/1 verdict is still recomputed, checked against the frozen verdict and stored in ``criteria``."""
+    (G1 radius + image backstop, G4 / G5b on the pairwise static evidence; G5a and the exception rule = release/1, with
+    the FIXREG materiality numbers as decision support); the release/1 verdict is still recomputed, checked against the
+    frozen verdict and stored in ``criteria``."""
     from s4d.realworld.calib.rig import FIXEDNESS_RULE_G5AB, FORMAT
 
     if final.get("task") != task or R["full"].get("task") != task:
