@@ -6,14 +6,34 @@ sha256 1557dec0...). It does not import ``s4d``: it reads the processed episode 
 foundation_stereo_depth, sensor_depth, sam3_masks) so the RoMa environment needs no repository dependencies.
 
     python romav2_match_worker.py --task-root R [--episodes E ...] --cameras c0 c1 c2 --out OUTDIR \
-        [--times 6] [--num 5000] [--setting precise] [--seed 0]
+        [--times 6] [--num 5000] [--setting precise] [--seed 0] [--pairing reference|pairwise] [--max-dt-ms MS] \
+        [--supplement-of RELEASE1_DIR]
 
-For K time points (evenly spaced over the reference camera's frames) and every camera pair (a < b), the frames of a
-and b nearest in time (|dt| <= 20 ms) are matched (bidirectional). Every sampled match is stored with the per-end
-evidence needed downstream (no filtering decisions beyond NaN removal are taken here except what is recorded as
-flags): pixel coordinates (continuous convention: pixel (i, j) centre at (j + .5, i + .5)), RoMa overlap, cycle error
-(px), SAM 3 class at both ends + distance to the nearest robot/object pixel, FS and sensor depth (0 = invalid) and the
-local 5x5 FS depth range, MAGSAC++ fundamental inlier flag (computed on the matches whose ends are static)."""
+For K time points (evenly spaced over the reference camera's frames) and every camera pair (a < b), a frame of a and a
+frame of b are matched (bidirectional). Pairing (``--pairing``):
+
+* ``reference`` (default; the frozen 2026-11-07 rule, bitwise unchanged): every camera takes its frame nearest the
+  reference camera's sample time and a pair is matched only if those two frames lie within ``--max-dt-ms`` (default
+  20 ms). With free-running cameras this skips whole pairs for whole episodes (constant phase offsets up to half a
+  period; two cameras on opposite sides of the reference are up to a full period apart although their own nearest
+  frames are close).
+* ``pairwise`` (criteria v2, CALSYNC 2026-11-12): a's frame nearest the sample time, b's frame nearest a's frame (the
+  actual nearest frame of the pair); kept iff |dt| <= ``--max-dt-ms`` (default: half the larger median frame period of
+  the two cameras, i.e. always the nearest frame unless frames are missing). Static correspondences do not depend on
+  the time offset (static scene, fixed cameras); the per-end dynamic masks are taken at each end's own frame time.
+  Every (time, pair) actually matched is listed in meta ``pair_frames`` with its signed dt; skipped ones in
+  ``skipped`` with the reason.
+
+``--supplement-of DIR`` (pairwise only): match ONLY the (time, pair) combinations that the existing file
+``DIR/<episode>.npz`` (reference pairing) did not evaluate, each with its own deterministic seed, so the existing
+evidence stays bitwise unchanged and the union of both files is the pairwise evidence; the frames of every
+combination the existing file did evaluate must equal the pairwise frames (checked).
+
+Every sampled match is stored with the per-end evidence needed downstream (no filtering decisions beyond NaN removal
+are taken here except what is recorded as flags): pixel coordinates (continuous convention: pixel (i, j) centre at (j
++ .5, i + .5)), RoMa overlap, cycle error (px), SAM 3 class at both ends + distance to the nearest robot/object pixel,
+FS and sensor depth (0 = invalid) and the local 5x5 FS depth range, MAGSAC++ fundamental inlier flag (computed on the
+matches whose ends are static)."""
 from __future__ import annotations
 
 import argparse
@@ -23,6 +43,15 @@ from pathlib import Path
 
 import h5py
 import numpy as np
+
+
+def _sha256(path) -> str:
+    import hashlib
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for block in iter(lambda: f.read(1 << 20), b""):
+            h.update(block)
+    return h.hexdigest()
 
 
 def safe(stream):
@@ -86,9 +115,16 @@ def main():
     ap.add_argument("--num", type=int, default=5000)
     ap.add_argument("--setting", default="precise")
     ap.add_argument("--seed", type=int, default=0)
-    ap.add_argument("--max-dt-ms", type=float, default=20.0)
+    ap.add_argument("--max-dt-ms", type=float, default=None,
+                    help="reference pairing: default 20 ms (frozen); pairwise: default half the frame period")
+    ap.add_argument("--pairing", choices=("reference", "pairwise"), default="reference")
+    ap.add_argument("--supplement-of", default=None, help="existing reference-pairing match dir (pairwise only)")
     ap.add_argument("--magsac-px", type=float, default=1.0)
     a = ap.parse_args()
+    if a.pairing == "reference" and a.max_dt_ms is None:
+        a.max_dt_ms = 20.0
+    if a.supplement_of and a.pairing != "pairwise":
+        ap.error("--supplement-of needs --pairing pairwise")
 
     import torch
     torch.set_float32_matmul_precision("highest")
@@ -109,6 +145,82 @@ def main():
                           if torch.cuda.is_available() else None}), flush=True)
 
 
+def _nearest(stamps: np.ndarray, t) -> int:
+    return int(np.argmin(np.abs(stamps - t)))
+
+
+def median_period_ns(stamps: np.ndarray) -> float:
+    d = np.diff(np.sort(np.asarray(stamps, np.int64)))
+    return float(np.median(d)) if len(d) else float("inf")
+
+
+def sample_times(stamps: dict, cameras: list, times: int) -> np.ndarray:
+    """The K interior, evenly spaced frames of the reference camera (cameras[0]) - identical for both pairings."""
+    ref = stamps[cameras[0]]
+    return ref[np.linspace(0, len(ref) - 1, times + 2).round().astype(int)[1:-1]]
+
+
+def plan_pairs(stamps: dict, cameras: list, times: int, pairing: str = "reference", max_dt_ms=None) -> dict:
+    """Which frames are matched for every (time k, pair a < b): {"frames_used": {k: {camera: reference-nearest frame}},
+    "pairs": [(k, pa, pb, frame_a, frame_b, dt_ns)], "skipped": [(k, pa, pb, frame_a, frame_b, dt_ns, reason)],
+    "max_dt_ns": {pair: tolerance}}. Pure (no I/O, no torch) - the worker loop and the tests use it."""
+    t_ref = sample_times(stamps, cameras, times)
+    pairs = [(i, j) for i in range(len(cameras)) for j in range(i + 1, len(cameras))]
+    tol = {}
+    for pa, pb in pairs:
+        if max_dt_ms is not None:
+            tol[(pa, pb)] = int(round(float(max_dt_ms) * 1e6))
+        elif pairing == "pairwise":
+            tol[(pa, pb)] = int(0.5 * max(median_period_ns(stamps[cameras[pa]]), median_period_ns(stamps[cameras[pb]])))
+        else:
+            raise ValueError("reference pairing needs max_dt_ms")
+    out = {"frames_used": {}, "pairs": [], "skipped": [], "max_dt_ns": {f"{pa}{pb}": v for (pa, pb), v in tol.items()}}
+    for k, t in enumerate(t_ref):
+        idx = {c: _nearest(stamps[c], t) for c in cameras}
+        out["frames_used"][int(k)] = {c: idx[c] for c in cameras}
+        for pa, pb in pairs:
+            ca, cb = cameras[pa], cameras[pb]
+            ia = idx[ca]
+            ib = idx[cb] if pairing == "reference" else _nearest(stamps[cb], stamps[ca][ia])
+            dt = int(stamps[cb][ib] - stamps[ca][ia])
+            if abs(dt) > tol[(pa, pb)]:
+                out["skipped"].append((int(k), pa, pb, int(ia), int(ib), dt,
+                                       "|dt| > max_dt" if pairing == "reference" else "no frame within half a period "
+                                                                                      "(missing frame / pause)"))
+                continue
+            out["pairs"].append((int(k), pa, pb, int(ia), int(ib), dt))
+    return out
+
+
+def supplement_plan(stamps: dict, cameras: list, times: int, existing_meta: dict, max_dt_ms=None) -> dict:
+    """Pairwise plan minus the (time, pair) combinations the existing reference-pairing file evaluated (recomputed from
+    its own ``max_dt_ms`` and the same timestamps); raises if an evaluated combination used other frames than the
+    pairwise rule would (the union would then not be the pairwise evidence)."""
+    if existing_meta.get("pairing", "reference") != "reference" or list(existing_meta["cameras"]) != list(cameras) \
+            or int(existing_meta["times"]) != int(times):
+        raise ValueError("the existing file is not a reference-pairing file of the same cameras / times")
+    old = plan_pairs(stamps, cameras, times, "reference", existing_meta["max_dt_ms"])
+    stored = {int(k): {c: int(i) for c, i in v.items()} for k, v in existing_meta["frames"].items()}
+    if stored != {int(k): v for k, v in old["frames_used"].items()}:
+        raise ValueError("the existing file's frames differ from the reference rule on these timestamps")
+    new = plan_pairs(stamps, cameras, times, "pairwise", max_dt_ms)
+    done = {(k, pa, pb): (ia, ib) for k, pa, pb, ia, ib, _ in old["pairs"]}
+    keep = []
+    for row in new["pairs"]:
+        k, pa, pb, ia, ib, _ = row
+        if (k, pa, pb) in done:
+            if done[(k, pa, pb)] != (ia, ib):
+                raise ValueError(f"time {k} pair {pa}{pb}: reference frames {done[(k, pa, pb)]} != pairwise {(ia, ib)}")
+            continue
+        keep.append(row)
+    return {**new, "pairs": keep, "existing_pairs": len(done)}
+
+
+def pair_seed(seed: int, k: int, pa: int, pb: int) -> int:
+    """Deterministic per-(time, pair) seed of a supplement (independent of which other pairs are matched)."""
+    return int(seed) * 1_000_003 + int(k) * 100 + int(pa) * 10 + int(pb)
+
+
 def run_episode(model, a, root, episode_id, out_path):
     import cv2
     import torch
@@ -118,14 +230,23 @@ def run_episode(model, a, root, episode_id, out_path):
     root = Path(root)
     with np.load(root / "episodes" / episode_id / "normalized" / "arrays.npz") as z:
         stamps = {c: z[f"timestamps/{c}"].astype(np.int64) for c in a.cameras}
-    ref = a.cameras[0]
-    n0 = len(stamps[ref])
-    t_ref = stamps[ref][np.linspace(0, n0 - 1, a.times + 2).round().astype(int)[1:-1]]
+    supplement = None
+    if a.supplement_of:
+        src = Path(a.supplement_of) / f"{episode_id}.npz"
+        with np.load(src) as z:
+            existing = json.loads(str(z["meta"]))
+        plan = supplement_plan(stamps, a.cameras, a.times, existing, a.max_dt_ms)
+        supplement = {"path": str(src), "sha256": _sha256(src), "existing_pairs": plan["existing_pairs"],
+                      "existing_max_dt_ms": existing["max_dt_ms"]}
+    else:
+        plan = plan_pairs(stamps, a.cameras, a.times, a.pairing, a.max_dt_ms)
     rows = {k: [] for k in ("pair", "time", "frame_a", "frame_b", "dt_ns", "uv_a", "uv_b", "overlap", "cycle_px",
                             "cls_a", "cls_b", "dyn_dist_a", "dyn_dist_b", "fs_a", "fs_b", "sd_a", "sd_b",
                             "fs_range_a", "fs_range_b", "magsac_inlier")}
-    frames_used = {}
-    pairs = [(i, j) for i in range(len(a.cameras)) for j in range(i + 1, len(a.cameras))]
+    frames_used = plan["frames_used"]
+    by_time = {}
+    for row in plan["pairs"]:
+        by_time.setdefault(row[0], []).append(row)
     cache = {}
 
     def get(cam, i):
@@ -142,16 +263,14 @@ def run_episode(model, a, root, episode_id, out_path):
                           "K": inp.get("foundation_stereo_depth_K")}
         return cache[key]
 
-    for k, t in enumerate(t_ref):
-        idx = {c: int(np.argmin(np.abs(stamps[c] - t))) for c in a.cameras}
-        frames_used[int(k)] = {c: idx[c] for c in a.cameras}
-        for (pa, pb) in pairs:
+    for k in sorted(frames_used):
+        for (_, pa, pb, ia, ib, dt) in by_time.get(k, []):
             ca, cb = a.cameras[pa], a.cameras[pb]
-            dt = int(stamps[cb][idx[cb]] - stamps[ca][idx[ca]])
-            if abs(dt) > a.max_dt_ms * 1e6:
-                continue
+            idx = {ca: ia, cb: ib}
             A, B = get(ca, idx[ca]), get(cb, idx[cb])
             H, W = A["rgb"].shape[:2]
+            if supplement is not None:
+                torch.manual_seed(pair_seed(a.seed, k, pa, pb))
             preds = model.match(A["rgb"], B["rgb"])
             m, ov, _, _ = model.sample(preds, a.num)
             # cycle consistency: warp_AB at uv_a vs uv_b and warp_BA at uv_b vs uv_a
@@ -192,6 +311,10 @@ def run_episode(model, a, root, episode_id, out_path):
     out = {k: np.concatenate(v) if v else np.zeros(0) for k, v in rows.items()}
     meta = {"episode_id": episode_id, "cameras": a.cameras, "times": a.times, "num": a.num, "setting": a.setting,
             "seed": a.seed, "frames": frames_used, "magsac_px": a.magsac_px, "max_dt_ms": a.max_dt_ms,
+            **({} if a.pairing == "reference" else {
+                "pairing": a.pairing, "max_dt_ns": plan["max_dt_ns"], "supplement_of": supplement,
+                "pair_frames": [list(r) for r in plan["pairs"]], "skipped": [list(r) for r in plan["skipped"]],
+                "pair_seed": "seed * 1000003 + time * 100 + pa * 10 + pb" if supplement else None}),
             "seconds": round(time.time() - t0, 1), "torch": torch.__version__, "cv2": cv2.__version__,
             "gpu": torch.cuda.get_device_name(0) if torch.cuda.is_available() else None}
     tmp = out_path + ".tmp.npz"

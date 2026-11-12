@@ -140,6 +140,75 @@ before splitting. The format is still `s4d.realworld.rig_calibration/1`, so the 
     episode's, and its calibrate record must have been built with its period's document.
 - The records name the period (`metrics.period`).
 
+### 3b. Criteria v2 (`rig_loma-release/2`, agent CALSYNC, user directive 2026-11-12 ~20:40 KST)
+
+The user asked to re-evaluate the calibration and camera-synchronization acceptance criteria from evidence, revise
+overly conservative thresholds only with quantitative support, keep the original measurements and verdicts, and
+document every change. `s4d/realworld/calib/criteria.py` implements release/2. Release/1 stays the DEFAULT of
+`rig_loma_publish publish`. Release/2 is chosen explicitly with `--criteria v2 --static-eval S [--fixreg F]`. A
+release/2 document still recomputes the release/1 verdict, checks it against the frozen verdict JSON and stores it,
+together with the release/1 per-episode evidence, in its `criteria` block. Full numbers:
+realworld-ops/rwx/CALSYNC-REPORT-20261112.md.
+
+Measured on all 400 raw episodes (drawer-open, mug-hanging, covering, pick-and-place):
+
+* The three D435 colour streams run free at 66.715 ms. There are no within-segment drops.
+* Inter-camera phase offsets are constant within an episode (std <= 0.05 ms) and spread over 0-33 ms (half a period).
+* Flange speed: p95 0.10 m/s, max 0.125 m/s. At the worst offset of 33 ms the flange therefore moves <= 4 mm, which is
+  ~2.3 px at the 1.07 m camera distance (0.6 training px).
+
+What changes (everything else is release/1):
+
+1. **Static-correspondence evidence for G4 / G5b: pairwise-nearest pairing.**
+   * The problem: `romav2_match_worker` paired every camera with its frame nearest the reference camera's sample time
+     and dropped pairs more than 20 ms apart. With constant offsets of 0-33 ms this dropped whole pairs for whole
+     episodes. Two cameras on opposite sides of the reference were up to a full period apart even when their own
+     nearest frames were < 10 ms apart; this is pick-and-place 000009-000012, where no pair was left, so "G5b:
+     per-episode consistency incomplete" held all three cameras. A camera was G5b-verifiable (both of its pairs
+     present) in only 35-92 % of the episodes, so the 20 ms rule weakened the fixedness test instead of strengthening
+     it.
+   * The new pairing: `--pairing pairwise` takes a's frame nearest the sample time and b's frame nearest a's frame,
+     kept iff |dt| <= half the frame period. A larger gap means a missing frame or a pause; that (time, pair) is
+     skipped and recorded.
+   * Why dt does not matter here: static correspondences of a static scene seen by fixed cameras do not depend on dt.
+     Dynamic pixels are masked at each end's own frame time. Measured: the per-episode static epipolar median has
+     slope -0.007..+0.014 px per 10 ms over 0-20 ms (935 episode-pairs).
+   * `--supplement-of <release/1 matches>` adds only the missing (time, pair) combinations, each with its own seed. The
+     release/1 matches stay bitwise unchanged; the frames of every pair they already evaluated are checked to equal the
+     pairwise frames.
+   * `criteria static-eval` re-evaluates G4 and G5b at the stored full-solve state from the union of both files. It
+     reproduces the solve's stored release/1 values bitwise from the release/1 files alone; a publication refuses
+     otherwise. The solves are reused (the estimator is unchanged).
+   * The G4 / G5b thresholds are unchanged.
+   * NEW and stricter: every episode needs evidence, and every camera must be verifiable in >= 90 % of the episodes.
+2. **G1 as the stability radius about the published solution, plus an image-space check.**
+   * The rule: every solve of the complete, unchanged stability set must lie within 0.35 deg and 8 mm (unchanged) of
+     the published `all` pose. Its reprojection displacement over the training crop must also stay at or below one
+     training pixel: p95 <= 3.75 px over an 8 x 8 grid on the 480 x 480 crop, lifted to 0.7 / 1.0 / 1.3 m.
+   * Release/1 used the max PAIRWISE distance (diameter) between two perturbed solves, neither of them published. Its
+     0.35 deg / 8 mm were each defined as one training pixel, separately for rotation and translation.
+   * The radius measures how far the published estimate moves under the perturbations. The image check measures the
+     downstream quantity itself.
+   * It is not uniformly looser: an uncompensated 7 mm lateral translation passes release/1 but fails the image check.
+   * The release/1 diameter is reported next to it.
+3. **G5a materiality for exception eligibility.**
+   * Unchanged: G5a's detection thresholds (0.25 px / 0.03 deg / 1000 ppm), and the rig-mode per-episode rule.
+   * New: a camera held by G5a ALONE is exception-eligible only if two conditions hold:
+     * every flagged episode is verifiable in FIXREG with peak displacement D + 2.58 SE_D <= 0.375 px (1/10 training
+       pixel, the same bound as `MAX_PERIOD_ROT_DEG` = 0.035 deg);
+     * FIXREG reports no T1-T4 event for the camera.
+   * A persistent or material change is therefore never covered. The coordinator still fills the exception with
+     `fill-exception`, citing the evidence.
+
+Sanity against known-bad calibrations:
+
+* rig_dw, held on 2026-11-08: 5 of 6 cameras still fail G1 v2 on rotation radius (0.51-0.84 deg). The sixth, drawer
+  076054, was held by G3 anyway.
+* covering 073201 would NOT be exception-eligible under v2: its 000004 has D + 2.58 SE = 0.44 px. covering 076054 has
+  FIXREG events. Both needed the user's decision then and would still need it.
+* Release/1-era evidence fails the new G5b coverage requirement (covering 78-92 %). Any re-release needs the
+  pairwise supplement.
+
 ## 4. Per-camera depth scale (single source of truth = the accepted calibration record)
 
 The rig solve estimates each camera's metric depth scale jointly with its pose (`log z = log d + alpha`); the pose is

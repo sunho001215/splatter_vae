@@ -162,11 +162,13 @@ def check_against_frozen(rel: dict, frozen: dict) -> None:
                              f"frozen {fz}")
 
 
-def fixedness_evidence(R: dict, fixed: dict) -> dict:
+def fixedness_evidence(R: dict, fixed: dict, per_ep: dict | None = None) -> dict:
     """{camera: {episode: {"registration": fixed|moved|not_verifiable, "epipolar": ok|moved|single_pair|
-    not_verifiable}}} - the per-episode G5a / G5b classification the verdict used (rig mode reads ``epipolar``)."""
+    not_verifiable}}} - the per-episode G5a / G5b classification the verdict used (rig mode reads ``epipolar``).
+    ``per_ep``: the G5b evidence (default: the solve's stored ``per_episode_extext``; criteria v2: the pairwise
+    static evaluation)."""
     full = R["full"]
-    per_ep = full.get("per_episode_extext") or {}
+    per_ep = (full.get("per_episode_extext") or {}) if per_ep is None else per_ep
     episodes = sorted(set(full.get("fit_episodes") or []) | set(full.get("heldout_episodes") or []))
     out = {}
     for cam in CAMS:
@@ -204,20 +206,37 @@ def depth_scales(final: dict, others: dict) -> tuple[dict, dict]:
 
 
 def build_document(*, task, R, final, fixed, frozen, ref_files, depth_results, eligible, commit, sources,
-                   user_decision=USER_DECISION) -> dict:
+                   user_decision=USER_DECISION, criteria_v2: dict | None = None) -> dict:
+    """``criteria_v2`` = {"static_eval": dict, "fixreg": dict | None} publishes under ``calib.criteria`` release/2
+    (G1 radius + image check, G4 / G5b on the pairwise static evidence, G5a materiality for exception eligibility);
+    the release/1 verdict is still recomputed, checked against the frozen verdict and stored in ``criteria``."""
     from s4d.realworld.calib.rig import FIXEDNESS_RULE_G5AB, FORMAT
 
     if final.get("task") != task or R["full"].get("task") != task:
         raise SystemExit(f"results are not of task {task}")
     if final.get("variant") != "all" or final.get("heldout_episodes"):
         raise SystemExit("the published poses must be the 'all' refit (every episode, no held-out)")
-    rel = release_verdict(R, fixed, eligible)
+    v2 = None
+    if criteria_v2 is None:
+        rel = release_verdict(R, fixed, eligible)
+    else:
+        from s4d.realworld.calib import criteria as C
+
+        if R.get("all", {}).get("state") != final.get("state"):
+            raise SystemExit("criteria v2: the results' all.json is not the published solve")
+        rel = release_verdict(R, fixed)
+        v2 = C.release_verdict_v2(R, fixed, criteria_v2["static_eval"], task=task, fixreg=criteria_v2.get("fixreg"))
+        for cam in eligible:
+            if not v2[cam]["exception_eligible_v2"]:
+                raise SystemExit(f"{cam}: --exception-eligible but under criteria v2 held by {v2[cam]['held_by']} "
+                                 f"(eligible only when held by G5a alone with immaterial FIXREG motion: "
+                                 f"{(v2[cam]['g5a_materiality'] or {}).get('problems')})")
     check_against_frozen(rel, frozen)
     ds, agree = depth_scales(final, depth_results)
-    evidence = fixedness_evidence(R, fixed)
+    evidence = fixedness_evidence(R, fixed, None if v2 is None else criteria_v2["static_eval"]["per_episode_extext"])
     if sorted(final["fit_episodes"]) != sorted(next(iter(evidence.values()))):
         raise SystemExit("the published solve and the verdict cover different episodes")
-    name = f"rig-loma-{task}-{commit[:7]}"
+    name = f"rig-loma-{task}-{commit[:7]}" + ("" if v2 is None else "-c2")
     doc = {"format": FORMAT, "name": name, "task": task,
            "method": "rig_loma: SAM-free LoMa-G render-to-image robot 2D-3D correspondences + RoMa v2 static RGB-D "
                      "two-view factors, per-task joint 3-camera rig (FS depth, sigma_logd 3 %, per-task gripper mount "
@@ -227,8 +246,12 @@ def build_document(*, task, R, final, fixed, frozen, ref_files, depth_results, e
            "pool_frames_note": "rig_loma fitted LoMa-G 2D-3D correspondences and static RoMa matches; it used no robot "
                                "depth term, so every frame's SAM-masked robot-depth check in rig mode is independent "
                                "of the fit (held-out evidence type)",
-           "gate_version": GATE_VERSION, "gates": {**GATES, "g6_primary": "SAM-free corr_challenge (frozen a935aef)",
-                                                   "g6_sam": "diagnostic"},
+           "gate_version": GATE_VERSION if v2 is None else C.GATE_VERSION_V2,
+           "gates": {**GATES, "g6_primary": "SAM-free corr_challenge (frozen a935aef)", "g6_sam": "diagnostic",
+                     **({} if v2 is None else {"criteria": C.V2, "g1_v2": {k: (list(x) if isinstance(x, tuple) else x)
+                                                                           for k, x in C.G1_V2.items()},
+                                               "g5a_material_px": C.G5A_MATERIAL_PX, "g5a_z": C.G5A_Z,
+                                               "g5b_min_verifiable": C.G5B_MIN_VERIFIABLE})},
            "fixedness_rule": FIXEDNESS_RULE_G5AB, "fixedness_config": fixed["config"],
            "fixedness_evidence": evidence,
            "fixedness_exception": {"eligible_cameras": sorted(eligible), "cameras": [], "decision": None,
@@ -238,18 +261,30 @@ def build_document(*, task, R, final, fixed, frozen, ref_files, depth_results, e
                                                 "decision from the FIXREG stream with "
                                                 "`rig_loma_publish fill-exception` (writes a new document)"},
            "episode_checks": EPISODE_CHECKS, "robot_model": ROBOT_MODEL,
-           "provenance": {"frozen_commit": commit, "gate_version": GATE_VERSION, "user_decision": user_decision,
+           "provenance": {"frozen_commit": commit, "gate_version": GATE_VERSION if v2 is None else C.GATE_VERSION_V2,
+                         "user_decision": user_decision,
                           "final_variant": final["variant"], "config": final["config"],
                           "depth_pose_agreement": agree, **sources},
            "cameras": {}}
+    if v2 is not None:
+        doc["criteria"] = {
+            "version": C.V2, "gate_version_release1": GATE_VERSION,
+            "release1_verdict": {cam: {k: rel[cam][k] for k in ("status", "reasons", "held_by")} for cam in CAMS},
+            "release1_fixedness_evidence": fixedness_evidence(R, fixed),
+            "g5b_evidence": "pairwise-nearest static matches (romav2_match_worker --pairing pairwise; release/1 "
+                            "matches + supplement), calib.criteria.static_eval",
+            "rationale": "docs/realworld_calibration_release.md (Criteria v2); realworld-ops/rwx/CALSYNC-REPORT-20261112.md"}
     for cam in CAMS:
-        v, b = rel[cam], rel[cam]["base"]
+        v, b = (rel[cam] if v2 is None else {**rel[cam], **{k: v2[cam][k] for k in ("status", "reasons", "held_by",
+                                                                                  "checks")}}), rel[cam]["base"]
         doc["cameras"][cam] = {
             "status": v["status"], "reasons": v["reasons"], "held_by": v["held_by"], "checks": v["checks"],
             "T_cam_base": final["state"]["T_cam_base"][cam], "depth_scale": ds[cam], "tau_s": final["state"]["tau_s"][cam],
             "empirical_spread": b["empirical_spread"],
             "validation": {k: b[k] for k in ("heldout", "fixedness", "alpha", "raw_depth_flag")},
-            "diagnostics": {**v["diagnostics"], "gripper_mount_estimate_dM_deg_mm": final.get("mount_dM"),
+            "diagnostics": {**v["diagnostics"], **({} if v2 is None else {"criteria_v2": {
+                                k: x for k, x in v2[cam].items() if k != "g1_per_solve"}}),
+                            "gripper_mount_estimate_dM_deg_mm": final.get("mount_dM"),
                             "gripper_mount_note": "estimated jointly with the poses; NOT applied downstream (nominal "
                                                   "mount everywhere, as in the frozen SAM validation)"},
             "final_vs_evaluated_fit": dict(zip(("rot_deg", "centre_m"), map(float, pose_distance(
@@ -281,9 +316,26 @@ def publish(a) -> dict:
     sources = {"final": _ref(a.final), "full": _ref(Path(a.results) / "full.json"), "verdict": _ref(a.verdict),
                "fixedness": _ref(a.fixedness), "reference_source": _ref(a.reference), "freeze_record": _ref(a.freeze),
                "depth_results": {s.split("=", 1)[0]: _ref(s.split("=", 1)[1]) for s in a.depth_result or []}}
+    crit = None
+    if getattr(a, "criteria", "v1") == "v2":
+        from s4d.realworld.calib.criteria import USER_DECISION_V2, _sha256
+
+        if not getattr(a, "static_eval", None):
+            raise SystemExit("--criteria v2 needs --static-eval")
+        se = json.loads(Path(a.static_eval).read_text())
+        if se["full"]["sha256"] != _sha256(Path(a.results) / "full.json"):
+            raise SystemExit("the static evaluation was computed on another full.json")
+        if se.get("release1_reproduction_problems") != []:
+            raise SystemExit(f"static evaluation does not reproduce release/1: {se.get('release1_reproduction_problems')}")
+        crit = {"static_eval": se, "fixreg": json.loads(Path(a.fixreg).read_text()) if getattr(a, "fixreg", None) else None}
+        sources["static_eval"] = _ref(a.static_eval)
+        if getattr(a, "fixreg", None):
+            sources["fixreg"] = _ref(a.fixreg)
     doc = build_document(task=a.task, R=R, final=final, fixed=fixed, frozen=frozen, ref_files=ref_files,
                          depth_results=depth_results, eligible=tuple(a.exception_eligible or ()), commit=a.commit,
-                         sources=sources, user_decision=getattr(a, "user_decision", None) or USER_DECISION)
+                         sources=sources, criteria_v2=crit,
+                         user_decision=getattr(a, "user_decision", None) or (USER_DECISION if crit is None
+                                                                             else USER_DECISION_V2))
     return publish_rig(out, doc, ref_files)
 
 
@@ -452,6 +504,10 @@ def main(argv=None):
     p.add_argument("--exception-eligible", nargs="*", default=[])
     p.add_argument("--user-decision", help="the task's decision text for the provenance (default: the 2026-11-08 "
                                            "drawer-open / mug-hanging release text)")
+    p.add_argument("--criteria", choices=("v1", "v2"), default="v1",
+                   help="v1 = rig_loma-release/1 (default, frozen); v2 = calib.criteria release/2 (CALSYNC)")
+    p.add_argument("--static-eval", help="v2: calib.criteria static-eval output (pairwise G4 / G5b evidence)")
+    p.add_argument("--fixreg", help="v2: FIXREG results (G5a materiality of G5a-only cameras)")
     p.add_argument("--out", required=True)
     f = sub.add_parser("fill-exception")
     f.add_argument("--rig", required=True)
