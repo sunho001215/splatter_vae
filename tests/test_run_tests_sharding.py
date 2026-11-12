@@ -170,12 +170,14 @@ def test_cprofile_filter_equals_original_python_trace_on_toy_package(tmp_path):
 
 @pytest.mark.parametrize("budget,concurrent,expected", [(32, 14, 2), (8, 4, 2), (1, 14, 1), (32, 1, 32)])
 def test_thread_budget_split(monkeypatch, budget, concurrent, expected):
+    monkeypatch.delenv("S4D_TEST_CPU_THREADS", raising=False)  # a suite worker inherits its runner's budget
     monkeypatch.setenv("S4D_VERIFICATION_CPU_THREADS", str(budget))
     assert runner.thread_budget() == budget
     assert runner.threads_per_shard(budget, concurrent) == expected
 
 
 def test_thread_budget_affinity_fallback(monkeypatch):
+    monkeypatch.delenv("S4D_TEST_CPU_THREADS", raising=False)  # a suite worker inherits its runner's budget
     monkeypatch.delenv("S4D_VERIFICATION_CPU_THREADS", raising=False)
     monkeypatch.setattr(os, "sched_getaffinity", lambda pid: {1, 2, 3})
     assert runner.thread_budget() == 3
@@ -348,3 +350,34 @@ def test_thread_budget_prefers_the_passed_quota(monkeypatch):
     assert runner.thread_budget() == 8
     monkeypatch.delenv("S4D_TEST_CPU_THREADS")
     assert runner.thread_budget() == 32
+
+
+def test_terminating_the_runner_also_kills_descendants_of_an_exited_leader(tmp_path):
+    """Codex review 2026-11-12: a worker leader that exits on SIGTERM must not leave its group's descendants."""
+    import threading
+    import time
+    marker = tmp_path / "child.pid"
+    script = ("import os, signal, subprocess, sys, time\n"
+              "child = subprocess.Popen([sys.executable, '-c', 'import signal, time; "
+              "signal.signal(signal.SIGTERM, signal.SIG_IGN); time.sleep(120)'])\n"
+              f"open({str(marker)!r}, 'w').write(str(child.pid))\n"
+              "signal.signal(signal.SIGTERM, lambda *a: os._exit(0))\n"
+              "time.sleep(120)\n")
+    thread = threading.Thread(target=lambda: runner.run_process([sys.executable, "-c", script], dict(os.environ),
+                                                                tmp_path / "w.log", 300, cwd=tmp_path))
+    thread.start()
+    for _ in range(200):
+        if marker.exists() and marker.read_text():
+            break
+        time.sleep(0.05)
+    child = int(marker.read_text())
+    runner.terminate_workers()
+    thread.join(timeout=30)
+    for _ in range(100):
+        try:
+            os.kill(child, 0)
+        except ProcessLookupError:
+            break
+        time.sleep(0.05)
+    else:
+        raise AssertionError("the SIGTERM-immune descendant survived")

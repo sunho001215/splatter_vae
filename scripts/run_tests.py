@@ -153,16 +153,19 @@ def terminate_workers():
     with _ACTIVE_LOCK:
         workers = list(ACTIVE_WORKERS)
     for process in workers:
-        for sig in (signal.SIGTERM, signal.SIGKILL):
-            try:
-                os.killpg(process.pid, sig)
-            except ProcessLookupError:
-                break
-            try:
-                process.wait(timeout=5)
-                break
-            except subprocess.TimeoutExpired:
-                continue
+        try:
+            os.killpg(process.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            pass
+        try:  # always: descendants may outlive their session leader
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        process.wait()
     return len(workers)
 
 
