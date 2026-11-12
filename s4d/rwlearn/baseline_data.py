@@ -119,16 +119,19 @@ def _episodes(store: FrameStore, episodes, max_episodes):
 
 
 class _SyncedEpisodes(Dataset):
-    """Shared state: store (re-opened per worker from its locator when pickled), per-episode SyncIndex, cameras."""
+    """Shared state: store (re-opened per worker from its locator when pickled), per-episode SyncIndex, cameras.
+
+    ``geometry=False`` (RGB-only consumers, ReViWo): the M5 sets are read without requiring an accepted camera
+    calibration and no camera pose is loaded (``c2w_cv`` is None); every other field is the same."""
 
     def __init__(self, locator, episodes, num_views: int, max_episodes=None, max_steps_per_demo=None,
-                 max_sync_ns: int = 30_000_000):
+                 max_sync_ns: int = 30_000_000, *, geometry: bool = True):
         self.locator = locator
         self.store, self._pid = open_store(locator), None
         self.episodes = _episodes(self.store, episodes, max_episodes)
         self.sync: dict[str, SyncIndex] = {}
         for ep in self.episodes:
-            s = sync_index(self.store, ep, max_sync_ns)
+            s = sync_index(self.store, ep, max_sync_ns, geometry=geometry)
             if max_steps_per_demo is not None:
                 cut = int(max_steps_per_demo)
                 s = SyncIndex(s.cameras, s.frames[:cut], s.times[:cut], s.latest_times[:cut], s.segment[:cut],
@@ -141,8 +144,8 @@ class _SyncedEpisodes(Dataset):
         self.lengths = {ep: len(s.times) for ep, s in self.sync.items()}
         self.K_cv = {ep: np.stack([self.store.intrinsics(ep, c) for c in self.sync[ep].cameras[:num_views]])
                      for ep in self.episodes}
-        self.c2w_cv = {ep: np.stack([np.linalg.inv(self.store.w2c(ep, c)) for c in self.sync[ep].cameras[:num_views]])
-                       for ep in self.episodes}
+        self.c2w_cv = ({ep: np.stack([np.linalg.inv(self.store.w2c(ep, c)) for c in self.sync[ep].cameras[:num_views]])
+                        for ep in self.episodes} if geometry else None)
         self._release()
 
     def _release(self) -> None:
@@ -208,11 +211,13 @@ class RealworldSinCroWindows(_SyncedEpisodes):
 
 
 class RealworldReViWoStates(_SyncedEpisodes):
-    """Reference ``MetaWorldMultiViewAllCamerasHDF5Dataset`` samples: every synchronised step, all cameras, [-1, 1]."""
+    """Reference ``MetaWorldMultiViewAllCamerasHDF5Dataset`` samples: every synchronised step, all cameras, [-1, 1].
+    RGB only: ReViWo is a NON-GEOMETRIC consumer (``gate.CONSUMERS``), so its M5 sets are read without the calibration
+    requirement (``geometry=False``) and no camera pose is loaded; on an accepted store the samples are unchanged."""
 
     def __init__(self, path, episodes, num_views: int = 3, max_episodes: int | None = None,
                  max_frames_per_demo: int | None = None):
-        super().__init__(path, episodes, num_views, max_episodes, max_frames_per_demo)
+        super().__init__(path, episodes, num_views, max_episodes, max_frames_per_demo, geometry=False)
         self.indices = [(ep, t) for ep in self.episodes for t in range(self.lengths[ep])]
 
     def __len__(self):

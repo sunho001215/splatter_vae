@@ -415,6 +415,93 @@ def test_unaccepted_calibration_keeps_every_rgb_robot_timeline(built, tmp_path, 
     store.close()
 
 
+def _optional_store(built, tmp_path, name, cameras):
+    """A calibration_optional/1 copy of ``built`` with ``cameras`` rejected (the real writer)."""
+    import shutil
+
+    root, ep = tmp_path / f"{name}-root", built["ep"]
+    shutil.copytree(built["root"], root)
+    for rig in cameras:
+        path = rio.stage_dir(root, ep, "calibrate") / f"{rig}__left.json"
+        cal = json.loads(path.read_text())
+        cal.update(status="held", reasons=["rig calibration of the camera is 'held', not validated"])
+        path.write_text(json.dumps(cal))
+    out = tmp_path / f"{name}-store"
+    rec = TS.write_episode(root, ep, out, task="synthetic", depth_stage="sensor_depth", allow_mock=True)
+    assert rec["summary"]["layout"] == TS.CALIBRATION_OPTIONAL_LAYOUT
+    with pytest.warns(UserWarning, match="MOCK"):
+        return TS.CompactStore([out])
+
+
+def test_reviwo_reads_the_m5_sets_of_a_calibration_optional_store_without_geometry(built, tmp_path):
+    """ReViWo (non-geometric) reads RGB of the stored M5 sets without the calibration; the sets and their robot motion
+    are independent of the calibration (one held camera == all held), geometric access still refuses."""
+    from s4d.rwlearn import baseline_data as BD
+    from s4d.rwlearn.store import sync_index
+
+    one = _optional_store(built, tmp_path, "one", ("rig0",))
+    every = _optional_store(built, tmp_path, "all", ("rig0", "rig1", "rig2"))
+    try:
+        (k1,), (k3,) = one.episodes(), every.episodes()
+        a, b = one.sync_sets(k1, geometry=False), every.sync_sets(k3, geometry=False)
+        assert a["cameras"] == b["cameras"] == ["rig0", "rig1", "rig2"]
+        np.testing.assert_array_equal(a["frames"], b["frames"])
+        np.testing.assert_array_equal(a["surface_disp_m"], b["surface_disp_m"])
+        assert np.isfinite(b["surface_disp_m"]).any()
+        raw = every.episode(k3).sync()
+        np.testing.assert_array_equal(b["frames"], raw["frames"])
+        np.testing.assert_array_equal(b["surface_disp_m"], raw["surface_disp_m"])
+        s1, s3 = sync_index(one, k1, geometry=False), sync_index(every, k3, geometry=False)
+        assert s3.criterion == "M5" and len(s3.times) > 0
+        np.testing.assert_array_equal(s1.frames, s3.frames)
+        np.testing.assert_array_equal(s1.run, s3.run)
+        for store, key in ((one, k1), (every, k3)):  # geometric consumers keep refusing a held episode
+            for access in (lambda s=store, k=key: s.sync_sets(k), lambda s=store, k=key: sync_index(s, k),
+                           lambda s=store, k=key: BD.RealworldSinCroWindows(s, [k], num_views=3),
+                           lambda s=store, k=key: BD.RealworldMVPTimeSteps(s, [k], num_views=3)):
+                with pytest.raises(ValueError, match="geometry held"):
+                    access()
+        r1, r3 = BD.RealworldReViWoStates(one, [k1], 3), BD.RealworldReViWoStates(every, [k3], 3)
+        assert r3.c2w_cv is None and len(r3) == len(r1) == len(s3.times)
+        for i in (0, len(r3) // 2, len(r3) - 1):
+            x1, x3 = r1[i], r3[i]
+            assert x3["images"].shape == (3, 3, 128, 128) and x3["t"] == x1["t"] == i
+            torch.testing.assert_close(x1["images"], x3["images"], rtol=0, atol=0)
+            ref = np.stack([every.rgb(k3, c, s3.frames[[i], v])[0] for v, c in enumerate(s3.cameras)])
+            torch.testing.assert_close(x3["images"], torch.from_numpy(ref).float().div(255).mul(2).sub(1)
+                                       .permute(0, 3, 1, 2), rtol=0, atol=0)
+    finally:
+        one.close()
+        every.close()
+
+
+def test_reviwo_samples_on_an_accepted_store_are_unchanged(built):
+    """On an accepted (geometry) store the RGB-only path selects exactly the former (geometry=True) sets and
+    samples; the geometric datasets are untouched (they still load their poses)."""
+    from s4d.rwlearn import baseline_data as BD
+    from s4d.rwlearn.store import sync_index
+
+    with pytest.warns(UserWarning, match="MOCK"):
+        store = TS.CompactStore([built["tmp"] / "store"])
+    try:
+        (key,) = store.episodes()
+        old, new = sync_index(store, key), sync_index(store, key, geometry=False)
+        for field in ("frames", "times", "latest_times", "segment", "run"):
+            np.testing.assert_array_equal(getattr(old, field), getattr(new, field))
+        assert (old.criterion, old.counts, old.max_sync_error_ns) == (new.criterion, new.counts, new.max_sync_error_ns)
+        rv = BD.RealworldReViWoStates(store, [key], 2)
+        former = BD._SyncedEpisodes(store, [key], 2)  # the pre-change base (geometry=True, poses loaded)
+        assert former.c2w_cv is not None and rv.c2w_cv is None
+        assert rv.lengths == former.lengths and len(rv) == sum(former.lengths.values())
+        np.testing.assert_array_equal(rv.sync[key].frames, former.sync[key].frames)
+        for t in (0, len(rv) - 1):
+            expected = torch.from_numpy(former.rgb_step(key, [t])[0]).float().div(255.0).mul(2.0).sub(1.0)
+            torch.testing.assert_close(rv[t]["images"], expected.permute(0, 3, 1, 2), rtol=0, atol=0)
+        assert BD.RealworldSinCroWindows(store, [key], num_views=2).c2w_cv is not None
+    finally:
+        store.close()
+
+
 def test_frames_depth_semantics_and_calibration_match_the_preprocessing_outputs(built):
     from s4d.realworld.pipeline import accepted_calibration, load_meta, read_frames
     from s4d.realworld.stages.depth import load_view_depth

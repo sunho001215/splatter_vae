@@ -22,8 +22,9 @@ Contract of a ``FrameStore`` (all arrays numpy):
 * optional ``upstream(ep)`` -> {stage: build id} of the preprocessing outputs the episode was built from (at least
   ``calibrate``); geometry-dependent consumers need it to prove the store carries the VALIDATED calibration
   (``s4d.rwlearn.gate.check_store_calibration``); a store without it is refused for them;
-* optional ``sync_sets(ep)`` -> ``{"cameras", "frames" (F_ref,V), "surface_disp_m" (F_ref,)}``: the cross-camera sets
-  with their robot motion (criterion M5, ``sync_index``); the compact store requires schema >= 1.1.0 for it.
+* optional ``sync_sets(ep, *, geometry=True)`` -> ``{"cameras", "frames" (F_ref,V), "surface_disp_m" (F_ref,)}``: the
+  cross-camera sets with their robot motion (criterion M5, ``sync_index``); the compact store requires schema >= 1.1.0
+  for it and, unless ``geometry=False`` (RGB-only consumers), an episode without held calibration/geometry.
 
 Loader-side indexes (``sync_index``, ``camera_runs``) are pure functions of timestamps and segments: nothing derived
 from them is written back.
@@ -96,7 +97,7 @@ class SyncIndex:
 
 
 def sync_index(store: FrameStore, ep: str, max_sync_ns: int = 30_000_000, *,
-               max_set_motion_m: float = MAX_SET_MOTION_M) -> SyncIndex:
+               max_set_motion_m: float = MAX_SET_MOTION_M, geometry: bool = True) -> SyncIndex:
     """Synchronised multi-view steps, criterion M5 (coordinator decision 2026-11-06, PREP2's sync review): the MUTUAL
     nearest frame of every camera to each reference frame, without a time cap (the cameras are free-running with
     constant phase offsets up to half a period), accepted iff the robot surface moved at most ``max_set_motion_m``
@@ -105,13 +106,19 @@ def sync_index(store: FrameStore, ep: str, max_sync_ns: int = 30_000_000, *,
     motion (``MemoryStore`` / ``ProcessedEpisodeStore``: tests, synthetic data) fall back to the former time bound
     ``max_sync_ns`` on the mutual nearest pairs (``criterion`` "time"). Steps whose frames lie in different
     recording segments are dropped. Single-view consumers never use this (``transitions.timelines(multiview=False)``,
-    DynaMo windows): they need only each camera's own robot <-> camera sync."""
+    DynaMo windows): they need only each camera's own robot <-> camera sync.
+
+    ``geometry=False`` (RGB-only multi-view consumers: ReViWo pretraining) reads the same stored M5 sets without
+    requiring an accepted camera calibration (``sync_sets(ep, geometry=False)``); the sets and their robot motion do
+    not depend on the calibration, so the index is identical for an accepted episode. Geometric consumers keep the
+    default and still refuse held calibration/geometry."""
     from s4d.realworld.train_store import mutual_sync
 
     cams = list(store.cameras(ep))
     stamps = {c: np.asarray(store.timestamps(ep, c), np.int64) for c in cams}
     ref = stamps[cams[0]]
-    sets = store.sync_sets(ep) if hasattr(store, "sync_sets") else None
+    sets = ((store.sync_sets(ep) if geometry else store.sync_sets(ep, geometry=False))
+            if hasattr(store, "sync_sets") else None)
     if sets is not None:
         order = [sets["cameras"].index(c) for c in cams]
         matched = np.asarray(sets["frames"], np.int64)[:, order]
@@ -230,9 +237,10 @@ class MemoryStore:
     def upstream(self, ep):
         return dict(self._eps[ep].get("upstream") or {})
 
-    def sync_sets(self, ep):
+    def sync_sets(self, ep, *, geometry: bool = True):
         """Optional stored M5 sets (``{"cameras", "frames", "surface_disp_m"}``) of a synthetic episode; None when the
-        episode carries no robot motion (``sync_index`` then uses the time fallback)."""
+        episode carries no robot motion (``sync_index`` then uses the time fallback). ``geometry`` is accepted for the
+        protocol (synthetic episodes carry no calibration hold)."""
         sets = self._eps[ep].get("sync_sets")
         return None if sets is None else dict(sets)
 

@@ -845,12 +845,18 @@ class CompactStore:
     def raw_sha256(self, ep):
         return self._files[ep].raw_sha256
 
-    def sync_sets(self, ep) -> dict:
+    def sync_sets(self, ep, *, geometry: bool = True) -> dict:
         """The stored cross-camera sets of an episode: ``cameras`` (store order), ``frames`` (F_ref,V), ``times`` of the
         reference frames, ``surface_disp_m`` (F_ref,). Refuses stores written before schema 1.1.0 (no per-set robot
-        motion: re-export train_data) and episodes with held camera calibration/geometry."""
+        motion: re-export train_data) and, by default, episodes with held camera calibration/geometry.
+
+        ``geometry=False`` is for consumers that read only the RGB frames of each set (ReViWo pretraining): the sets
+        (mutual-nearest frames of the timestamps) and their M5 robot-surface motion (legacy robot kinematics) do not
+        depend on the camera calibration, so ``calibration_optional/1`` episodes return the same values as an accepted
+        episode would; nothing geometric is returned or opened."""
         ef = self.episode(ep)
-        ef.require_geometry()
+        if geometry:
+            ef.require_geometry()
         sync = ef.sync()
         if "surface_disp_m" not in sync:
             raise ValueError(f"{ep}: training store schema {ef.attrs().get('schema_version')} has no per-set robot "
