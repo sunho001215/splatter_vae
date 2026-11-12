@@ -100,6 +100,7 @@ FILE_CLASSES = {
     "tests/test_remote_access.py": "serial",  # Timed access lock contention between live processes.
     "tests/test_remote_artifact_check.py": "cpu",
     "tests/test_release_reservation.py": "cpu",  # fakes only (FakeBackend, synthetic clocks), 2026-11-12
+    "tests/test_footprints.py": "cpu",  # pure row/config parsing (ops/jobs/footprints.py), 2026-11-12
     "tests/test_remote_jobs.py": "cpu",
     "tests/test_suite_partition.py": "cpu",  # pure report checks, 2026-11-12
     "tests/test_remote_launch.py": "cpu",
