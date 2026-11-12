@@ -828,7 +828,7 @@ def test_replay_sync_injection_is_served_with_counted_warnings(policies, recordi
     rows, counts = results["lag"]  # cam_b's partner arrives after the half-period wait: its previous frame is used
     assert counts["sync_mismatch"] >= len(rows) // 2 and counts["sync_partner_wait_expired"] >= len(rows) // 2
     assert all(r["server_sync"]["mismatch"] for r in rows if r["sync"]["mismatch"])
-    for r in rows:
+    for r in rows[1:]:  # (row 0: the first step waits for cam_b's FIRST frame; cam_c's newest is then later)
         if r["sync"]["mismatch"]:  # only the lagging camera is off; the others stay at the reference instant
             assert r["sync"]["age_ms"]["cam_b"] > r["sync"]["age_ms"]["cam_a"]
             assert abs(r["sync"]["offsets_ms"]["cam_a|cam_c"]) < 33.4
@@ -904,6 +904,9 @@ def test_latest_frames_rule_waits_bounded_and_counts_warnings():
     one = syncsets.LatestFrames(SimpleNamespace(add_sync_set=lambda *a: None), None, None, cams, period_s=1 / 15,
                                 counts=collections.Counter())
     assert one.retain == 1  # a client without frame_capacity: only the newest frame is a candidate
+    spanned = SimpleNamespace(add_sync_set=lambda *a: None, frame_capacity=3,
+                              spec={"history_length": 3, "frame_spacing": 1})
+    assert syncsets.LatestFrames(spanned, None, None, cams, period_s=1 / 15, counts=counts).retain == 1  # default
 
     class M5:  # informational M5: final states -> displacement declared with the step
         sets = SimpleNamespace(cameras=cams)
@@ -3203,6 +3206,64 @@ def _rgbd_choices(captures):
     return {"native_hw": {c: list(captures.hw) for c in captures.cams},
             "calibration": {c: {"K_native": captures.K.tolist(), "c2w": np.eye(4).tolist()} for c in captures.cams},
             "native_depth_correction": {c: captures.corr for c in captures.cams}}
+
+
+def _rgbd_capture(captures, cam, k, t_ns):
+    """One preprocessed synthetic RGB-D capture of ``_RGBDCaptures``' rig at an explicit frame id / time."""
+    from s4d.rwlearn.deploy import preprocess_frame
+
+    rng = np.random.default_rng(1000 * captures.cams.index(cam) + k)
+    rgb = rng.integers(0, 256, (*captures.hw, 3), dtype=np.uint8)
+    depth = rng.uniform(0.4, 1.5, captures.hw).astype(np.float32)
+    cap = preprocess_frame(rgb, depth=depth, valid=depth > 0, K_native=captures.K, out_size=captures.out_size,
+                           native_correction=captures.corr)
+    cap.update(frame_id=k, capture_ns=int(t_ns), arrival_ns=int(t_ns), preprocess_ns=(0, 0),
+               native_hw=list(captures.hw),
+               metadata={"depth_source": "native_realsense", "native_correction": captures.corr})
+    cap["K"] = np.asarray(cap["K"]).tolist()
+    return cap
+
+
+def test_latest_frames_partners_stay_assemblable_with_a_larger_client_buffer(policies):
+    """Codex round 3: with a client buffer of 8 frames (span 3) a lagging reference must never get a partner whose
+    trained history the server has evicted: candidates are the newest frame_capacity - span + 1 = 6 frames, so both
+    steps are served (the second on the partners' newest frames, counted sync_cap_fallback)."""
+    import time as _t
+
+    captures = _RGBDCaptures(CAMS)
+    cams = list(CAMS)
+    with serve({"mvp3d-mv": policies["mvp3d_multiview"]}) as srv:
+        client = PolicyClient("127.0.0.1", srv.port, policy_id="mvp3d-mv", step_timeout_s=60, ttl_ms=60_000,
+                              choices=_rgbd_choices(captures), frame_buffer=8)
+        client.connect()
+        counts = collections.Counter()
+        lf = syncsets.LatestFrames(client, None, None, cams, period_s=1 / 15, counts=counts)
+        assert client.frame_capacity == 8 and lf.retain == 6
+        T = _t.monotonic_ns() - 5 * 10**9
+
+        def add(cam, k):
+            cap = _rgbd_capture(captures, cam, k, T + k * PERIOD_NS)
+            client.add_capture(cam, cap, pose7=POSE, gripper_register=3.0)
+            lf.add_frame(cam, k, cap["capture_ns"], now_ns=T + k * PERIOD_NS + 65_000_000)
+
+        def step():
+            ids, obs, ref, rec = lf.newest_step(_t.monotonic_ns(), flush=True)
+            return ids, client.step(ids, ref, POSE, 3.0, pose_time_ns=obs - 1_000_000, gripper_time_ns=obs - 10_000_000,
+                                    pad_run_start=True)
+
+        for k in range(8):
+            for c in cams[1:]:
+                add(c, k)
+        add(cams[0], 0)
+        ids, r = step()
+        assert r.ok and ids == {cams[0]: 0, cams[1]: 7, cams[2]: 7}, (ids, r.code, r.detail)
+        for c in cams[1:]:
+            add(c, 8)
+        add(cams[0], 1)
+        ids, r = step()
+        assert r.ok and ids == {cams[0]: 1, cams[1]: 8, cams[2]: 8}, (ids, r.code, r.detail)
+        assert counts["sync_cap_fallback"] == 4 and counts["sync_mismatch"] == 2
+        client.close()
 
 
 def test_live_multiview_session_dry_run_full_chain(policies, toy_robot):

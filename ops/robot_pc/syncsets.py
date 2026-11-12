@@ -3,9 +3,10 @@ live dry run (``dryrun.run``) and the live session (``live.LiveSession``):
 
 * ``LatestFrames`` (the live rule since the user directive of 2026-11-12 evening): one step per new reference-camera
   frame on the LATEST valid frame of every camera at that instant: each other camera contributes its newest frame
-  captured no later than half a frame period after the reference frame (a frame of the next instant is never mixed
-  in). A step waits at most ``wait_s`` (default half a frame period) for a camera whose newest frame is more than half
-  a period older than the reference, then goes ahead with that camera's newest (stale) frame. Cross-camera
+  captured no later than half a frame period after the reference frame when the client still holds such a frame with
+  its whole history (a larger client ``frame_buffer``; with the default buffer = the trained span, the newest
+  frame). A step waits at most ``wait_s`` (default half a frame period) for a camera whose newest frame is more than
+  half a period older than the reference, then goes ahead with that camera's newest (stale) frame. Cross-camera
   misalignment is a WARNING, never a refusal: every step carries a ``sync`` record
   (per-camera frame ids, capture times, ages at the step, pairwise offsets, the reference offset vs the training
   mutual-nearest bound, the M5 robot-surface displacement of exactly these frames when the live helper can compute
@@ -151,9 +152,14 @@ class LatestFrames:
         self.half_ns = float(period_s) * 1e9 / 2
         self.wait_ns = int(self.half_ns if wait_s is None else float(wait_s) * 1e9)
         self.latest: dict = dict.fromkeys(cams)  # camera -> newest (frame id, capture ns)
-        # end-frame candidates per camera: the client's retained frames (``frame_capacity``), each of which reaches
-        # the server with the step or is already held there, so the chosen end frame can always be assembled
-        self.retain = max(1, int(getattr(client, "frame_capacity", 1) or 1))
+        # end-frame candidates per camera: the newest ``retain`` frames whose WHOLE trained history is among the
+        # client's retained frames (``frame_capacity``; each reaches the server with the step or is still held there,
+        # server capacity 2 x span + 2 >= the client's), so the chosen end frame can always be assembled: retain =
+        # frame_capacity - span + 1 (the newest frame only with the default buffer = span)
+        spec = getattr(client, "spec", None) or {}
+        span = (int(spec["history_length"]) - 1) * int(spec.get("frame_spacing", 1)) + 1 \
+            if "history_length" in spec else 1
+        self.retain = max(1, int(getattr(client, "frame_capacity", 1) or 1) - span + 1)
         self._recent = {c: collections.deque(maxlen=self.retain) for c in cams}
         self._ref_seen_ns = 0
         self._stepped = None  # reference frame id of the last step
@@ -174,7 +180,7 @@ class LatestFrames:
         self._recent[camera_id].append(self.latest[camera_id])
 
     def _member(self, cam: str, t_ref: int) -> tuple:
-        """Among the camera's retained frames (``retain``: still assemblable by the server), the newest captured no
+        """Among the camera's newest ``retain`` frames (assemblable with their whole history), the newest captured no
         later than half a period after the reference; when there is none (every retained frame is from a later
         instant: the reference camera delivers that late), its newest frame, counted ``sync_cap_fallback`` (the
         step's record shows the offset)."""
