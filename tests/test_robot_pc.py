@@ -3224,21 +3224,23 @@ def _rgbd_capture(captures, cam, k, t_ns):
     return cap
 
 
-def test_latest_frames_partners_stay_assemblable_with_a_larger_client_buffer(policies):
-    """Codex round 3: with a client buffer of 8 frames (span 3) a lagging reference must never get a partner whose
-    trained history the server has evicted: candidates are the newest frame_capacity - span + 1 = 6 frames, so both
-    steps are served (the second on the partners' newest frames, counted sync_cap_fallback)."""
+@pytest.mark.parametrize("frame_buffer", [8, 9])
+def test_latest_frames_partners_stay_assemblable_with_a_larger_client_buffer(policies, frame_buffer):
+    """Codex rounds 3-4: with a client buffer of 8 / 9 frames (span 3, server history capacity 8) a lagging reference
+    must never get a partner whose trained history the server has evicted: candidates are the newest
+    min(client, server) - span + 1 = 6 frames, so both steps are served (the second on the partners' newest frames,
+    counted sync_cap_fallback)."""
     import time as _t
 
     captures = _RGBDCaptures(CAMS)
     cams = list(CAMS)
     with serve({"mvp3d-mv": policies["mvp3d_multiview"]}) as srv:
         client = PolicyClient("127.0.0.1", srv.port, policy_id="mvp3d-mv", step_timeout_s=60, ttl_ms=60_000,
-                              choices=_rgbd_choices(captures), frame_buffer=8)
+                              choices=_rgbd_choices(captures), frame_buffer=frame_buffer)
         client.connect()
         counts = collections.Counter()
         lf = syncsets.LatestFrames(client, None, None, cams, period_s=1 / 15, counts=counts)
-        assert client.frame_capacity == 8 and lf.retain == 6
+        assert client.frame_capacity == frame_buffer and client.limits["history_capacity"] == 8 and lf.retain == 6
         T = _t.monotonic_ns() - 5 * 10**9
 
         def add(cam, k):
@@ -3263,6 +3265,21 @@ def test_latest_frames_partners_stay_assemblable_with_a_larger_client_buffer(pol
         ids, r = step()
         assert r.ok and ids == {cams[0]: 1, cams[1]: 8, cams[2]: 8}, (ids, r.code, r.detail)
         assert counts["sync_cap_fallback"] == 4 and counts["sync_mismatch"] == 2
+        client.close()
+    # Codex round 4 reproduction: references 0-2 and partners 0-8 buffered (client 9 > server 8) before any step
+    with serve({"mvp3d-mv": policies["mvp3d_multiview"]}) as srv:
+        client = PolicyClient("127.0.0.1", srv.port, policy_id="mvp3d-mv", step_timeout_s=60, ttl_ms=60_000,
+                              choices=_rgbd_choices(captures), frame_buffer=frame_buffer)
+        client.connect()
+        lf = syncsets.LatestFrames(client, None, None, cams, period_s=1 / 15, counts=collections.Counter())
+        for k in range(9):
+            for c in cams[1:]:
+                add(c, k)
+            if k < 3:
+                add(cams[0], k)
+        ids, r = step()
+        assert r.ok, (ids, r.code, r.detail)
+        assert ids[cams[0]] == 2 and all(ids[c] >= 3 for c in cams[1:]), ids  # partner 2 would need evicted 0
         client.close()
 
 

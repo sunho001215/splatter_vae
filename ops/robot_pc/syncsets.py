@@ -153,13 +153,17 @@ class LatestFrames:
         self.wait_ns = int(self.half_ns if wait_s is None else float(wait_s) * 1e9)
         self.latest: dict = dict.fromkeys(cams)  # camera -> newest (frame id, capture ns)
         # end-frame candidates per camera: the newest ``retain`` frames whose WHOLE trained history is among the
-        # client's retained frames (``frame_capacity``; each reaches the server with the step or is still held there,
-        # server capacity 2 x span + 2 >= the client's), so the chosen end frame can always be assembled: retain =
-        # frame_capacity - span + 1 (the newest frame only with the default buffer = span)
+        # frames both the client retains (``frame_capacity``: sent with the step or already sent) and the server
+        # still holds (its advertised ``limits.history_capacity``), so the chosen end frame can always be assembled:
+        # retain = min(client, server) - span + 1 (the newest frame only with the default client buffer = span)
         spec = getattr(client, "spec", None) or {}
         span = (int(spec["history_length"]) - 1) * int(spec.get("frame_spacing", 1)) + 1 \
             if "history_length" in spec else 1
-        self.retain = max(1, int(getattr(client, "frame_capacity", 1) or 1) - span + 1)
+        held = int(getattr(client, "frame_capacity", 1) or 1)
+        server = (getattr(client, "limits", None) or {}).get("history_capacity")
+        if server is not None:
+            held = min(held, int(server))
+        self.retain = max(1, held - span + 1)
         self._recent = {c: collections.deque(maxlen=self.retain) for c in cams}
         self._ref_seen_ns = 0
         self._stepped = None  # reference frame id of the last step
