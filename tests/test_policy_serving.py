@@ -1521,15 +1521,55 @@ def test_a_condition_label_that_differs_from_the_checkpoint_is_never_offered_or_
     with serve_catalog(root, cat) as srv:
         w = welcome(srv)
         assert pid not in w["policies"] and "differs from the checkpoint" in str(w["unavailable"][pid]["reasons"])
-    # labels AND input_spec edited to dynamo on ReViWo weights: offered, but the load compares the checkpoint's spec
+    # labels AND input_spec edited to dynamo on ReViWo weights: the eligible entry's spec is checked against the
+    # checkpoint before it is advertised (never published as an eligible DynaMo), and the load would refuse it too
     forged = {**relabelled, "input_spec": {**reviwo_spec, "condition": "dynamo"}}
     validate_catalog({"schema": CATALOG_SCHEMA, "policies": {pid: forged}, "aliases": {}})
     cat = write_catalog(tmp_path / "catalog2.json", {pid: forged})
     with serve_catalog(root, cat) as srv:
         from ops.policy_serving.config import RESTRICTED_EXECUTION_CAPABILITY
 
+        w = welcome(srv)
+        assert pid not in w["policies"] and "differs from the checkpoint" in str(w["unavailable"][pid]["reasons"])
         refused = hello_with(srv, pid, choices_of(rpol), capabilities=[RESTRICTED_EXECUTION_CAPABILITY])
         assert refused.type == P.ERROR and pid not in srv.policies  # never loaded, never bound
+    # a label-only refresh (same artefacts: the retained-spec fast path) that changes the condition is refused too
+    cat = write_catalog(tmp_path / "catalog3.json", {"reviwo-fixture-task-s0": plain})
+    with serve_catalog(root, cat) as srv:
+        assert "reviwo-fixture-task-s0" in welcome(srv)["policies"]
+        write_catalog(cat, {"reviwo-fixture-task-s0": {**plain, "condition": "dynamo"}})
+        assert srv.reload_catalog() is not None
+        w = welcome(srv)
+        assert "reviwo-fixture-task-s0" not in w["policies"]
+        assert "differs from the checkpoint" in str(w["unavailable"]["reviwo-fixture-task-s0"]["reasons"])
+
+
+def test_eligible_entries_are_advertised_only_with_their_checkpoint_spec_and_unchanged_labels_pass_both_stages(
+        staged, tmp_path):
+    """Positive control: a granted DynaMo entry and a deployable eligible entry with checkpoint-consistent specs are
+    offered; WELCOME -> SPEC -> fresh WELCOME labels are equal, so the launcher's binding / START checks pass."""
+    import importlib.util
+
+    from ops.policy_serving.config import REPO
+
+    root, fx = staged
+    pol, e, restricted, grant, granted = _dynamo_grant_entries(root, fx)
+    rpol, re_ = fx["r1"]
+    decision = {"decided_by": "user", "at": "2026-11-10T21:10+09:00", "text": "fixture decision"}
+    dep = {**re_, "input_spec": describe_entry(re_, root), "usage": "execution", "execution_eligible": True,
+           "execution_decision": decision}
+    spec = importlib.util.spec_from_file_location("infer_for_test", REPO / "scripts/robot_pc/infer.py")
+    infer = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(infer)
+    cat = write_catalog(tmp_path / "catalog.json", {"dynamo-fixture-task-s0": granted, "reviwo-fixture-task-s0": dep})
+    with serve_catalog(root, cat) as srv:
+        for pid, p in (("dynamo-fixture-task-s0", pol), ("reviwo-fixture-task-s0", rpol)):
+            selected = welcome(srv)["policies"][pid]["info"]
+            assert selected["execution_eligible"] is True
+            c, _ = client_for(srv, pid, p)
+            bound = infer.confirm_policy(selected, c.spec_info, execute=True, stage="binding")
+            infer.confirm_policy(bound, welcome(srv)["policies"][pid]["info"], execute=True, stage="START re-check")
+            c.close()
 
 
 def _blocking_loads(monkeypatch, gate: threading.Event, started: threading.Event):

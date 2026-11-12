@@ -466,3 +466,41 @@ def test_export_root_resolves_repo_relative_export(tmp_path):
     assert policy.input_spec.condition == "reviwo" and policy.input_spec.feature_precision == "float16"
     with pytest.raises(FileNotFoundError):
         DeployPolicy(tmp_path / "staged.pt", export_root=tmp_path / "elsewhere")
+
+
+def test_check_realworld_deploy_skips_and_lists_windows_with_an_incomplete_history(monkeypatch):
+    """scripts/check_realworld_deploy.py equality: a recorded window whose trained history is incomplete (a dropped
+    camera frame) is skipped and listed, the others are assembled (it used to abort the whole run)."""
+    import importlib.util
+    from pathlib import Path
+    from types import SimpleNamespace
+
+    import s4d.rwlearn.deploy as D
+    from s4d.rwlearn.deploy.errors import IncompleteHistory
+
+    spec_ = importlib.util.spec_from_file_location("crd", Path(__file__).resolve().parents[1] /
+                                                   "scripts/check_realworld_deploy.py")
+    crd = importlib.util.module_from_spec(spec_)
+    spec_.loader.exec_module(crd)
+    numbers = np.array([0, 1, 2, 3, 5, 6, 7, 8, 9, 10])  # frame 4 dropped
+
+    class Window:
+        def __init__(self, spec):
+            self.pushed = []
+
+        def push(self, cam, frame):
+            self.pushed.append(frame)
+
+        def assemble(self, ends):
+            if self.pushed[-1] - self.pushed[0] != 2:
+                raise IncompleteHistory("incomplete history or missing camera frame at trained spacing")
+            return ("window", ends)
+
+    monkeypatch.setattr(D, "HistoryWindow", Window)
+    rec = SimpleNamespace(timestamps_ns=lambda c: np.arange(len(numbers)), frame_numbers=lambda c: numbers,
+                          frame=lambda c, i, **kw: int(numbers[i]))
+    spec = SimpleNamespace(modalities=["rgb"], native_depth_correction={}, camera_ids=["cam"], views=1)
+    skipped = []
+    out = crd._windows(None, spec, rec, SimpleNamespace(windows=8), None, skipped)
+    assert skipped == [{"cam": 4}, {"cam": 5}] and len(out) == 6
+    assert all(info["stream_index"]["cam"] not in (4, 5) for _, info in out)

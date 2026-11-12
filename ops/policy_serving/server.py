@@ -135,6 +135,7 @@ class CatalogEntry:
     reasons: tuple = ()
     spec: dict | None = None  # advertised unbound InputSpec JSON (normalised)
     source: str = "config"  # config | catalog | preloaded
+    spec_checked: bool = False  # spec == the one described from the checkpoint files (not only catalog-supplied)
 
     def identity(self) -> str:
         """What the loaded object depends on: the staged artefacts and whether the entry may be served at all. Labels
@@ -430,14 +431,31 @@ class PolicyServer:
             old = previous.get(pid)
             if old is not None and old.source == source and old.identity() == entry.identity():
                 entry.spec = old.spec  # same artefacts: keep the described spec; labels come from the new entry
+                entry.spec_checked = old.spec_checked
                 if old.status == "error":
                     entry.status, entry.reasons = old.status, old.reasons
             elif entry.spec is None:
                 try:
                     entry.spec = describe_entry(entry.entry, self.checkpoint_root)
+                    entry.spec_checked = True
                 except Exception as exc:  # noqa: BLE001 - one broken entry must not take the registry down
                     LOG.error("policy %s cannot be described (%s: %s); not offered", pid, type(exc).__name__, exc)
                     entry.status, entry.reasons = "error", (f"cannot be described: {type(exc).__name__}: {exc}",)
+            if entry.status != "error" and entry.entry.get("execution_eligible") is True and not entry.spec_checked:
+                # an execution-eligible entry is advertised only with the spec its checkpoint describes (meta read,
+                # no model build), so its published condition / contract are never just catalog claims (Codex
+                # review of f69a9d2); _load compares the loaded policy with it again
+                try:
+                    described = describe_entry(entry.entry, self.checkpoint_root)
+                except Exception as exc:  # noqa: BLE001
+                    described, why = None, f"cannot be described: {type(exc).__name__}: {exc}"
+                else:
+                    why = None if described == entry.spec else "catalog input_spec differs from the checkpoint's"
+                if why is None:
+                    entry.spec_checked = True
+                else:
+                    LOG.error("policy %s: %s; not offered", pid, why)
+                    entry.status, entry.reasons = "error", (why,)
             label, described = entry.entry.get("condition"), (entry.spec or {}).get("condition")
             if entry.status != "error" and label is not None and label != described:
                 # the advertised spec is checked against the loaded checkpoint (_load), so this binds the published
