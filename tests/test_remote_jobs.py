@@ -220,19 +220,25 @@ def test_remote_outage_preserves_jobs_and_local_admission(tmp_path, monkeypatch)
     assert state[jobs.HOST_EVENT_ID]["status"] == "unreachable" and not backend.launches
 
 
-def test_launch_response_loss_reconciles_same_container_once(tmp_path):
+@pytest.mark.parametrize("attempt", [1, 2])
+def test_launch_response_loss_reconciles_same_container_once(tmp_path, attempt):
     queued = write_queue(tmp_path, [job()])
+    if attempt == 2:
+        launch_event(tmp_path, container_id="0" * 64)
+        jobs.record({"event": "exited", "id": "r", "attempt": 1, "code": 1}, tmp_path / "registry.jsonl")
     backend = FakeBackend(tmp_path / "runs")
     backend.launch_error = remote.RemoteUnreachable("response lost")
     tick(tmp_path, queued, backend)
     state = jobs.read_registry(tmp_path / "registry.jsonl")
     assert state["r"]["status"] == "launching" and state["r"]["unknown"]
+    assert "container_id" not in state["r"]
     assert len(backend.launches) == 1
     backend.launch_error = None
     tick(tmp_path, queued, backend)
     state = jobs.read_registry(tmp_path / "registry.jsonl")
     assert state["r"]["status"] == "running" and not state["r"]["unknown"]
-    assert state["r"]["attempts"] == 1 and len(backend.launches) == 1
+    assert state["r"]["attempts"] == attempt and len(backend.launches) == 1
+    assert state["r"]["container_id"] == CONTAINER_ID
     assert state["r"]["gpu_backend"] == backend.launches[0]["gpu_backend"] == "cdi"
     assert state["r"]["role"] == backend.launches[0]["role"] == "realworld_pretrain"
     events = [json.loads(line) for line in (tmp_path / "registry.jsonl").read_text().splitlines()]

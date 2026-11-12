@@ -49,6 +49,31 @@ def test_queue_validation_and_registry_replay(tmp_path):
     assert jobs.read_registry(registry)["a"] == {**state["a"], "status": "pending"}
 
 
+@pytest.mark.parametrize("kind", ["launching", "launched"])
+@pytest.mark.parametrize("attempt", [1, 2])
+def test_launch_runtime_fields_are_scoped_to_the_attempt(tmp_path, kind, attempt):
+    registry = tmp_path / "registry.jsonl"
+    runtime = {"container": "s4d-a-a1", "container_id": "a" * 64, "gpu_backend": "cdi",
+               "spec_path": "attempt-1.json", "enforce_limits": {"memory_bytes": 2**30},
+               "pid": 123, "gpu_parent": "GPU-old"}
+    pins = {"commit": "b" * 40, "image_digest": "sha256:" + "c" * 64, "job_sha256": "d" * 64}
+    jobs.record({"event": "launched", "id": "a", "host": "remote", "attempt": 1, **runtime, **pins}, registry)
+    jobs.record({"event": "container_absent", "id": "a", "container_id": runtime["container_id"]}, registry)
+    before = jobs.read_registry(registry)["a"]
+    carried = {"container": f"s4d-a-a{attempt}", "gpu_backend": "legacy"}
+    jobs.record({"event": kind, "id": "a", "host": "remote", "attempt": attempt, **carried}, registry)
+    state = jobs.read_registry(registry)["a"]
+    assert {key: state[key] for key in carried} == carried
+    for key in runtime.keys() - carried.keys():
+        if attempt == 1:
+            assert state[key] == runtime[key]
+        else:
+            assert key not in state
+    assert {key: state[key] for key in pins} == pins
+    assert state["attempt_containers"] == before["attempt_containers"]
+    assert state["containers_absent"] == before["containers_absent"]
+
+
 def test_intentional_checkpoint_stop_is_restartable_and_not_a_failure(tmp_path):
     registry = tmp_path / "registry.jsonl"
     jobs.record({"event": "launched", "id": "a", "pid": 1, "gpu": GPU4, "attempt": 1}, registry)
@@ -124,15 +149,20 @@ def test_only_proven_refused_launch_can_release_its_job_fingerprint(tmp_path):
     registry = tmp_path / "registry.jsonl"
     jobs.record({"event": "launching", "id": "a", "host": "remote", "attempt": 1,
                  "job_sha256": "0" * 64}, registry)
+    jobs.record({"event": "unknown", "id": "a", "reason": "launch response unknown"}, registry)
     jobs.record({"event": "reset", "id": "a"}, registry)
-    assert jobs.read_registry(registry)["a"]["job_sha256"] == "0" * 64
+    state = jobs.read_registry(registry)["a"]
+    assert state["job_sha256"] == "0" * 64
+    assert state["unknown"] is True and state["reason"] == "launch response unknown"
     jobs.record({"event": "launching", "id": "a", "host": "remote", "attempt": 2,
                  "job_sha256": "0" * 64}, registry)
+    jobs.record({"event": "unknown", "id": "a", "reason": "launch response unknown"}, registry)
     proof = {"conclusion": "launch refused before docker run; deterministic container never existed", "attempt": 2,
              "checks": [{"containers_with_name": 0, "remote_output": "absent"}] * 2}
     jobs.record({"event": "reset", "id": "a", "reconciliation": proof}, registry)
     state = jobs.read_registry(registry)["a"]
     assert state["status"] == "pending" and "job_sha256" not in state and state["failures"] == 0
+    assert state["unknown"] is False and "reason" not in state
     jobs.record({"event": "reset", "id": "a", "reconciliation": proof}, registry)
     with pytest.raises(ValueError, match="invalid refused-launch"):
         jobs.read_registry(registry)

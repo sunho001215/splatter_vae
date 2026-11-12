@@ -140,6 +140,11 @@ def read_registry(path: Path = REGISTRY) -> dict[str, dict]:
                         "remote_verification_failed", "checkpoint_paused", "intentional_stopped", "migrated"}:
                 executed.add(event["id"])
             if kind in {"launching", "launched"}:
+                if event["attempt"] != job.get("attempt"):
+                    # Runtime identity/isolation belongs to this attempt; keep run pins and cleanup history.
+                    for key in ("container", "container_id", "gpu_backend", "spec_path", "enforce_limits",
+                                "pid", "gpu_parent"):
+                        job.pop(key, None)
                 if job["status"] not in ACTIVE or event["attempt"] != job.get("attempt"):
                     job["attempt_since"] = event["time"]
                 job.update({key: value for key, value in event.items() if key not in {"event", "id", "time", "attempt"}})
@@ -241,6 +246,8 @@ def read_registry(path: Path = REGISTRY) -> dict[str, dict]:
                             or any(check.get("containers_with_name") != 0 or check.get("remote_output") != "absent"
                                    for check in checks)):
                         raise ValueError(f"invalid refused-launch reconciliation for {event['id']}")
+                    job["unknown"] = False
+                    job.pop("reason", None)
                     # This proof covers only the refused attempt. Keep the run's pins if any attempt executed,
                     # even when migration or an infrastructure exemption leaves no charged failures.
                     if event["id"] not in executed:
