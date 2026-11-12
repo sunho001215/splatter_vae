@@ -95,6 +95,7 @@ def probe(specification):
             "marker": specification["marker"], "checks": {
                 "device_count": 1, "cuda_uuid": specification["parent"][4:],
                 "mig_uuids": [specification["uuid"]], "allocation_20gib": True, "allocation_24gib_rejected": True,
+                "allocation_after_oom": True,
                 "egl": {"initialized": True, "device_index": 0, "cuda_ordinal": 0, "source": "ctypes"},
                 "frame": {"shape": [32, 32, 3], "mean": 8.5},
                 "other_instance": {"uuid": specification["other"], "returncode": 0, "device_count": 0},
@@ -324,7 +325,7 @@ def test_exact_ids_and_self_excluding_pgrep():
         val.parse_survivors("permission denied\n")
 
 
-@pytest.mark.parametrize("failure", ["passed", "device_count", "parent_uuid", "extra_mig", "20gib", "24gib",
+@pytest.mark.parametrize("failure", ["passed", "device_count", "parent_uuid", "extra_mig", "20gib", "24gib", "after_oom",
                                     "egl", "frame", "other", "child", "missing"])
 def test_probe_failures(failure):
     specification = spec()
@@ -340,6 +341,8 @@ def test_probe_failures(failure):
         checks["mig_uuids"].append(specification["other"])
     elif failure == "20gib":
         checks["allocation_20gib"] = False
+    elif failure == "after_oom":
+        checks["allocation_after_oom"] = False
     elif failure == "24gib":
         checks["allocation_24gib_rejected"] = False
     elif failure == "egl":
@@ -557,3 +560,43 @@ def test_cli_never_overwrites_an_existing_instances_report(allowlist, tmp_path):
     code = val.main(["instances", "--allowlist", str(allowlist), "--image", IMAGE, "--out", str(out)],
                     client_factory=lambda: FakeClient(out))
     assert code == 1 and out.read_text() == '{"keep": true}\n'
+
+
+@pytest.mark.parametrize("failure,accepted", [
+    ("oom", True), ("nvml", True), ("other", False), ("value", False), (None, False),
+])
+@pytest.mark.parametrize("recovery_fails", [False, True])
+def test_probe_overallocation_and_recovery_without_cuda(failure, accepted, recovery_fails):
+    import textwrap
+    from types import SimpleNamespace
+
+    class OOM(RuntimeError):
+        pass
+
+    errors = {"oom": OOM("out of memory"), "nvml": RuntimeError("NVML_SUCCESS == r INTERNAL ASSERT FAILED"),
+              "other": RuntimeError("different CUDA failure"), "value": ValueError("bad allocation")}
+    events = []
+
+    def empty(size, **kwargs):
+        events.append(("allocate", size))
+        if size == 24 * 1024**3 and failure is not None:
+            raise errors[failure]
+        if size == 1024**2 and recovery_fails:
+            raise RuntimeError("device unusable")
+        return SimpleNamespace(fill_=lambda value: events.append(("fill", value)))
+
+    torch = SimpleNamespace(empty=empty, uint8="uint8", cuda=SimpleNamespace(
+        OutOfMemoryError=OOM, synchronize=lambda: events.append(("sync",)), empty_cache=lambda: None))
+    start = val.PROBE.index('    checks["allocation_24gib_rejected"] = False')
+    end = val.PROBE.index('    os.environ.update(MUJOCO_GL=')
+    checks = {}
+    code = textwrap.dedent(val.PROBE[start:end])
+    if accepted and not recovery_fails:
+        exec(code, {"torch": torch, "checks": checks})
+        assert checks["allocation_24gib_rejected"] and checks["allocation_after_oom"]
+        assert checks["oom"] == str(errors[failure])
+        assert events[-3:] == [("allocate", 1024**2), ("fill", 1), ("sync",)]
+    else:
+        with pytest.raises((RuntimeError, ValueError, AssertionError)):
+            exec(code, {"torch": torch, "checks": checks})
+        assert "allocation_after_oom" not in checks

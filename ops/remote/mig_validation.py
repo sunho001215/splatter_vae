@@ -26,9 +26,9 @@ import yaml
 if __name__ == "__main__" and not __package__:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from ops.containers.launch import MIG_PROBE
 from ops.remote.launch_hold import BOOT_ID, EXIT_HELD, ROOT, check_shell, parse_status, status_shell
 from ops.resources.mig_inventory import REMOTE_PHYSICAL_GPUS, build_inventory, load_allowlist, parse_list, parse_query
-from ops.containers.launch import MIG_PROBE
 
 IDLE_FB_MIB = 256
 
@@ -76,7 +76,20 @@ try:
     except torch.cuda.OutOfMemoryError as exc:
         checks["allocation_24gib_rejected"] = True
         checks["oom"] = str(exc)
+    except RuntimeError as exc:
+        # PyTorch's OOM reporting can itself fail when NVML cannot query a MIG instance.
+        if "NVML_SUCCESS == r" not in str(exc):
+            raise
+        checks["allocation_24gib_rejected"] = True
+        checks["oom"] = str(exc)
     assert checks["allocation_24gib_rejected"], "24 GiB allocation escaped the instance limit"
+    torch.cuda.empty_cache()
+
+    allocation = torch.empty(1024**2, dtype=torch.uint8, device="cuda")
+    allocation.fill_(1)
+    torch.cuda.synchronize()
+    checks["allocation_after_oom"] = True
+    del allocation
     torch.cuda.empty_cache()
 
     os.environ.update(MUJOCO_GL="egl", PYOPENGL_PLATFORM="egl")
@@ -406,7 +419,7 @@ def parse_probe(text: str, spec: dict) -> dict:
             or result.get("parent") != spec["parent"] or result.get("marker") != spec["marker"]
             or checks.get("device_count") != 1 or checks.get("cuda_uuid") != spec["parent"][4:].lower()
             or checks.get("mig_uuids") != [spec["uuid"]] or checks.get("allocation_20gib") is not True
-            or checks.get("allocation_24gib_rejected") is not True
+            or checks.get("allocation_24gib_rejected") is not True or checks.get("allocation_after_oom") is not True
             or egl.get("initialized") is not True or egl.get("cuda_ordinal") != 0
             or type(egl.get("device_index")) is not int or egl["device_index"] < 0
             or frame.get("shape") != [32, 32, 3] or not 0 < frame.get("mean", 0) <= 255

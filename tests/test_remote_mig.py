@@ -507,7 +507,8 @@ def test_snapshot_mig_mode_conflicts():
     assert remote_backend.mig_mode_conflict(all_on[:3] + [f"{PARENTS[3]}, Enabled, Disabled"], physical=(),
                                             parents=PARENTS)
     command = remote_backend.snapshot_command(remote_backend.ROOT)
-    assert "mig.mode.current,mig.mode.pending" in command and "python" not in command
+    assert "mig.mode.current,mig.mode.pending" in command
+    assert command.count("python3 -I -c") == 1 and "resume_valid" in command
     assert subprocess.run(["bash", "-n"], input=command, text=True, capture_output=True).returncode == 0
 
 

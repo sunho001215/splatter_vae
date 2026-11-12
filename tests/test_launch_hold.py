@@ -125,3 +125,28 @@ def test_process_record_without_gpu_instance_refuses(tmp_path):
                              "MIG-00000000-0000-5000-8000-000000000000", "GPU-4391fcee-537f-d408-d138-10d8a3866eea"],
                             input=listing + "\n__S4D_QUERY__\n" + pending, capture_output=True, text=True)
     assert result.returncode == 7  # the parent's MIG mode is re-checked inside the admission lock
+
+
+@pytest.mark.parametrize("payload", [
+    '{"boot_id": "' + BOOT + '"',
+    json.dumps({"boot_id": BOOT}),
+    json.dumps({"schema": "wrong", "boot_id": BOOT, "authorization": "ok"}),
+    *[json.dumps({"schema": lh.SCHEMA, "boot_id": BOOT, "authorization": value})
+      for value in (None, "", "  ", 1, [], {})],
+    "null", "[]",
+])
+def test_invalid_resume_is_held_in_python_shell_and_snapshot(tmp_path, payload):
+    path = tmp_path / f"resume-{BOOT}.json"
+    path.write_text(payload)
+    assert not lh.resume_valid(str(path), BOOT)
+    assert run(lh.check_shell(folder=str(tmp_path))).returncode == lh.EXIT_HELD
+    state = run(lh.status_shell(folder=str(tmp_path)))
+    assert lh.parse_status(state.stdout)["held"] is True
+
+
+def test_compact_valid_resume_is_accepted_consistently(tmp_path):
+    path = tmp_path / f"resume-{BOOT}.json"
+    path.write_text(json.dumps(lh.resume_record(BOOT, "approved"), separators=(",", ":")))
+    assert lh.resume_valid(str(path), BOOT)
+    assert run(lh.check_shell(folder=str(tmp_path))).returncode == 0
+    assert not lh.parse_status(run(lh.status_shell(folder=str(tmp_path))).stdout)["held"]

@@ -1,5 +1,13 @@
 """Measured host RAM policy, shared by placement and running-job growth reservations."""
+from pathlib import Path
+
+import yaml
+
 from ops.jobs.arguments import option
+from s4d.config import load_config
+from s4d.rwlearn.observation import CONDITIONS
+
+REPO = Path(__file__).resolve().parents[2]
 
 
 def fql_ram_gb(job: dict) -> float | None:
@@ -10,7 +18,22 @@ def fql_ram_gb(job: dict) -> float | None:
         return None
     args = list(map(str, job.get("args", [])))
     overrides = [value.split("=", 1)[1] for value in args if value.startswith("condition=")]
-    condition = overrides[-1] if overrides else option(args, "--fql-condition") or job.get("fql_condition")
+    config = option(args, "--config")
+    config = next((arg.split("=", 1)[1] for arg in reversed(args) if arg.startswith("--config=")), config)
+    if config:
+        try:
+            condition = load_config([REPO / config]).get("condition")
+        except (OSError, ValueError, AttributeError, yaml.YAMLError):
+            return None
+    else:
+        condition = option(args, "--fql-condition") or job.get("fql_condition")
+    if overrides:
+        try:
+            condition = yaml.safe_load(overrides[-1])
+        except yaml.YAMLError:
+            return None
+    if not isinstance(condition, str) or condition not in CONDITIONS:
+        return None
     return 8.0 if condition == "e2e_cnn" else 3.0
 
 

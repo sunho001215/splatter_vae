@@ -10,11 +10,15 @@ Every launcher that starts a container on the remote host checks this hold INSID
 A launch is allowed only after an explicit resume record for the running boot, written by ``resume`` with the user's
 authorization text. The files live in ``$ROOT/control/launch-hold``, which no container mounts (campaign containers mount
 ``runtime/`` writable, so the state must not live there), and every write (hold, release, resume) takes the same
-admission lock as the launchers, so a hold that returned successfully precedes every later ``docker run``. Launchers: ops/containers/launch.py (scheduler campaign rows and typed verification),
-the real-world preprocessing guard (realworld-ops/pre/tools/rwprep_guard.py) and manual tools, which embed
+admission lock as the launchers, so a hold that returned successfully precedes every later ``docker run``.
+Launchers: ops/containers/launch.py (scheduler campaign rows and typed verification),
+manual tools, which embed
 ``check_shell()`` (exit EXIT_HELD) or call ``assert_launch_allowed()`` before their own ``docker run``. The scheduler
 also reads the state in its snapshot (``status_shell``/``parse_status``) and launches nothing while held, so the in-lock
 check is the race-free backstop rather than the normal path.
+
+rwprep integration is outside this release: its external launcher does not yet use the common boot hold / MIG
+adapter, and reservation rechecking inside the admission lock remains outstanding. rwprep MUST remain held.
 
     python -I ops/remote/launch_hold.py status
     python -I ops/remote/launch_hold.py hold --reason TEXT                 (always allowed: the safe direction)
@@ -25,6 +29,7 @@ check is the race-free backstop rather than the normal path.
 from __future__ import annotations
 
 import argparse
+import inspect
 import json
 import re
 import shlex
@@ -49,23 +54,40 @@ def paths(root: str = ROOT, folder: str | None = None) -> dict:
             "lock": f"{folder}/admission.lock"}
 
 
+def resume_valid(path: str, boot_id: str) -> bool:
+    """Validate the complete boot-bound JSON record; shared by shell and Python checks."""
+    try:
+        with open(path) as stream:
+            record = json.load(stream)
+        return (isinstance(record, dict) and record.get("schema") == SCHEMA
+                and record.get("boot_id") == boot_id
+                and isinstance(record.get("authorization"), str) and bool(record["authorization"].strip()))
+    except (OSError, ValueError, TypeError):
+        return False
+
+
+def _resume_check(p: dict) -> str:
+    source = ("import json, sys\nSCHEMA = " + repr(SCHEMA) + "\n" + inspect.getsource(resume_valid)
+              + "\nsys.exit(0 if resume_valid(sys.argv[1], sys.argv[2]) else 1)\n")
+    return (f"python3 -I -c {shlex.quote(source)} {shlex.quote(p['resume_prefix'])}"
+            '\"$s4d_boot\".json \"$s4d_boot\"')
+
+
 def check_shell(root: str = ROOT, folder: str | None = None) -> str:
-    """POSIX shell fragment: exit EXIT_HELD (message on stderr) unless the launch is allowed for the current boot.
-    Run it inside the admission lock, after the idempotent existing-container check and before ``docker run``."""
+    """Fail closed inside the admission lock unless this boot has a valid resume record."""
     p, q = paths(root, folder), shlex.quote
     return ('s4d_boot="$(cat /proc/sys/kernel/random/boot_id)"; '
-            f'if [ -e {q(p["hold"])} ] || ! grep -Fqs -- "\\"boot_id\\": \\"$s4d_boot\\"" '
-            f'{q(p["resume_prefix"])}"$s4d_boot".json; then '
+            f'if [ -e {q(p["hold"])} ] || ! {_resume_check(p)}; then '
             f'printf \'launch held (control/launch-hold/HOLD or no resume record for boot %s)\\n\' "$s4d_boot" >&2; '
             f'exit {EXIT_HELD}; fi')
 
 
 def status_shell(root: str = ROOT, folder: str | None = None) -> str:
-    """Shell fragment printing one line ``__S4D_LAUNCH_HOLD__ <boot_id> <hold 0|1> <resume 0|1>`` (snapshot)."""
+    """Print the boot, explicit hold and validated resume state for the scheduler snapshot."""
     p, q = paths(root, folder), shlex.quote
     return ('s4d_boot="$(cat /proc/sys/kernel/random/boot_id)"; '
             f's4d_hold=0; [ -e {q(p["hold"])} ] && s4d_hold=1; s4d_resume=0; '
-            f'grep -Fqs -- "\\"boot_id\\": \\"$s4d_boot\\"" {q(p["resume_prefix"])}"$s4d_boot".json && s4d_resume=1; '
+            f'{_resume_check(p)} && s4d_resume=1; '
             'printf \'__S4D_LAUNCH_HOLD__ %s %s %s\\n\' "$s4d_boot" "$s4d_hold" "$s4d_resume"; ')
 
 

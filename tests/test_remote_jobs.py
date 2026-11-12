@@ -767,7 +767,8 @@ def test_snapshot_parses_resources_graphics_and_host_pids():
     with pytest.raises(remote.RemoteJobError, match="Incomplete"):
         remote.parse_snapshot("__S4D_MEMORY__\nMemAvailable: 10 kB")
     command = remote.snapshot_command(remote.ROOT)
-    assert "python" not in command and "docker inspect" in command and "nvidia-smi" in command
+    assert "docker inspect" in command and "nvidia-smi" in command
+    assert command.count("python3 -I -c") == 1 and "resume_valid" in command
     with pytest.raises(ValueError, match="authorized"):
         remote.snapshot_command("/tmp")
 
