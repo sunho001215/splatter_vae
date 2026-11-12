@@ -228,10 +228,9 @@ def build_document(*, task, R, final, fixed, frozen, ref_files, depth_results, e
         rel = release_verdict(R, fixed)
         v2 = C.release_verdict_v2(R, fixed, criteria_v2["static_eval"], task=task, fixreg=criteria_v2.get("fixreg"))
         for cam in eligible:
-            if not v2[cam]["exception_eligible_v2"]:
+            if not v2[cam]["exception_eligible"]:
                 raise SystemExit(f"{cam}: --exception-eligible but under criteria v2 held by {v2[cam]['held_by']} "
-                                 f"(eligible only when held by G5a alone with immaterial FIXREG motion: "
-                                 f"{(v2[cam]['g5a_materiality'] or {}).get('problems')})")
+                                 "(only a camera held by G5a alone can be covered by a fixedness exception)")
     check_against_frozen(rel, frozen)
     ds, agree = depth_scales(final, depth_results)
     evidence = fixedness_evidence(R, fixed) if v2 is None else fixedness_evidence(
@@ -252,7 +251,7 @@ def build_document(*, task, R, final, fixed, frozen, ref_files, depth_results, e
            "gates": {**GATES, "g6_primary": "SAM-free corr_challenge (frozen a935aef)", "g6_sam": "diagnostic",
                      **({} if v2 is None else {"criteria": C.V2, "g1_v2": {k: (list(x) if isinstance(x, tuple) else x)
                                                                            for k, x in C.G1_V2.items()},
-                                               "g5a_material_px": C.G5A_MATERIAL_PX, "g5a_z": C.G5A_Z,
+                                               "g5a": "release/1 (exception procedure unchanged)",
                                                "g5b_min_verifiable": C.G5B_MIN_VERIFIABLE})},
            "fixedness_rule": FIXEDNESS_RULE_G5AB, "fixedness_config": fixed["config"],
            "fixedness_evidence": evidence,

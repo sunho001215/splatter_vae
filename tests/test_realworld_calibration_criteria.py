@@ -231,28 +231,49 @@ def test_g5b_v2_requires_complete_evidence_and_coverage_and_keeps_the_release1_r
     one = _per_ep(eps, pairs=[PAIRS[0], PAIRS[2]])
     assert g5b_v2(one, eps, CAMS[2])["verifiable_fraction"] == 0.0 and g5b_v2(one, eps, CAMS[0])["reasons"]
     assert g5b_v2(one, eps, CAMS[1])["reasons"] == []
-    nan = _per_ep(eps)
-    nan[eps[0]][PAIRS[0]]["median_px"] = float("nan")
-    assert eps[0] in g5b_v2(nan, eps, CAMS[0])["epipolar"]["not_verifiable"]
+    for field, bad in (("median_px", float("nan")), ("se_px", -0.01), ("n", 0), ("n", 29)):
+        mal = _per_ep(eps)
+        mal[eps[0]][PAIRS[0]][field] = bad
+        assert eps[0] in g5b_v2(mal, eps, CAMS[0])["epipolar"]["not_verifiable"], (field, bad)
     r = g5b_v2(_per_ep(eps, bad={eps[5]: "135122076054"}), eps, CAMS[2])
     assert r["epipolar"]["moved"] == [eps[5]] and any("flags 1 episodes" in x for x in r["reasons"])
 
 
-def test_dt_extension_is_validated_on_the_data():
+def _dt_rows(eps, long_pair=1, dt_long=30.0):
+    return [{"episode": e, "pair": q, "file": int(q == long_pair), "abs_dt_ms": dt_long if q == long_pair else 8.0}
+            for e in eps for q in (1, 2, 12)]
+
+
+def test_dt_extension_is_validated_per_pair_with_tails_and_reconciliation():
     from s4d.realworld.calib.criteria import dt_extension, g5b_v2
 
-    eps = [f"t-{k:06d}" for k in range(4)]
+    eps = [f"t-{k:06d}" for k in range(24)]
+    rng = np.random.default_rng(3)
     pe = _per_ep(eps)
-    rows = [{"episode": e, "pair": q, "file": 0, "abs_dt_ms": 8.0} for e in eps for q in (1, 12)] + \
-        [{"episode": e, "pair": 2, "file": 1, "abs_dt_ms": 30.0} for e in eps]
-    assert dt_extension({"per_episode_extext": pe, "dt": {"rows": rows}})["ok"]
     for e in eps:
-        pe[e][PAIRS[1]]["median_px"] = 0.40  # supplement pairs 0.15 px worse
-    d = dt_extension({"per_episode_extext": pe, "dt": {"rows": rows}})
-    assert not d["ok"] and d["diff_px"] == pytest.approx(0.15)
-    assert any("dt extension" in x for x in g5b_v2(pe, eps, CAMS[0], d)["reasons"])
-    assert not dt_extension({"per_episode_extext": pe})["ok"]  # no dt table: fail closed
-    assert not dt_extension({"per_episode_extext": pe, "dt": {"rows": [{"episode": "x", "pair": 1, "abs_dt_ms": 5}]}})["ok"]
+        for p in PAIRS:
+            pe[e][p]["median_px"] = float(0.25 + rng.normal(0, 0.01))
+    se = {"per_episode_extext": pe, "dt": {"rows": _dt_rows(eps)}}
+    d = dt_extension(se)
+    assert d["ok"] and d["n_long"] == 24 and d["pairs"][PAIRS[0]]["n_long"] == 24
+    # four long-offset measurements degraded (0.25 -> 0.90 px): median unchanged, but p90 and the per-episode rule
+    bad = json.loads(json.dumps(pe))
+    for e in eps[:4]:
+        bad[e][PAIRS[0]]["median_px"] = 0.90
+    d = dt_extension({"per_episode_extext": bad, "dt": {"rows": _dt_rows(eps)}})
+    assert not d["ok"] and d["pairs"][PAIRS[0]]["long_violations"] == eps[:4]
+    assert any("dt extension" in x for x in g5b_v2(bad, eps, CAMS[0], d)["reasons"])
+    # a uniform 0.08 px degradation of the long-offset pair: median check
+    worse = json.loads(json.dumps(pe))
+    for e in eps:
+        worse[e][PAIRS[0]]["median_px"] += 0.08
+    assert not dt_extension({"per_episode_extext": worse, "dt": {"rows": _dt_rows(eps)}})["ok"]
+    # fail closed: no table, a table that does not reconcile, a duplicate row
+    assert not dt_extension({"per_episode_extext": pe})["ok"]
+    assert not dt_extension({"per_episode_extext": pe, "dt": {"rows": []}})["ok"]
+    assert not dt_extension({"per_episode_extext": pe, "dt": {"rows": _dt_rows(eps)[1:]}})["ok"]
+    assert not dt_extension({"per_episode_extext": pe, "dt": {"rows": _dt_rows(eps) + _dt_rows(eps)[:1]}})["ok"]
+    assert dt_extension({"per_episode_extext": {}, "dt": {"rows": []}})["ok"]  # nothing measured, nothing extended
 
 
 # ------------------------------------------------------------------------------------------------------------ G5a
@@ -273,29 +294,21 @@ def _fixreg(task, cam, eps, *, D=0.1, se=0.05, over=None, events=(), sens=True, 
             "g5a_flagged": {cam[:12]: [{"episode": e} for e in (flagged or [])]}}
 
 
-def test_g5a_materiality_bounds_every_episode_with_injection_corrected_99pct_bounds():
-    from s4d.realworld.calib.criteria import G5A_MATERIAL_PX, g5a_materiality
+def test_g5a_materiality_is_decision_support_only():
+    from s4d.realworld.calib.criteria import G5A_BUDGETS_PX, g5a_materiality
 
     cam = CAMS[1]
     eps = [f"pnp-{k:06d}" for k in range(2, 12)]
-    flagged = [eps[3]]
-    r = g5a_materiality(_fixreg("pnp", cam, eps), cam, flagged, "pnp", eps)
-    assert r["eligible"] and r["recovery"]["r"] == pytest.approx(0.72)
-    assert r["episodes"][eps[0]]["upper_corrected_px"] == pytest.approx((0.1 + 2.58 * 0.05) / 0.72)
-    assert G5A_MATERIAL_PX == pytest.approx(0.9375)
-    # an UNFLAGGED episode whose corrected bound exceeds the budget blocks the camera-wide claim
-    fx = _fixreg("pnp", cam, eps, over={eps[7]: {"D_B": 0.40, "se_D_B": 0.12}})  # (0.40 + 0.31) / 0.72 = 0.98
-    assert not g5a_materiality(fx, cam, flagged, "pnp", eps)["eligible"]
-    for bad in ({"D_B": float("nan")}, {"verifiable_B": False}, {"se_D_B": -0.1}):
-        fx = _fixreg("pnp", cam, eps, over={eps[3]: bad})
-        assert not g5a_materiality(fx, cam, flagged, "pnp", eps)["eligible"], bad
-    assert not g5a_materiality(_fixreg("pnp", cam, eps[1:]), cam, flagged, "pnp", eps)["eligible"]  # episode missing
-    assert not g5a_materiality(_fixreg("pnp", cam, eps, events=None), cam, flagged, "pnp", eps)["eligible"]
-    assert not g5a_materiality(_fixreg("pnp", cam, eps, events=[{"test": "T2"}]), cam, flagged, "pnp", eps)["eligible"]
-    assert not g5a_materiality(_fixreg("pnp", cam, eps, sens=False), cam, flagged, "pnp", eps)["eligible"]
-    assert not g5a_materiality(_fixreg("other", cam, [f"other-{k:06d}" for k in range(2, 12)]), cam, flagged, "pnp",
-                               eps)["eligible"]
-    assert not g5a_materiality(None, cam, flagged, "pnp", eps)["eligible"]
+    r = g5a_materiality(_fixreg("pnp", cam, eps), cam, [eps[3]], "pnp", eps)
+    assert "eligible" not in r and "decision support" in r["role"] and r["problems"] == []
+    assert r["recovery"]["min_of_medians"] == pytest.approx(0.72) and r["recovery"]["min_observed"] == pytest.approx(0.72)
+    assert r["episodes"][eps[0]]["upper_corr_median_px"] == pytest.approx((0.1 + 2.58 * 0.05) / 0.72)
+    assert list(G5A_BUDGETS_PX) == [0.375, 0.9375] and set(r["over_budget"]) == {"0.3750", "0.9375"}
+    fx = _fixreg("pnp", cam, eps, over={eps[7]: {"D_B": 0.40, "se_D_B": 0.12}})
+    assert g5a_materiality(fx, cam, [eps[3]], "pnp", eps)["over_budget"]["0.9375"]["upper_corr_median_px"] == 1
+    fx = _fixreg("pnp", cam, eps, over={eps[3]: {"D_B": float("nan")}})
+    assert g5a_materiality(fx, cam, [eps[3]], "pnp", eps)["problems"]
+    assert g5a_materiality(None, cam, [eps[3]], "pnp", eps)["problems"] == ["no FIXREG evidence"]
 
 
 # ------------------------------------------------------------------------------------------------ static evaluation
@@ -391,17 +404,82 @@ def test_match_inputs_refuse_foreign_duplicate_or_out_of_plan_supplements(tmp_pa
         match_inputs([m3], [ep])
 
 
+def _timestamped_episode(root, ep, st):
+    d = root / ep / "episodes" / ep / "normalized"
+    d.mkdir(parents=True)
+    np.savez(d / "arrays.npz", **{f"timestamps/{c}": st[c] for c in CAMS})
+
+
+def _write_plan(path, ep, rows, rng, meta, n=50):
+    arr = {k: [] for k in ("pair", "time", "frame_a", "frame_b", "dt_ns")}
+    for k, pa, pb, ia, ib, dt in rows:
+        arr["pair"].append(np.full(n, pa * 10 + pb, np.int16))
+        arr["time"].append(np.full(n, k, np.int16))
+        arr["frame_a"].append(np.full(n, ia, np.int32))
+        arr["frame_b"].append(np.full(n, ib, np.int32))
+        arr["dt_ns"].append(np.full(n, dt, np.int64))
+    out = {k: np.concatenate(v) if v else np.zeros(0) for k, v in arr.items()}
+    np.savez(path, meta=json.dumps({"episode_id": ep, "cameras": list(CAMS), "times": 6, **meta}), **out)
+
+
+def test_match_inputs_validate_frames_against_the_episode_timestamps(tmp_path):
+    from s4d.realworld.calib.criteria import _sha256, match_inputs
+
+    w = _worker()
+    rng = np.random.default_rng(2)
+    root, m1, m2 = tmp_path / "view", tmp_path / "m1", tmp_path / "m2"
+    for d in (root, m1, m2):
+        d.mkdir()
+    ep = "t-000001"
+    st = _stamps((0, -28.0, 30.0))  # the frozen rule matched nothing
+    _timestamped_episode(root, ep, st)
+    ref = w.plan_pairs(st, list(CAMS), 6, "reference", 20.0)
+    fr = {str(k): v for k, v in ref["frames_used"].items()}
+    _write_plan(m1 / f"{ep}.npz", ep, ref["pairs"], rng, {"max_dt_ms": 20.0, "frames": fr})
+    sup = w.supplement_plan(st, list(CAMS), 6, {"cameras": list(CAMS), "times": 6, "max_dt_ms": 20.0, "frames": fr})
+    smeta = {"pairing": "pairwise", "max_dt_ms": None, "max_dt_ns": sup["max_dt_ns"], "frames": fr,
+             "pair_frames": [list(r) for r in sup["pairs"]],
+             "supplement_of": {"path": str(m1 / f"{ep}.npz"), "sha256": _sha256(m1 / f"{ep}.npz")}}
+    _write_plan(m2 / f"{ep}.npz", ep, sup["pairs"], rng, smeta)
+    files, manifest = match_inputs([m1, m2], [ep], root)
+    assert manifest[ep][1]["combinations"] == 18 and manifest[ep][0]["combinations"] == 0
+    # wrong frames (a self-consistent plan/rows/tolerance that the timestamps do not support): refused
+    bad_rows = [[k, pa, pb, ia, ib + 1, dt + 66_715_000] for k, pa, pb, ia, ib, dt in sup["pairs"]]
+    _write_plan(m2 / f"{ep}.npz", ep, bad_rows, rng, {**smeta, "pair_frames": bad_rows,
+                                                       "max_dt_ns": {"01": 10**9, "02": 10**9, "12": 10**9}})
+    with pytest.raises(ValueError, match="pair_frames differ|planned combination"):
+        match_inputs([m1, m2], [ep], root)
+    _write_plan(m2 / f"{ep}.npz", ep, sup["pairs"], rng, {**smeta, "cameras": list(CAMS)[::-1]})
+    with pytest.raises(ValueError, match="camera order"):
+        match_inputs([m1, m2], [ep], root)
+    fr_bad = json.loads(json.dumps(fr))
+    fr_bad["0"][CAMS[2]] += 1
+    _write_plan(m1 / f"{ep}.npz", ep, ref["pairs"], rng, {"max_dt_ms": 20.0, "frames": fr_bad})
+    with pytest.raises(ValueError, match="reference rule"):
+        match_inputs([m1], [ep], root)
+
+
 # ------------------------------------------------------------------------------------------------------- publisher
 def _se(rdir, per_ep=None):
     from s4d.realworld.calib.criteria import _sha256
 
     full = json.loads((rdir / "full.json").read_text())
     eps = sorted(set(full["fit_episodes"]) | set(full["heldout_episodes"]))
+    v2 = json.loads(json.dumps(full["per_episode_extext"] if per_ep is None else per_ep))
+    for rows in v2.values():
+        for r in rows.values():
+            r.setdefault("n", 300)
+    codes = {p: q for q, p in ((1, PAIRS[0]), (2, PAIRS[1]), (12, PAIRS[2]))}
+    dt = [{"episode": e, "pair": codes[p], "file": 0, "abs_dt_ms": 8.0} for e, rows in v2.items() for p in rows]
     return {"format": "s4d-calib-static-eval/2", "full": {"path": str(rdir / "full.json"),
                                                           "sha256": _sha256(rdir / "full.json")},
+            "frames_validated": True, "inputs": {e: [{"path": f"m1/{e}.npz", "sha256": "a" * 64,
+                                                      "pairing": "reference"}] for e in eps},
+            "K_sources": {"per_episode": {"sha256": "b" * 64}, "heldout": {"sha256": "c" * 64}},
+            "code": {"criteria.py": "d" * 64},
             "episodes": eps, "heldout_episodes": full["heldout_episodes"],
-            "per_episode_extext": full["per_episode_extext"] if per_ep is None else per_ep,
-            "heldout_extext_sam_static": full["heldout_sam"]["extext_sam_static"], "dt": {"rows": []},
+            "per_episode_extext": v2,
+            "heldout_extext_sam_static": full["heldout_sam"]["extext_sam_static"], "dt": {"rows": dt},
             "release1_reproduction": {"per_episode_extext": full["per_episode_extext"],
                                       "heldout_extext_sam_static": full["heldout_sam"]["extext_sam_static"]},
             "K_nominal": {c: _K().tolist() for c in CAMS}}
@@ -448,7 +526,10 @@ def test_publisher_criteria_v2_keeps_release1_and_documents_both(tmp_path):
     b.criteria, b.fixreg = "v2", None
     for name, bad, msg in (("se2", {**se, "full": {**se["full"], "sha256": "0" * 64}}, "another full.json"),
                            ("se3", {**se, "release1_reproduction": {**se["release1_reproduction"],
-                                                                    "per_episode_extext": complete}}, "reproduce")):
+                                                                    "per_episode_extext": complete}}, "reproduce"),
+                           ("se5", {k: v for k, v in se.items() if k != "inputs"}, "manifest"),
+                           ("se6", {**se, "frames_validated": False}, "timestamp-validated"),
+                           ("se7", {k: v for k, v in se.items() if k != "K_sources"}, "K-source")):
         (tmp_path / "a" / f"{name}.json").write_text(json.dumps(bad))
         b.static_eval, b.out = str(tmp_path / "a" / f"{name}.json"), str(tmp_path / "a" / f"rig-{name}.json")
         with pytest.raises(SystemExit, match=msg):
@@ -460,8 +541,9 @@ def test_publisher_criteria_v2_keeps_release1_and_documents_both(tmp_path):
     assert all(doc["cameras"][c]["held_by"] == ["G5b"] for c in CAMS)
 
 
-def test_publisher_criteria_v2_exception_eligibility_needs_camera_wide_immaterial_fixreg_motion(tmp_path):
+def test_publisher_criteria_v2_keeps_the_release1_g5a_exception_rule_with_decision_support(tmp_path):
     from s4d.realworld.calib.loma.publish import publish
+    from s4d.realworld.calib.rig import rig_camera_status
 
     rdir = tmp_path / "b" / "res"
     _, fixed, _ = _fake_results(rdir, sam_fail=(), moved=CAMS[0])
@@ -469,18 +551,19 @@ def test_publisher_criteria_v2_exception_eligibility_needs_camera_wide_immateria
     se = _se(rdir)
     (tmp_path / "b" / "se.json").write_text(json.dumps(se))
     frozen = _frozen(rdir, fixed)
-    eps = se["episodes"]
-    (tmp_path / "b" / "fx.json").write_text(json.dumps(_fixreg("t", CAMS[0], eps)))
+    (tmp_path / "b" / "fx.json").write_text(json.dumps(_fixreg("t", CAMS[0], se["episodes"], over={
+        se["episodes"][6]: {"D_B": 0.6}})))  # material-looking FIXREG numbers do not change eligibility (release/1)
     a = _publish_args(tmp_path / "b", rdir, fixed, frozen, tmp_path / "b" / "rig.json", eligible=[CAMS[0]])
     a.criteria, a.static_eval, a.fixreg = "v2", str(tmp_path / "b" / "se.json"), str(tmp_path / "b" / "fx.json")
     doc = publish(a)
     c0 = doc["cameras"][CAMS[0]]
-    assert c0["held_by"] == ["G5a"] and c0["diagnostics"]["criteria_v2"]["exception_eligible_v2"]
-    assert doc["fixedness_exception"]["eligible_cameras"] == [CAMS[0]]
-    (tmp_path / "b" / "fx2.json").write_text(json.dumps(_fixreg("t", CAMS[0], eps, over={eps[6]: {"D_B": 0.6}})))
-    b = _publish_args(tmp_path / "b", rdir, fixed, frozen, tmp_path / "b" / "rig2.json", eligible=[CAMS[0]])
-    b.criteria, b.static_eval, b.fixreg = "v2", str(tmp_path / "b" / "se.json"), str(tmp_path / "b" / "fx2.json")
-    with pytest.raises(SystemExit, match="immaterial"):
+    assert c0["held_by"] == ["G5a"] and c0["diagnostics"]["criteria_v2"]["exception_eligible"]
+    ds = c0["diagnostics"]["criteria_v2"]["g5a_decision_support"]
+    assert "decision support" in ds["role"] and ds["over_budget"]["0.9375"]["upper_corr_median_px"] == 1
+    assert doc["fixedness_exception"]["eligible_cameras"] == [CAMS[0]] and rig_camera_status(doc, CAMS[0])[0] == "held"
+    b = _publish_args(tmp_path / "b", rdir, fixed, frozen, tmp_path / "b" / "rig2.json", eligible=[CAMS[1]])
+    b.criteria, b.static_eval, b.fixreg = "v2", str(tmp_path / "b" / "se.json"), None
+    with pytest.raises(SystemExit, match="G5a alone"):
         publish(b)
 
 

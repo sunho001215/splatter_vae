@@ -317,6 +317,7 @@ def run_episode(model, a, root, episode_id, out_path):
             "seed": a.seed, "frames": frames_used, "magsac_px": a.magsac_px, "max_dt_ms": a.max_dt_ms,
             **({} if a.pairing == "reference" else {
                 "pairing": a.pairing, "max_dt_ns": plan["max_dt_ns"], "supplement_of": supplement,
+                "device": "cuda" if torch.cuda.is_available() else "cpu",
                 "pair_frames": [list(r) for r in plan["pairs"]], "skipped": [list(r) for r in plan["skipped"]],
                 "pair_seed": "seed * 1000003 + time * 100 + pa * 10 + pb" if supplement else None}),
             "seconds": round(time.time() - t0, 1), "torch": torch.__version__, "cv2": cv2.__version__,

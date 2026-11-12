@@ -16,9 +16,12 @@ realworld-ops/rwx/CALSYNC-REPORT-20261112.md. Every check fails closed on missin
    matches kept bitwise, only the missing (time, pair) combinations added, ancestry checked here). The G5b rule
    (median <= 1.0 px, excess + 2.58 SE <= 0.25 px, both pairs) and G4's thresholds are unchanged. NEW requirements:
    every episode has evidence; every camera is verifiable (BOTH of its pairs, named from the camera list, never
-   discovered from the evidence) in >= 90 % of the episodes; and the dt extension must be validated on the data: the
-   per-episode-pair medians of the supplement pairs (|dt| > 20 ms) may exceed those of the release/1 pairs by at most
-   0.05 px (1/5 of G5b's excess tolerance).
+   discovered from the evidence; finite, non-negative, >= 30 matches) in >= 90 % of the episodes; and the dt extension
+   is validated on the data (``dt_extension``): the dt table reconciles exactly with the evaluated measurements, per
+   camera pair the long-offset (|dt| > 20 ms) per-episode medians exceed the short-offset ones by <= 0.05 px at the
+   median and <= 0.10 px at p90, and NO long-offset episode-pair violates the per-episode G5b rule (release/1 evidence
+   of pick-and-place and covering: 0 violations). Match files are validated against the episode timestamps (frames,
+   camera order, dt, half-period limit) before use.
 2. G1 as the stability RADIUS about the PUBLISHED solution (the ``all`` refit) over release/1's complete, unchanged
    stability set, thresholds unchanged (rotation <= 0.35 deg, camera centre <= 8 mm) - release/1's max-PAIRWISE spread
    (diameter, between two perturbed solves, neither of them published) is reported next to it; keeping the numbers on
@@ -28,18 +31,14 @@ realworld-ops/rwx/CALSYNC-REPORT-20261112.md. Every check fails closed on missin
    p50 <= 1 training px (3.75 px) and p95 <= 2 training px (7.5 px; release/1's separate rotation and translation
    tolerances of one training px each jointly admit two). An uncompensated 7.5 mm lateral translation passes the 8 mm
    centre radius but fails the image p50.
-3. G5a (registration fixedness; detection thresholds 0.25 px / 0.03 deg / 1000 ppm unchanged): a camera held by G5a
-   ALONE is fixedness-EXCEPTION-ELIGIBLE under release/2 iff the independent pre-registered FIXREG series of the camera
-   bounds the motion of EVERY episode of the document (not only the flagged ones) below ``G5A_MATERIAL_PX`` = 1/4
-   training px (0.94 px): each episode verifiable, finite D and SE_D, (D + 2.58 SE_D) / r <= 0.94 px with r = the
-   camera's lowest median recovered/injected ratio of FIXREG's own synthetic injections (estimator under-recovery),
-   and FIXREG lists no T1-T4 event for the camera. 1/10 training px (``MAX_PERIOD_ROT_DEG``) is below the
-   instruments' resolution (per-episode 99 % bounds reach 0.65 px on camera 070988, which release/1 itself validates);
-   1/4 training px is below the 128-px resampling resolution and ~1/3.5 of the measured multi-view lifting noise floor
-   (held-out static-point 3D consistency 5.7 mm ~ 3.2 px). The coordinator still fills the exception
-   (``rig_loma_publish fill-exception``) citing the evidence.
+3. G5a is NOT changed (detection thresholds, the fixedness exception procedure and its FIXREG rule are release/1's).
+   ``g5a_materiality`` only REPORTS decision support for a camera held by G5a alone: FIXREG's per-episode pooled
+   displacement bounds (D + 2.58 SE_D, corrected by the median and by the lowest observed injection recovery), the
+   within-episode group maxima and FIXREG's unresolved candidates, against 1/10 and 1/4 training px. Codex review 2
+   showed that these bounds lack validated coverage near such budgets (recovery uncertainty, within-episode motion),
+   so no materiality-based eligibility is derived from them; a G5a-only camera still needs the release/1 decision.
 
-    python -m s4d.realworld.calib.criteria static-eval --full full.json --corr CORR --evidence EVID \
+    python -m s4d.realworld.calib.criteria static-eval --full full.json --corr CORR --evidence EVID --task-root VIEW \
         --matches RELEASE1_DIR [--matches SUPPLEMENT_DIR] --out static_eval.json [--check-frozen]
     python -m s4d.realworld.calib.criteria verdict --results DIR --fixedness F.json --static-eval S.json \
         [--fixreg fixreg_results.json] --task T --out verdict-v2.json
@@ -62,18 +61,19 @@ V2 = "rig_loma-release/2"
 GATE_VERSION_V2 = ("rig_loma-release/2 (CALSYNC 2026-11-12; release/1 kept): G1 = stability radius about the published "
                    "solution (<= 0.35 deg, <= 8 mm) + scene-volume image displacement p50 <= 3.75 px, p95 <= 7.5 px; "
                    "G2, G3, G6 = release/1; G4 / G5b on pairwise-nearest static matches (|dt| <= half a frame period, "
-                   "dt extension validated), G5b complete, >= 90 % verifiable episodes per camera; G5a detection = "
-                   "release/1, a G5a-only camera is exception-eligible iff FIXREG bounds every episode's motion below "
-                   "1/4 training px (injection-corrected 99 % bound) with no FIXREG event")
+                   "dt extension validated per pair), G5b complete, >= 90 % verifiable episodes per camera; G5a and "
+                   "its exception procedure = release/1 (materiality reported as decision support only)")
 TRAINING_PX = 3.75  # full-resolution px per training px: 480 x 480 centre crop -> 128 x 128
 SCENE_BOX = (-0.15, -0.7, 0.15, 1.05, 0.6, 1.0)  # = s4d.rwlearn.configs.MVP3D_BOUNDS (base frame, m; test-checked)
 G1_V2 = {"radius_rot_deg": GATES["spread_rot_deg"], "radius_centre_m": GATES["spread_centre_m"],
          "image_p50_px": TRAINING_PX, "image_p95_px": 2 * TRAINING_PX, "reference": "all", "box": SCENE_BOX,
          "lattice": 16, "crop_px": 480, "image_hw": (480, 640), "min_depth_m": 0.2, "min_probe_points": 100}
-G5A_MATERIAL_PX = TRAINING_PX / 4  # 0.9375 px
+G5A_BUDGETS_PX = (TRAINING_PX / 10, TRAINING_PX / 4)  # decision-support reference levels only (not gates)
 G5A_Z = 2.58
+G5B_MIN_MATCHES = 30
 G5B_MIN_VERIFIABLE = 0.90
-G5B_DT_MAX_DIFF_PX = 0.05  # supplement (|dt| > 20 ms) vs release/1 pairs: median excess allowed (1/5 of 0.25 px)
+G5B_DT_MAX_DIFF_PX = 0.05  # long (|dt| > 20 ms) vs short-offset pairs: median excess allowed (1/5 of 0.25 px)
+G5B_DT_MAX_P90_DIFF_PX = 0.10
 RELEASE1_MAX_DT_MS = 20.0
 USER_DECISION_V2 = ("user directive 2026-11-12 ~20:40 KST (agent CALSYNC): evidence-based revision of the calibration "
                     "and camera-synchronization acceptance criteria (rig_loma-release/2, calib.criteria); the release/1 "
@@ -215,7 +215,9 @@ def epipolar_v2(per_ep: dict, cam: str, episodes: list, max_px: float = 1.0, max
 
     def val(v, p):
         r = (v or {}).get(p)
-        return r if isinstance(r, dict) and _finite(r.get("median_px"), r.get("se_px")) else None
+        ok = isinstance(r, dict) and _finite(r.get("median_px"), r.get("se_px"), r.get("n")) and \
+            float(r["median_px"]) >= 0 and float(r["se_px"]) >= 0 and int(r["n"]) >= G5B_MIN_MATCHES
+        return r if ok else None
 
     base = {}
     for p in pairs:
@@ -237,36 +239,69 @@ def epipolar_v2(per_ep: dict, cam: str, episodes: list, max_px: float = 1.0, max
             "single_pair_violations": single, "not_verifiable": sorted(set(unver))}
 
 
+def _violates(m: float, se: float, base: float, max_px: float = 1.0, max_excess_px: float = 0.25) -> bool:
+    return m > max_px or (m - base) + 2.58 * se > max_excess_px
+
+
 def dt_extension(se: dict) -> dict:
-    """Validation of the dt extension on the data: per-episode-pair G5b medians of pairs evaluated at |dt| <= 20 ms
-    (release/1) vs > 20 ms (pairwise supplement). Fails closed when the dt table is missing or inconsistent."""
+    """Validation of the dt extension on the data (fail closed). The dt table must reconcile exactly with the evaluated
+    per-episode measurements (one row per (episode, pair) and vice versa). Per camera pair with long-offset rows
+    (|dt| > 20 ms, i.e. pairs only the pairwise supplement evaluates): the long-offset per-episode medians may exceed the
+    short-offset ones (same pair if it has >= 10, else all pairs pooled) by <= ``G5B_DT_MAX_DIFF_PX`` at the median and
+    <= ``G5B_DT_MAX_P90_DIFF_PX`` at p90, and no long-offset episode-pair may violate the per-episode G5b rule against
+    its pair's baseline."""
     pe = se.get("per_episode_extext") or {}
     rows = (se.get("dt") or {}).get("rows")
     if not isinstance(rows, list):
         return {"ok": False, "problem": "no dt table in the static evaluation"}
-    lo, hi = [], []
+    measured = {(e, p) for e, v in pe.items() for p in (v or {})}
+    table = {}
     for r in rows:
         try:
             pa, pb = divmod(int(r["pair"]), 10)
-            name = pair_name(CAMS[pa], CAMS[pb])
-            m = pe[r["episode"]][name]["median_px"]
+            key = (r["episode"], pair_name(CAMS[pa], CAMS[pb]))
             dt = float(r["abs_dt_ms"])
         except (KeyError, IndexError, TypeError, ValueError):
-            return {"ok": False, "problem": f"dt row {r} has no matching per-episode measurement"}
-        if not _finite(m, dt):
-            return {"ok": False, "problem": f"dt row {r}: non-finite"}
-        (lo if dt <= RELEASE1_MAX_DT_MS else hi).append(m)
-    out = {"n_le20": len(lo), "n_gt20": len(hi), "median_le20_px": float(np.median(lo)) if lo else None,
-           "median_gt20_px": float(np.median(hi)) if hi else None, "max_diff_px": G5B_DT_MAX_DIFF_PX}
-    if not hi:
-        return {**out, "ok": True, "problem": None}
-    if not lo:
-        return {**out, "ok": False, "problem": "no release/1 (|dt| <= 20 ms) pairs to compare with"}
-    diff = out["median_gt20_px"] - out["median_le20_px"]
-    out["diff_px"] = float(diff)
-    return {**out, "ok": diff <= G5B_DT_MAX_DIFF_PX,
-            "problem": None if diff <= G5B_DT_MAX_DIFF_PX else
-            f"pairs at |dt| > 20 ms are {diff:.3f} px less consistent than at <= 20 ms (> {G5B_DT_MAX_DIFF_PX})"}
+            return {"ok": False, "problem": f"malformed dt row {r}"}
+        if key in table or not _finite(dt):
+            return {"ok": False, "problem": f"dt row {r}: duplicate or non-finite (a pair must come from one file)"}
+        table[key] = dt
+    if set(table) != measured:
+        return {"ok": False, "problem": f"dt table does not reconcile with the measurements "
+                                        f"({len(set(table) ^ measured)} differences)"}
+    vals = {}
+    for (e, p), dt in table.items():
+        r = pe[e][p]
+        if not _finite(r.get("median_px"), r.get("se_px")):
+            return {"ok": False, "problem": f"{e} {p}: non-finite measurement"}
+        vals.setdefault(p, {"short": [], "long": []})["long" if dt > RELEASE1_MAX_DT_MS else "short"].append(
+            (e, float(r["median_px"]), float(r["se_px"])))
+    pooled_short = [m for v in vals.values() for _, m, _ in v["short"]]
+    out = {"pairs": {}, "max_diff_px": G5B_DT_MAX_DIFF_PX, "max_p90_diff_px": G5B_DT_MAX_P90_DIFF_PX, "problems": []}
+    for p, v in sorted(vals.items()):
+        if not v["long"]:
+            continue
+        short = [m for _, m, _ in v["short"]] if len(v["short"]) >= 10 else pooled_short
+        if len(short) < 10:
+            out["problems"].append(f"{p}: fewer than 10 short-offset measurements to compare with")
+            continue
+        long = [m for _, m, _ in v["long"]]
+        base = float(np.median([m for _, m, _ in v["short"] + v["long"]]))
+        viol = [e for e, m, s_ in v["long"] if _violates(m, s_, base)]
+        row = {"n_short": len(short), "n_long": len(long), "short_from": "pair" if short is not pooled_short else "pooled",
+               "median_diff_px": float(np.median(long) - np.median(short)),
+               "p90_diff_px": float(np.percentile(long, 90) - np.percentile(short, 90)), "long_violations": viol}
+        out["pairs"][p] = row
+        if row["median_diff_px"] > G5B_DT_MAX_DIFF_PX:
+            out["problems"].append(f"{p}: long-offset median {row['median_diff_px']:+.3f} px > {G5B_DT_MAX_DIFF_PX}")
+        if row["p90_diff_px"] > G5B_DT_MAX_P90_DIFF_PX:
+            out["problems"].append(f"{p}: long-offset p90 {row['p90_diff_px']:+.3f} px > {G5B_DT_MAX_P90_DIFF_PX}")
+        if viol:
+            out["problems"].append(f"{p}: {len(viol)} long-offset episode-pairs violate the G5b rule {viol[:4]}")
+    out["n_long"] = sum(len(v["long"]) for v in vals.values())
+    out["ok"] = not out["problems"]
+    out["problem"] = "; ".join(out["problems"]) or None
+    return out
 
 
 def g5b_v2(per_ep: dict, episodes: list, cam: str, dt_check: dict | None = None) -> dict:
@@ -300,59 +335,60 @@ def fixreg_series(fixreg: dict, cam: str, task: str) -> str | None:
 
 
 def g5a_materiality(fixreg: dict | None, cam: str, flagged: list, task: str, episodes: list) -> dict:
-    """Exception eligibility of a camera held by G5a alone (release/2): the camera's FIXREG series covers every episode
-    of the document, each verifiable with finite D / SE_D, the injection-corrected 99 % bound (D + 2.58 SE_D) / r <=
-    ``G5A_MATERIAL_PX`` (r = lowest median recovered/injected D ratio of the camera's synthetic injections), and the
-    series verdict lists no event."""
-    out = {"flagged": list(flagged), "material_px": G5A_MATERIAL_PX, "z": G5A_Z, "problems": []}
-    if not flagged:
-        out["problems"].append("no G5a flag")
+    """DECISION SUPPORT ONLY (no gate, no eligibility): what FIXREG says about the size of a G5a-only camera's motion.
+    Per document episode: pooled D_B, SE_D_B, the 99 % bound corrected by the camera's median and by its lowest
+    observed injection recovery ratio, the largest within-episode group displacement; plus FIXREG's verdict, events,
+    unresolved candidates and missing within-episode estimates, counted against 1/10 and 1/4 training px."""
+    out = {"role": "decision support only (Codex review 2: coverage of these bounds is not validated)",
+           "flagged": list(flagged), "budgets_px": list(G5A_BUDGETS_PX), "z": G5A_Z, "problems": []}
     if not isinstance(fixreg, dict):
-        out["problems"].append("no FIXREG evidence")
-        return {**out, "eligible": False}
+        return {**out, "problems": ["no FIXREG evidence"]}
     label = fixreg_series(fixreg, cam, task)
     s = (fixreg.get("series") or {}).get(label) if label else None
     out["series"] = label
     if not isinstance(s, dict):
-        out["problems"].append(f"no unique FIXREG series of {cam} for task {task}")
-        return {**out, "eligible": False}
-    verdict = s.get("verdict")
-    events = verdict.get("events") if isinstance(verdict, dict) else None
-    out["events"], out["fixreg_verdict"] = events, verdict.get("verdict") if isinstance(verdict, dict) else None
-    if not isinstance(events, list):
-        out["problems"].append("FIXREG verdict has no explicit event list")
-    elif events:
-        out["problems"].append(f"FIXREG events {events} (persistent / credible change is never covered)")
+        return {**out, "problems": [f"no unique FIXREG series of {cam} for task {task}"]}
+    verdict = s.get("verdict") if isinstance(s.get("verdict"), dict) else {}
+    out.update({"fixreg_verdict": verdict.get("verdict"), "events": verdict.get("events"),
+                "candidates_not_verifiable": verdict.get("candidates_not_verifiable"),
+                "coherent_significant_inside_envelope": verdict.get("coherent_significant_inside_envelope"),
+                "fixreg_reasons": verdict.get("reasons")})
     ratios = {}
     for row in (s.get("sensitivity") or {}).get("rows") or []:
         if row.get("kind") == "zero" or not row.get("verifiable"):
             continue
         if _finite(row.get("recovered_D"), row.get("truth_D")) and float(row["truth_D"]) > 0:
             ratios.setdefault(f"{row['kind']}{row.get('val')}", []).append(float(row["recovered_D"]) / float(row["truth_D"]))
-    med = {k: float(np.median(v)) for k, v in ratios.items()}
-    r = min(med.values()) if med else None
-    out["recovery"] = {"per_injection": med, "r": r}
-    if r is None or not 0 < r <= 1.5:
-        out["problems"].append(f"no valid injection recovery ratio ({r})")
-        return {**out, "eligible": False}
+    r_med = min((float(np.median(v)) for v in ratios.values()), default=None)
+    r_min = min((min(v) for v in ratios.values()), default=None)
+    out["recovery"] = {"min_of_medians": r_med, "min_observed": r_min,
+                       "per_injection_median": {k: float(np.median(v)) for k, v in ratios.items()}}
     by_ep = {e.get("episode"): e for e in s.get("episodes") or []}
-    rows, worst = {}, None
+    rows, no_within = {}, []
     for ep in episodes:
         e = by_ep.get(ep)
-        if e is None or not e.get("verifiable_B") or not _finite(e.get("D_B"), e.get("se_D_B")) \
-                or float(e["D_B"]) < 0 or float(e["se_D_B"]) < 0:
+        if e is None or not e.get("verifiable_B") or not _finite(e.get("D_B"), e.get("se_D_B")):
             out["problems"].append(f"{ep}: no verifiable finite FIXREG estimate")
             continue
-        upper = (float(e["D_B"]) + G5A_Z * float(e["se_D_B"])) / r
-        rows[ep] = {"D_px": float(e["D_B"]), "se_D_px": float(e["se_D_B"]), "upper_corrected_px": upper}
-        if worst is None or upper > rows[worst]["upper_corrected_px"]:
-            worst = ep
-    out["episodes"], out["worst"] = rows, worst
-    over = [ep for ep, v in rows.items() if v["upper_corrected_px"] > G5A_MATERIAL_PX]
-    if over:
-        out["problems"].append(f"{len(over)} episodes with a corrected 99 % bound > {G5A_MATERIAL_PX} px {over[:6]}")
-    out["flagged_bounds"] = {ep: rows.get(ep) for ep in flagged}
-    return {**out, "eligible": not out["problems"]}
+        up = float(e["D_B"]) + G5A_Z * float(e["se_D_B"])
+        groups = [float(g) for g in (e.get("group_D") or []) if _finite(g)]
+        if not isinstance(e.get("within"), dict):
+            no_within.append(ep)
+        rows[ep] = {"D_px": float(e["D_B"]), "se_D_px": float(e["se_D_B"]), "upper_px": up,
+                    "upper_corr_median_px": up / r_med if r_med else None,
+                    "upper_corr_min_px": up / r_min if r_min else None,
+                    "group_max_px": max(groups) if groups else None}
+    out["episodes"], out["no_within_episode_estimate"] = rows, no_within
+
+    def worst(k):
+        xs = [(v[k], ep) for ep, v in rows.items() if v.get(k) is not None]
+        return max(xs) if xs else None
+    out["worst"] = {k: worst(k) for k in ("upper_px", "upper_corr_median_px", "upper_corr_min_px", "group_max_px")}
+    out["over_budget"] = {f"{b:.4f}": {k: sum(1 for v in rows.values() if v.get(k) is not None and v[k] > b)
+                                       for k in ("upper_px", "upper_corr_median_px", "upper_corr_min_px")}
+                          for b in G5A_BUDGETS_PX}
+    out["flagged_rows"] = {ep: rows.get(ep) for ep in flagged}
+    return out
 
 
 # -------------------------------------------------------------------------------------------- static evidence (G4/G5b)
@@ -386,43 +422,88 @@ def _per_episode(state, K, paths_by_ep: dict, per_frame_pair: int) -> dict:
     return out
 
 
-def match_inputs(match_dirs: list, episodes: list) -> tuple[dict, dict]:
+def _episode_stamps(task_root, episode: str) -> dict:
+    """Per-camera colour timestamps (ns) of a processed episode - exactly what the RoMa worker paired on."""
+    with np.load(Path(task_root) / episode / "episodes" / episode / "normalized" / "arrays.npz") as z:
+        return {c: z[f"timestamps/{c}"].astype(np.int64) for c in CAMS}
+
+
+def _check_rows(p, z, plan_rows: list) -> set:
+    """Every (time, pair) group of match file ``p`` must be ONE planned combination: its frame_a / frame_b / dt_ns
+    equal the plan's (recomputed from the timestamps). Returns the set of (time, pair code) present."""
+    planned = {(int(k), int(pa) * 10 + int(pb)): (int(ia), int(ib), int(dt)) for k, pa, pb, ia, ib, dt in plan_rows}
+    keys = set()
+    if not len(z["pair"]):
+        return keys
+    t, q = z["time"].astype(int), z["pair"].astype(int)
+    for key in sorted(set(zip(t.tolist(), q.tolist()))):
+        sel = (t == key[0]) & (q == key[1])
+        got = {(int(a), int(b), int(d)) for a, b, d in zip(z["frame_a"][sel], z["frame_b"][sel], z["dt_ns"][sel])}
+        if key not in planned or got != {planned[key]}:
+            raise ValueError(f"{p}: rows of (time {key[0]}, pair {key[1]}) {sorted(got)[:2]} are not the planned "
+                             f"combination {planned.get(key)} recomputed from the timestamps")
+        keys.add(key)
+    return keys
+
+
+def match_inputs(match_dirs: list, episodes: list, task_root=None) -> tuple[dict, dict]:
     """({episode: [release/1 file, supplement files...]}, manifest) after validating the inputs: per episode exactly
-    one release/1 (reference-pairing) file, every further file a pairwise supplement whose ``supplement_of`` names that
-    release/1 file by sha256, no (time, pair) combination in two files, and every file's rows consistent with its
-    meta (pair frames, |dt| within its own tolerance). Raises ValueError otherwise. The manifest hashes every file."""
+    one release/1 (reference-pairing) file first and at most pairwise supplements whose ``supplement_of`` names it by
+    sha256; no (time, pair) combination in two files. With ``task_root`` (required by ``static_eval``) every file is
+    also checked against the episode's own timestamps: camera order, times, the release/1 frames (reference rule at its
+    max_dt_ms) and the supplement plan (pairwise rule, half the measured frame period - never a self-declared
+    tolerance), frame by frame. Raises ValueError otherwise. The manifest hashes every file."""
+    from s4d.realworld.workers import romav2_match_worker as W
+
     files, manifest = {}, {}
     for e in episodes:
         paths = [Path(d) / f"{e}.npz" for d in match_dirs if (Path(d) / f"{e}.npz").is_file()]
         if not paths or paths[0].parent != Path(match_dirs[0]):
             raise ValueError(f"{e}: no release/1 match file in {match_dirs[0]}")
-        entries, seen = [], set()
+        stamps = _episode_stamps(task_root, e) if task_root is not None else None
+        entries, seen, meta0 = [], set(), None
         for i, p in enumerate(paths):
             sha = _sha256(p)
             with np.load(p) as z:
                 meta = json.loads(str(z["meta"]))
-                keys = {(int(t), int(q)) for t, q in zip(z["time"].astype(int), z["pair"].astype(int))} \
-                    if len(z["pair"]) else set()
                 dts = {(int(t), int(q)): int(d) for t, q, d in zip(z["time"].astype(int), z["pair"].astype(int),
                                                                    z["dt_ns"].astype(np.int64))} if len(z["pair"]) else {}
-            if meta.get("episode_id") != e:
-                raise ValueError(f"{p}: episode_id {meta.get('episode_id')!r} != {e}")
-            pairing = meta.get("pairing", "reference")
-            if i == 0:
-                if pairing != "reference":
-                    raise ValueError(f"{p}: the first match file must be the release/1 (reference-pairing) file")
-                tol = float(meta.get("max_dt_ms", RELEASE1_MAX_DT_MS)) * 1e6
-                if any(abs(d) > tol for d in dts.values()):
-                    raise ValueError(f"{p}: rows beyond its own max_dt_ms")
-            else:
-                sup = meta.get("supplement_of") or {}
-                if pairing != "pairwise" or sup.get("sha256") != entries[0]["sha256"]:
-                    raise ValueError(f"{p}: not a pairwise supplement of {paths[0]} (supplement_of sha256 mismatch)")
-                planned = {(int(r[0]), int(r[1]) * 10 + int(r[2])): int(r[5]) for r in meta.get("pair_frames") or []}
-                tol = meta.get("max_dt_ns") or {}
-                for (k, q), d in dts.items():
-                    if planned.get((k, q)) != d or abs(d) > int(tol.get(f"{q // 10}{q % 10}", -1)):
-                        raise ValueError(f"{p}: row (time {k}, pair {q}) not in its plan or beyond its tolerance")
+                if meta.get("episode_id") != e:
+                    raise ValueError(f"{p}: episode_id {meta.get('episode_id')!r} != {e}")
+                if list(meta.get("cameras") or []) != list(CAMS):
+                    raise ValueError(f"{p}: camera order {meta.get('cameras')} != {list(CAMS)}")
+                pairing = meta.get("pairing", "reference")
+                if i == 0:
+                    if pairing != "reference":
+                        raise ValueError(f"{p}: the first match file must be the release/1 (reference-pairing) file")
+                    meta0 = meta
+                    tol = float(meta.get("max_dt_ms", RELEASE1_MAX_DT_MS)) * 1e6
+                    if any(abs(d) > tol for d in dts.values()):
+                        raise ValueError(f"{p}: rows beyond its own max_dt_ms")
+                    if stamps is not None:
+                        plan = W.plan_pairs(stamps, list(CAMS), int(meta["times"]), "reference", meta["max_dt_ms"])
+                        if {int(k): v for k, v in meta["frames"].items()} != plan["frames_used"]:
+                            raise ValueError(f"{p}: meta frames differ from the reference rule on the timestamps")
+                        keys = _check_rows(p, z, plan["pairs"])
+                    else:
+                        keys = set(dts)
+                else:
+                    sup = meta.get("supplement_of") or {}
+                    if pairing != "pairwise" or sup.get("sha256") != entries[0]["sha256"]:
+                        raise ValueError(f"{p}: not a pairwise supplement of {paths[0]} (supplement_of sha256 mismatch)")
+                    planned = [list(r) for r in meta.get("pair_frames") or []]
+                    if stamps is not None:
+                        plan = W.supplement_plan(stamps, list(CAMS), int(meta0["times"]), meta0)
+                        if sorted(map(tuple, planned)) != sorted(map(tuple, plan["pairs"])):
+                            raise ValueError(f"{p}: meta pair_frames differ from the pairwise supplement plan")
+                        keys = _check_rows(p, z, plan["pairs"])
+                    else:
+                        tol = meta.get("max_dt_ns") or {}
+                        byk = {(int(r[0]), int(r[1]) * 10 + int(r[2])): int(r[5]) for r in planned}
+                        for (k, q), d in dts.items():
+                            if byk.get((k, q)) != d or abs(d) > int(tol.get(f"{q // 10}{q % 10}", -1)):
+                                raise ValueError(f"{p}: row (time {k}, pair {q}) not in its plan or beyond its tolerance")
+                        keys = set(dts)
             dup = seen & keys
             if dup:
                 raise ValueError(f"{e}: (time, pair) combinations {sorted(dup)[:4]} in two match files")
@@ -448,7 +529,7 @@ def _dt_rows(paths_by_ep: dict) -> list:
     return rows
 
 
-def static_eval(full_path, corr_dir, evidence_dir, match_dirs: list, *, per_frame_pair: int = 200) -> dict:
+def static_eval(full_path, corr_dir, evidence_dir, match_dirs: list, task_root, *, per_frame_pair: int = 200) -> dict:
     """G4 (held-out SAM-static correspondences) and G5b (per-episode epipolar) evidence at the full solve's state, from
     the validated union of ``match_dirs`` (release/1 matches first, then the pairwise supplement). Also returns the
     same quantities on the release/1 files alone, which must reproduce the solve's stored values bitwise."""
@@ -478,7 +559,7 @@ def static_eval(full_path, corr_dir, evidence_dir, match_dirs: list, *, per_fram
     hframes = load_frames([ev_file], list(CAMS), depth_stage="foundation_stereo_depth",
                           max_frames_per_camera=1)  # = sam_validation's K (evidence frames)
     K_ev = {fr.cam: fr.K for fr in hframes}
-    union, manifest = match_inputs(match_dirs, episodes)
+    union, manifest = match_inputs(match_dirs, episodes, task_root)
     first = {e: v[:1] for e, v in union.items()}
 
     def g4(files_by_ep):
@@ -499,7 +580,8 @@ def static_eval(full_path, corr_dir, evidence_dir, match_dirs: list, *, per_fram
             "heldout_extext_sam_static": g4(union),
             "release1_reproduction": {"per_episode_extext": _per_episode(s, keff(K_corr), first, per_frame_pair),
                                       "heldout_extext_sam_static": g4(first)},
-            "dt": {"rows": _dt_rows(union)}, "inputs": manifest}
+            "dt": {"rows": _dt_rows(union)}, "inputs": manifest, "task_root": None if task_root is None else str(task_root),
+            "frames_validated": task_root is not None}
 
 
 def check_reproduction(se: dict, full: dict) -> list:
@@ -516,11 +598,22 @@ def check_reproduction(se: dict, full: dict) -> list:
 
 
 def check_static_eval(se: dict, full_path) -> None:
-    """Refuse a static evaluation that is not of this full.json or does not reproduce release/1 (recomputed here from
-    the embedded measurements, never from a cached flag)."""
+    """Refuse a static evaluation that is not a complete, timestamp-validated release/2 evaluation of this full.json,
+    or that does not reproduce release/1 (recomputed here from the embedded measurements, never a cached flag)."""
+    if se.get("format") != "s4d-calib-static-eval/2" or se.get("frames_validated") is not True:
+        raise SystemExit("not a timestamp-validated s4d-calib-static-eval/2 evaluation")
     if (se.get("full") or {}).get("sha256") != _sha256(full_path):
         raise SystemExit("the static evaluation was computed on another full.json")
-    probs = check_reproduction(se, json.loads(Path(full_path).read_text()))
+    full = json.loads(Path(full_path).read_text())
+    episodes = sorted(set(full["fit_episodes"]) | set(full["heldout_episodes"]))
+    inputs = se.get("inputs") or {}
+    if sorted(inputs) != episodes or not all(v and v[0].get("pairing") == "reference" and all(
+            x.get("sha256") for x in v) for v in inputs.values()):
+        raise SystemExit("the static evaluation's input manifest does not cover every episode with hashed files")
+    if not all(((se.get("K_sources") or {}).get(k) or {}).get("sha256") for k in ("per_episode", "heldout")) or \
+            not se.get("code"):
+        raise SystemExit("the static evaluation lacks K-source / code identity")
+    probs = check_reproduction(se, full)
     if probs:
         raise SystemExit(f"static evaluation does not reproduce release/1: {probs}")
 
@@ -554,17 +647,17 @@ def release_verdict_v2(R: dict, fixed: dict, se: dict, *, task: str, fixreg: dic
         reasons += [r for r in kept if r.startswith("G5a")] + g5b["reasons"] + [r for r in kept if r.startswith("G6")]
         held_by = sorted({r.split(":", 1)[0] for r in reasons})
         flagged = list(r1["base"]["fixedness"]["registration"]["moved"])
-        g5a = g5a_materiality(fixreg, cam, flagged, task, episodes) if held_by == ["G5a"] else None
+        g5a = g5a_materiality(fixreg, cam, flagged, task, episodes) if "G5a" in held_by else None
         checks = {g: not any(r.startswith(g + ":") for r in reasons) for g in ("G1", "G2", "G3", "G4", "G5a", "G5b",
                                                                               "G6")}
         out[cam] = {"status": "validated" if not reasons else "held", "reasons": reasons, "held_by": held_by,
-                    "checks": checks, "exception_eligible_v2": bool(g5a and g5a["eligible"]),
+                    "checks": checks, "exception_eligible": held_by == ["G5a"],
                     "g1": {k: v for k, v in g1.items() if k != "per_solve"}, "g1_per_solve": g1.get("per_solve"),
                     "g4": g4, "g5b": {k: v for k, v in g5b.items() if k != "epipolar"} | {
                         "moved": g5b["epipolar"]["moved"], "single_pair_violations":
                         g5b["epipolar"]["single_pair_violations"], "baseline_px": g5b["epipolar"]["baseline_px"],
                         "not_verifiable": g5b["epipolar"]["not_verifiable"], "dt_extension": dtc},
-                    "g5a_materiality": g5a,
+                    "g5a_decision_support": g5a,
                     "release1": {"status": r1["status"], "reasons": r1["reasons"], "held_by": r1["held_by"]}}
     return out
 
@@ -573,8 +666,9 @@ def verdict_document(R, fixed, se, *, task, fixreg=None, sources=None) -> dict:
     v = release_verdict_v2(R, fixed, se, task=task, fixreg=fixreg)
     return {"format": "s4d-calib-release-verdict/2", "criteria": V2, "gate_version": GATE_VERSION_V2, "task": task,
             "thresholds": {"g1": {k: (list(x) if isinstance(x, tuple) else x) for k, x in G1_V2.items()},
-                           "g5a_material_px": G5A_MATERIAL_PX, "g5a_z": G5A_Z,
-                           "g5b_min_verifiable": G5B_MIN_VERIFIABLE, "g5b_dt_max_diff_px": G5B_DT_MAX_DIFF_PX,
+                           "g5a": "release/1 (decision-support levels " + str(list(G5A_BUDGETS_PX)) + " px, not gates)",
+                           "g5b_min_verifiable": G5B_MIN_VERIFIABLE, "g5b_min_matches": G5B_MIN_MATCHES,
+                           "g5b_dt_max_diff_px": G5B_DT_MAX_DIFF_PX, "g5b_dt_max_p90_diff_px": G5B_DT_MAX_P90_DIFF_PX,
                            "release1_gates": GATES},
             "sources": sources or {}, "cameras": v}
 
@@ -587,6 +681,7 @@ def main(argv=None):
     s.add_argument("--corr", required=True, help="corr dir of the solve (its meta K = rig_loma_run's K)")
     s.add_argument("--evidence", required=True, help="evidence dir (frames' K = the SAM validation's K)")
     s.add_argument("--matches", action="append", required=True, help="release/1 match dir first, then supplements")
+    s.add_argument("--task-root", required=True, help="the episodes' processed roots (normalized timestamps)")
     s.add_argument("--per-frame-pair", type=int, default=200)
     s.add_argument("--check-frozen", action="store_true", help="fail unless the release/1 recomputation is bitwise")
     s.add_argument("--out", required=True)
@@ -599,7 +694,7 @@ def main(argv=None):
     v.add_argument("--out", required=True)
     a = ap.parse_args(argv)
     if a.cmd == "static-eval":
-        se = static_eval(a.full, a.corr, a.evidence, a.matches, per_frame_pair=a.per_frame_pair)
+        se = static_eval(a.full, a.corr, a.evidence, a.matches, a.task_root, per_frame_pair=a.per_frame_pair)
         probs = check_reproduction(se, json.loads(Path(a.full).read_text()))
         Path(a.out).write_text(json.dumps(se, indent=1))
         print(json.dumps({"episodes": len(se["episodes"]), "reproduction_problems": probs,
@@ -620,7 +715,7 @@ def main(argv=None):
     doc = verdict_document(R, fixed, se, task=a.task, fixreg=fixreg, sources=sources)
     Path(a.out).write_text(json.dumps(doc, indent=1))
     print(json.dumps({c: {"release1": d["release1"]["held_by"], "release2": d["status"], "held_by": d["held_by"],
-                          "exception_eligible_v2": d["exception_eligible_v2"]} for c, d in doc["cameras"].items()},
+                          "exception_eligible": d["exception_eligible"]} for c, d in doc["cameras"].items()},
                      indent=1))
 
 
