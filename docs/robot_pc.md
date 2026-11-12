@@ -48,12 +48,15 @@ R/B <= 0.02 and luma <= 0.03. The `camera_warmup` config defaults to a 10 s time
 the console and as a `camera_warmup` JSON event in `inference.h5`. Recorded replay is unchanged.
 
 **Camera names** (`config/camera_names.yaml`, user-editable; template `configs/robot_pc/camera_names.yaml`):
-`left = 135122070988`, `middle = 135122076054`, `right = 135122073201`. Evidence: camera positions in the robot base
-frame (panda_link0, +y = the ROBOT's left, teleop_collector DATASET.md) = `inv(T_cam_base)[:3, 3]` of the released rig
-documents (`assets/rig/rig-loma-drawer-open.json`, all three "validated"; `rig-loma-mug-hanging-fx.json` within 3 mm):
+`left = 135122073201`, `middle = 135122076054`, `right = 135122070988`, i.e. the OPERATOR's left / right (a person
+standing behind the cameras, facing the robot; operator request 2026-11-11, adopted in the template by the user
+decision 2026-11-12 ~16:00). Evidence: camera positions in the robot base frame (panda_link0, +y = the ROBOT's left,
+teleop_collector DATASET.md) = `inv(T_cam_base)[:3, 3]` of the released rig documents
+(`assets/rig/rig-loma-drawer-open.json`, all three "validated"; `rig-loma-mug-hanging-fx.json` within 3 mm):
 070988 (1.210, +0.421, 0.839) m, 076054 (1.193, 0.000, 0.837) m, 073201 (1.186, -0.431, 0.841) m; all ~1.2 m in front
-of the robot looking back at it (optical axes -x, down), so "left" follows the robot's left (on the right of a person
-standing behind the cameras facing the robot).
+of the robot looking back at it, so the operator's left (073201) is at the robot's right (base y < 0). Only the names
+changed: serials, calibration, the training camera order and every policy input are unchanged; folders recorded
+before 2026-11-11 use the old names (left = 070988, right = 073201).
 
 **Output folder** `inference_outputs/<task>/<method>/seed<N>/<camera names joined by ->/runNNN/` (NNN = 1 + the largest
 existing index of that prefix, created exclusively, never reused):

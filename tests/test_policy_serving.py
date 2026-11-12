@@ -1388,16 +1388,14 @@ def test_label_refresh_keeps_the_resident_model_and_execution_eligibility_fails_
         assert spec_msg.type == P.SPEC and spec_msg.header["info"]["status"] == "restricted"
         assert spec_msg.header["info"]["usage_reasons"] == ["decision"]
         decision = {"decided_by": "user", "at": "2026-11-10T21:10+09:00", "text": "fixture decision"}
+        # user decision 2026-11-12 ~16:00: a legacy frozen-encoder entry (r1: reviwo, no FQL-setting prefix) is never
+        # execution-eligible: the validator refuses the catalog and the current (restricted) table stays
         write_catalog(cat, {"r1": {**e, "usage": "execution", "execution_eligible": True,
                                    "execution_decision": decision}})
-        srv.reload_catalog()
+        assert srv.reload_catalog() is None
         info = welcome(srv)["policies"]["r1"]["info"]
-        assert info["execution_eligible"] is True and info["execution_decision"] == decision
-        assert srv._current_info(srv.policies["r1"])["execution_eligible"] is True  # what SPEC publishes
-        write_catalog(cat, {"r1": {**e, "status": "restricted", "reasons": ["x"], "usage": "execution",
-                                   "execution_eligible": True, "execution_decision": decision}})
-        assert srv.reload_catalog() is None  # refused by the validator: the current (eligible deployable) table stays
-        assert welcome(srv)["policies"]["r1"]["info"]["status"] == "deployable"
+        assert info["execution_eligible"] is False and info["status"] == "restricted"
+        assert srv._current_info(srv.policies["r1"])["execution_eligible"] is False  # what SPEC publishes
 
 
 def _dynamo_grant_entries(root, fx):
@@ -1405,14 +1403,18 @@ def _dynamo_grant_entries(root, fx):
     pol, e = fx["d1"]
     spec = describe_entry(e, root)
     assert spec["condition"] == "dynamo"
-    restricted = {**e, "condition": "dynamo", "run": "rwtest-20261112-fql-dynamo-fixture-task-s0", "seed": 0,
-                  "input_spec": spec, "status": "restricted", "reasons": ["e1 LayerNorm-spread FAIL (fixture label)"],
+    restricted = {**e, "condition": "dynamo", "run": "rwnq-20261112-fql-dynamo-fixture-task-s0", "seed": 0,
+                  "flags": ["fixture", "fql_setting_a10nq"], "input_spec": spec, "status": "restricted",
+                  "reasons": ["e1 LayerNorm-spread FAIL (fixture label)"],
                   "usage": "dry_run_replay_only", "execution_eligible": False, "usage_reasons": ["decision"],
                   "criteria": {"e1_layernorm_spread": {"pass": False, "value": 0.35, "threshold": ">= 0.5"}}}
     grant = {"decided_by": "user", "at": "2026-11-12", "text": "fixture DynaMo decision",
-             "scope": {"condition": "dynamo", "fql_setting": "legacy"},
+             "scope": {"condition": "dynamo", "fql_setting": "a10nq"},
              "acknowledged_failures": ["e1_layernorm_spread"], "checkpoint_sha256": e["sha256"]}
-    granted = {**restricted, "usage": "execution", "execution_eligible": True, "execution_decision": grant}
+    validation = {"checkpoint_sha256": e["sha256"], "pass": True, "at": "fixture", "record": "fixture.json",
+                  "checks": {k: {"pass": True} for k in ("l2_offline", "server_network", "robotpc_client")}}
+    granted = {**restricted, "usage": "execution", "execution_eligible": True, "execution_decision": grant,
+               "deploy_validation": validation}
     return pol, e, restricted, grant, granted
 
 
@@ -1438,7 +1440,7 @@ def test_restricted_grant_is_scoped_bound_published_and_needs_the_client_capabil
 
     root, fx = staged
     pol, e, restricted, grant, granted = _dynamo_grant_entries(root, fx)
-    pid = "dynamo-fixture-task-s0"
+    pid = "dynamo-fixture-task-s0-a10nq"
     cat = write_catalog(tmp_path / "catalog.json", {pid: restricted})
     with serve_catalog(root, cat) as srv:
         assert welcome(srv)["policies"][pid]["info"]["requires_client"] == []
@@ -1450,8 +1452,9 @@ def test_restricted_grant_is_scoped_bound_published_and_needs_the_client_capabil
                     {**granted, "sha256": None, "execution_decision": {k: v for k, v in grant.items()
                                                                        if k != "checkpoint_sha256"}},
                     {**granted, "execution_decision": {k: v for k, v in grant.items() if k != "scope"}},
-                    {**granted, "condition": "reviwo", "run": "rwtest-20261112-fql-reviwo-fixture-task-s0"},
-                    {**granted, "run": "rwnq-20261112-fql-dynamo-fixture-task-s0"},
+                    {**granted, "condition": "reviwo", "run": "rwnq-20261112-fql-reviwo-fixture-task-s0"},
+                    {**granted, "run": "r-fql-dynamo-fixture-task-s0", "flags": ["fixture"]},  # legacy DynaMo
+                    {**granted, "deploy_validation": None},  # not deployment-validated
                     {k: v for k, v in granted.items() if k != "input_spec"},  # no checkpoint-bound spec
                     {**granted, "status": "quarantined"}):
             write_catalog(cat, {pid: bad})
@@ -1481,7 +1484,7 @@ def test_restricted_grant_is_scoped_bound_published_and_needs_the_client_capabil
 def test_a_grant_published_while_a_session_is_being_bound_is_enforced_at_the_final_check(staged, tmp_path):
     root, fx = staged
     pol, e, restricted, grant, granted = _dynamo_grant_entries(root, fx)
-    pid = "dynamo-fixture-task-s0"
+    pid = "dynamo-fixture-task-s0-a10nq"
     cat = write_catalog(tmp_path / "catalog.json", {pid: restricted})
     with serve_catalog(root, cat) as srv:
         c, _ = client_for(srv, pid, pol)
@@ -1508,16 +1511,17 @@ def test_a_condition_label_that_differs_from_the_checkpoint_is_never_offered_or_
     root, fx = staged
     rpol, re_ = fx["r1"]
     _, _, restricted, grant, granted = _dynamo_grant_entries(root, fx)
-    pid = "dynamo-fixture-task-s0"
+    pid = "dynamo-fixture-task-s0-a10nq"
     reviwo_spec = describe_entry(re_, root)
     relabelled = {**granted, "checkpoint": re_["checkpoint"], "sha256": re_["sha256"], "export": re_.get("export"),
-                  "execution_decision": {**grant, "checkpoint_sha256": re_["sha256"]}}
+                  "execution_decision": {**grant, "checkpoint_sha256": re_["sha256"]},
+                  "deploy_validation": {**granted["deploy_validation"], "checkpoint_sha256": re_["sha256"]}}
     with pytest.raises(ValueError, match="differs from its input_spec"):  # label vs the ReViWo checkpoint's spec
         validate_catalog({"schema": CATALOG_SCHEMA, "policies": {pid: {**relabelled, "input_spec": reviwo_spec}},
                           "aliases": {}})
     # a deployable entry labelled dynamo without input_spec: described from the ReViWo checkpoint -> not offered
     plain = {k: v for k, v in re_.items()}
-    cat = write_catalog(tmp_path / "catalog.json", {"dynamo-fixture-task-s0": {**plain, "condition": "dynamo"}})
+    cat = write_catalog(tmp_path / "catalog.json", {"dynamo-fixture-task-s0-a10nq": {**plain, "condition": "dynamo"}})
     with serve_catalog(root, cat) as srv:
         w = welcome(srv)
         assert pid not in w["policies"] and "differs from the checkpoint" in str(w["unavailable"][pid]["reasons"])
@@ -1554,16 +1558,17 @@ def test_eligible_entries_are_advertised_only_with_their_checkpoint_spec_and_unc
 
     root, fx = staged
     pol, e, restricted, grant, granted = _dynamo_grant_entries(root, fx)
-    rpol, re_ = fx["r1"]
+    rpol, re_ = fx["e1"]  # an end-to-end CNN entry: the class that stays eligible (user decision 2026-11-12 ~16:00)
     decision = {"decided_by": "user", "at": "2026-11-10T21:10+09:00", "text": "fixture decision"}
     dep = {**re_, "input_spec": describe_entry(re_, root), "usage": "execution", "execution_eligible": True,
            "execution_decision": decision}
     spec = importlib.util.spec_from_file_location("infer_for_test", REPO / "scripts/robot_pc/infer.py")
     infer = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(infer)
-    cat = write_catalog(tmp_path / "catalog.json", {"dynamo-fixture-task-s0": granted, "reviwo-fixture-task-s0": dep})
+    cat = write_catalog(tmp_path / "catalog.json", {"dynamo-fixture-task-s0-a10nq": granted,
+                                                    "e2e_cnn-fixture-task-s0": dep})
     with serve_catalog(root, cat) as srv:
-        for pid, p in (("dynamo-fixture-task-s0", pol), ("reviwo-fixture-task-s0", rpol)):
+        for pid, p in (("dynamo-fixture-task-s0-a10nq", pol), ("e2e_cnn-fixture-task-s0", rpol)):
             selected = welcome(srv)["policies"][pid]["info"]
             assert selected["execution_eligible"] is True
             c, _ = client_for(srv, pid, p)

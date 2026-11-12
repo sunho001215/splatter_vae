@@ -68,7 +68,7 @@ CATALOG_SCHEMA = "s4d-policy-catalog/1"
 CATALOG_TOP_KEYS = frozenset({"schema", "generated_utc", "criteria_sha256", "policies", "aliases", "note"})
 CATALOG_ENTRY_KEYS = frozenset(POLICY_KEYS | {"seed", "run", "status", "flags", "reasons", "input_spec", "criteria",
                                              "usage", "usage_reasons", "execution_eligible",
-                                             "execution_decision", "actor"})
+                                             "execution_decision", "actor", "deploy_validation"})
 CATALOG_REQUIRED_KEYS = frozenset({"checkpoint", "sha256", "condition", "task", "status"})
 CATALOG_STATUSES = ("deployable", "restricted", "quarantined")  # restricted: served, a criterion FAILED (see reasons)
 SERVABLE_STATUSES = ("deployable", "restricted")
@@ -81,12 +81,20 @@ SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 FQL_SETTING_PREFIXES = {"rwnq-": "a10nq", "rwa100-": "a100"}
 LEGACY_SETTING = "legacy"
 FQL_RUN_RE = re.compile(r"^(?P<prefix>.+)-fql-(?P<condition>[a-z0-9_]+)-(?P<task>[a-z0-9-]+)-s(?P<seed>\d+)$")
+# Execution eligibility by FQL setting (validator-side allowlist, user decisions 2026-11-12 ~16:00; a catalog cannot
+# widen it): end-to-end CNN policies keep the legacy E2E setting; every frozen-encoder condition is eligible ONLY in the
+# new setting a10nq (alpha 10 + normalize_q_loss true) and only with a passed deployment-validation record bound to
+# the checkpoint; legacy frozen-encoder policies (alpha 10, normalize_q_loss false) and the a100 comparison are never
+# eligible (never re-enabled automatically).
+E2E_CONDITIONS = frozenset({"e2e_cnn"})
+E2E_ELIGIBLE_SETTINGS = (LEGACY_SETTING,)
+FROZEN_ELIGIBLE_SETTINGS = ("a10nq",)
+DEPLOY_VALIDATION_CHECKS = ("l2_offline", "server_network", "robotpc_client")
 # The ONLY (condition, FQL setting) pairs whose ``restricted`` entries (a criterion FAILED, not waived) may be
-# execution-eligible, each under its recorded user decision (validator-side allowlist: a catalog cannot widen it).
-# User decision 2026-11-12 (Task 3): "DynaMo must support actual execution on the Robot PC, not just dry-run testing"
-# -> the restricted DynaMo entries of the legacy setting (alpha 10, normalize_q_loss false); a new FQL setting (a10nq,
-# a100) awaits its own decision, 3D-MVP is never covered.
-RESTRICTED_EXECUTION_SCOPES = frozenset({("dynamo", LEGACY_SETTING)})
+# execution-eligible, each under its recorded user decision. User decisions 2026-11-12 (Task 3, extended ~16:00):
+# DynaMo must execute; its representation quality / failed LN-spread criterion alone must not block it -> the
+# new-setting (a10nq) DynaMo entries (legacy DynaMo is a legacy frozen-encoder policy: never eligible).
+RESTRICTED_EXECUTION_SCOPES = frozenset({("dynamo", "a10nq")})
 # A restricted execution grant is published with this client requirement: the server binds such a policy only for a
 # client whose HELLO declares the capability (it shows the failed criterion, the warning and the decision before
 # START), so an older client cannot execute it without the notice (Codex review of 1847fdd, P1).
@@ -205,6 +213,35 @@ def _check_restricted_grant(source, pid, entry: dict, decision) -> None:
                          "checkpoint_sha256 (both valid sha256 hex, equal)")
 
 
+def _check_deploy_validation(source, pid, entry: dict) -> None:
+    v = entry.get("deploy_validation")
+    checks = v.get("checks") if isinstance(v, dict) else None
+    if not isinstance(checks, dict) or v.get("pass") is not True or v.get("checkpoint_sha256") != entry.get("sha256") \
+            or not all(isinstance(checks.get(k), dict) and checks[k].get("pass") is True
+                       for k in DEPLOY_VALIDATION_CHECKS):
+        raise ValueError(f"{source}: policy {pid}: an execution-eligible new-setting entry needs a passed "
+                         "deploy_validation {checkpoint_sha256 (== sha256), pass, checks "
+                         f"{list(DEPLOY_VALIDATION_CHECKS)}}}")
+
+
+def _check_eligible_setting(source, pid, entry: dict) -> None:
+    """Execution eligibility by condition class and FQL setting (derived from the entry's identity)."""
+    try:
+        setting = entry_fql_setting(pid, entry)
+    except ValueError as exc:
+        raise ValueError(f"{source}: {exc}") from None
+    cond = entry.get("condition")
+    if cond in E2E_CONDITIONS:
+        if setting not in E2E_ELIGIBLE_SETTINGS:
+            raise ValueError(f"{source}: policy {pid}: an end-to-end entry of setting {setting} is never eligible")
+        return
+    if setting not in FROZEN_ELIGIBLE_SETTINGS:
+        raise ValueError(f"{source}: policy {pid}: a frozen-encoder entry of FQL setting {setting} is never "
+                         "execution-eligible (user decision 2026-11-12 ~16:00: legacy frozen-encoder policies are not "
+                         "re-enabled; a100 comparison not authorized)")
+    _check_deploy_validation(source, pid, entry)
+
+
 def _check_eligibility(source, pid, entry: dict) -> None:
     """``execution_eligible: true`` only for a ``deployable`` entry with usage ``execution`` and a non-empty user
     ``execution_decision`` {decided_by: user, at, text} (user decision 2026-11-10 21:10), or for a ``restricted`` entry
@@ -213,9 +250,12 @@ def _check_eligibility(source, pid, entry: dict) -> None:
     checkpoint sha256 (the server verifies the weights against it); quarantined entries can never be eligible; usage
     ``execution`` without eligibility is refused (fail closed)."""
     eligible, usage, decision = entry.get("execution_eligible") is True, entry.get("usage"), entry.get("execution_decision")
+    if entry.get("deploy_validation") is not None and not eligible:
+        raise ValueError(f"{source}: policy {pid}: a deploy_validation record on a non-eligible entry")
     if eligible:
         if not valid_sha256(entry.get("sha256")):
             raise ValueError(f"{source}: policy {pid}: an execution-eligible entry names its checkpoint sha256")
+        _check_eligible_setting(source, pid, entry)
         if entry["status"] == "restricted":
             _check_restricted_grant(source, pid, entry, decision)
         elif entry["status"] != "deployable":

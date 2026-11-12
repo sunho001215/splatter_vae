@@ -9,8 +9,11 @@
 #   135122070988  (1.210, +0.421, 0.839) m   optical axis (-0.81, -0.40, -0.42)   -> y > 0: robot's LEFT
 #   135122076054  (1.193, +0.000, 0.837) m   optical axis (-0.87, -0.03, -0.49)   -> y = 0: MIDDLE
 #   135122073201  (1.186, -0.431, 0.841) m   optical axis (-0.79, +0.37, -0.49)   -> y < 0: robot's RIGHT
-# All three stand ~1.2 m in front of the robot looking back at it, so for a person standing behind the cameras
-# (facing the robot) "left" is on THEIR RIGHT: names follow the ROBOT's left / right, as the base frame does.
-left: "135122070988"
+# All three stand ~1.2 m in front of the robot looking back at it. Names follow the OPERATOR's left / right (a
+# person standing behind the cameras, facing the robot), i.e. the OPPOSITE of the robot's: changed 2026-11-11 at the
+# operator's request (before: left = 135122070988, right = 135122073201); adopted in this template 2026-11-12
+# (user decision ~16:00). Output folders recorded before 2026-11-11 use the old names. Serials, calibration, the
+# training camera order and every policy input are unchanged: only the user-facing names moved.
+left: "135122073201"
 middle: "135122076054"
-right: "135122073201"
+right: "135122070988"

@@ -153,59 +153,61 @@ def test_stage_refuses_inventories_of_another_policy_id_rule(tmp_path, capsys, m
         assert message in json.loads(capsys.readouterr().out)["error"]
 
 
-MVP_REASON = ("user decision 2026-11-12 ~00:20: 3D-MVP (single + multiview) stays NOT execution-eligible for the real "
-              "robot (dry run / replay only), although its native-depth reruns pass criteria a-f")
-
-
-def _entry(condition, setting=None, status="deployable"):
+def _entry(condition, setting=None, status="deployable", validation=None):
     run = f"{'rwnq-1' if setting == 'a10nq' else 'rwa100-1' if setting == 'a100' else 'r'}-fql-{condition}-t-s0"
     return S.catalog_entry({
         "run": run, "condition": condition, "task": "t", "seed": 0, "fql_setting": setting,
         "policy_id": S.policy_id(condition, "t", 0, setting), "policy": {"path": f"runs/{run}/policy.pt",
                                                                        "sha256": "c" * 64},
         "export": {"path": "runs/p/encoder.pt", "pretrain_run": "p", "sha256": "e" * 64},
-        "class": {"status": status, "reasons": [] if status == "deployable" else ["x"], "flags": []}})
+        "class": {"status": status, "reasons": [] if status == "deployable" else ["x"], "flags": []}},
+        {"condition": condition}, validation)
+
+
+VALIDATED = {"checkpoint_sha256": "c" * 64, "pass": True, "at": "t", "record": "r.json",
+             "checks": {k: {"pass": True} for k in S.VALIDATION_CHECKS}}
 
 
 @pytest.mark.parametrize("condition", ["mvp3d_single", "mvp3d_multiview"])
-def test_3d_mvp_stays_ineligible_exactly_as_the_live_correction(condition):
-    """User decision 2026-11-12 ~00:20: a deployable 3D-MVP entry stays deployable but dry run / replay only, with the
-    fields of realworld-ops/serving/eligibility-20261112/mvp3d_ineligible.py (a re-stage must not flip it back)."""
-    e = _entry(condition)
-    assert e["status"] == "deployable" and e["usage"] == "dry_run_replay_only" and e["execution_eligible"] is False
-    assert "execution_decision" in e and e["execution_decision"] is None
-    assert e["usage_reasons"] == [MVP_REASON, S.NOT_ELIGIBLE] and S.INELIGIBLE_CONDITIONS[condition] == MVP_REASON
-    nq = _entry(condition, "a10nq")  # its rwnq variant: both reasons
-    assert nq["usage_reasons"] == [MVP_REASON, S.setting_reason("a10nq"), S.NOT_ELIGIBLE]
-    assert nq["execution_eligible"] is False and nq["execution_decision"] is None
-    validate_catalog(json.loads(json.dumps(S.build_catalog({"a": e, "b": nq}, aliases={}, criteria_sha256=None))))
+def test_3d_mvp_follows_the_setting_rules_without_a_blanket_block(condition):
+    """User decision 2026-11-12 ~16:00: no method-level 3D-MVP block. Legacy 3D-MVP (incl. the native-depth reruns) is
+    a legacy frozen-encoder policy (not eligible); new-setting 3D-MVP is eligible once its deployment validation passed;
+    the old vision-blind rwcal-20261109 runs stay quarantined by decision."""
+    legacy = _entry(condition)
+    assert legacy["status"] == "deployable" and legacy["execution_eligible"] is False
+    assert legacy["usage_reasons"] == [S.LEGACY_FROZEN_REASON, S.NOT_ELIGIBLE] and legacy["execution_decision"] is None
+    pending = _entry(condition, "a10nq")
+    assert pending["execution_eligible"] is False and pending["usage_reasons"] == [S.AWAITING_VALIDATION, S.NOT_ELIGIBLE]
+    ok = _entry(condition, "a10nq", validation=VALIDATED)
+    assert ok["execution_eligible"] is True and ok["execution_decision"]["text"] == S.AUTO_NQ_DECISION["text"]
+    assert S.quarantine_decision(f"rwcal-20261109-fql-{condition}-drawer-open-s0")
+    validate_catalog(json.loads(json.dumps(S.build_catalog(
+        {f"{condition}-t-s0": legacy, f"{condition}-t-s0-a10nq": ok}, aliases={}, criteria_sha256=None))))
 
 
-def test_new_setting_variants_default_to_not_eligible_and_alpha10_rules_are_unchanged():
+def test_new_setting_and_legacy_rules():
     nq = _entry("reviwo", "a10nq")
     assert nq["status"] == "deployable" and nq["execution_eligible"] is False and nq["usage"] == "dry_run_replay_only"
-    assert nq["usage_reasons"] == ["new FQL setting a10nq: execution eligibility awaits a user decision",
-                                   S.NOT_ELIGIBLE] and nq["execution_decision"] is None
-    assert _entry("sincro", "a100")["usage_reasons"][0] == S.setting_reason("a100")
-    base = _entry("reviwo")  # the alpha-10 rule (user decision 2026-11-10 21:10) is unchanged
-    assert base["execution_eligible"] is True and base["usage"] == "execution" and base["execution_decision"]
-    dyn = _entry("dynamo", status="restricted")  # no published FAILED criterion: the grant cannot apply
+    assert nq["usage_reasons"] == [S.AWAITING_VALIDATION, S.NOT_ELIGIBLE] and nq["execution_decision"] is None
+    assert _entry("sincro", "a100", validation=VALIDATED)["usage_reasons"][0] == S.COMPARISON_REASON
+    base = _entry("reviwo")  # legacy frozen-encoder: no longer eligible (user decision 2026-11-12 ~16:00)
+    assert base["execution_eligible"] is False and base["usage_reasons"][0] == S.LEGACY_FROZEN_REASON
+    e2e = _entry("e2e_cnn")  # E2E CNN stays eligible
+    assert e2e["execution_eligible"] is True and e2e["execution_decision"]
+    dyn = _entry("dynamo", status="restricted")  # legacy DynaMo: legacy frozen-encoder, never eligible
     assert dyn["usage"] == "dry_run_replay_only" and dyn["usage_reasons"][0] == C.LN_SPREAD_DECISION
-    assert "execution_decision" not in dyn
-    dyn_nq = _entry("dynamo", "a10nq", status="restricted")  # a new setting keeps its own pending decision
-    assert dyn_nq["execution_eligible"] is False and S.setting_reason("a10nq") in dyn_nq["usage_reasons"]
     q = _entry("mvp3d_single", status="quarantined")
     assert q["usage"] == "none" and "execution_decision" not in q
 
 
 def test_bcflow_variants_of_ineligible_bases_stay_ineligible_even_with_a_decision():
     decision = {"decided_by": "user", "at": "t", "text": "bc_flow may execute"}
-    for base in (_entry("mvp3d_multiview"), _entry("reviwo", "a10nq")):
+    for base in (_entry("mvp3d_multiview"), _entry("reviwo"), _entry("reviwo", "a10nq"),
+                 _entry("reviwo", "a10nq", validation=VALIDATED)):
         pid, v = S.bcflow_variant("x-s0", base, decision=decision)
         assert v["execution_eligible"] is False and v["usage"] == "dry_run_replay_only"
-        assert v["usage_reasons"][0] == S.BCFLOW_REASON and base["usage_reasons"][0] in v["usage_reasons"]
-        assert "execution_decision" not in v
-    _, ok = S.bcflow_variant("x-s0", _entry("reviwo"), decision=decision)  # eligible alpha-10 base: as before
+        assert v["usage_reasons"][0] == S.BCFLOW_REASON and "execution_decision" not in v
+    _, ok = S.bcflow_variant("e2e_cnn-t-s0", _entry("e2e_cnn"), decision=decision)  # eligible E2E base
     assert ok["execution_eligible"] is True
     synced = S.sync_bcflow_variants({"m-s0": _entry("mvp3d_single"), "m-s0+bcflow": {**ok, "condition": "mvp3d_single"}})
     assert synced["m-s0+bcflow"]["execution_eligible"] is False  # a granted decision does not survive an ineligible base
@@ -213,14 +215,13 @@ def test_bcflow_variants_of_ineligible_bases_stay_ineligible_even_with_a_decisio
 
 def test_bcflow_decisions_never_reach_excluded_bases_even_without_the_key():
     """Codex review of 618ed2f: an existing catalog entry WITHOUT execution_eligible (older catalogs) must not let a
-    bc_flow decision make a 3D-MVP or new-setting base's variant eligible."""
+    bc_flow decision make an excluded base's variant eligible."""
     decision = {"decided_by": "user", "at": "t", "text": "bc_flow may execute"}
     bare = {"checkpoint": "a/policy.pt", "sha256": "0" * 64, "task": "t", "status": "deployable"}
     for base in ({**bare, "condition": "mvp3d_single", "run": "r-fql-mvp3d_single-t-s0"},
                  {**bare, "condition": "reviwo", "run": "rwnq-20261111-fql-reviwo-t-s0"},
-                 {**bare, "condition": "reviwo", "run": "rwa100-20261111-fql-reviwo-t-s0"}):
+                 {**bare, "condition": "reviwo", "run": "rwa100-20261111-fql-reviwo-t-s0"},
+                 {**bare, "condition": "reviwo", "run": "r-fql-reviwo-t-s0"},
+                 {**bare, "condition": "e2e_cnn", "run": "r-fql-e2e_cnn-t-s0"}):  # no explicit eligibility: blocked
         _, v = S.bcflow_variant("x-s0", base, decision=decision)
         assert v["execution_eligible"] is False and v["usage"] == "dry_run_replay_only"
-        assert v["usage_reasons"][1:] == S.exclusions(base["condition"], S.fql_setting(base["run"]))
-    _, ok = S.bcflow_variant("x-s0", {**bare, "condition": "reviwo", "run": "r-fql-reviwo-t-s0"}, decision=decision)
-    assert ok["execution_eligible"] is True  # an alpha-10 base without the key: as before

@@ -65,6 +65,7 @@ SUPERSEDED = {
                                                "bookkeeping cfc4b21: 'old fqldata/fql rows superseded, paused')",
 }
 CATALOG_NAME = "catalog.json"
+VALIDATION_DIR = Path("/home/ws/ws/realworld-ops/serving/validation")  # auto-eligibility deployment-validation records
 # released rig documents per task (realworld-ops/serving/API.md; DEP's validated replays)
 RIG_DOCUMENTS = {"drawer-open": "rig-loma-drawer-open.json", "mug-hanging": "rig-loma-mug-hanging-fx.json"}
 
@@ -120,7 +121,14 @@ class Lifecycle:
             return "completed_synced" if codes and all(c == 0 for c in codes) else "synced_nonzero_exit"
         if "failed" in kinds[(self.last_launch or 0):]:
             return "failed"
-        if self.after_launch("exited") or self.after_launch("remote_exited"):
+        launch = self.events[self.last_launch] if self.last_launch is not None else {}
+        exits = self.after_launch("exited")
+        if launch.get("host", "local") == "local" and exits and not self.after_launch("remote_exited") and \
+                all(e.get("code") == 0 for e in exits) and kinds[-1] == "exited":
+            # a LOCAL run that exited 0 has its results in place (no sync step; the scheduler records results_synced
+            # only for remote runs); completion itself is still checked from completion.json + config (criterion b)
+            return "completed_local"
+        if exits or self.after_launch("remote_exited"):
             return "exited_unsynced"
         return "running"
 
@@ -232,7 +240,7 @@ def pretraining_row(src: Sources, run: str, life: Lifecycle | None, job: dict | 
     completion = _json(d / "completion.json")
     a = C.pretraining_complete(config, completion) if config else C.check(False, reason="no local config.yaml")
     state = life.state if life else "never_launched"
-    if state != "completed_synced":
+    if state not in ("completed_synced", "completed_local"):
         a = {**a, "pass": False, "reason": f"registry state {state}" + (f"; {a['reason']}" if "reason" in a else "")}
     return {"run": run, "kind": "encoder_pretraining", "condition": m["condition"], "task": m["task"],
             "registry_state": state, "superseded": superseded(run), "budget": {k: a.get(k) for k in ("kind", "budget")},
@@ -249,7 +257,7 @@ def ours_export_row(src: Sources, run: str, life: Lifecycle | None, pre_life: Li
     completion = _json(d / "completion.json")
     a = C.pretraining_complete(config, completion) if config else C.check(False, reason=f"no local {pre}/config.yaml")
     states = {pre: pre_life.state if pre_life else "never_launched", run: life.state if life else "never_launched"}
-    bad = {k: v for k, v in states.items() if v != "completed_synced"}
+    bad = {k: v for k, v in states.items() if v not in ("completed_synced", "completed_local")}
     if bad:
         a = {**a, "pass": False, "reason": f"registry state {bad}" + (f"; {a['reason']}" if "reason" in a else "")}
     return {"run": run, "kind": "encoder_pretraining", "condition": m["condition"], "task": m["task"],
@@ -266,7 +274,7 @@ def fql_row(src: Sources, run: str, life: Lifecycle | None, job: dict | None) ->
     state = life.state if life else "never_launched"
     b = C.fql_complete(config, completion) if config else C.check(False, reason="no local config.yaml",
                                                                     budget=(job or {}).get("fql_budget"))
-    if state != "completed_synced":
+    if state not in ("completed_synced", "completed_local"):
         b = {**b, "pass": False, "reason": f"registry state {state}" + (f"; {b['reason']}" if "reason" in b else "")}
     setting = fql_setting(run)
     if (wrong := setting_check(run, config)) is not None:
@@ -438,7 +446,7 @@ def classify_rows(rows: list[dict], checks: dict[str, dict]) -> None:
 
 
 # ------------------------------------------------------------------------------------------------ catalog
-def catalog_entry(row: dict, input_spec: dict | None = None) -> dict:
+def catalog_entry(row: dict, input_spec: dict | None = None, validation: dict | None = None) -> dict:
     """Catalog entry of a classified FQL row (paths relative to the checkpoint root, mirroring ``runs/``).
     ``input_spec``: the advertised unbound spec (``server.describe_entry`` of the local files; the server checks it
     against the loaded policy)."""
@@ -463,12 +471,12 @@ def catalog_entry(row: dict, input_spec: dict | None = None) -> dict:
            "flags": list(row["class"]["flags"]) + ([f"fql_setting_{setting}"] if setting else []),
            "criteria": criteria,
            **usage_of(status, row["condition"], setting, checkpoint_sha256=row["policy"]["sha256"],
-                      failed_criteria=failed)}
+                      failed_criteria=failed, validation=validation)}
     if status == "restricted" and out["execution_eligible"] and (input_spec or {}).get("condition") != row["condition"]:
         # a restricted grant is published only with the checkpoint's described input_spec of the same condition (the
         # server binds it to the weights; the validator refuses a grant without it): otherwise dry run / replay only
         out = {k: v for k, v in out.items() if k not in ("usage", "execution_eligible", "execution_decision",
-                                                          "usage_reasons")}
+                                                          "usage_reasons", "deploy_validation")}
         out.update(usage_of(status, row["condition"], setting))
     if input_spec is not None:
         out["input_spec"] = input_spec
@@ -476,50 +484,88 @@ def catalog_entry(row: dict, input_spec: dict | None = None) -> dict:
 
 
 EXECUTION_DECISION = {"decided_by": "user", "at": "2026-11-10T21:10+09:00",
-                      "text": "I think you should make execution_eligible=True for the trained policies. (scope, relayed "
-                              "by the coordinator: every catalog entry with status deployable, including future "
-                              "deployable stagings; restricted DynaMo and quarantined 3D-MVP stay false)"}
-NOT_ELIGIBLE = "not execution-eligible: only deployable entries are (user decision 2026-11-10 21:10)"
-# User decision 2026-11-12 ~00:20 (relayed by the coordinator): 3D-MVP stays NOT execution-eligible even when deployable
-# (exactly the live catalog correction realworld-ops/serving/eligibility-20261112/mvp3d_ineligible.py), and entries of a
-# new FQL setting (FQLNQ rows: a10nq; the a100 comparison) default to NOT eligible until the user decides.
-INELIGIBLE_CONDITIONS = {
-    "mvp3d_single": "user decision 2026-11-12 ~00:20: 3D-MVP (single + multiview) stays NOT execution-eligible for the "
-                    "real robot (dry run / replay only), although its native-depth reruns pass criteria a-f"}
-INELIGIBLE_CONDITIONS["mvp3d_multiview"] = INELIGIBLE_CONDITIONS["mvp3d_single"]
+                      "text": "I think you should make execution_eligible=True for the trained policies. (scope since the "
+                              "user decision 2026-11-12 ~16:00: the end-to-end CNN policies, which stay eligible after "
+                              "the established validation; legacy frozen-encoder policies are no longer eligible)"}
+NOT_ELIGIBLE = "not execution-eligible"
+# User decisions 2026-11-12 ~16:00 (relayed by the coordinator), replacing the 2026-11-10 / 2026-11-12 ~00:20 rules:
+# * legacy frozen-encoder FQL policies (alpha 10, normalize_q_loss false; every condition but e2e_cnn) are NOT
+#   execution-eligible and are never re-enabled automatically (checkpoints / results stay; only eligibility changes);
+# * E2E CNN policies stay eligible (they passed the established deployment validation);
+# * new-setting FQL policies (a10nq: alpha 10 + normalize_q_loss true) of EVERY condition (ours, reviwo, sincro, dynamo,
+#   snerl, mvp3d_single, mvp3d_multiview) become eligible AUTOMATICALLY once trained and once the deployment validation
+#   passed (``deploy_validation`` record bound to the checkpoint: offline deploy-vs-training equality, server direct ==
+#   network, robot-PC client replay == direct); no per-policy approval; manual execution through the existing workflow;
+# * the a100 comparison setting stays NOT eligible; the blanket 3D-MVP block is removed (old vision-blind 3D-MVP stays
+#   quarantined by QUARANTINE; the legacy native-depth 3D-MVP reruns are legacy frozen-encoder policies).
+LEGACY_FROZEN_REASON = ("user decision 2026-11-12 ~16:00: legacy frozen-encoder FQL policies (alpha 10, "
+                        "normalize_q_loss false) are NOT execution-eligible and never re-enabled automatically "
+                        "(checkpoints and results kept)")
+COMPARISON_REASON = "FQL comparison setting a100: NOT execution-eligible unless separately authorized"
+AWAITING_VALIDATION = ("new-setting (a10nq) policy: execution-eligible automatically once its deployment validation "
+                       "passes (offline equality, server direct == network, robot-PC client replay); not yet passed")
+AUTO_NQ_DECISION = {"decided_by": "user", "at": "2026-11-12 ~16:00 KST (relayed by the coordinator)",
+                    "text": "AUTOMATICALLY ENABLE new-setting FQL policies (agent.alpha=10 + agent.normalize_q_loss=true) "
+                            "as soon as training finishes AND the required deployment validations pass (Ours, ReViWo, "
+                            "SinCro, DynaMo, SNeRL, 3D-MVP single, 3D-MVP multi-view); no per-policy user approval; "
+                            "available for manual execution through the existing workflow only"}
+VALIDATION_CHECKS = ("l2_offline", "server_network", "robotpc_client")  # == config.DEPLOY_VALIDATION_CHECKS
 
 
 def setting_reason(setting: str) -> str:
-    return f"new FQL setting {setting}: execution eligibility awaits a user decision"
+    return COMPARISON_REASON if setting == "a100" else AWAITING_VALIDATION if setting == "a10nq" else \
+        f"FQL setting {setting}: not execution-eligible"
 
 
 def exclusions(condition: str | None, setting: str | None) -> list[str]:
-    """Reasons a deployable entry is nevertheless NOT execution-eligible (3D-MVP; a new FQL setting); [] otherwise."""
-    return ([INELIGIBLE_CONDITIONS[condition]] if condition in INELIGIBLE_CONDITIONS else []) + \
-        ([setting_reason(setting)] if setting else [])
+    """Reasons an entry of this condition / FQL setting (None = legacy) can never be execution-eligible by rule (the
+    validation-gated a10nq setting is not an exclusion); [] otherwise."""
+    if setting is None or setting == "legacy":
+        return [] if condition == "e2e_cnn" else [LEGACY_FROZEN_REASON]
+    return [] if setting == "a10nq" else [setting_reason(setting)]
 
 
-# User decision 2026-11-12 (Task 3, relayed by the coordinator): DynaMo must EXECUTE on the robot PC. Its entries stay
-# ``restricted`` with the e1 LayerNorm-spread gate FAILED (not waived; no criterion, threshold or class changes); the
-# grant has a machine-readable scope (condition + FQL setting), names the failed criteria it acknowledges and is bound to
-# each checkpoint's sha256. The validator re-checks all of it against its own allowlist
-# (config.RESTRICTED_EXECUTION_SCOPES: dynamo / legacy only; a new FQL setting such as a10nq awaits its own decision,
-# 3D-MVP is never covered). The warning travels with every entry (usage_reasons, robot-PC console, session record).
+def validation_record(path: Path | None, run: str, checkpoint_sha256: str) -> dict | None:
+    """The deployment-validation record of a run (``<dir>/<run>.json``, written by the auto-eligibility pipeline) as a
+    compact catalog summary, or None when absent / not passed / bound to other weights."""
+    if path is None:
+        return None
+    f = Path(path) / f"{run}.json"
+    if not f.is_file():
+        return None
+    try:
+        rec = json.loads(f.read_text())
+    except ValueError:
+        return None
+    checks = rec.get("checks") or {}
+    if rec.get("checkpoint_sha256") != checkpoint_sha256 or rec.get("run") != run or \
+            not all((checks.get(k) or {}).get("pass") is True for k in VALIDATION_CHECKS):
+        return None
+    return {"checkpoint_sha256": checkpoint_sha256, "pass": True, "at": rec.get("at"), "record": str(f),
+            "checks": {k: {kk: vv for kk, vv in checks[k].items() if kk in ("pass", "compared", "equal", "windows")}
+                       for k in VALIDATION_CHECKS}}
+
+
+# DynaMo: its restricted status (e1 LayerNorm-spread FAILED, not waived) alone does not block execution (user decisions
+# 2026-11-12 Task 3 and ~16:00); scope = the new-setting DynaMo policies (legacy DynaMo is a legacy frozen-encoder
+# policy). Every other check stays, including the deployment validation. Validator allowlist:
+# config.RESTRICTED_EXECUTION_SCOPES.
 RESTRICTED_EXECUTION_DECISIONS = {
-    "dynamo": {"decided_by": "user", "at": "2026-11-12 (KST; Task 3 request relayed by the coordinator)",
-               "text": "DynaMo must support actual execution on the Robot PC, not just dry-run testing. Investigate and "
-                       "implement whatever is necessary to enable its real execution through the existing "
-                       "robot-control and policy-serving interfaces. (scope: the restricted DynaMo entries of the "
-                       "legacy FQL setting; the e1 LayerNorm-spread criterion stays FAILED, not waived)",
-               "scope": {"condition": "dynamo", "fql_setting": "legacy"},
+    "dynamo": {"decided_by": "user", "at": "2026-11-12 (Task 3) and ~16:00 KST (relayed by the coordinator)",
+               "text": "DynaMo must support actual execution on the Robot PC, not just dry-run testing. The exception "
+                       "stops DynaMo being blocked solely by representation quality / the failed LayerNorm-spread "
+                       "criterion; extended to new-setting (a10nq) DynaMo policies; keep the diagnostic results and "
+                       "warnings and every other validation. (the e1 LayerNorm-spread criterion stays FAILED, not "
+                       "waived)",
+               "scope": {"condition": "dynamo", "fql_setting": "a10nq"},
                "acknowledged_failures": ["e1_layernorm_spread"]}}
 RESTRICTED_EXECUTION_WARNINGS = {
     "dynamo": "WARNING: execution-eligible by user decision 2026-11-12, NOT a validated-performance claim; DIAG "
-              "assessed it NOT healthy enough for an execution test as-is (DIAG-REPORT.md 4). Known "
-              "offline findings: e1 LayerNorm-spread FAIL (0.33-0.36 < 0.5); one-step actor 24-30 mm off the "
-              "demonstrations with an optimistic critic (realworld-ops/diag/DIAG-REPORT.md 3, 7, 8); representation "
-              "weaker than ReViWo/SinCro, view-specific, most sensitive to the camera colour start-up cast "
-              "(realworld-ops/diag/DYNAMO-REPRESENTATION.md); never run on the robot before 2026-11-12"}
+              "assessed the legacy DynaMo policies NOT healthy enough for an execution test as-is (DIAG-REPORT.md 4). "
+              "Known offline findings (legacy setting): e1 LayerNorm-spread FAIL (0.33-0.36 < 0.5); one-step actor "
+              "24-30 mm off the demonstrations with an optimistic critic (realworld-ops/diag/DIAG-REPORT.md 3, 7, 8); "
+              "representation weaker than ReViWo/SinCro, view-specific, most sensitive to the camera colour start-up "
+              "cast (realworld-ops/diag/DYNAMO-REPRESENTATION.md)"}
 
 
 def restricted_grant(status: str, condition: str | None, setting: str | None, checkpoint_sha256: str | None,
@@ -527,14 +573,13 @@ def restricted_grant(status: str, condition: str | None, setting: str | None, ch
     """The user execution decision covering a ``restricted`` entry (bound to its checkpoint), or None: only for a
     (condition, setting) pair in the validator's allowlist with a recorded decision whose scope names it, a valid
     checkpoint sha256, and published FAILED criteria that are non-empty and all acknowledged (the validator's rule).
-    ``setting``: the run id's FQL setting (None = legacy)."""
+    ``setting``: the run id's FQL setting (None = legacy). The deployment validation is checked by ``usage_of``."""
     from ops.policy_serving.config import LEGACY_SETTING, RESTRICTED_EXECUTION_SCOPES, valid_sha256
 
     decision = RESTRICTED_EXECUTION_DECISIONS.get(condition)
     setting = setting or LEGACY_SETTING
     if status != "restricted" or decision is None or (condition, setting) not in RESTRICTED_EXECUTION_SCOPES or \
             decision["scope"] != {"condition": condition, "fql_setting": setting} or \
-            exclusions(condition, None if setting == LEGACY_SETTING else setting) or \
             not valid_sha256(checkpoint_sha256) or not failed_criteria or \
             not set(failed_criteria) <= set(decision["acknowledged_failures"]):
         return None
@@ -542,41 +587,57 @@ def restricted_grant(status: str, condition: str | None, setting: str | None, ch
 
 
 def usage_of(status: str, condition: str | None = None, setting: str | None = None, *,
-             checkpoint_sha256: str | None = None, failed_criteria=None) -> dict:
-    """Usage restriction of a staged entry (user decision 2026-11-10 21:10): a ``deployable`` entry (every criterion
-    passed) is execution-eligible with the recorded decision; ``restricted`` stays dry run / replay only, quarantined
-    is not usable; anything else fails closed (a missing field means not eligible for every consumer). Execution on
-    the robot PC still needs its own explicit manual mode (``infer.py`` without --dry-run + the operator's start).
-    Exceptions for a deployable entry (status unchanged; dry run / replay only, ``execution_decision`` None): a
-    3D-MVP condition (``INELIGIBLE_CONDITIONS``, user 2026-11-12 ~00:20) and any new FQL ``setting`` (rwnq / rwa100
-    rows: awaiting a user decision); both reasons are listed when both apply.
-    Exception for a ``restricted`` entry (status, reasons and the FAILED criterion unchanged): a condition with a
-    user decision in ``RESTRICTED_EXECUTION_DECISIONS`` (DynaMo, user 2026-11-12) and no exclusion is
-    execution-eligible with that decision bound to ``checkpoint_sha256`` and its warning, provided the entry's FAILED
-    criteria (``failed_criteria``, the catalog ``criteria`` keys with pass false) are all acknowledged by it."""
-    held = exclusions(condition, setting)
-    grant = restricted_grant(status, condition, setting, checkpoint_sha256, failed_criteria)
-    if grant is not None:
-        return {"usage": "execution", "execution_eligible": True, "execution_decision": grant,
-                "usage_reasons": [C.LN_SPREAD_DECISION, RESTRICTED_EXECUTION_WARNINGS[condition],
-                                  f"user decision {grant['at']}: restricted {condition} -> execution-eligible with the "
-                                  f"FAILED criteria {grant['acknowledged_failures']} acknowledged; robot-PC manual "
-                                  "execution mode still required"]}
-    if status == "deployable" and held:
-        return {"usage": "dry_run_replay_only", "execution_eligible": False, "execution_decision": None,
-                "usage_reasons": held + [NOT_ELIGIBLE]}
-    if status == "deployable":
-        return {"usage": "execution", "execution_eligible": True, "execution_decision": dict(EXECUTION_DECISION),
-                "usage_reasons": [f"user decision {EXECUTION_DECISION['at']}: deployable (all criteria passed) -> "
-                                  "execution-eligible; robot-PC manual execution mode still required"]}
+             checkpoint_sha256: str | None = None, failed_criteria=None, validation: dict | None = None) -> dict:
+    """Usage restriction of a staged entry (user decisions 2026-11-10 21:10, 2026-11-12 Task 3 and ~16:00); a missing
+    field means not eligible for every consumer (fail closed); execution on the robot PC still needs its manual mode.
+    * quarantined: not usable; anything but deployable / restricted: dry run / replay only;
+    * e2e_cnn (legacy E2E setting) deployable: execution-eligible (``EXECUTION_DECISION``);
+    * legacy frozen-encoder (every other condition, no FQL-setting prefix): NOT eligible, never re-enabled;
+    * a100: NOT eligible;
+    * a10nq deployable: eligible (``AUTO_NQ_DECISION`` bound to the checkpoint) once ``validation`` (the passed
+      deployment-validation summary, ``validation_record``) is given; before that dry run / replay only;
+    * a10nq restricted (e1 LN spread only, criterion kept FAILED): eligible only with the scoped user decision of its
+      condition (``restricted_grant``: DynaMo) AND the deployment validation; its warning travels in usage_reasons."""
     if status == "quarantined":
         return {"usage": "none", "execution_eligible": False,
                 "usage_reasons": ["quarantined: refused by the server unless --allow-quarantined (pipeline tests)",
                                   NOT_ELIGIBLE]}
-    reasons = [NOT_ELIGIBLE]
-    if status == "restricted":
-        reasons[:0] = [C.LN_SPREAD_DECISION, *held]
-    return {"usage": "dry_run_replay_only", "execution_eligible": False, "usage_reasons": reasons}
+    if status not in ("deployable", "restricted"):
+        return {"usage": "dry_run_replay_only", "execution_eligible": False, "usage_reasons": [NOT_ELIGIBLE]}
+    lead = [C.LN_SPREAD_DECISION] if status == "restricted" else []
+    held = exclusions(condition, setting)
+    if held:
+        return {"usage": "dry_run_replay_only", "execution_eligible": False, "execution_decision": None,
+                "usage_reasons": lead + held + [NOT_ELIGIBLE]}
+    validated = validation is not None and validation.get("checkpoint_sha256") == checkpoint_sha256 and \
+        validation.get("pass") is True
+    if status == "deployable" and condition == "e2e_cnn" and setting in (None, "legacy"):
+        return {"usage": "execution", "execution_eligible": True, "execution_decision": dict(EXECUTION_DECISION),
+                "usage_reasons": [f"user decision {EXECUTION_DECISION['at']} (E2E CNN kept eligible by the user "
+                                  "decision 2026-11-12 ~16:00): deployable (all criteria passed) -> execution-eligible; "
+                                  "robot-PC manual execution mode still required"]}
+    grant = restricted_grant(status, condition, setting, checkpoint_sha256, failed_criteria) \
+        if status == "restricted" else None
+    if status == "restricted" and grant is None:
+        return {"usage": "dry_run_replay_only", "execution_eligible": False, "execution_decision": None,
+                "usage_reasons": lead + [NOT_ELIGIBLE]}
+    if not validated:
+        return {"usage": "dry_run_replay_only", "execution_eligible": False, "execution_decision": None,
+                "usage_reasons": lead + [AWAITING_VALIDATION, NOT_ELIGIBLE]}
+    if grant is not None:
+        return {"usage": "execution", "execution_eligible": True, "execution_decision": grant,
+                "deploy_validation": validation,
+                "usage_reasons": [C.LN_SPREAD_DECISION, RESTRICTED_EXECUTION_WARNINGS[condition],
+                                  f"user decision {grant['at']}: restricted {condition} ({setting}) -> "
+                                  f"execution-eligible with the FAILED criteria {grant['acknowledged_failures']} "
+                                  "acknowledged and the deployment validation passed; robot-PC manual execution mode "
+                                  "still required"]}
+    return {"usage": "execution", "execution_eligible": True,
+            "execution_decision": {**AUTO_NQ_DECISION, "checkpoint_sha256": checkpoint_sha256},
+            "deploy_validation": validation,
+            "usage_reasons": [f"user decision {AUTO_NQ_DECISION['at']}: new-setting (a10nq) FQL policy, deployable and "
+                              "deployment-validated -> execution-eligible automatically; robot-PC manual execution "
+                              "mode still required"]}
 
 
 def local_input_spec(src: Sources, row: dict, sidecar_dir: Path) -> dict:
@@ -620,8 +681,12 @@ def bcflow_variant(base_id: str, base: dict, *, decision: dict | None = None) ->
                      if base["status"] != "deployable" else []))
         # exclusions are re-derived from the base's condition and run id, so an existing entry without the key (or an
         # older catalog) cannot carry a 3D-MVP / new-setting base to eligibility (Codex review of 618ed2f)
-        excluded = exclusions(base.get("condition"), fql_setting(str(base.get("run") or "")))
-        blocked = bool(excluded) or base.get("execution_eligible") is False
+        setting = fql_setting(str(base.get("run") or ""))
+        excluded = exclusions(base.get("condition"), setting)
+        if setting == "a10nq":  # the auto-eligibility covers the validated ONE-STEP policy, not its experimental BC flow
+            excluded = [AWAITING_VALIDATION.split(":")[0] + ": its +bcflow variant has no deployment validation of its "
+                        "own (dry run / replay only)"]
+        blocked = bool(excluded) or base.get("execution_eligible") is not True
         if decision is not None and base["status"] == "deployable" and not blocked and \
                 decision.get("checkpoint_sha256", base["sha256"]) == base["sha256"]:
             if decision.get("decided_by") != "user" or "bc_flow" not in str(decision.get("text", "")):
@@ -941,7 +1006,7 @@ def _evaluated_shas(row: dict, sidecar_dir: Path) -> dict[str, str]:
 def withdrawn_entry(entry: dict, row: dict) -> dict:
     """A staged entry whose run no longer passes: quarantined with the re-evaluation's reasons (never left
     selectable); the staged files stay (immutable) but the server refuses it."""
-    entry = {k: v for k, v in entry.items() if k != "execution_decision"}
+    entry = {k: v for k, v in entry.items() if k not in ("execution_decision", "deploy_validation")}
     return {**entry, "status": "quarantined", "usage": "none", "execution_eligible": False, "flags": [],
             "criteria": C.criteria_summary(row["condition"], row.get("checks") or {}),
             "usage_reasons": ["withdrawn by re-evaluation"],
@@ -1031,7 +1096,9 @@ def cmd_stage(a, *, hook: bool = False) -> int:
                 if row["class"]["status"] in ("deployable", "restricted") or labelled(row):
                     files.update(staging_files(src, row, a.sidecar_dir))
                     evaluated.update(_evaluated_shas(row, a.sidecar_dir))
-                    entries[row["policy_id"]] = catalog_entry(row, local_input_spec(src, row, a.sidecar_dir))
+                    entries[row["policy_id"]] = catalog_entry(
+                        row, local_input_spec(src, row, a.sidecar_dir),
+                        validation_record(getattr(a, "validation_dir", None), run, row["policy"]["sha256"]))
                     report[run]["staged"] = bool(a.execute)
                     report[run]["catalog_status"] = row["class"]["status"]
             if files:
@@ -1046,6 +1113,79 @@ def cmd_stage(a, *, hook: bool = False) -> int:
         publish(entries)
     print(json.dumps({"execute": bool(a.execute), "runs": report}, indent=1, default=str))
     return 0 if all(r["status"] in ("deployable", "restricted") for r in report.values()) or not hook else 3
+
+
+USAGE_KEYS = ("usage", "execution_eligible", "execution_decision", "usage_reasons", "deploy_validation")
+
+
+def relabel_entry(pid: str, entry: dict, validation_dir: Path | None) -> dict:
+    """An existing one-step catalog entry with its usage re-derived under the CURRENT rules (status, criteria,
+    artefacts, reasons unchanged except the restricted-class decision line, which follows criteria.LN_SPREAD_DECISION);
+    a10nq entries take their deployment-validation record from ``validation_dir``. Entries that are not deployable /
+    restricted (quarantined, withdrawn) are returned unchanged."""
+    if entry.get("status") not in ("deployable", "restricted") or entry.get("actor", "onestep") != "onestep":
+        return dict(entry)
+    setting = fql_setting(str(entry.get("run") or ""))
+    failed = {k for k, v in (entry.get("criteria") or {}).items() if isinstance(v, dict) and v.get("pass") is False}
+    validation = validation_record(validation_dir, entry["run"], entry["sha256"]) if setting == "a10nq" else None
+    u = usage_of(entry["status"], entry.get("condition"), setting, checkpoint_sha256=entry.get("sha256"),
+                 failed_criteria=failed, validation=validation)
+    if entry["status"] == "restricted" and u["execution_eligible"] and \
+            (entry.get("input_spec") or {}).get("condition") != entry.get("condition"):
+        u = usage_of(entry["status"], entry.get("condition"), setting)  # a restricted grant needs the bound spec
+    out = {k: v for k, v in entry.items() if k not in USAGE_KEYS}
+    out.update(u)
+    if entry["status"] == "restricted":
+        out["reasons"] = [C.LN_SPREAD_DECISION if (r.startswith("user decision 2026-11-") and "LayerNorm-spread" in r)
+                          else r for r in entry.get("reasons", [])]
+    return out
+
+
+def relabel_catalog(catalog: dict, validation_dir: Path | None) -> dict:
+    """The catalog with every one-step entry relabelled (``relabel_entry``) and the bc_flow variants re-derived from
+    their bases; aliases, criteria hash and artefacts unchanged."""
+    entries = {pid: relabel_entry(pid, e, validation_dir) for pid, e in (catalog.get("policies") or {}).items()}
+    entries = sync_bcflow_variants(entries)
+    aliases = {k: v for k, v in (catalog.get("aliases") or {}).items() if v in entries}
+    return build_catalog(entries, aliases=aliases, criteria_sha256=catalog.get("criteria_sha256"))
+
+
+def cmd_relabel(a) -> int:
+    """``relabel``: re-derive the usage / execution eligibility of every catalog entry under the current rules (no
+    criteria re-evaluation, no file staging): ``--from-json/--out-json`` transforms a local copy; ``--execute`` relabels
+    the host catalog under the staging lock and reloads the servers."""
+    import fcntl
+
+    from ops.policy_serving.config import validate_catalog
+
+    def diff(old: dict, new: dict) -> dict:
+        return {pid: {k: [old["policies"].get(pid, {}).get(k), e.get(k)] for k in ("usage", "execution_eligible")
+                      if old["policies"].get(pid, {}).get(k) != e.get(k)}
+                for pid, e in new["policies"].items()
+                if any(old["policies"].get(pid, {}).get(k) != e.get(k) for k in USAGE_KEYS + ("reasons",))}
+
+    if a.from_json:
+        old = json.loads(a.from_json.read_text())
+        new = relabel_catalog(old, a.validation_dir)
+        validate_catalog(json.loads(json.dumps(new)))
+        if a.out_json:
+            a.out_json.write_text(json.dumps(new, indent=1) + "\n")
+        print(json.dumps({"changed": diff(old, new), "eligible": sorted(
+            p for p, e in new["policies"].items() if e.get("execution_eligible") is True)}, indent=1))
+        return 0
+    host = Host(ssh=a.ssh)
+    a.lock_file.parent.mkdir(parents=True, exist_ok=True)
+    log = lambda m: print(m, file=sys.stderr, flush=True)  # noqa: E731
+    with open(a.lock_file, "a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        old = read_host_catalog(host)
+        new = relabel_catalog(old, a.validation_dir)
+        changed = diff(old, new)
+        if changed or not catalog_copies_agree(host):
+            write_host_catalog(host, new, execute=a.execute, log=log)
+            signal_reload(host, execute=a.execute, log=log)
+    print(json.dumps({"execute": bool(a.execute), "changed": changed}, indent=1))
+    return 0
 
 
 def cmd_bcflow(a) -> int:
@@ -1118,6 +1258,15 @@ def main(argv=None) -> int:
         s.add_argument("--ssh", default="irsl")
         s.add_argument("--lock-file", type=Path, default=Path("/home/ws/ws/realworld-ops/serving/.pol-staging.lock"))
         s.add_argument("--bwlimit", default="10m")
+        s.add_argument("--validation-dir", type=Path, default=VALIDATION_DIR,
+                       help="deployment-validation records <run>.json (auto-eligibility pipeline)")
+    r = sub.add_parser("relabel", help="re-derive every catalog entry's execution eligibility under the current rules")
+    r.add_argument("--execute", action="store_true", help="relabel the HOST catalog + reload (default: dry run)")
+    r.add_argument("--from-json", type=Path, help="transform this local catalog copy instead of the host catalog")
+    r.add_argument("--out-json", type=Path, help="with --from-json: write the relabelled catalog here")
+    r.add_argument("--validation-dir", type=Path, default=VALIDATION_DIR)
+    r.add_argument("--ssh", default="irsl")
+    r.add_argument("--lock-file", type=Path, default=Path("/home/ws/ws/realworld-ops/serving/.pol-staging.lock"))
     b = sub.add_parser("bcflow-variant", help="EXPERIMENTAL: serve staged policies' BC flow as <id>+bcflow")
     b.add_argument("policies", nargs="+", help="staged one-step policy ids")
     b.add_argument("--decision-json", type=Path, help="user decision {decided_by: user, at, text naming bc_flow}; "
@@ -1130,6 +1279,8 @@ def main(argv=None) -> int:
         return cmd_inventory(a)
     if a.cmd == "bcflow-variant":
         return cmd_bcflow(a)
+    if a.cmd == "relabel":
+        return cmd_relabel(a)
     return cmd_stage(a, hook=a.cmd == "hook")
 
 

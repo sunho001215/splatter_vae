@@ -16,7 +16,7 @@ from ops.robot_pc import config as C
 from ops.robot_pc.safety import ExecutionRefused
 
 REPO = Path(__file__).resolve().parents[1]
-NAMES = {"left": "135122070988", "middle": "135122076054", "right": "135122073201"}
+NAMES = {"left": "135122073201", "middle": "135122076054", "right": "135122070988"}  # operator left / right
 ALL3 = [["135122070988", "135122073201", "135122076054"]]
 
 
@@ -39,9 +39,10 @@ def test_camera_names_file_is_the_rig_geometry_mapping(tmp_path):
         _infer().camera_names(cfg)
 
 
-def test_rig_geometry_puts_left_at_plus_y_middle_at_zero_right_at_minus_y():
+def test_rig_geometry_puts_the_operators_left_at_minus_y_middle_at_zero_right_at_plus_y():
     """Camera positions in the robot base frame from the released rig documents (calrel-6c3b9ec drawer-open; the
-    documents ship with the robot-PC bundle, the robot-PC selfcheck re-checks them there): base +y = robot's left."""
+    documents ship with the robot-PC bundle, the robot-PC selfcheck re-checks them there): base +y = robot's left, so
+    the OPERATOR's left (names since 2026-11-11, template 2026-11-12) is at y < 0."""
     released = {"135122070988": (1.210, 0.421, 0.839), "135122076054": (1.193, 0.000, 0.837),
                 "135122073201": (1.186, -0.431, 0.841)}
     cams = {}
@@ -50,14 +51,15 @@ def test_rig_geometry_puts_left_at_plus_y_middle_at_zero_right_at_minus_y():
         T_base_cam[:3, 3] = p
         cams[f"{serial}/color"] = {"T_cam_base": np.linalg.inv(T_base_cam).reshape(-1).tolist()}
     y = {k.split("/")[0]: np.linalg.inv(np.array(v["T_cam_base"]).reshape(4, 4))[1, 3] for k, v in cams.items()}
-    assert y[NAMES["left"]] > 0.3 and abs(y[NAMES["middle"]]) < 0.05 and y[NAMES["right"]] < -0.3
+    assert y[NAMES["left"]] < -0.3 and abs(y[NAMES["middle"]]) < 0.05 and y[NAMES["right"]] > 0.3
 
 
 def test_resolve_cameras_names_count_and_training_contract():
     resolve = _infer().resolve_cameras
     single = {"views": 1, "trained_camera_orders": ALL3}
     assert resolve(single, NAMES, None) == ["135122070988"]  # default: the contract's first trained camera
-    assert resolve(single, NAMES, "right") == ["135122073201"]
+    assert resolve(single, NAMES, "right") == ["135122070988"]
+    assert resolve(single, NAMES, "left") == ["135122073201"]
     assert resolve(single, NAMES, None, "135122076054") == ["135122076054"]
     with pytest.raises(ExecutionRefused, match="single-view: give exactly ONE camera"):
         resolve(single, NAMES, "left,right")
@@ -67,10 +69,10 @@ def test_resolve_cameras_names_count_and_training_contract():
     with pytest.raises(ExecutionRefused, match="not a trained camera"):
         resolve(only_left, NAMES, "middle")
     multi = {"views": 3, "trained_camera_orders": [["135122070988", "135122076054", "135122073201"]]}
-    with pytest.raises(ExecutionRefused, match="needs 3 cameras in training order: left,middle,right"):
+    with pytest.raises(ExecutionRefused, match="needs 3 cameras in training order: right,middle,left"):
         resolve(multi, NAMES, "left,right")
     with pytest.raises(ExecutionRefused, match="multi-view .* not implemented"):
-        resolve(multi, NAMES, "left,middle,right")
+        resolve(multi, NAMES, "right,middle,left")
 
 
 def test_list_shows_task_method_seed_eligibility(monkeypatch, capsys, tmp_path):
@@ -96,7 +98,7 @@ def test_list_shows_task_method_seed_eligibility(monkeypatch, capsys, tmp_path):
     out = capsys.readouterr().out.splitlines()
     rows = {r.split()[3]: r.split() for r in out[1:] if r.strip() and not r.startswith("camera names")}
     assert rows["e2e_cnn-drawer-open-s0"][:5] == ["drawer-open", "e2e_cnn", "0", "e2e_cnn-drawer-open-s0", "yes"]
-    assert rows["dynamo-drawer-open-s0"][4] == "no" and rows["dynamo-drawer-open-s0"][-1] == "left,right,middle"
+    assert rows["dynamo-drawer-open-s0"][4] == "no" and rows["dynamo-drawer-open-s0"][-1] == "right,left,middle"
     assert "e2e_cnn-drawer-open" not in rows and "1 legacy alias ids not shown" in out[-1]
 
 
