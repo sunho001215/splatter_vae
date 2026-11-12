@@ -54,6 +54,11 @@ def main(argv=None) -> int:
     state = StaticLatencyState(st["pose7"], st["q7"], st["gripper_register"])
     pid, task, spec, info = cli.choose_policy(cfg, args)
     cams = selection.session_cameras(spec, args.camera)
+    try:  # multi-view: the validated live M5 helper on all trained cameras in training order, before any device opens
+        live_m5 = C.session_m5(cfg, task, spec, cams)
+    except C.M5Unavailable as exc:
+        print(f"dry run REFUSED: multi-view policy {pid}: {exc}. Nothing was connected.", file=sys.stderr)
+        return 3
     rig = cli.rig_document(cfg, task)
     corrections = selection.depth_corrections(spec, cams, rig, identity=args.identity_depth)
     cc = cfg.get("cameras") or {}
@@ -67,7 +72,9 @@ def main(argv=None) -> int:
         choices = selection.session_choices(spec, cams, native_hw=native_hw, K_native=K, rig_document=rig,
                                             identity_depth=args.identity_depth)
         client = cli.connect(cfg, args, pid, choices, "robot-pc-dry-run")
-        live_m5 = C.m5(cfg, task, cams, float(client.spec["frame_period_s"])) if client.spec["views"] > 1 else None
+        if live_m5 is not None and (list(client.spec["camera_ids"]) != cams or
+                                    float(client.spec["frame_period_s"]) != float(spec["frame_period_s"])):
+            raise SystemExit("dry run REFUSED: the bound session's cameras / period differ from the selection's")
         cameras.bind(K)
         sink = DryRunSink(args.log)
         loop = PolicyLoop(client, state, C.limits(cfg, task), sink, pad_run_start=not args.no_pad)
@@ -79,7 +86,9 @@ def main(argv=None) -> int:
                    **summarize(rows, route=args.route, mode="live-dry-run"), "loop_counts": dict(loop.counts),
                    "camera_errors": dict(cameras.errors), "client_stats": dict(client.stats)}
         if live_m5 is not None:
-            summary["m5"] = dict(live_m5.counts)
+            summary["m5"] = {**dict(live_m5.counts), "asset_sha256": live_m5.motion.asset_sha256,
+                             "max_sync_ns": live_m5.timeline.max_sync_ns, "camera_order": list(live_m5.sets.cameras),
+                             "irregular_intervals": live_m5.sets.irregular_intervals}
     finally:
         rows_out.close()
         cameras.close()

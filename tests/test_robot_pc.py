@@ -629,6 +629,70 @@ def test_live_m5_equals_the_training_rule_incl_rejections_and_missing_state(toy_
     assert live.counts["rejected_motion"] == int((want[complete] > 0.005).sum())
 
 
+class _DequeTimeline:
+    """The previous deque-based ``StateTimeline`` (until 2026-11-12): the reference of the array-ring one."""
+
+    def __init__(self, max_sync_ns, capacity):
+        self.max_sync_ns = int(max_sync_ns)
+        self._rows, self._grip = collections.deque(maxlen=capacity), collections.deque(maxlen=capacity)
+
+    def add_robot(self, t_ns, q7):
+        self._rows.append((int(t_ns), np.asarray(q7, np.float64).reshape(7)))
+
+    def add_gripper(self, t_ns, register):
+        self._grip.append((int(t_ns), float(register)))
+
+    def ready(self, t_ns):
+        if not self._rows or not self._grip or self._rows[-1][0] < t_ns:
+            return False
+        return self._grip[-1][0] >= next(t for t, _ in self._rows if t >= t_ns)
+
+    def states(self, stamps_ns):
+        from s4d.realworld.pipeline import robot_state_at
+
+        stamps = np.asarray(stamps_ns, np.int64)
+        if not self._rows or not self._grip:
+            return [None] * len(stamps), np.zeros(len(stamps), bool)
+        t = np.array([r[0] for r in self._rows], np.int64)
+        q = np.stack([r[1] for r in self._rows])
+        gt = np.array([g[0] for g in self._grip], np.float64) / 1e9
+        gp = np.array([g[1] for g in self._grip], np.float64)
+        trajectory = SimpleNamespace(timestamps_ns=t, joint_positions=q, gripper_state=np.interp(t / 1e9, gt, gp))
+        qs, gs, inside, _ = robot_state_at(SimpleNamespace(trajectory=trajectory), stamps, self.max_sync_ns)
+        return list(zip(qs, gs)), np.asarray(inside, bool)
+
+
+def test_state_timeline_ring_equals_the_deque_timeline_through_wraparound():
+    """The array-ring StateTimeline holds exactly the last ``capacity`` rows / samples: ``ready`` and ``states`` equal
+    the deque implementation's bit for bit while both buffers wrap many times (NaN joints and a gap included)."""
+    rng = np.random.default_rng(5)
+    new, old = m5_live.StateTimeline(20_000_000, capacity=37), _DequeTimeline(20_000_000, 37)
+    t, g = 7 * 10**14, 7 * 10**14 + 3_000_000
+    with pytest.raises(ValueError, match="increasing"):
+        bad = m5_live.StateTimeline(20_000_000, capacity=4)
+        bad.add_robot(5, np.zeros(7))
+        bad.add_robot(5, np.zeros(7))
+    for step in range(400):
+        for _ in range(int(rng.integers(1, 6))):
+            t += int(rng.integers(500_000, 2_000_000)) + (300_000_000 if step == 200 else 0)
+            q = rng.normal(size=7) if step != 120 else np.full(7, np.nan)
+            new.add_robot(t, q)
+            old.add_robot(t, q)
+        if rng.random() < 0.4:
+            g += int(rng.integers(5_000_000, 25_000_000))
+            register = float(rng.uniform(3, 230))
+            new.add_gripper(g, register)
+            old.add_gripper(g, register)
+        stamps = t - rng.integers(0, 40_000_000, 3)
+        assert [new.ready(int(x)) for x in stamps] == [old.ready(int(x)) for x in stamps]
+        (sn, okn), (so, oko) = new.states(stamps), old.states(stamps)
+        np.testing.assert_array_equal(okn, oko)
+        for a, b in zip(sn, so):
+            np.testing.assert_array_equal(a[0], b[0])
+            np.testing.assert_array_equal(a[1], b[1])
+    assert len(new._t) == len(old._rows) == 37 and len(new._gt) == len(old._grip)
+
+
 # ------------------------------------------------------------------------------------------------ replay / dry run
 def _loop(client, state, sink, clock=None, max_age_ms=200.0):
     return loop.PolicyLoop(client, state, ActionLimits(max_action_age_ms=max_age_ms), sink,
@@ -2611,3 +2675,458 @@ def test_gripper_freeze_refuses_late_targets():
     worker.freeze()
     worker.set_closure(0.4, 10**19)
     assert worker._target is None
+
+
+# ----------------------------------------------------------------------------- LIVE multi-view (fakes only, no device)
+def test_live_multiview_session_accepts_only_the_trained_camera_order_with_an_m5_helper():
+    from ops.robot_pc import live
+
+    cams = list(CAMS)
+    spec = {"views": 3, "camera_ids": cams, "trained_camera_orders": [cams]}
+    helper = SimpleNamespace(sets=SimpleNamespace(cameras=cams), pending=False)
+
+    def session(cams, spec, m5):
+        return live.LiveSession(client=SimpleNamespace(spec=spec), cameras=None, cams=cams, limits=None,
+                                state=live.LiveState(SimpleNamespace(samples=[]), live.StaticGripper()),
+                                executor=None, sink=sinks.DryRunSink(), live_m5=m5)
+
+    refused = [(cams[::-1], spec, helper, "training order"),  # wrong order
+               (cams[:2], spec, helper, "training order"),  # wrong count
+               (cams, {**spec, "camera_ids": cams[::-1]}, helper, "training order"),  # bound order differs
+               (cams, spec, None, "M5 helper"),  # no validated helper
+               (cams, spec, SimpleNamespace(sets=SimpleNamespace(cameras=cams[::-1])), "M5 helper's cameras"),
+               (["cam_a"], {"views": 1, "camera_ids": ["cam_a"]}, helper, "single-view")]
+    for c, s, m, why in refused:
+        with pytest.raises(safety.ExecutionRefused, match=why):
+            session(c, s, m)
+    s = session(cams, spec, helper)
+    assert s.sync is not None and s.sync.cams == cams
+    assert session(["cam_a"], {"views": 1, "camera_ids": ["cam_a"]}, None).sync is None  # single view unchanged
+
+
+def test_sync_set_feed_is_exactly_once_in_order_and_steps_on_the_newest_set():
+    from ops.robot_pc import syncsets
+
+    got = []
+    m5 = SimpleNamespace(add_robot=lambda t, q: got.append(("r", t)), add_gripper=lambda t, g: got.append(("g", t)))
+    samples, grips = [], []
+
+    class State:
+        def rows(self, after, up_to):
+            return ([(t, q) for t, q in samples if after < t <= up_to], [(t, g) for t, g in grips if after < t <= up_to])
+
+    feed = syncsets.StateFeed(m5, State())
+    feed.feed(10**12)  # nothing before the first frame
+    samples += [(t, np.zeros(7)) for t in (100, 200)]
+    grips += [(150, 3.0)]
+    feed.start(1_000_000_050)  # rows from 1 s before the first frame (t > 50)
+    feed.feed(250)
+    samples += [(240, np.zeros(7)), (300, np.zeros(7))]  # 240: stamped before the last poll, appended after it
+    grips.append((260, 3.0))
+    feed.feed(400)
+    feed.feed(400)
+    assert got == [("r", 100), ("r", 200), ("g", 150), ("r", 240), ("r", 300), ("g", 260)]
+
+    calls, steps, counts = [], [], collections.Counter()
+    client = SimpleNamespace(add_sync_set=lambda ids, d: calls.append((dict(ids), d)))
+    sets = [{"frame_ids": {"cam_a": k, "cam_b": k + 5}, "surface_disp_m": d, "observation_time_ns": 10 * k}
+            for k, d in enumerate((0.001, np.inf, 0.004))]
+    syncsets.step_sets(client, sets, ["cam_a", "cam_b"], lambda *a: steps.append(a), newest_only=True, counts=counts)
+    assert calls == [({"cam_a": 0, "cam_b": 5}, 0.001), ({"cam_a": 1, "cam_b": 6}, None), ({"cam_a": 2, "cam_b": 7}, 0.004)]
+    assert steps == [({"cam_a": 2, "cam_b": 7}, 20, "set:2", 0.004)] and counts["skipped_behind"] == 2
+    steps.clear()
+    syncsets.step_sets(client, sets, ["cam_a", "cam_b"], lambda *a: steps.append(a), newest_only=False, counts=counts)
+    assert [s[2] for s in steps] == ["set:0", "set:1", "set:2"] and steps[1][3] is None
+    assert counts["skipped_behind"] == 2
+
+
+def test_live_sync_sets_poll_only_on_news_and_step_on_the_newest_final_set():
+    from ops.robot_pc import syncsets
+
+    cams = ["cam_a", "cam_b"]
+    final = []
+    polls, fed, sent = [], [], []
+
+    class M5:
+        sets = SimpleNamespace(cameras=cams)
+        pending = False
+
+        def add_frame(self, *a):
+            fed.append(("frame", *a))
+
+        def add_robot(self, t, q):
+            fed.append(("robot", t))
+
+        def add_gripper(self, t, g):
+            fed.append(("gripper", t))
+
+        def poll(self):
+            polls.append(1)
+            out, final[:] = list(final), []
+            return out
+
+    state = SimpleNamespace(rows=lambda a, b: ([(t, None) for t in (5, 10) if a < t <= b], [(7, 3.0)] if a < 7 <= b else []))
+    m5 = M5()
+    sync = syncsets.LiveSyncSets(SimpleNamespace(add_sync_set=lambda ids, d: sent.append((ids["cam_a"], d))), m5,
+                                 state, cams)
+    counts = collections.Counter()
+    assert sync.newest_step(100, counts) is None and not polls  # nothing new: no poll
+    sync.add_frame("cam_b", 3, 8)
+    final += [{"frame_ids": {"cam_a": k, "cam_b": k}, "surface_disp_m": 0.001 * k, "observation_time_ns": k}
+              for k in (1, 2, 3)]
+    assert sync.newest_step(100, counts) == ({"cam_a": 3, "cam_b": 3}, 3, "set:3", 0.003)
+    assert sent == [(1, 0.001), (2, 0.002), (3, 0.003)] and counts["skipped_behind"] == 2
+    assert fed == [("frame", "cam_b", 3, 8), ("robot", 5), ("robot", 10), ("gripper", 7)]
+    assert sync.newest_step(200, counts) is None and len(polls) == 1  # no new frame, nothing pending
+    m5.pending = True  # a final set waits for member states: poll on every iteration
+    assert sync.newest_step(300, counts) is None and len(polls) == 2
+    with pytest.raises(ValueError, match="training order"):
+        syncsets.LiveSyncSets(None, m5, state, cams[::-1])
+
+
+class _RecordedAsLive:
+    """The synthetic recording as LIVE captures: ONE frame per loop iteration in the replay's arrival order
+    (``replay.frame_events``), each preprocessed exactly as ``PolicyClient.add_frame_native`` does in replay; the
+    state stream reaches the frame's arrival (capture + 65 ms) when it is released."""
+
+    def __init__(self, rec, cams, events, offset_ns, client, state):
+        from s4d.rwlearn.deploy import preprocess_frame
+
+        corr = client.choices["native_depth_correction"]
+        cameras = RecordedCameras(rec, cams, depth=True)
+        self.cams, self.state, self.queue = list(cams), state, []
+        for t_rec, _, cam, idx in events:
+            n = cameras.native(cam, idx)
+            out = preprocess_frame(n["rgb"], depth=n["depth"], valid=n["valid"], K_native=cameras.K_native(cam),
+                                   out_size=int(client.spec["image_hw"][0]), native_correction=corr[cam])
+            t = int(t_rec) + offset_ns
+            out.update(frame_id=int(n["seq"]), capture_ns=t, arrival_ns=t + replay.FRAME_ARRIVAL_NS,
+                       preprocess_ns=(0, 0), native_hw=list(n["rgb"].shape[:2]),
+                       metadata={"alignment": f"{n['alignment']} (recorded replay)",
+                                 "depth_timestamp_ns": int(n["depth_timestamp_ns"]) + offset_ns,
+                                 "depth_source": "native_realsense", "native_correction": corr[cam]})
+            self.queue.append((cam, out))
+        self.current = None
+
+    def drain(self, cam):
+        import time
+
+        if cam == self.cams[0]:  # the first drain of a loop iteration releases the next frame
+            self.current = self.queue.pop(0) if self.queue else None
+            if self.current is not None:
+                self.state.horizon = self.current[1]["capture_ns"] + replay.FRAME_ARRIVAL_NS
+                self.current[1]["preprocess_ns"] = (time.monotonic_ns(),) * 2
+        return [self.current[1]] if self.current is not None and self.current[0] == cam else []
+
+
+class _RecordedLiveState:
+    """``LiveState`` stand-in on the recorded robot / gripper stream (rows only up to the released frame's arrival)."""
+
+    kind, label = "live", "recorded stream as a live source (test)"
+
+    def __init__(self, rec, offset_ns):
+        self.recorded, self.horizon = robot_state.RecordedRobotState(rec, offset_ns), -1
+        self.gripper = SimpleNamespace(origin="measured (recorded)")
+        self.reader = SimpleNamespace(samples=[])
+
+    def bound_state(self, t_ns):
+        return self.recorded.bound_state(t_ns)
+
+    def rows(self, after_ns, up_to_ns):
+        return self.recorded.rows(after_ns, min(up_to_ns, self.horizon))
+
+    def latest(self):
+        return None  # the 500 Hz executor idles: this test compares policy steps, not setpoints
+
+
+def test_live_multiview_session_steps_equal_the_recorded_replay(policies, recording, toy_robot):
+    """The live session's multi-view path (LiveSession + LiveSyncSets) on the recorded frames / state in arrival
+    order == the recorded replay (realtime pace: newest set per poll, as live): the same sets reach the server with
+    the same displacements, the same steps are taken on the same end frames with the same measured state, and the
+    fixture policy's actions are bitwise equal (same validation noise seeds)."""
+    import time
+
+    from ops.robot_pc import live
+
+    rec = RecordedEpisode(recording)
+    cams = list(CAMS)
+    stop_at = len(rec.timestamps_ns(cams[0])) - 1  # no end-of-recording flush (a live stream has no end)
+    ref0 = int(rec.timestamps_ns(cams[0])[0])
+    with serve({"mvp3d-mv": policies["mvp3d_multiview"]}) as srv:
+        def connect(sets):
+            client = PolicyClient("127.0.0.1", srv.port, policy_id="mvp3d-mv", choices=multiview_choices(rec, cams),
+                                  step_timeout_s=60, ttl_ms=60_000)
+            client.connect()
+            real = client.add_sync_set
+            client.add_sync_set = lambda ids, d: (sets.append((dict(ids), d)), real(ids, d))[1]
+            return client
+
+        replay_sets, live_sets = [], []
+        client = connect(replay_sets)
+        cameras = RecordedCameras(rec, cams, depth=True)
+        clock = replay.ReplayClock(ref0, "realtime")
+        state = robot_state.RecordedRobotState(rec, clock.offset_ns)
+        m5 = m5_live.LiveM5(toy_robot.motion, cams, 1 / 15, 20_000_000)
+        lp = _loop(client, state, sinks.MockSink(), clock.now, max_age_ms=1e9)
+        replay_rows = replay.run(client, lp, cameras, state, clock, cams=cams, count=stop_at, live_m5=m5,
+                                 noise_seed=1)
+        client.close()
+
+        client = connect(live_sets)
+        offset = time.monotonic_ns() - int(rec.timestamps_ns(cams[0])[-1]) - 5_000_000_000  # all in the past
+        lstate = _RecordedLiveState(rec, offset)
+        frames = _RecordedAsLive(rec, cams, replay.frame_events(cameras, cams, 0, stop_at), offset, client, lstate)
+        lm5 = m5_live.LiveM5(toy_robot.motion, cams, 1 / 15, 20_000_000)
+        session = live.LiveSession(client=client, cameras=frames, cams=cams, state=lstate,
+                                   limits=ActionLimits(max_action_age_ms=1e9),
+                                   executor=executor.HighRateExecutor(sinks.MockSink()), sink=sinks.DryRunSink(),
+                                   live_m5=lm5)
+        real_step, seeds = session.loop.step, iter(range(1, 10**6))
+        session.loop.step = lambda *a, **k: real_step(*a, noise_seed=next(seeds), **k)  # replay's seed base + step
+        live_rows = session.run(steps=len(replay_rows))
+        client.close()
+    assert session.stop_reason == "budget reached"
+    assert replay_sets == live_sets and len(live_sets) >= 10
+    assert lp.counts["skipped_behind"] == session.loop.counts["skipped_behind"]
+    assert dict(m5.counts) == dict(lm5.counts)
+    ok = [r for r in replay_rows if r["status"] == "ok"]
+    assert len(ok) >= 8 and len(live_rows) == len(replay_rows)
+    keys = ("reference_id", "end_ids", "status", "code", "padded", "surface_disp_m", "frames_sent", "measured_pose7",
+            "action_norm", "flange_pose", "execution_flange_pose", "gripper_closure", "gripper_origin")
+    for a, b in zip(replay_rows, live_rows):
+        assert {k: a.get(k) for k in keys} == {k: b.get(k) for k in keys}, a["reference_id"]
+        assert a["observation_time_ns"] - clock.offset_ns == b["observation_time_ns"] - offset
+    assert all(r["state_source"] == "live" for r in live_rows)
+
+
+class _RGBDCaptures:
+    """Synthetic 15 Hz RGB-D captures of several free-running cameras (constant phase offsets, client-clock stamps),
+    preprocessed like ``RealSenseRGBD.process`` (identity native correction), drained like LiveCameras."""
+
+    def __init__(self, cams, phases_ms=(0.0, 9.0, -11.0), hw=(48, 64), out_size=32):
+        from s4d.rwlearn.deploy.realsense import native_correction as nc
+
+        self.cams, self.phase = list(cams), {c: int(p * 1e6) for c, p in zip(cams, phases_ms)}
+        self.hw, self.out_size, self.k, self.t0, self.errors = hw, out_size, dict.fromkeys(cams, 0), None, {}
+        self.K = np.array([[60.0, 0, hw[1] / 2], [0, 60.0, hw[0] / 2], [0, 0, 1]])
+        self.corr = nc()
+
+    def drain(self, cam):
+        import time as _t
+
+        from s4d.rwlearn.deploy import preprocess_frame
+
+        now = _t.monotonic_ns()
+        self.t0 = self.t0 or now + 50_000_000
+        out = []
+        while self.t0 + self.k[cam] * PERIOD_NS + self.phase[cam] <= now:
+            k = self.k[cam]
+            t = self.t0 + k * PERIOD_NS + self.phase[cam]
+            rng = np.random.default_rng(1000 * self.cams.index(cam) + k)
+            rgb = rng.integers(0, 256, (*self.hw, 3), dtype=np.uint8)
+            depth = rng.uniform(0.4, 1.5, self.hw).astype(np.float32)
+            depth[::7, ::5] = 0
+            cap = preprocess_frame(rgb, depth=depth, valid=depth > 0, K_native=self.K, out_size=self.out_size,
+                                   native_correction=self.corr)
+            cap.update(frame_id=50 + k, capture_ns=t, arrival_ns=now, preprocess_ns=(now, now), native_hw=list(self.hw),
+                       metadata={"depth_source": "native_realsense", "native_correction": self.corr})
+            cap["K"] = np.asarray(cap["K"]).tolist()
+            out.append(cap)
+            self.k[cam] += 1
+        return out
+
+
+def _rgbd_choices(captures):
+    return {"native_hw": {c: list(captures.hw) for c in captures.cams},
+            "calibration": {c: {"K_native": captures.K.tolist(), "c2w": np.eye(4).tolist()} for c in captures.cams},
+            "native_depth_correction": {c: captures.corr for c in captures.cams}}
+
+
+def test_live_multiview_session_dry_run_full_chain(policies, toy_robot):
+    """LiveSession on 3 free-running fake RGB-D cameras, the read-only state reader at 1 kHz + the labelled static
+    gripper (dry run), the live M5 helper, fixture multi-view 3D-MVP over loopback, validation, the 500 Hz executor ->
+    DryRunSink: one step per final set (newest), every set's displacement sent, commands executed (never sent)."""
+    import threading as _th
+    import time as _t
+
+    from ops.robot_pc import live
+
+    reader = sc.LiveStateReader(approved=True, zmq_module=_SubOnly, robot_msg=SimpleNamespace())
+    stop_feed, seq, next_t = _th.Event(), [0], [_t.monotonic_ns() - 1_500_000_000]
+
+    def feed():
+        while not stop_feed.is_set():
+            now = _t.monotonic_ns()
+            while next_t[0] <= now:
+                seq[0] += 1
+                reader.samples.append({"t_ns": next_t[0], "seq": seq[0], "q": np.full(7, 0.1), "dq": np.zeros(7),
+                                       "tau": np.zeros(7), "flange_pose7": np.array(POSE),
+                                       "ee_pose7": sc.ee_from_flange(POSE), "signature": seq[0].to_bytes(8, "little")})
+                next_t[0] += 1_000_000
+            _t.sleep(0.001)
+
+    feeder = _th.Thread(target=feed, name="fake-state-feeder", daemon=True)
+    feeder.start()
+    calls = collections.Counter()
+    events = []
+    rec = SimpleNamespace(**{n: (lambda *a, n=n, **k: calls.update([n])) for n in
+                             ("frame", "observation", "robot_state", "gripper", "step", "gripper_command", "executed")},
+                          event=lambda t, text: events.append(text))
+    sink = sinks.DryRunSink()
+    captures = _RGBDCaptures(CAMS)
+    try:
+        with serve({"mvp3d-mv": policies["mvp3d_multiview"]}) as srv:
+            client = PolicyClient("127.0.0.1", srv.port, policy_id="mvp3d-mv", step_timeout_s=60, ttl_ms=60_000,
+                                  choices=_rgbd_choices(captures))
+            client.connect()
+            sets = []
+            real = client.add_sync_set
+            client.add_sync_set = lambda ids, d: (sets.append((dict(ids), d)), real(ids, d))[1]
+            m5 = m5_live.LiveM5(toy_robot.motion, CAMS, 1 / 15, 20_000_000)
+            ex = executor.HighRateExecutor(sinks.MockSink(), state_timeout_s=2.0)  # in-process server holds the GIL
+            session = live.LiveSession(client=client, cameras=captures, cams=list(CAMS),
+                                       state=live.LiveState(reader, live.StaticGripper()),
+                                       limits=ActionLimits(max_action_age_ms=1e5), executor=ex, sink=sink,
+                                       recorder=rec, sent=False, live_m5=m5)
+            rows = session.run(steps=10)
+            client.close()
+    finally:
+        stop_feed.set()
+        feeder.join(5)
+        reader.close()
+    assert session.stop_reason == "budget reached" and len(rows) == 10, session.stop_reason
+    assert all(r["reference_id"].startswith("set:") and set(r["end_ids"]) == set(CAMS) for r in rows)
+    assert all(r["surface_disp_m"] == 0.0 for r in rows)  # the robot does not move: every set is accepted
+    ok = [r for r in rows if r["status"] == "ok"]
+    assert len(ok) >= 8 and all(r["gripper_origin"].startswith("static") for r in ok), [r.get("code") for r in rows]
+    stepped = [r["end_ids"] for r in rows]
+    assert all(s in [ids for ids, _ in sets] for s in stepped) and m5.counts["accepted"] == len(sets) >= 10
+    assert all(a["cam_a"] < b["cam_a"] for a, b in zip(stepped, stepped[1:]))  # newest set, never an older one
+    assert calls["frame"] == 0 and calls["observation"] >= 30 and calls["step"] == 10  # no native_rgb: no frame rows
+    assert ex.counts["accepted"] > 0 and calls["executed"] > 0 and len(sink.items) == calls["executed"]
+    m5_event = [json.loads(e[3:]) for e in events if e.startswith("m5 ")]
+    assert m5_event and m5_event[0]["accepted"] == len(sets) and m5_event[0]["asset_sha256"]
+
+
+def test_live_multiview_sync_refusals_are_answers_not_route_failures():
+    """A multi-view window the server refuses by the sync contract (M5 motion / missing evidence) produces no action
+    and never stops the session as a server failure; other errors still do (single-view rule unchanged)."""
+    from ops.robot_pc import live
+
+    cams = list(CAMS)
+    spec = {"views": 3, "camera_ids": cams, "trained_camera_orders": [cams]}
+    codes = iter(["unsynchronized"] * 6 + ["incomplete_history"] * 3 + ["timeout"] * 5)
+
+    class Sync:
+        def __init__(self):
+            self.k = 0
+
+        def add_frame(self, *a):
+            pass
+
+        def newest_step(self, now, counts):
+            self.k += 1
+            return ({c: self.k for c in cams}, now, f"set:{self.k}", 0.009)
+
+    s = live.LiveSession(client=SimpleNamespace(spec=spec, add_capture=lambda *a, **k: None),
+                         cameras=SimpleNamespace(drain=lambda cam: []), cams=cams, state=live.LiveState(
+                             SimpleNamespace(samples=[]), live.StaticGripper()),
+                         limits=ActionLimits(), executor=executor.HighRateExecutor(sinks.MockSink()),
+                         sink=sinks.DryRunSink(), live_m5=SimpleNamespace(sets=SimpleNamespace(cameras=cams)))
+    s.sync = Sync()
+    s.loop.step = lambda end_ids, t, ref, acquire_ms=None: {"reference_id": ref, "status": "error",
+                                                            "code": next(codes), "t_step_ns": t}
+    rows = s.run(steps=30)
+    assert [r["code"] for r in rows] == ["unsynchronized"] * 6 + ["incomplete_history"] * 3 + ["timeout"] * 5
+    assert s.stop_reason.startswith("policy server: 5 consecutive steps") and s.loop.counts["sync_refused"] == 9
+    assert all(r["surface_disp_m"] == 0.009 for r in rows)
+
+
+def test_live_multiview_session_stops_when_no_set_becomes_final():
+    """Frames keep arriving but no synchronised set becomes final (member states never arrive): the session stops
+    instead of idling without steps."""
+    from ops.robot_pc import live
+
+    cams = list(CAMS)
+    spec = {"views": 3, "camera_ids": cams, "trained_camera_orders": [cams]}
+    frames = iter(range(10**6))
+
+    def drain(cam):
+        k = next(frames)
+        return [{"frame_id": k, "capture_ns": 10**9 + k, "arrival_ns": 10**9 + k, "rgb": None}]
+
+    s = live.LiveSession(client=SimpleNamespace(spec=spec, add_capture=lambda *a, **k: None),
+                         cameras=SimpleNamespace(drain=drain), cams=cams,
+                         state=live.LiveState(SimpleNamespace(samples=[]), live.StaticGripper()),
+                         limits=ActionLimits(), executor=executor.HighRateExecutor(sinks.MockSink()),
+                         sink=sinks.DryRunSink(), idle_timeout_s=0.05,
+                         live_m5=SimpleNamespace(sets=SimpleNamespace(cameras=cams), counts={"sets": 0}))
+    s.sync = SimpleNamespace(add_frame=lambda *a: None, newest_step=lambda now, counts: None)
+    assert s.run(duration_s=5) == [] and s.stop_reason.startswith("multi-view: no final synchronised set")
+
+
+def test_live_multiview_dry_run_with_static_state(policies, toy_robot, tmp_path):
+    """dry_run.py's loop (dryrun.run, --state static) on 3 fake RGB-D cameras: steps on final sets with their M5
+    displacement (static state: 0 m), nothing sent; the M5 summary counts every set."""
+    captures = _RGBDCaptures(CAMS)
+    with serve({"mvp3d-mv": policies["mvp3d_multiview"]}) as srv:
+        client = PolicyClient("127.0.0.1", srv.port, policy_id="mvp3d-mv", step_timeout_s=60, ttl_ms=60_000,
+                              choices=_rgbd_choices(captures))
+        client.connect()
+        log = tmp_path / "dryrun.jsonl"
+        sink = sinks.DryRunSink(log)
+        state = robot_state.StaticLatencyState(POSE, np.zeros(7), 3.0)
+        m5 = m5_live.LiveM5(toy_robot.motion, CAMS, 1 / 15, 20_000_000)
+        lp = _loop(client, state, sink, max_age_ms=1e5)
+        try:
+            rows = dryrun.run(client, lp, captures, state, cams=list(CAMS), steps=8, live_m5=m5)
+        finally:
+            client.close()
+            sink.close()
+    assert len(rows) == 8 and all(r["surface_disp_m"] == 0.0 and r["state_source"] == "static_latency_only"
+                                  for r in rows)
+    assert sum(r["status"] == "ok" for r in rows) >= 6 and m5.counts["accepted"] >= 8
+    assert all(not x["sent_to_robot"] for x in map(json.loads, log.read_text().splitlines()))
+
+
+def test_multiview_m5_is_built_before_devices_or_refused(toy_robot, tmp_path, monkeypatch):
+    """config.session_m5: the helper on all trained cameras in training order, refused when an asset or the task
+    entry is missing / mismatching; the launchers refuse a multi-view policy before any device opens."""
+    import importlib.util
+
+    from scripts.robot_pc import infer
+
+    cams = list(CAMS)
+    spec = {"views": 3, "frame_period_s": 1 / 15, "trained_camera_orders": [cams], "modalities": ["rgb"]}
+    cfg = {"root": str(tmp_path), "assets": {"m5_surface": str(toy_robot.asset), "urdf": str(toy_robot.urdf)},
+           "tasks": {"t": {"m5_max_sync_ns": 30_000_000}}}
+    m5 = C.session_m5(cfg, "t", spec, cams)
+    assert m5.sets.cameras == cams and m5.timeline.max_sync_ns == 30_000_000
+    assert C.session_m5(cfg, "t", {**spec, "views": 1}, cams[:1]) is None
+    bad = [(cfg, cams[::-1], "training order"), ({**cfg, "assets": {}}, cams, "KeyError"),
+           ({**cfg, "assets": {**cfg["assets"], "urdf": str(tmp_path / "missing.urdf")}}, cams, "no validated"),
+           ({**cfg, "tasks": {"t": {}}}, cams, "m5_max_sync_ns")]
+    for c, order, why in bad:
+        with pytest.raises(C.M5Unavailable, match=why):
+            C.session_m5(c, "t", spec, order)
+    with pytest.raises(safety.ExecutionRefused, match="multi-view policy"):
+        infer.multiview_m5({**cfg, "assets": {}}, "t", spec, cams)
+    names = {"left": "cam_a", "middle": "cam_b", "right": "cam_c"}
+    assert infer.resolve_cameras(spec, names, None) == cams
+    assert infer.resolve_cameras(spec, names, "left,middle,right") == cams
+    with pytest.raises(safety.ExecutionRefused, match="training order"):
+        infer.resolve_cameras(spec, names, "right,middle,left")
+    with pytest.raises(safety.ExecutionRefused, match="training order"):
+        infer.resolve_cameras(spec, names, "left,middle")
+
+    sp = importlib.util.spec_from_file_location("rob_dry_run", REPO / "scripts/robot_pc/dry_run.py")
+    mod = importlib.util.module_from_spec(sp)
+    sp.loader.exec_module(mod)
+    opened = []
+    monkeypatch.setattr(cli, "load_config", lambda args: {**cfg, "assets": {},
+                                                          "static_latency_state": {"pose7": POSE, "q7": [0] * 7,
+                                                                                   "gripper_register": 3.0}})
+    monkeypatch.setattr(cli, "choose_policy", lambda *a: ("mv", "t", spec, {}))
+    monkeypatch.setattr("ops.robot_pc.cameras.LiveCameras", lambda *a, **k: opened.append(1))
+    assert mod.main(["--state", "static", "--steps", "3", "--log", str(tmp_path / "x.jsonl")]) == 3
+    assert not opened

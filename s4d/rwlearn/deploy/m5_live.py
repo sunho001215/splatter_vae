@@ -110,6 +110,36 @@ class SurfaceMotion:
         return float(set_surface_motion(self.points, frames, [[s] for s in states], [[bool(o)] for o in ok])[0])
 
 
+class _Ring:
+    """The last ``capacity`` appended rows as ONE contiguous array view (what ``deque(maxlen=capacity)`` holds, without
+    rebuilding arrays from Python tuples on every read): rows are written into a 2 x capacity buffer whose newest
+    ``capacity`` rows move to the front when it is full."""
+
+    def __init__(self, capacity: int, shape: tuple = (), dtype=np.float64):
+        self.capacity = int(capacity)
+        if self.capacity <= 0:
+            raise ValueError("capacity must be positive")
+        self._buf = np.empty((2 * self.capacity, *shape), dtype)
+        self._n = 0
+
+    def __len__(self) -> int:
+        return min(self._n, self.capacity)
+
+    def append(self, row) -> None:
+        if self._n == len(self._buf):
+            self._buf[:self.capacity] = self._buf[self._n - self.capacity:self._n]
+            self._n = self.capacity
+        self._buf[self._n] = row
+        self._n += 1
+
+    def view(self) -> np.ndarray:
+        """The rows, oldest first (a view: valid until the next ``append``)."""
+        return self._buf[max(0, self._n - self.capacity):self._n]
+
+    def last(self):
+        return self._buf[self._n - 1]
+
+
 class StateTimeline:
     """Robot rows (time, 7 joint positions) and Robotiq register samples on the robot PC's monotonic clock (ns).
 
@@ -117,40 +147,45 @@ class StateTimeline:
     the rows and the nearest row is <= ``max_sync_ns`` away, the training store's ``robot_sync_max_ns``), with the
     gripper register on the rows = ``np.interp(row_t_s, gripper_t_s, register)`` as the adapter computes it. ``ready``
     tells whether that interpolation is already final (rows after the frame, register samples after those rows),
-    i.e. equal to what the recorder's complete arrays give."""
+    i.e. equal to what the recorder's complete arrays give. The last ``capacity`` rows / samples are kept (``_Ring``:
+    the same arrays a deque of them would give, read without per-row Python work)."""
 
     def __init__(self, max_sync_ns: int, capacity: int = 4096):
         self.max_sync_ns = int(max_sync_ns)
-        self._rows = collections.deque(maxlen=int(capacity))  # (t_ns, q7 tuple)
-        self._grip = collections.deque(maxlen=int(capacity))  # (t_ns, register)
+        self._t = _Ring(capacity, (), np.int64)  # robot row times (ns)
+        self._q = _Ring(capacity, (7,), np.float64)  # robot joints q7
+        self._gt = _Ring(capacity, (), np.int64)  # register sample times (ns)
+        self._gp = _Ring(capacity, (), np.float64)  # registers
 
     def add_robot(self, t_ns: int, q7) -> None:
-        if self._rows and int(t_ns) <= self._rows[-1][0]:
+        if len(self._t) and int(t_ns) <= int(self._t.last()):
             raise ValueError("robot rows must arrive in increasing time")
         q = np.asarray(q7, np.float64).reshape(7)
-        self._rows.append((int(t_ns), q))
+        self._t.append(int(t_ns))
+        self._q.append(q)
 
     def add_gripper(self, t_ns: int, register: float) -> None:
-        if self._grip and int(t_ns) <= self._grip[-1][0]:
+        if len(self._gt) and int(t_ns) <= int(self._gt.last()):
             raise ValueError("gripper samples must arrive in increasing time")
-        self._grip.append((int(t_ns), float(register)))
+        self._gt.append(int(t_ns))
+        self._gp.append(float(register))
 
     def ready(self, t_ns: int) -> bool:
-        if not self._rows or not self._grip or self._rows[-1][0] < t_ns:
+        if not len(self._t) or not len(self._gt) or int(self._t.last()) < t_ns:
             return False
-        after = next(t for t, _ in self._rows if t >= t_ns)  # the row closing the frame's interpolation interval
-        return self._grip[-1][0] >= after
+        t = self._t.view()
+        after = t[int(np.searchsorted(t, t_ns, side="left"))]  # the row closing the frame's interpolation interval
+        return int(self._gt.last()) >= after
 
     def states(self, stamps_ns) -> tuple[list, np.ndarray]:
         from s4d.realworld.pipeline import robot_state_at
 
         stamps = np.asarray(stamps_ns, np.int64)
-        if not self._rows or not self._grip:
+        if not len(self._t) or not len(self._gt):
             return [None] * len(stamps), np.zeros(len(stamps), bool)
-        t = np.array([r[0] for r in self._rows], np.int64)
-        q = np.stack([r[1] for r in self._rows])
-        gt = np.array([g[0] for g in self._grip], np.float64) / 1e9
-        gp = np.array([g[1] for g in self._grip], np.float64)
+        t, q = self._t.view(), self._q.view()
+        gt = self._gt.view().astype(np.float64) / 1e9
+        gp = self._gp.view()
         trajectory = SimpleNamespace(timestamps_ns=t, joint_positions=q, gripper_state=np.interp(t / 1e9, gt, gp))
         qs, gs, inside, _ = robot_state_at(SimpleNamespace(trajectory=trajectory), stamps, self.max_sync_ns)
         return list(zip(qs, gs)), np.asarray(inside, bool)
@@ -243,6 +278,11 @@ class LiveM5:
 
     def add_gripper(self, t_ns: int, register: float) -> None:
         self.timeline.add_gripper(t_ns, register)
+
+    @property
+    def pending(self) -> bool:
+        """Final complete sets waiting for their member states (only new robot / gripper samples can release them)."""
+        return bool(self._pending)
 
     def poll(self, *, end_of_stream: bool = False) -> list[dict]:
         """``end_of_stream``: no frame or robot sample will follow (a recording's end): evaluate what is pending with

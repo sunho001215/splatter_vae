@@ -504,3 +504,68 @@ def test_check_realworld_deploy_skips_and_lists_windows_with_an_incomplete_histo
     out = crd._windows(None, spec, rec, SimpleNamespace(windows=8), None, skipped)
     assert skipped == [{"cam": 4}, {"cam": 5}] and len(out) == 6
     assert all(info["stream_index"]["cam"] not in (4, 5) for _, info in out)
+
+
+def _rs_align_per_pixel(z16, K_depth, K_color, T_color_depth, color_hw, depth_units_m):
+    """The previous per-pixel ``emulate_rs_align`` (until 2026-11-12), kept as the reference of the vectorised one."""
+    f32 = np.float32
+    Hc, Wc = (int(x) for x in color_hw)
+    Kd = np.asarray(K_depth, np.float64) - np.array([[0, 0, 0.5], [0, 0, 0.5], [0, 0, 0]])
+    Kc = np.asarray(K_color, np.float64) - np.array([[0, 0, 0.5], [0, 0, 0.5], [0, 0, 0]])
+    ys, xs = np.nonzero(z16)
+    zr = z16[ys, xs]
+    depth = zr.astype(f32) * f32(depth_units_m)
+    fxd, fyd, cxd, cyd = f32(Kd[0, 0]), f32(Kd[1, 1]), f32(Kd[0, 2]), f32(Kd[1, 2])
+    fxc, fyc, cxc, cyc = f32(Kc[0, 0]), f32(Kc[1, 1]), f32(Kc[0, 2]), f32(Kc[1, 2])
+    R = np.asarray(T_color_depth, np.float64)[:3, :3].astype(f32)
+    t = np.asarray(T_color_depth, np.float64)[:3, 3].astype(f32)
+
+    def corner(off):
+        px, py = xs.astype(f32) + f32(off), ys.astype(f32) + f32(off)
+        X, Y, Z = ((px - cxd) / fxd) * depth, ((py - cyd) / fyd) * depth, depth
+        Xo = R[0, 0] * X + R[0, 1] * Y + R[0, 2] * Z + t[0]
+        Yo = R[1, 0] * X + R[1, 1] * Y + R[1, 2] * Z + t[1]
+        Zo = R[2, 0] * X + R[2, 1] * Y + R[2, 2] * Z + t[2]
+        u, v = (Xo / Zo) * fxc + cxc, (Yo / Zo) * fyc + cyc
+        return np.trunc(u + f32(0.5)).astype(np.int64), np.trunc(v + f32(0.5)).astype(np.int64)
+
+    x0, y0 = corner(-0.5)
+    x1, y1 = corner(0.5)
+    ok = (x0 >= 0) & (y0 >= 0) & (x1 < Wc) & (y1 < Hc)
+    x0, y0, x1, y1, zr = x0[ok], y0[ok], x1[ok], y1[ok], zr[ok]
+    out = np.full(Hc * Wc, np.iinfo(np.uint16).max, np.int64)
+    w, h = np.maximum(x1 - x0 + 1, 0), np.maximum(y1 - y0 + 1, 0)
+    for dy in range(int(h.max(initial=0))):
+        for dx in range(int(w.max(initial=0))):
+            m = (dy < h) & (dx < w)
+            np.minimum.at(out, (y0[m] + dy) * Wc + (x0[m] + dx), zr[m].astype(np.int64))
+    out[out == np.iinfo(np.uint16).max] = 0
+    return out.reshape(Hc, Wc).astype(np.uint16)
+
+
+@pytest.mark.parametrize("case", ["d435_like", "wide_depth_grid", "close_and_far", "zero_translation"])
+def test_vectorised_rs_align_emulation_is_bitwise_the_per_pixel_rule(case):
+    """The vectorised replay emulation == the previous per-pixel implementation, bit for bit: holes, depth
+    discontinuities (z-buffer), border rectangles, a depth grid differing from the colour grid, 65535 values, a rig
+    without translation (0/0 on holes only)."""
+    from scipy.spatial.transform import Rotation
+
+    from s4d.rwlearn.deploy.realsense import emulate_rs_align
+
+    rng = np.random.default_rng(len(case))
+    dhw, chw = ((48, 64), (48, 64)) if case != "wide_depth_grid" else ((60, 80), (48, 64))
+    Kd = np.array([[50.0, 0, dhw[1] / 2 + 0.3], [0, 51.0, dhw[0] / 2 - 0.2], [0, 0, 1]])
+    Kc = np.array([[60.0, 0, chw[1] / 2 - 0.4], [0, 60.5, chw[0] / 2 + 0.1], [0, 0, 1]])
+    T = np.eye(4)
+    T[:3, :3] = Rotation.from_euler("xyz", [0.01, -0.02, 0.015]).as_matrix()
+    T[:3, 3] = [0.0, 0.0, 0.0] if case == "zero_translation" else [0.015, -0.001, 0.002]
+    lo, hi = (150, 400) if case == "close_and_far" else (400, 3000)
+    z16 = rng.integers(lo, hi, dhw).astype(np.uint16)
+    z16[rng.random(dhw) < 0.15] = 0  # holes
+    z16[10:20, 30:40] = lo  # a near patch over a far background
+    z16[0, :] = 65535
+    out = emulate_rs_align(z16, Kd, Kc, T, chw, 0.001)
+    ref = _rs_align_per_pixel(z16, Kd, Kc, T, chw, 0.001)
+    assert out.dtype == ref.dtype == np.uint16 and out.shape == ref.shape == chw
+    assert (out > 0).mean() > 0.5
+    np.testing.assert_array_equal(out, ref)

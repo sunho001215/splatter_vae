@@ -68,10 +68,13 @@ def run(client, loop, cameras, state, clock: ReplayClock, *, cams: list, start: 
     answered ``incomplete_history`` by the server, as in training). realtime pace behaves like the live loop: when the
     next reference frame is already due, the current observation is sent as history only and the step is taken on the
     newest one (counted in ``skipped_behind``), so a slow path lowers the step rate instead of building a backlog."""
+    from ops.robot_pc.syncsets import StateFeed, step_sets
+
     spec = client.spec
     depth = "depth" in spec["modalities"]
     corr = client.choices.get("native_depth_correction") or {}
-    rows, acquired, fed_to = [], {c: 0.0 for c in cams}, None
+    rows, acquired = [], {c: 0.0 for c in cams}
+    feed = None if live_m5 is None else StateFeed(live_m5, state)  # the live loops' feed (syncsets)
     ref_t = cameras.timestamps_ns(cams[0])
 
     def behind(idx) -> bool:  # realtime: the next reference frame is already due on the replay clock
@@ -87,14 +90,8 @@ def run(client, loop, cameras, state, clock: ReplayClock, *, cams: list, start: 
         if on_row is not None:
             on_row(row)
 
-    def step_sets(sets, newest_only: bool = False):
-        for k, s in enumerate(sets):
-            disp = s["surface_disp_m"] if np.isfinite(s["surface_disp_m"]) else None  # None: no valid robot state
-            client.add_sync_set(s["frame_ids"], disp)
-            if newest_only and k + 1 < len(sets):
-                loop.counts["skipped_behind"] += 1
-                continue
-            emit(s["frame_ids"], s["observation_time_ns"], f"set:{s['frame_ids'][cams[0]]}", surface_disp_m=disp)
+    def take(end_ids, t_obs, ref_id, disp):
+        emit(end_ids, t_obs, ref_id, surface_disp_m=disp)
 
     end_of_recording = count is None or start + count >= len(cameras.timestamps_ns(cams[0]))
     for t_rec, _, cam, idx in frame_events(cameras, cams, start, count):
@@ -118,21 +115,13 @@ def run(client, loop, cameras, state, clock: ReplayClock, *, cams: list, start: 
                 else:
                     emit({cam: int(n["seq"])}, t, f"{cam}:{idx}")
             continue
+        feed.start(t)
         live_m5.add_frame(cam, int(n["seq"]), t)
-        robot, grip_rows = state.rows(fed_to if fed_to is not None else t - 10**9, t + FRAME_ARRIVAL_NS)
-        for r in robot:
-            live_m5.add_robot(*r)
-        for g in grip_rows:
-            live_m5.add_gripper(*g)
-        fed_to = t + FRAME_ARRIVAL_NS
-        step_sets(live_m5.poll(), newest_only=clock.pace == "realtime")
+        feed.feed(t + FRAME_ARRIVAL_NS)  # robot rows / gripper samples reach the host before the frame
+        step_sets(client, live_m5.poll(), cams, take, newest_only=clock.pace == "realtime", counts=loop.counts)
     if live_m5 is not None and end_of_recording:  # the recording ends: flush what the stream end decides
-        robot, grip_rows = state.rows(fed_to if fed_to is not None else 0, 2**62)
-        for r in robot:
-            live_m5.add_robot(*r)
-        for g in grip_rows:
-            live_m5.add_gripper(*g)
-        step_sets(live_m5.poll(end_of_stream=True))
+        feed.feed(2**62)
+        step_sets(client, live_m5.poll(end_of_stream=True), cams, take, newest_only=False, counts=loop.counts)
     return rows
 
 

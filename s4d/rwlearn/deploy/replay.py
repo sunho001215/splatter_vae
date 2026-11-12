@@ -16,7 +16,12 @@ from s4d.realworld.frame_preprocessing import IMAGE_SIZE
 from s4d.rwlearn.deploy.contracts import NATIVE_DEPTH
 from s4d.rwlearn.deploy.history import Frame
 from s4d.rwlearn.deploy.preprocessing import preprocess_frame
-from s4d.rwlearn.deploy.realsense import align_recorded_depth, aligned_native_depth, emulate_rs_align
+from s4d.rwlearn.deploy.realsense import (
+    align_recorded_depth,
+    aligned_native_depth,
+    color_ray_denominator,
+    emulate_rs_align,
+)
 
 ALIGNMENTS = ("rs_align", "sensor_depth")
 
@@ -35,6 +40,7 @@ class RecordedEpisode:
         self.meta = self.adapter.read_meta(EPISODE)
         self.raw = A.load_raw(self.path)
         self._rigs = {g.rig_id: g for g in self.meta.rgbd}
+        self._denominators = {}  # camera -> ((K, T, grid), colour-z denominator): computed once, as RealSenseRGBD does
         with h5py.File(self.path, "r") as f:
             self._numbers = {cam: np.asarray(f["cameras"][f"cam_{cam}"]["frame_number"][()], np.int64)[
                 self.raw.cameras[cam]["paired_colour"]] for cam in self._rigs}
@@ -70,8 +76,12 @@ class RecordedEpisode:
             (_, td, raw), = self.adapter.iter_frames(EPISODE, g.depth_stream, index, index + 1)
             Kc, Kd = self.K_native(cam), ds.intrinsics.K()
             if alignment == "rs_align":
-                z16 = emulate_rs_align(raw, Kd, Kc, g.T(), rgb.shape[:2], ds.depth_scale_m)
-                d, v = aligned_native_depth(z16, ds.depth_scale_m, Kc, g.T())
+                T = g.T()
+                z16 = emulate_rs_align(raw, Kd, Kc, T, rgb.shape[:2], ds.depth_scale_m)
+                key = (np.asarray(Kc, np.float64).tobytes(), np.asarray(T, np.float64).tobytes(), z16.shape)
+                if self._denominators.get(cam, (None,))[0] != key:
+                    self._denominators[cam] = (key, color_ray_denominator(Kc, T, z16.shape))
+                d, v = aligned_native_depth(z16, ds.depth_scale_m, Kc, T, denominator=self._denominators[cam][1])
             else:
                 aligned = align_recorded_depth(raw, Kd, Kc, g.T(), rgb.shape[:2], ds.depth_scale_m)
                 d, v = aligned["depth"], aligned["valid"]

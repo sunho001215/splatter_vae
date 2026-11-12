@@ -132,7 +132,12 @@ def emulate_rs_align(z16: np.ndarray, K_depth: np.ndarray, K_color: np.ndarray, 
     0/478/479 and 0/638/639 -> output row 127 of the 128 grid). Per non-zero depth pixel the corners (x +- 0.5) are
     deprojected at its depth, moved to colour, projected; the rounded colour rectangle receives the ORIGINAL z16 with a
     z-buffer (min); rectangles touching the border are skipped. float32 arithmetic like the C code. K_* continuous
-    (converted here to librealsense integer centres). Returns aligned z16 (depth-camera z), 0 = no data."""
+    (converted here to librealsense integer centres). Returns aligned z16 (depth-camera z), 0 = no data.
+
+    Vectorised (replay / benchmarks only; the live path uses librealsense's own rs.align): the per-pixel float32
+    operations run in their original order on the whole depth grid (the column / row term ``((p + off) - c) / f`` once
+    per column / row; z16 == 0 pixels are computed and discarded), and the z-buffer is a uint16 scatter-min. Bitwise
+    identical to the per-pixel implementation it replaces (288 recorded frames of 5 tasks, 3 cameras)."""
     f32 = np.float32
     Hc, Wc = (int(x) for x in color_hw)
     Kd = np.asarray(K_depth, np.float64) - np.array([[0, 0, 0.5], [0, 0, 0.5], [0, 0, 0]])
@@ -140,35 +145,51 @@ def emulate_rs_align(z16: np.ndarray, K_depth: np.ndarray, K_color: np.ndarray, 
     z16 = np.asarray(z16)
     if z16.dtype != np.uint16:
         raise ValueError("recorded native depth must be z16")
-    ys, xs = np.nonzero(z16)
-    zr = z16[ys, xs]
-    depth = zr.astype(f32) * f32(depth_units_m)
+    Hd, Wd = z16.shape
     fxd, fyd, cxd, cyd = f32(Kd[0, 0]), f32(Kd[1, 1]), f32(Kd[0, 2]), f32(Kd[1, 2])
     fxc, fyc, cxc, cyc = f32(Kc[0, 0]), f32(Kc[1, 1]), f32(Kc[0, 2]), f32(Kc[1, 2])
     R = np.asarray(T_color_depth, np.float64)[:3, :3].astype(f32)
     t = np.asarray(T_color_depth, np.float64)[:3, 3].astype(f32)
+    depth = z16.astype(f32)
+    depth *= f32(depth_units_m)
 
     def corner(off):
-        px, py = xs.astype(f32) + f32(off), ys.astype(f32) + f32(off)
-        X, Y, Z = ((px - cxd) / fxd) * depth, ((py - cyd) / fyd) * depth, depth
-        Xo = R[0, 0] * X + R[0, 1] * Y + R[0, 2] * Z + t[0]
-        Yo = R[1, 0] * X + R[1, 1] * Y + R[1, 2] * Z + t[1]
-        Zo = R[2, 0] * X + R[2, 1] * Y + R[2, 2] * Z + t[2]
-        u, v = (Xo / Zo) * fxc + cxc, (Yo / Zo) * fyc + cyc
-        return np.trunc(u + f32(0.5)).astype(np.int64), np.trunc(v + f32(0.5)).astype(np.int64)
+        X = (((np.arange(Wd, dtype=np.int64).astype(f32) + f32(off)) - cxd) / fxd)[None, :] * depth
+        Y = (((np.arange(Hd, dtype=np.int64).astype(f32) + f32(off)) - cyd) / fyd)[:, None] * depth
+
+        def to_color(i):  # R[i, 0] X + R[i, 1] Y + R[i, 2] Z + t[i], left to right
+            o = R[i, 0] * X
+            o += R[i, 1] * Y
+            o += R[i, 2] * depth
+            o += t[i]
+            return o
+
+        with np.errstate(divide="ignore", invalid="ignore"):  # only z16 == 0 pixels (discarded) can divide by 0
+            Xo, Yo, Zo = to_color(0), to_color(1), to_color(2)
+            Xo /= Zo
+            Xo *= fxc
+            Xo += cxc
+            Xo += f32(0.5)
+            Yo /= Zo
+            Yo *= fyc
+            Yo += cyc
+            Yo += f32(0.5)
+            return np.trunc(Xo, out=Xo).astype(np.int64), np.trunc(Yo, out=Yo).astype(np.int64)
 
     x0, y0 = corner(-0.5)
     x1, y1 = corner(0.5)
-    ok = (x0 >= 0) & (y0 >= 0) & (x1 < Wc) & (y1 < Hc)
-    x0, y0, x1, y1, zr = x0[ok], y0[ok], x1[ok], y1[ok], zr[ok]
-    out = np.full(Hc * Wc, np.iinfo(np.uint16).max, np.int64)
+    ok = (z16 != 0) & (x0 >= 0) & (y0 >= 0) & (x1 < Wc) & (y1 < Hc)
+    x0, y0, x1, y1, zr = x0[ok], y0[ok], x1[ok], y1[ok], z16[ok]  # row-major, as np.nonzero
+    empty = np.iinfo(np.uint16).max
+    out = np.full(Hc * Wc, empty, np.uint16)
     w, h = np.maximum(x1 - x0 + 1, 0), np.maximum(y1 - y0 + 1, 0)
+    base = y0 * Wc + x0
     for dy in range(int(h.max(initial=0))):
         for dx in range(int(w.max(initial=0))):
             m = (dy < h) & (dx < w)
-            np.minimum.at(out, (y0[m] + dy) * Wc + (x0[m] + dx), zr[m].astype(np.int64))
-    out[out == np.iinfo(np.uint16).max] = 0
-    return out.reshape(Hc, Wc).astype(np.uint16)
+            np.minimum.at(out, base[m] + (dy * Wc + dx), zr[m])
+    out[out == empty] = 0
+    return out.reshape(Hc, Wc)
 
 
 class RealSenseRGBD:

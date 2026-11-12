@@ -83,3 +83,23 @@ def m5(cfg: dict, task: str, cameras, period_s: float):
     a = cfg.get("assets") or {}
     motion = SurfaceMotion(path(cfg, a["m5_surface"]), path(cfg, a["urdf"]))
     return LiveM5(motion, cameras, period_s, int(task_entry(cfg, task)["m5_max_sync_ns"]))
+
+
+class M5Unavailable(ValueError):
+    """A multi-view policy cannot run live: no validated M5 helper for it (asset, URDF, task entry, camera order)."""
+
+
+def session_m5(cfg: dict, task: str, spec: dict, cams: list):
+    """The live M5 helper a policy contract needs, built before any device opens: None for a single-view policy; for a
+    multi-view one ``m5`` on ALL trained cameras in training order at the trained frame period. Anything missing or
+    mismatching (camera order, asset / URDF file or sha256, the task's ``m5_max_sync_ns``) raises ``M5Unavailable``."""
+    if int(spec["views"]) <= 1:
+        return None
+    order = [str(c) for c in spec["trained_camera_orders"][0]]
+    if [str(c) for c in cams] != order:
+        raise M5Unavailable(f"multi-view sets need every trained camera in training order {order}, not {list(cams)}")
+    try:
+        return m5(cfg, task, order, float(spec["frame_period_s"]))
+    except (KeyError, TypeError, ValueError, OSError) as exc:
+        raise M5Unavailable(f"no validated live M5 helper ({type(exc).__name__}: {exc}); check the config's assets "
+                            "m5_surface / urdf and the task's m5_max_sync_ns") from None

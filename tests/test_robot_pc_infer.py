@@ -71,8 +71,11 @@ def test_resolve_cameras_names_count_and_training_contract():
     multi = {"views": 3, "trained_camera_orders": [["135122070988", "135122076054", "135122073201"]]}
     with pytest.raises(ExecutionRefused, match="needs 3 cameras in training order: right,middle,left"):
         resolve(multi, NAMES, "left,right")
-    with pytest.raises(ExecutionRefused, match="multi-view .* not implemented"):
-        resolve(multi, NAMES, "right,middle,left")
+    with pytest.raises(ExecutionRefused, match="needs 3 cameras in training order"):
+        resolve(multi, NAMES, "left,middle,right")  # operator names: the training order is right,middle,left
+    # live multi-view (synchronised sets): exactly the trained cameras in training order, given or by default
+    assert resolve(multi, NAMES, "right,middle,left") == multi["trained_camera_orders"][0]
+    assert resolve(multi, NAMES, None) == multi["trained_camera_orders"][0]
 
 
 def test_list_shows_task_method_seed_eligibility(monkeypatch, capsys, tmp_path):

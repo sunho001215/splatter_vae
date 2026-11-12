@@ -56,7 +56,8 @@ def main(argv=None, *, operator_input=input) -> int:
                          "and --seed it selects the policy (or give --policy <id>)")
     ap.add_argument("--cameras", default=None,
                     help="camera NAMES, comma separated (config/camera_names.yaml), e.g. right or left,middle,right; "
-                         "default: what the policy contract requires (its first trained camera)")
+                         "default: what the policy contract requires (single-view: its first trained camera; "
+                         "multi-view: all trained cameras in training order)")
     ap.add_argument("--dry-run", action="store_true", help="compute, validate and record commands; send NOTHING")
     ap.add_argument("--list", action="store_true", help="list tasks / methods / seeds and execution eligibility")
     ap.add_argument("--steps", type=int, default=None)
@@ -203,6 +204,10 @@ def main(argv=None, *, operator_input=input) -> int:
         cams = resolve_cameras(spec, names, args.cameras, args.camera)
         cam_label = "-".join(_name(names, c) for c in cams)
         say(f"cameras: {', '.join(f'{_name(names, c)}={c}' for c in cams)}")
+        live_m5 = multiview_m5(cfg, task, spec, cams)  # multi-view: refused here, before any device opens
+        if live_m5 is not None:
+            say(f"multi-view: synchronised sets of {len(cams)} cameras in training order, live M5 helper "
+                f"(asset {live_m5.motion.asset_sha256[:12]}, max sync {live_m5.timeline.max_sync_ns / 1e6:.0f} ms)")
         cc = cfg.get("cameras") or {}
         hw = tuple(cc.get("native_hw", (480, 640)))
         rig = cli.rig_document(cfg, task)
@@ -215,6 +220,11 @@ def main(argv=None, *, operator_input=input) -> int:
                                             identity_depth=args.identity_depth)
         client = cli.connect(cfg, args, pid, choices, "robot-pc-infer")
         opened.append(client.close)
+        if live_m5 is not None and (list(client.spec.get("camera_ids", ())) != cams or
+                                    float(client.spec["frame_period_s"]) != float(spec["frame_period_s"])):
+            raise ExecutionRefused(f"the bound session's cameras {client.spec.get('camera_ids')} / period "
+                                   f"{client.spec.get('frame_period_s')} differ from the selection's {cams} / "
+                                   f"{spec['frame_period_s']}")
         selected = info
         # the BOUND policy's current labels (SPEC), never only the earlier WELCOME snapshot (Codex review of 1847fdd)
         info = confirm_policy(selected, getattr(client, "spec_info", None), execute=args.execute, stage="binding")
@@ -239,6 +249,10 @@ def main(argv=None, *, operator_input=input) -> int:
                           "gripper_origin": getattr(gripper, "origin", None),
                           "gripper": {"speed": getattr(gripper, "speed", None), "force": getattr(gripper, "force", None)},
                           "config": cfg, "bundle": str(running_bundle(root)), "argv": list(argv or sys.argv[1:])}
+            if live_m5 is not None:
+                experiment["m5"] = {"asset_sha256": live_m5.motion.asset_sha256, "urdf": live_m5.motion.urdf_path,
+                                    "max_sync_ns": live_m5.timeline.max_sync_ns,
+                                    "camera_order": list(live_m5.sets.cameras)}
             prefix = f"{task}/{method}/seed{seed if seed is not None else 'x'}/{cam_label}"
             recorder = SessionRecorder(root, meta=experiment, run_prefix=prefix,
                                        camera_names={c: _name(names, c) for c in cams},
@@ -324,7 +338,8 @@ def main(argv=None, *, operator_input=input) -> int:
 
         session = live.LiveSession(client=client, cameras=cameras, cams=cams, state=state,
                                    limits=limits, executor=executor, sink=sink, recorder=recorder,
-                                   sent=sent, on_status=on_status, stop_event=stop, shutdown=shutdown)
+                                   sent=sent, on_status=on_status, stop_event=stop, shutdown=shutdown,
+                                   live_m5=live_m5)
         session_box["s"] = session
         t_fault = None if args.fault_after_s is None else time.monotonic() + args.fault_after_s
 
@@ -413,8 +428,18 @@ def resolve_cameras(spec: dict, names: dict, requested: str | None, serial: str 
     if [list(o) for o in orders].count(cams) == 0:
         need = " or ".join(",".join(_name(names, c) for c in o) for o in orders)
         raise ExecutionRefused(f"this policy needs {spec['views']} cameras in training order: {need}")
-    raise ExecutionRefused("live multi-view (synchronised camera sets) is not implemented yet: select a single-view "
-                           "policy (infer.py --list shows the views)")
+    return cams
+
+
+def multiview_m5(cfg: dict, task: str, spec: dict, cams: list):
+    """``config.session_m5`` (the validated live M5 helper of a multi-view policy, None for single-view); built BEFORE
+    any device opens; anything missing refuses (``ExecutionRefused``)."""
+    from ops.robot_pc.safety import ExecutionRefused
+
+    try:
+        return C.session_m5(cfg, task, spec, cams)
+    except C.M5Unavailable as exc:
+        raise ExecutionRefused(f"multi-view policy: {exc}") from None
 
 
 def restriction_notes(info: dict) -> list:
