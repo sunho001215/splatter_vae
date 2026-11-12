@@ -1,7 +1,68 @@
 name: remote
 gpu_uuids:
-  - GPU-4391fcee-537f-d408-d138-10d8a3866eea
-  - GPU-6122c7a9-eaa6-b539-6005-f20e339da4ea
-  - GPU-9e9f1e97-b2ca-04e0-eb2a-8035398daa79
-  - GPU-ca65e1b7-c0ac-6757-7d3f-816c3119a4c1
+- MIG-0257ebe5-58b1-5a24-8564-bd96af094cbf
+- MIG-08fb8171-91d5-5e50-8210-34cb2c252fb1
+- MIG-560d13b9-580a-5e94-9b42-cc1a91828357
+- MIG-7ca8390a-a2c9-55f2-8516-fb882e4ca5f0
+- MIG-abccfd64-ca1f-53c2-8753-c1e7a6611ff1
+- MIG-5c4bcddb-039e-57a1-8621-25688cc3a664
+- MIG-a7e13b7c-38b2-561f-851d-3ac403badd18
+- MIG-381d3660-c32b-5d6d-b7d8-e5395f6edd23
+- MIG-6d2850cf-1146-5e25-840f-7ccb8901af80
+- MIG-8080c1ce-9d0e-5d6d-8afc-175c00138b47
+- MIG-a1378b86-24fe-5ff7-96a6-54ed73ee18a2
+- MIG-9263de00-37a9-54eb-b82a-0e38eeaa2f84
+- MIG-911af5b1-7b85-520f-b662-9ad3c5d59414
+- MIG-2e7d0443-2224-53e4-94a9-15bd2890674e
+- MIG-67e1abaa-46ff-5ad7-99c5-ef37df4ef6d4
+- MIG-2a2d2e74-bc8d-50cc-8db2-4fdd656e260e
 runtime_root: /home/compu/kaist/sunho
+limits:
+  MIG-0257ebe5-58b1-5a24-8564-bd96af094cbf:
+    max_jobs: 4
+    max_mem_gb: 21.5
+  MIG-08fb8171-91d5-5e50-8210-34cb2c252fb1:
+    max_jobs: 4
+    max_mem_gb: 21.5
+  MIG-560d13b9-580a-5e94-9b42-cc1a91828357:
+    max_jobs: 4
+    max_mem_gb: 21.5
+  MIG-7ca8390a-a2c9-55f2-8516-fb882e4ca5f0:
+    max_jobs: 4
+    max_mem_gb: 21.5
+  MIG-abccfd64-ca1f-53c2-8753-c1e7a6611ff1:
+    max_jobs: 4
+    max_mem_gb: 21.5
+  MIG-5c4bcddb-039e-57a1-8621-25688cc3a664:
+    max_jobs: 4
+    max_mem_gb: 21.5
+  MIG-a7e13b7c-38b2-561f-851d-3ac403badd18:
+    max_jobs: 4
+    max_mem_gb: 21.5
+  MIG-381d3660-c32b-5d6d-b7d8-e5395f6edd23:
+    max_jobs: 4
+    max_mem_gb: 21.5
+  MIG-6d2850cf-1146-5e25-840f-7ccb8901af80:
+    max_jobs: 4
+    max_mem_gb: 21.5
+  MIG-8080c1ce-9d0e-5d6d-8afc-175c00138b47:
+    max_jobs: 4
+    max_mem_gb: 21.5
+  MIG-a1378b86-24fe-5ff7-96a6-54ed73ee18a2:
+    max_jobs: 4
+    max_mem_gb: 21.5
+  MIG-9263de00-37a9-54eb-b82a-0e38eeaa2f84:
+    max_jobs: 4
+    max_mem_gb: 21.5
+  MIG-911af5b1-7b85-520f-b662-9ad3c5d59414:
+    max_jobs: 4
+    max_mem_gb: 21.5
+  MIG-2e7d0443-2224-53e4-94a9-15bd2890674e:
+    max_jobs: 4
+    max_mem_gb: 21.5
+  MIG-67e1abaa-46ff-5ad7-99c5-ef37df4ef6d4:
+    max_jobs: 4
+    max_mem_gb: 21.5
+  MIG-2a2d2e74-bc8d-50cc-8db2-4fdd656e260e:
+    max_jobs: 4
+    max_mem_gb: 21.5
