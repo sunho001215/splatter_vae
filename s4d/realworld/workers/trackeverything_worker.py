@@ -21,12 +21,15 @@ CUDA memory (2026-11-12, agent TEMEM; the 1g.24gb MIG fit): one request's LIVE p
 ``max_memory_allocated``) was <= 4.15 GiB over all 20,802 calrel-6c3b9ec clips, but the persistent stream worker's
 caching allocator never returned freed blocks while the 96-GB device had room, so its RESERVED memory grew
 monotonically over an episode's ~70-90 requests (shapes vary per clip: query count, voxelized scene) to 21 GiB median
-and 49.8 GiB maximum. After every request (also a failed one) this worker therefore drops its references and returns
-the cached, unused blocks to the driver (``torch.cuda.empty_cache``); the loaded model stays resident. Optionally
-``S4D_TE_CUDA_MEMORY_CAP_GIB`` caps the allocator (``torch.cuda.set_per_process_memory_fraction``): above the cap it
-first frees cached blocks and retries, and raises an out-of-memory error (a failed request, never a different result)
-when the live working set itself does not fit. Neither changes a requested computation; ``meta.memory`` and the
-runtime flags record the policy, the allocator configuration and the per-request peaks.
+and 49.8 GiB maximum. After every request (also a failed one, whose traceback is dropped first so that the frames
+holding request tensors are freed) this worker returns the cached, unused blocks to the driver
+(``torch.cuda.empty_cache``); the loaded model stays resident. ``S4D_TE_CUDA_MEMORY_CAP_GIB`` caps the caching
+allocator (``torch.cuda.set_per_process_memory_fraction``); it is REQUIRED on a MIG instance (a shared device: an
+uncapped allocator could take memory that co-tenants were promised) and optional elsewhere. At the cap the allocator
+frees its cached blocks and retries; if it still cannot back an allocation (live tensors plus fragmentation, segment
+rounding, library workspaces) the request fails with an out-of-memory error - a failed request, never a different
+result. Neither changes a requested computation; ``meta.memory`` and the runtime flags record the policy, the
+allocator configuration and the per-request peaks.
 """
 
 from __future__ import annotations
@@ -37,6 +40,7 @@ import os
 import random
 import sys
 import time
+import traceback
 from pathlib import Path
 
 import numpy as np
@@ -80,14 +84,24 @@ def runtime_provenance(torch) -> dict:
     return {**_RUNTIME, "flags": flags, "seed": SEED, "deterministic_mode": False}
 
 
+class RequestFailed(RuntimeError):
+    """A failed request, re-raised as text after its traceback (and the request tensors it kept alive) was dropped and
+    the CUDA cache was released; the message carries the original exception type, message and traceback."""
+
+
 def memory_policy(torch) -> dict:
     """Apply (once per process) and describe this worker's CUDA memory policy: cached blocks are released after every
-    request; ``S4D_TE_CUDA_MEMORY_CAP_GIB`` (optional, GiB) caps the caching allocator of device 0. An invalid cap is
-    an error (every request fails), never ignored."""
+    request; ``S4D_TE_CUDA_MEMORY_CAP_GIB`` (GiB) caps the caching allocator of device 0 - required on a MIG instance,
+    optional elsewhere. A missing (on MIG) or invalid cap is an error (every request fails), never ignored."""
     if not _MEMORY:
         raw = os.environ.get(CUDA_MEMORY_CAP_ENV, "").strip()
-        total = int(torch.cuda.get_device_properties(0).total_memory)
+        props = torch.cuda.get_device_properties(0)
+        total = int(props.total_memory)
+        mig = os.environ.get("CUDA_VISIBLE_DEVICES", "").strip().startswith("MIG-") or " MIG " in f" {props.name} "
         cap = fraction = None
+        if mig and not raw:
+            raise ValueError(f"{CUDA_MEMORY_CAP_ENV} is required on a MIG instance (shared device); set it to the GiB "
+                             "this worker may reserve")
         if raw:
             try:
                 cap = float(raw)
@@ -98,7 +112,8 @@ def memory_policy(torch) -> dict:
             fraction = min(1.0, cap * 2**30 / total)
             torch.cuda.set_per_process_memory_fraction(fraction, 0)
         _MEMORY.update(release_cached_after_request=True, cuda_memory_cap_gib=cap, memory_fraction=fraction,
-                       device_total_memory=total, pytorch_cuda_alloc_conf=os.environ.get("PYTORCH_CUDA_ALLOC_CONF"))
+                       device_total_memory=total, mig_instance=mig,
+                       pytorch_cuda_alloc_conf=os.environ.get("PYTORCH_CUDA_ALLOC_CONF"))
     return dict(_MEMORY)
 
 
@@ -261,12 +276,13 @@ def handle(request, inputs):
         raise ValueError("num_iters must be positive")
     import torch
 
-    memory = memory_policy(torch)
-    tracker, identity = _model(request["repo_dir"], request["checkpoint"], "cuda")
-    torch.manual_seed(SEED)  # also seeds every CUDA device
-    np.random.seed(SEED)
-    random.seed(SEED)
+    failure = None
     try:
+        memory = memory_policy(torch)
+        tracker, identity = _model(request["repo_dir"], request["checkpoint"], "cuda")
+        torch.manual_seed(SEED)  # also seeds every CUDA device
+        np.random.seed(SEED)
+        random.seed(SEED)
         torch.cuda.reset_peak_memory_stats()
         torch.cuda.synchronize()
         infer_started = time.monotonic()
@@ -274,8 +290,12 @@ def handle(request, inputs):
         torch.cuda.synchronize()
         inference_s = time.monotonic() - infer_started
         peak_allocated, peak_reserved = int(torch.cuda.max_memory_allocated()), int(torch.cuda.max_memory_reserved())
-    finally:  # also after a failed request: never keep the request's cache
-        memory.update(release_cuda_cache(torch))
+    except Exception as exc:  # keep only text: the traceback's frames hold the request's tensors
+        failure = f"{type(exc).__name__}: {exc}\n{traceback.format_exc()}"
+    released = release_cuda_cache(torch)  # also after a failed request: never keep the request's cache
+    if failure is not None:
+        raise RequestFailed(failure)
+    memory.update(released)
     return identity, arrays, {"norm_factor": norm, "inference_s": inference_s,
                               "elapsed_s": time.monotonic() - started,
                               "max_memory_allocated": peak_allocated, "max_memory_reserved": peak_reserved,
