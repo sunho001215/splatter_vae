@@ -111,7 +111,8 @@ class RemoteSnapshot:
     # durable remote launch hold (ops/remote/launch_hold.py): {"boot_id", "hold", "resumed", "held"}; None only for a
     # snapshot format without the line (pre-2026-11-11 fixtures); the real command always emits it
     launch_hold: dict | None = None
-    # None denotes legacy/test evidence. Production snapshots include every live owned
+    # None denotes legacy evidence, which cannot admit launches on MIG hosts.
+    # Production snapshots include every live owned
     # inspect, its verified PID set and cgroup anon+shmem, plus ALL Docker names (all states).
     admission_records: list | None = None
     container_names: set[str] | None = None
@@ -225,6 +226,10 @@ def cotenant_charges(snapshot: RemoteSnapshot, own=()) -> dict:
     memory reading (nothing fits). Host: the co-tenants' declared RAM limits, the part of them not yet in use (limit -
     measured anon + shmem; the whole limit when unmeasured), containers without an enforced RAM limit (``unbounded``:
     their RAM cannot be accounted; remote admission is then held) and declared CPUs (None: unlimited)."""
+    if (snapshot.admission_records is None
+            and (REMOTE_MIG_PARENTS or any(g.startswith('MIG-') for g in
+                 (*APPROVED_HOST_GPUS['remote'], *snapshot.usage, *snapshot.gpu_memory)))):
+        raise ValueError('missing MIG admission inventory')
     own = list(own)
     gpus, ram_declared, ram_pending, unbounded, cpus = {}, 0, 0, [], 0.0
     for name, item in sorted(snapshot.cotenants.items()):

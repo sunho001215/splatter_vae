@@ -1280,6 +1280,64 @@ def test_complete_snapshot_preserves_guard_evidence(slot_evidence, tmp_path, mon
             assert charge['cpus'] == 8 and charge['reserved_disk_bytes'] == 10 * 2**30
 
 
+@pytest.mark.parametrize('status', ['running', 'exited'])
+def test_legacy_mig_snapshot_blocks_launches_but_preserves_reconciliation(tmp_path, monkeypatch, status):
+    from tests.test_remote_jobs import (jobs, remote, FakeBackend, job, write_queue, tick,
+                                        inspected, snapshot_output, launch_event, GIB, CONTAINER_ID)
+
+    gpu = mig_uuid(0, 0)
+    approved = {**jobs.APPROVED_HOST_GPUS, 'remote': (gpu,)}
+    monkeypatch.setattr(jobs, 'APPROVED_HOST_GPUS', approved)
+    monkeypatch.setattr(remote, 'APPROVED_HOST_GPUS', approved)
+    monkeypatch.setattr(remote, 'REMOTE_MIG_PARENTS', (PARENTS[0],))
+    monkeypatch.setattr(remote, 'REMOTE_MIG_DEVICES', {gpu: (PARENTS[0], 3, 0)})
+    item = inspected('active', gpu=gpu, status=status)
+    item['HostConfig'].update(Memory=48 * GIB, NanoCpus=8 * 10**9)
+    # An old container still has unallocated RAM growth after the legacy ramp expires.
+    text = snapshot_output([item]).replace('MemAvailable: 209715200 kB', 'MemAvailable: 62914560 kB')
+    text = text.replace('__S4D_GPUS__\n', '__S4D_GPUS__\n99, ' + PARENTS[0] + '\n')
+    text = text.replace('__S4D_END__', '\n'.join([
+        '__S4D_MIG_LIST__', render_list([(PARENTS[0], True)]),
+        '__S4D_MIG_QUERY__', render_query([(PARENTS[0], True)], processes={0: [(3, 123, 67)]}),
+        '__S4D_END__']))
+    snapshot = remote.parse_snapshot(text)
+    assert snapshot.resources_ready and snapshot.admission_records is None
+    assert snapshot.gpu_memory[gpu] == (24192, 67)
+    with pytest.raises(ValueError, match='missing MIG admission inventory'):
+        remote.cotenant_charges(snapshot)
+
+    backend = FakeBackend(tmp_path / 'runs')
+    backend.value = snapshot
+    queue = write_queue(tmp_path, [job('active', gpu=gpu), job('new', gpu=gpu)],
+                        limits={gpu: {'max_jobs': 4, 'max_mem_gb': 21.5}})
+    launch_event(tmp_path, 'active', gpu=gpu, time=1)
+    for _ in range(2):
+        messages = tick(tmp_path, queue, backend)
+        current = jobs.read_registry(tmp_path / 'registry.jsonl')['active']
+        assert current['status'] == ('done' if status == 'exited' else 'running')
+        assert not current['unknown'] and current['attempts'] == 1 and current['failures'] == 0
+        assert not backend.launches
+        assert any('admission inventory' in message for message in messages)
+    if status == 'exited':
+        assert current['sync']['final'] and backend.backups == ['active']
+        assert len(backend.removals) == 1 and current['containers_removed'] == [CONTAINER_ID]
+    else:
+        assert not backend.removals
+
+
+@pytest.mark.parametrize('source', ['allowlist', 'usage', 'memory', 'parents'])
+def test_missing_admission_records_fail_closed_for_any_mig_host_evidence(monkeypatch, source):
+    from ops.jobs import remote_backend as remote
+
+    gpu = mig_uuid(0, 0)
+    monkeypatch.setattr(remote, 'APPROVED_HOST_GPUS', {'remote': (gpu,) if source == 'allowlist' else ()})
+    monkeypatch.setattr(remote, 'REMOTE_MIG_PARENTS', (PARENTS[0],) if source == 'parents' else ())
+    snapshot = remote.RemoteSnapshot({gpu: []} if source == 'usage' else {}, 200, 1000, 800, {},
+                                     gpu_memory={gpu: (24192, 67)} if source == 'memory' else {})
+    with pytest.raises(ValueError, match='missing MIG admission inventory'):
+        remote.cotenant_charges(snapshot)
+
+
 def test_snapshot_uses_guard_identity_mode_and_process_memory_requirements():
     from ops.jobs import remote_backend as remote
     devices = devices_of(allowlist())

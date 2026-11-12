@@ -1243,11 +1243,17 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
                                 "; no remote jobs launched")
             elif reachable and snapshot.resources_ready:
                 # processes of campaign-owned co-tenants (remote_backend.identify_cotenant) are known on their GPU only
-                known = {uuid: charge["pids"] for uuid, charge in cotenant_charges(snapshot)["gpus"].items()}
-                foreign = {uuid for uuid, procs in snapshot.usage.items()
-                           if any(pid not in owned and pid not in known.get(uuid, ()) for pid, _ in procs)}
-                resources["remote"] = {"available": snapshot.available_gb, "disk_total": snapshot.disk_total_bytes,
-                                       "disk_free": snapshot.disk_free_bytes, "foreign": foreign, "snapshot": snapshot}
+                try:
+                    charges = cotenant_charges(snapshot)
+                except (ValueError, KeyError, TypeError):
+                    # Admission evidence can be absent while running-job identity is valid.
+                    messages.append('remote admission inventory is unreadable; no remote jobs launched')
+                else:
+                    known = {uuid: charge["pids"] for uuid, charge in charges["gpus"].items()}
+                    foreign = {uuid for uuid, procs in snapshot.usage.items()
+                               if any(pid not in owned and pid not in known.get(uuid, ()) for pid, _ in procs)}
+                    resources["remote"] = {"available": snapshot.available_gb, "disk_total": snapshot.disk_total_bytes,
+                                           "disk_free": snapshot.disk_free_bytes, "foreign": foreign, "snapshot": snapshot}
             else:
                 messages.append("remote: resource evidence unavailable; no remote jobs launched")
         except RemoteUnreachable:

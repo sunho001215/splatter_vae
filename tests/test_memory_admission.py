@@ -82,3 +82,24 @@ def test_realworld_capacity_withholds_staging(monkeypatch):
     monkeypatch.setattr(mb, 'snapshot', lambda: {'budget_usage': 64_000_000_000})
     monkeypatch.setattr(mb, 'session_nonfile_pss', lambda: {})
     assert realworld_local._capacity({'jobs': []}, {}) == {'ram_free_bytes': 74_000_000_000}
+
+
+@pytest.mark.parametrize('job,recorded_ram,footprint', [
+    ({'script': 'scripts/train_snerl.py', 'ram_gb': 4}, 24, 4 * 2**30),
+    ({'script': 'scripts/train_snerl.py', 'ram_gb': 24}, 4, 24 * 2**30),
+    ({'script': 'scripts/train_realworld_fql.py', 'fql_condition': 'ours', 'ram_gb': 24}, 24, 3 * 2**30),
+    ({'script': 'scripts/train_realworld_fql.py', 'fql_condition': 'e2e_cnn', 'ram_gb': 24}, 24, 8 * 2**30),
+    ({'script': 'scripts/train_rl.py', 'ram_gb': 24}, 24, int(3.5e9)),
+    ({}, 4, 4 * 2**30),
+])
+def test_realworld_capacity_matches_current_queue_growth(monkeypatch, job, recorded_ram, footprint):
+    from ops.jobs import realworld_local
+
+    monkeypatch.setattr(mb, 'snapshot', lambda: {'budget_usage': 64_000_000_000})
+    monkeypatch.setattr(mb, 'session_nonfile_pss', lambda: {123: 2**30})
+    current = {'host': 'local', 'status': 'running', 'pid': 123, 'ram_gb': recorded_ram}
+    queue = {'jobs': [{'id': 'active', **job}] if job else []}
+    growth = watch.remaining_growth({'active': (current, job)})
+    assert growth == footprint - 2**30
+    assert realworld_local._capacity(queue, {'active': current}) == {
+        'ram_free_bytes': mb.TRAINING_CEILING - 64_000_000_000 - growth}

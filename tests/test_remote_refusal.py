@@ -8,6 +8,15 @@ from tests.test_remote_jobs import (jobs, remote, REPO, REMOTE, COMMIT, IMAGE, C
                                     FakeClient, FakeBackend, job, write_queue, tick)
 
 
+@pytest.fixture
+def empty_mig_backend(tmp_path):
+    backend = FakeBackend(tmp_path / 'runs')
+    backend.value.admission_records = []
+    backend.value.container_names = set()
+    backend.value.gpu_memory = {REMOTE: (24192, 67)}
+    return backend
+
+
 def refusal_proof(container='s4d-r-a1', gpu=REMOTE):
     return {'version': 1, 'container': container, 'guard': {
         'admit': False, 'uuid': gpu, 'reasons': ['measured free GPU memory/headroom'],
@@ -65,10 +74,11 @@ def test_automatic_refusal_rejects_invalid_proof(tmp_path, change):
 
 
 @pytest.mark.parametrize('confirmed,present', [(True, False), (True, True), (False, False), (None, False)])
-def test_tick_guard_refusal_requires_fresh_absence_then_backs_off(tmp_path, monkeypatch, confirmed, present):
+def test_tick_guard_refusal_requires_fresh_absence_then_backs_off(tmp_path, monkeypatch, empty_mig_backend,
+                                                               confirmed, present):
     queued = job()
-    queue = write_queue(tmp_path, [queued])
-    backend = FakeBackend(tmp_path / 'runs')
+    queue = write_queue(tmp_path, [queued], limits={REMOTE: {'max_jobs': 4, 'max_mem_gb': 21.5}})
+    backend = empty_mig_backend
     calls = []
     def refused(path):
         calls.append(path)
@@ -130,9 +140,9 @@ def test_real_registry_replay_unchanged_for_every_job(tmp_path):
 
 
 @pytest.mark.parametrize('state', ['running', 'paused', 'restarting', 'exited', 'created', 'dead'])
-def test_refusal_never_resets_with_container_in_any_state(tmp_path, state):
-    backend = FakeBackend(tmp_path / 'runs')
-    queue = write_queue(tmp_path, [job()])
+def test_refusal_never_resets_with_container_in_any_state(tmp_path, empty_mig_backend, state):
+    backend = empty_mig_backend
+    queue = write_queue(tmp_path, [job()], limits={REMOTE: {'max_jobs': 4, 'max_mem_gb': 21.5}})
     def refused(path):
         spec = json.loads(path.read_text())
         backend.value.container_names = {spec['container']}

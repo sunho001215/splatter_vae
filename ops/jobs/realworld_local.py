@@ -942,12 +942,17 @@ def closeout(job_id: str, state: dict, job: dict, finished_dir: Path = FINISHED_
 
 def _capacity(queue: dict, state: dict) -> dict:
     """Training capacity leaves the fixed policy-staging reserve inside 150 GB."""
+    from ops.jobs.footprints import local_footprint
     from ops.resources import memory_budget as mb
     pss = mb.session_nonfile_pss()
     by_id = {j["id"]: j for j in queue["jobs"]}
-    growth = sum(max(0, max(float(s.get("ram_gb", 0)), float(by_id.get(i, {}).get("ram_gb", 0))) * 2**30
-                     - pss.get(int(s.get("pid") or -1), 0)) for i, s in state.items()
-                 if s.get("host", "local") == "local" and s.get("status") in ("running", "launching", "sync_pending"))
+    growth = 0
+    for i, s in state.items():
+        if s.get("host", "local") != "local" or s.get("status") not in ("running", "launching", "sync_pending"):
+            continue
+        job = by_id.get(i)
+        footprint = local_footprint(job, by_id) if job else int(float(s.get("ram_gb", 0)) * 2**30)
+        growth += max(0, footprint - pss.get(int(s.get("pid") or -1), 0))
     return {"ram_free_bytes": max(0, mb.TRAINING_CEILING - mb.snapshot()["budget_usage"] - growth)}
 
 
