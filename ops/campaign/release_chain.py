@@ -43,6 +43,7 @@ POLL_SECONDS = 10
 # MIG slice, from the clean checkout of the release commit, concurrently with the remote native suite
 LOCAL_TEST_GPU = 'MIG-8da55219-bd6b-5260-8be1-3b2a76ac733c'
 LOCAL_PARTITION_TIMEOUT = 3600
+LOCAL_THREADS = 8  # the local host is shared and heavily loaded; the partition is a handful of tests
 HEARTBEAT_SECONDS = 60  # reservation renewal by a background thread (independent of syncs, ticks and lock waits)
 # the chain's supported duration: past it the chain stops renewing and fails (the reservation then lapses within
 # EXPIRY_SECONDS, well before release_reservation.MAX_LIFETIME_SECONDS); the verification can simply be re-run
@@ -224,7 +225,7 @@ class Release:
             shutil.rmtree(self.local_out)
         self.local_out.mkdir(parents=True)
         env = {**os.environ, 'CUDA_VISIBLE_DEVICES': self.local_gpu, 'S4D_EXPECTED_COMMIT': self.commit,
-               'PYTHONDONTWRITEBYTECODE': '1', 'OMP_NUM_THREADS': '8'}
+               'PYTHONDONTWRITEBYTECODE': '1', 'OMP_NUM_THREADS': '8', 'S4D_TEST_CPU_THREADS': str(LOCAL_THREADS)}
         env.pop('S4D_TEST_EVIDENCE_DIR', None)
         self.local_log = open(self.local_out.parent / f'release-local-{self.short}.log', 'w')
         self.local_started = time.time()
@@ -303,7 +304,11 @@ class Release:
             raise
         finally:
             if self.local_proc is not None and self.local_proc.poll() is None:
-                self.local_proc.terminate()
+                self.local_proc.terminate()  # the runner then terminates and reaps its worker sessions
+                try:
+                    self.local_proc.wait(timeout=60)
+                except subprocess.TimeoutExpired:
+                    self.local_proc.kill()
             self.clear()
 
 

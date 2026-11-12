@@ -15,6 +15,8 @@ the same source fingerprints (before = after, unchanged) and expected commit. An
 from __future__ import annotations
 
 MARKER = "metaworld_data"
+# provenance a consumer may add to a combined report (adopt_remote_suite_evidence: docs/tests.json)
+PROVENANCE_KEYS = frozenset({"adopted_evidence"})
 REMOTE, LOCAL, COMBINED = "remote", MARKER, "combined"
 KINDS = ("passed", "error", "failed", "skipped")
 
@@ -70,5 +72,5 @@ def check_combined(report: dict) -> None:
     if report.get("partition") != COMBINED or not isinstance(parts, dict) or set(parts) != {REMOTE, LOCAL}:
         raise ValueError("not a combined suite report")
     expected = combine(parts[REMOTE], parts[LOCAL])
-    if report != expected:
+    if set(report) - set(expected) - PROVENANCE_KEYS or any(report.get(k) != v for k, v in expected.items()):
         raise ValueError("combined suite report differs from its partitions")

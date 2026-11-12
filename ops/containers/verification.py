@@ -340,6 +340,8 @@ def run_verification(repository: Path, spec: dict, run_child) -> int:
             child_env = {key: value for key, value in env.items() if not key.startswith("S4D_VERIFICATION_")}
             if purpose == "native_suite":
                 child_env.pop("S4D_JOB_ID", None)
+                # the container's CPU quota as the sharded suite's thread budget (its affinity shows every host CPU)
+                child_env["S4D_TEST_CPU_THREADS"] = env["S4D_VERIFICATION_CPU_THREADS"]
             else:
                 child_env["S4D_TEST_EVIDENCE_DIR"] = env["S4D_VERIFICATION_ACCEPTANCE_DIR"]
             code = run_child(script, spec["args"], console, timeout_seconds=spec["verification_timeout_seconds"],

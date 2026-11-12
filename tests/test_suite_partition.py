@@ -128,3 +128,17 @@ def test_every_gate_consumer_re_derives_a_combined_report(tmp_path, monkeypatch)
     from pathlib import Path
     source = Path(sp.__file__).resolve().parents[2] / "ops/jobs/remote_backend.py"
     assert "suite_partition.check_combined(suite)" in source.read_text()  # acceptance_manifest applies it too
+
+
+def test_adoption_provenance_is_the_only_extra_field_a_combined_report_may_carry(tmp_path):
+    """Codex review 2026-11-12: adopt_remote_suite_evidence adds adopted_evidence; nothing else may be added."""
+    import json
+
+    from ops.jobs import scheduler
+    adopted = {**sp.combine(remote(), local()), "adopted_evidence": {"job": "verify-native-x"}}
+    sp.check_combined(adopted)
+    path = tmp_path / "tests.json"
+    path.write_text(json.dumps(adopted))
+    assert scheduler.tested_source(path) == SOURCE
+    with pytest.raises(ValueError):
+        sp.check_combined({**adopted, "unexpected": 1})

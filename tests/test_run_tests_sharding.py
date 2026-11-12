@@ -320,3 +320,31 @@ def test_the_metaworld_marker_is_registered_and_used():
                             cwd=REPO, capture_output=True, text=True, timeout=120).stdout
     assert f"@pytest.mark.{runner.MARKER}:" in listed
     assert "@pytest.mark.metaworld_data" in (REPO / "tests/test_baselines_snerl.py").read_text()
+
+
+def test_terminating_the_runner_kills_and_reaps_its_worker_sessions(tmp_path):
+    """Codex review 2026-11-12: a release chain that fails elsewhere terminates the local runner; its workers (own
+    sessions) must not be orphaned."""
+    import threading
+    import time
+    done = {}
+    thread = threading.Thread(target=lambda: done.update(result=runner.run_process(
+        [sys.executable, "-c", "import time; time.sleep(120)"], dict(os.environ), tmp_path / "w.log", 300,
+        cwd=tmp_path)))
+    thread.start()
+    for _ in range(100):
+        if runner.ACTIVE_WORKERS:
+            break
+        time.sleep(0.05)
+    (process,) = list(runner.ACTIVE_WORKERS)
+    assert runner.terminate_workers() == 1
+    thread.join(timeout=30)
+    assert not thread.is_alive() and process.poll() is not None and not runner.ACTIVE_WORKERS
+
+
+def test_thread_budget_prefers_the_passed_quota(monkeypatch):
+    monkeypatch.setenv("S4D_TEST_CPU_THREADS", "8")
+    monkeypatch.setenv("S4D_VERIFICATION_CPU_THREADS", "32")
+    assert runner.thread_budget() == 8
+    monkeypatch.delenv("S4D_TEST_CPU_THREADS")
+    assert runner.thread_budget() == 32

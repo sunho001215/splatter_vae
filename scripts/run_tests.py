@@ -10,6 +10,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import threading
 import time
 import xml.etree.ElementTree as ET
 from collections import Counter, defaultdict
@@ -104,7 +105,9 @@ def execute_pytest(spec, *, collect=False):
 
 
 def thread_budget():
-    value = os.environ.get("S4D_VERIFICATION_CPU_THREADS")
+    # S4D_TEST_CPU_THREADS: set by the verification wrapper (container CPU quota) and the release chain's local
+    # partition; S4D_VERIFICATION_CPU_THREADS: a direct verification run; otherwise the CPU affinity
+    value = os.environ.get("S4D_TEST_CPU_THREADS") or os.environ.get("S4D_VERIFICATION_CPU_THREADS")
     budget = int(value) if value is not None else (
         len(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity") else os.cpu_count() or 1)
     if budget < 1:
@@ -141,26 +144,63 @@ def threads_per_shard(budget, concurrent):
     return max(1, budget // max(1, concurrent))
 
 
+ACTIVE_WORKERS = set()  # worker sessions (Popen) of this runner, terminated if the runner itself is terminated
+_ACTIVE_LOCK = threading.Lock()
+
+
+def terminate_workers():
+    """Kill every live worker session (its whole process group) and reap the leaders."""
+    with _ACTIVE_LOCK:
+        workers = list(ACTIVE_WORKERS)
+    for process in workers:
+        for sig in (signal.SIGTERM, signal.SIGKILL):
+            try:
+                os.killpg(process.pid, sig)
+            except ProcessLookupError:
+                break
+            try:
+                process.wait(timeout=5)
+                break
+            except subprocess.TimeoutExpired:
+                continue
+    return len(workers)
+
+
+def _terminated(signum, frame):
+    terminate_workers()
+    raise SystemExit(128 + signum)
+
+
 def run_process(argv, env, log, timeout, *, cwd=REPO):
     """Bound the entire process group, including subprocesses left by a timed-out test."""
     with Path(log).open("w") as stream:
         process = subprocess.Popen(argv, cwd=cwd, env=env, stdout=stream, stderr=subprocess.STDOUT,
                                    start_new_session=True)
+        with _ACTIVE_LOCK:
+            ACTIVE_WORKERS.add(process)
         try:
-            return process.wait(timeout=max(0.01, timeout)), False
+            return _wait_bounded(process, timeout)
+        finally:
+            with _ACTIVE_LOCK:
+                ACTIVE_WORKERS.discard(process)
+
+
+def _wait_bounded(process, timeout):
+    try:
+        return process.wait(timeout=max(0.01, timeout)), False
+    except subprocess.TimeoutExpired:
+        os.killpg(process.pid, signal.SIGTERM)
+        try:
+            process.wait(timeout=5)
         except subprocess.TimeoutExpired:
-            os.killpg(process.pid, signal.SIGTERM)
-            try:
-                process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                pass
-            # The group may still have grandchildren even after its leader exits.
-            try:
-                os.killpg(process.pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
-            process.wait()
-            return 124, True
+            pass
+        # The group may still have grandchildren even after its leader exits.
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        process.wait()
+        return 124, True
 
 
 def merge_junit(paths, destination):
@@ -289,6 +329,10 @@ def main():
         torch.set_num_threads(int(os.environ["OMP_NUM_THREADS"]))
         return execute_pytest(json.loads(options.worker.read_text()), collect=options.collect)
     from test_shards import partition
+
+    # A terminated runner (e.g. the release chain failing elsewhere) never leaves its worker sessions behind.
+    signal.signal(signal.SIGTERM, _terminated)
+    signal.signal(signal.SIGINT, _terminated)
 
     output = validate_runtime_path(Path(options.output_dir))
     output.mkdir(parents=True, exist_ok=True)
