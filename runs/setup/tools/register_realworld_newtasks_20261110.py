@@ -190,7 +190,10 @@ def verify_inputs(task, manifest, report, directory):
     # This task's sections must equal the live gate bound to the same store episodes. The manifest bytes may differ
     # (ingestion of other tasks keeps writing it); both hashes are recorded, as the existing registrars do.
     for section in ('tasks', 'calibration_hold', 'families'):
-        require(saved[section][task] == bound[section][task], f'staged {section} differs from live gate')
+        live = bound[section][task]
+        if section == 'families':  # a report staged before a derived family (gate.DERIVED_FAMILIES) lacks only that key
+            live = {f: v for f, v in live.items() if f in saved[section][task] or f not in gate.DERIVED_FAMILIES}
+        require(saved[section][task] == live, f'staged {section} differs from live gate')
     require(isinstance(saved.get('manifest', {}).get('sha256'), str), 'staged gate report names no manifest')
     split = json.loads(files['split_seed0.json'].read_bytes())
     train, val = split.get('train') or [], split.get('validation') or []

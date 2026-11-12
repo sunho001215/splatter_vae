@@ -127,16 +127,18 @@ def consumer_families(name: str | None) -> tuple:
 
 
 def _report_family(fams: dict, family: str) -> dict:
-    """A task's report entry of ``family``; a derived family missing from an older report is its source family's."""
+    """A task's report entry of ``family``; ONLY a derived family ABSENT from an older report is its source family's
+    (an explicit null / malformed / failed entry is kept and fails closed)."""
+    if family not in fams and family in DERIVED_FAMILIES:
+        family = DERIVED_FAMILIES[family]
     entry = fams.get(family)
-    if entry is None and family in DERIVED_FAMILIES:
-        entry = fams.get(DERIVED_FAMILIES[family])
     return entry if isinstance(entry, dict) else {}
 
 
 def qa_families(stages: dict) -> dict | None:
     """{family: passed} of an episode's ``qa`` record over ``REPORT_FAMILIES`` (None: a family-QA record without
-    families, fail closed); a derived family passes on its own verdict or on its passed source family."""
+    families, fail closed); a derived family is its own verdict when the record carries one (an explicit failure or a
+    malformed entry fails), else - records written before it - its source family's verdict."""
     rec = stages.get("qa") or {}
     metrics = rec.get("metrics") or {}
     if not isinstance(metrics, dict):
@@ -148,7 +150,8 @@ def qa_families(stages: dict) -> dict | None:
         return None
     out = {f: isinstance(fam.get(f), dict) and fam[f].get("passed") is True for f in REPORT_FAMILIES}
     for derived, source in DERIVED_FAMILIES.items():
-        out[derived] = out[derived] or out[source]
+        if derived not in fam:  # a record written before the derived family: its source family decides
+            out[derived] = out[source]
     return out
 
 

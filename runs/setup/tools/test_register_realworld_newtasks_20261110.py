@@ -287,6 +287,27 @@ def test_staged_inputs_survive_manifest_writes_for_other_tasks(tmp_path):
     assert set(R.verify_inputs('covering', manifest, report, tmp_path)) == set(R.INPUT_NAMES)
 
 
+def test_inputs_staged_before_a_derived_family_still_verify(tmp_path):
+    """A gate report staged before gate.DERIVED_FAMILIES lacks only those keys; every original family must still match
+    exactly, and a derived entry that IS staged must match too (Codex review 2026-11-12, P1)."""
+    manifest, report = staged_inputs(tmp_path)
+    path = tmp_path / 'gate_report.json'
+    doc = json.loads(path.read_text())
+    for derived in gate.DERIVED_FAMILIES:
+        doc['families']['covering'].pop(derived)
+    path.write_text(json.dumps(doc))
+    assert set(R.verify_inputs('covering', manifest, report, tmp_path)) == set(R.INPUT_NAMES)
+    doc['families']['covering']['multiview']['failed_count'] = 1
+    path.write_text(json.dumps(doc))
+    with pytest.raises(R.Refused, match='staged families differ'):
+        R.verify_inputs('covering', manifest, report, tmp_path)
+    doc['families']['covering']['multiview']['failed_count'] = 0
+    doc['families']['covering']['multiview_sets'] = {'passed': False, 'failed_count': 1, 'failed_episodes': []}
+    path.write_text(json.dumps(doc))
+    with pytest.raises(R.Refused, match='staged families differ'):
+        R.verify_inputs('covering', manifest, report, tmp_path)
+
+
 def test_role_release_is_read_at_registration_time(tmp_path):
     path = tmp_path / 'runs/setup/role-release.json'
     path.parent.mkdir(parents=True)

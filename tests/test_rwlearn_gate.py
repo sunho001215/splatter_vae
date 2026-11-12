@@ -508,6 +508,23 @@ def test_multiview_sets_derives_from_a_passed_multiview_family_and_older_reports
         assert gate.task_passed(report, "drawer-open", "ours") and not gate.task_passed(report, "mug-hanging", "ours")
 
 
+@pytest.mark.parametrize("entry", [{"passed": False}, None, "passed", {"passed": "true"}])
+def test_an_explicit_derived_verdict_is_never_overridden(entry):
+    """Only an ABSENT derived family falls back to its source; an explicit failure, null or malformed entry fails
+    closed even when the full multi-view family passed (Codex review 2026-11-12, P2)."""
+    m = manifest()
+    e = m["episodes"]["drawer-open/episode_000004.h5"]
+    _families(e)
+    e["preprocessing"]["stages"]["qa"]["metrics"]["families"]["multiview_sets"] = entry
+    assert gate.qa_families(e["preprocessing"]["stages"])["multiview_sets"] is False
+    rep = gate.evaluate(m, ["drawer-open"])
+    assert not gate.task_passed(rep, "drawer-open", "reviwo")
+    assert gate.task_passed(rep, "drawer-open", "dynamo")
+    for fams in rep["families"].values():
+        fams["multiview_sets"] = entry
+    assert not gate.task_passed(rep, "drawer-open", "reviwo")
+
+
 @pytest.mark.parametrize("fmt", [None, "rwprep-qa/1", "rwprep-qa/2", "rwprep-qa/3"])
 @pytest.mark.parametrize("with_families", [False, True])
 def test_only_current_qa_with_explicit_families_can_pass(fmt, with_families):
