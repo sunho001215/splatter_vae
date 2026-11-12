@@ -76,3 +76,23 @@ def check_combined(report: dict) -> None:
     expected = combine(parts[REMOTE], parts[LOCAL])
     if set(report) - set(expected) - PROVENANCE_KEYS or any(report.get(k) != v for k, v in expected.items()):
         raise ValueError("combined suite report differs from its partitions")
+
+
+def release_support(read) -> dict:
+    """Read-only capability preflight of a release tree; acceptance still requires both actual passing reports.
+
+    A historical same-science MIG variant may apply cleanly while carrying a runner
+    from before suite partitions. Refuse that route before reserving or launching work.
+    """
+    required = {
+        'scripts/run_tests.py': (b'--partition',),
+        'scripts/test_shards.py': (),
+        'ops/containers/suite_partition.py': (b'def combine(',),
+        'ops/containers/verification.py': (b'from ops.containers import suite_partition',),
+    }
+    blockers = []
+    for name, tokens in required.items():
+        data = read(name)
+        if data is None or any(token not in data for token in tokens):
+            blockers.append(f'{name}: missing partitioned release-gate support')
+    return {'compatible': not blockers, 'blockers': blockers}

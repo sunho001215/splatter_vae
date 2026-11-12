@@ -128,15 +128,19 @@ def create(root: Path, base: str, mig_base: str, mig_head: str, configs: Path, s
 
     scope = scope_comparison([*scripts, "scripts/remote/entry.py"], before_read, before_listed, after_read,
                              after_listed, commit_identity(root, base), commit_identity(root, variant))
+    from ops.containers.suite_partition import release_support  # noqa: PLC0415
+
+    gate = release_support(after_read)
     changed = git(root, "diff", "--name-only", base, variant).decode().split()
     return {"base": base, "variant": variant, "identical_scope": scope["identical"],
             "scope_differences": scope["differences"], "operational_differences": scope["operational_differences"],
-            "changed_files": changed,
+            "changed_files": changed, "release_gate": gate,
             "next": [f"git -C {root} checkout main && git -C {root} merge --no-ff -s ours {variant} "
                      f"-m 'Adopt MIG variant {variant[:7]} of {base[:7]} into main history (tree unchanged)'",
                      f"git -C {root} push origin main   (credentials: gh auth git-credential)",
                      f"python -I runs/setup/tools/release_chain.py {variant} --image <pinned digest> --tag cc "
-                     "--native-gpu <one MIG UUID>   (after the verification HOLD is lifted for the MIG chains)"]}
+                     "--native-gpu <one MIG UUID>   (after the verification HOLD is lifted for the MIG chains)"]
+                     if gate["compatible"] else ["STOP: backport and review the partitioned release gate first"]}
 
 
 def main(argv=None) -> int:
@@ -155,7 +159,7 @@ def main(argv=None) -> int:
         raise SystemExit("create needs --base, --configs and at least one --script")
     result = create(REPO, args.base, args.mig_base, args.mig_head, args.configs, args.script)
     print(json.dumps(result, indent=1))
-    return 0 if result["identical_scope"] else 3
+    return 0 if result["identical_scope"] and result["release_gate"]["compatible"] else 3
 
 
 if __name__ == "__main__":

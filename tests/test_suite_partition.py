@@ -154,3 +154,18 @@ def test_host_dependent_collections_combine_against_the_remote_reference():
     combined = sp.combine(remote(), local_extra)
     assert combined["collected_total"] == len(ALL) and combined["counts"]["passed"] == len(ALL)
     sp.check_combined(combined)
+
+
+def test_historical_release_gate_is_rejected_before_launch():
+    from ops.containers.suite_partition import release_support
+
+    tree = {'scripts/run_tests.py': b'--partition', 'scripts/test_shards.py': b'',
+            'ops/containers/suite_partition.py': b'def combine(',
+            'ops/containers/verification.py': b'from ops.containers import suite_partition'}
+    assert release_support(tree.get) == {'compatible': True, 'blockers': []}
+    for missing in tree:
+        older = {key: value for key, value in tree.items() if key != missing}
+        result = release_support(older.get)
+        assert not result['compatible'] and len(result['blockers']) == 1
+    tree['scripts/run_tests.py'] = b'old unpartitioned runner'
+    assert not release_support(tree.get)['compatible']

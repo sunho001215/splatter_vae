@@ -1,6 +1,6 @@
 """Deploy and verify a remote release (the established typed-verification route; image unchanged):
 sync the pushed commit's bundle to ~/kaist/sunho/releases/<commit>/code (identity: clean pushed ancestry, checksum),
-run the remote native suite (functional check of the new code in the accepted image) on one authorized GPU, then the four
+run the remote native suite (functional check of the new code in the accepted image) on one authorized GPU, then all authorized
 one-UUID CUDA/EGL isolation checks, and assemble the campaign acceptance manifest. Logs to stdout.
     python -I release_chain.py <commit> [--native-gpu <uuid>] [--image <digest> --tag <suffix>] [--sync-repo <dir>]
         [--skip-sync]
@@ -31,6 +31,8 @@ import yaml
 
 ROOT = Path('/home/ws/ws/splatter4d')
 sys.path.insert(0, str(ROOT))
+from ops.containers import suite_partition  # noqa: E402
+from ops.jobs.migration import commit_reader  # noqa: E402
 from ops.containers.verification import CPU_THREADS, POLICIES  # noqa: E402
 from ops.jobs import release_poll, release_reservation  # noqa: E402
 from ops.jobs import scheduler as jobs  # noqa: E402
@@ -255,6 +257,10 @@ class Release:
         log('local partition ' + json.dumps({k: report.get(k) for k in ('partition', 'counts', 'partition_passed')}))
 
     def main(self):
+        read, _ = commit_reader(ROOT, self.commit)
+        support = suite_partition.release_support(read)
+        if not support['compatible']:
+            raise SystemExit('release gate preflight: ' + '; '.join(support['blockers']))
         try:
             if self.native_gpu is None:
                 self.pick_native_gpu()

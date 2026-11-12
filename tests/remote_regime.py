@@ -19,7 +19,8 @@ from types import MappingProxyType
 import pytest
 
 # a module file name (every test in it) or "<file>::<test function>"
-PHYSICAL_REGIME_TESTS = {"test_remote_launch.py", "test_remote_jobs.py"}
+PHYSICAL_REGIME_TESTS = {"test_remote_launch.py", "test_remote_jobs.py", "test_release_reservation.py",
+                         "test_host_roles.py::test_only_hold_next_to_dispatch_queue_holds_it"}
 NAMES = ("APPROVED_HOST_GPUS", "REMOTE_MIG_PARENTS", "REMOTE_DEVICES")
 
 
@@ -34,6 +35,9 @@ def physical_regime(monkeypatch, test_module) -> None:
              id(guard.REMOTE_MIG_PARENTS): (), id(guard.REMOTE_DEVICES): physical}
     modules = {id(m): m for m in list(sys.modules.values()) if m is not None}
     modules.update({id(v): v for v in vars(test_module).values() if isinstance(v, types.ModuleType)})
+    helper = sys.modules.get("tests.test_remote_jobs")
+    if test_module.__name__.endswith("test_release_reservation") and helper is not None:
+        modules.update({id(v): v for v in vars(helper).values() if isinstance(v, types.ModuleType)})
     for module in modules.values():
         for name in NAMES:
             value = getattr(module, name, None)
@@ -46,15 +50,23 @@ def physical_regime(monkeypatch, test_module) -> None:
     def mapped(value):
         return physical[mig.index(value) % len(physical)] if isinstance(value, str) and value in mig else value
 
-    for name, value in list(vars(test_module).items()):
-        if isinstance(value, str) and value in mig:
-            monkeypatch.setattr(test_module, name, mapped(value))
-        elif isinstance(value, types.FunctionType) and value.__module__ == test_module.__name__:
-            # helpers whose default arguments were bound at import time (e.g. ``gpu=REMOTE``)
-            if value.__defaults__ and any(isinstance(d, str) and d in mig for d in value.__defaults__):
-                monkeypatch.setattr(value, "__defaults__", tuple(mapped(d) for d in value.__defaults__))
-            if value.__kwdefaults__ and any(isinstance(d, str) and d in mig for d in value.__kwdefaults__.values()):
-                monkeypatch.setattr(value, "__kwdefaults__", {k: mapped(d) for k, d in value.__kwdefaults__.items()})
+    targets = [test_module]
+    helper = sys.modules.get("tests.test_remote_jobs")
+    if test_module.__name__.endswith("test_release_reservation") and helper is not None:
+        targets.append(helper)  # imported helpers keep their defining module's globals/defaults
+    for target in targets:
+        for name, value in list(vars(target).items()):
+            if isinstance(value, str) and value in mig:
+                monkeypatch.setattr(target, name, mapped(value))
+            elif name == "GPUS" and isinstance(value, (list, tuple)) and value and all(v in mig for v in value):
+                monkeypatch.setattr(target, name, list(dict.fromkeys(mapped(v) for v in value)))
+            elif isinstance(value, types.FunctionType) and value.__module__ in {
+                    test_module.__name__, "tests.test_remote_jobs"}:
+                if value.__defaults__ and any(isinstance(d, str) and d in mig for d in value.__defaults__):
+                    monkeypatch.setattr(value, "__defaults__", tuple(mapped(d) for d in value.__defaults__))
+                if value.__kwdefaults__ and any(isinstance(d, str) and d in mig for d in value.__kwdefaults__.values()):
+                    monkeypatch.setattr(value, "__kwdefaults__", {k: mapped(d) for k, d in value.__kwdefaults__.items()})
+
 
 
 @pytest.fixture(autouse=True)
