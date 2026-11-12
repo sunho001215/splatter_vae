@@ -153,6 +153,11 @@ def main(argv=None, *, operator_input=input) -> int:
         say(f"server route 127.0.0.1:{port}: {'WELCOME ' + str(w) if w else 'NO WELCOME (tunnel.py status / start)'}")
         if not w:
             return 2
+        # the policy contract (selection, cameras, multi-view M5 helper) is resolved BEFORE any device, state reader or
+        # gripper is touched: a wrong camera set / missing M5 asset refuses without accessing hardware
+        pid, task, spec, info = cli.choose_policy(cfg, args)
+        cams = resolve_cameras(spec, names, args.cameras, args.camera)
+        live_m5 = multiview_m5(cfg, task, spec, cams)
         devices.require_free(allow_controller=True)  # no teleop collector / recorder / camera holder
         if not devices.scan(ipc_paths=())["controllers"]:
             say("switch_controller is not running")
@@ -194,17 +199,14 @@ def main(argv=None, *, operator_input=input) -> int:
             say("gripper: STATIC labelled register (dry run only)")
         state = live.LiveState(reader, gripper)
         shutdown.state = state
-        pid, task, spec, info = cli.choose_policy(cfg, args)
         say(f"policy {pid} ({task}); execution_eligible={execution_eligible(info)}")
         for line in restriction_notes(info):
             say(line)
         if args.execute and not execution_eligible(info):
             say("REFUSED: the catalog does not mark this policy execution_eligible")
             return 3
-        cams = resolve_cameras(spec, names, args.cameras, args.camera)
         cam_label = "-".join(_name(names, c) for c in cams)
         say(f"cameras: {', '.join(f'{_name(names, c)}={c}' for c in cams)}")
-        live_m5 = multiview_m5(cfg, task, spec, cams)  # multi-view: refused here, before any device opens
         if live_m5 is not None:
             say(f"multi-view: synchronised sets of {len(cams)} cameras in training order, live M5 helper "
                 f"(asset {live_m5.motion.asset_sha256[:12]}, max sync {live_m5.timeline.max_sync_ns / 1e6:.0f} ms)")

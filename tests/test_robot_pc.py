@@ -3015,7 +3015,7 @@ def test_live_multiview_sync_refusals_are_answers_not_route_failures():
 
     cams = list(CAMS)
     spec = {"views": 3, "camera_ids": cams, "trained_camera_orders": [cams]}
-    codes = iter(["unsynchronized"] * 6 + ["incomplete_history"] * 3 + ["timeout"] * 5)
+    codes = iter(["timeout"] * 4 + ["unsynchronized"] * 6 + ["incomplete_history"] * 3 + ["timeout"] * 5)
 
     class Sync:
         def __init__(self):
@@ -3036,8 +3036,9 @@ def test_live_multiview_sync_refusals_are_answers_not_route_failures():
     s.sync = Sync()
     s.loop.step = lambda end_ids, t, ref, acquire_ms=None: {"reference_id": ref, "status": "error",
                                                             "code": next(codes), "t_step_ns": t}
-    rows = s.run(steps=30)
-    assert [r["code"] for r in rows] == ["unsynchronized"] * 6 + ["incomplete_history"] * 3 + ["timeout"] * 5
+    rows = s.run(steps=30)  # 4 timeouts, then answers (the route works again), then 5 timeouts in a row
+    assert [r["code"] for r in rows] == ["timeout"] * 4 + ["unsynchronized"] * 6 + ["incomplete_history"] * 3 + \
+        ["timeout"] * 5
     assert s.stop_reason.startswith("policy server: 5 consecutive steps") and s.loop.counts["sync_refused"] == 9
     assert all(r["surface_disp_m"] == 0.009 for r in rows)
 
@@ -3063,6 +3064,28 @@ def test_live_multiview_session_stops_when_no_set_becomes_final():
                          live_m5=SimpleNamespace(sets=SimpleNamespace(cameras=cams), counts={"sets": 0}))
     s.sync = SimpleNamespace(add_frame=lambda *a: None, newest_step=lambda now, counts: None)
     assert s.run(duration_s=5) == [] and s.stop_reason.startswith("multi-view: no final synchronised set")
+
+
+def test_infer_refuses_a_multiview_policy_without_m5_before_touching_any_device(monkeypatch, tmp_path):
+    """infer.py resolves the policy contract (cameras, live M5 helper) before the device guard, the state reader or
+    the gripper: a multi-view policy without its M5 asset / with a wrong camera order is refused with nothing opened."""
+    from ops.robot_pc import gripper as G
+    from ops.robot_pc import tunnel
+    from scripts.robot_pc import infer
+
+    touched = []
+    cams = ["135122070988", "135122076054", "135122073201"]
+    spec = {"views": 3, "frame_period_s": 1 / 15, "trained_camera_orders": [cams], "modalities": ["rgb", "depth"]}
+    monkeypatch.setattr(infer, "say", lambda m: None)
+    monkeypatch.setattr(cli, "load_config", lambda args: {"root": str(tmp_path), "tasks": {"t": {}}})
+    monkeypatch.setattr(tunnel, "welcome", lambda port: {"fake": True})
+    monkeypatch.setattr(cli, "choose_policy", lambda *a: ("mv", "t", spec, {"execution_eligible": True}))
+    monkeypatch.setattr(devices, "require_free", lambda **k: touched.append("devices"))
+    monkeypatch.setattr(sc, "LiveStateReader", lambda **k: touched.append("reader"))
+    monkeypatch.setattr(G, "GripperWorker", lambda *a, **k: touched.append("gripper"))
+    for extra in ([], ["--cameras", "right,middle,left"]):
+        assert infer.main(["--policy", "mv", "--dry-run", *extra]) == 3
+    assert not touched
 
 
 def test_live_multiview_dry_run_with_static_state(policies, toy_robot, tmp_path):

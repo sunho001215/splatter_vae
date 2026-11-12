@@ -421,9 +421,11 @@ class LiveSession:
                 if self.recorder is not None:
                     self.recorder.step(row)
                 # policy-server / route failures only (no answer): a validation rejection just sends nothing, and so
-                # does a multi-view window refused by the training sync contract (moving / stateless / partial set)
+                # does a multi-view window refused by the training sync contract (moving / stateless / partial set):
+                # the server answered, so the route works
                 if self.sync is not None and row.get("status") == "error" and row.get("code") in SYNC_REFUSALS:
                     self.loop.counts["sync_refused"] += 1
+                    failed = 0
                 else:
                     failed = 0 if row.get("status") == "ok" else failed + 1
                 if self.on_status is not None:
