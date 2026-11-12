@@ -208,8 +208,10 @@ def main(argv=None, *, operator_input=input) -> int:
         cam_label = "-".join(_name(names, c) for c in cams)
         say(f"cameras: {', '.join(f'{_name(names, c)}={c}' for c in cams)}")
         if live_m5 is not None:
-            say(f"multi-view: synchronised sets of {len(cams)} cameras in training order, live M5 helper "
-                f"(asset {live_m5.motion.asset_sha256[:12]}, max sync {live_m5.timeline.max_sync_ns / 1e6:.0f} ms)")
+            say(f"multi-view: {len(cams)} cameras in training order, each step on every camera's LATEST valid frame; "
+                f"cross-camera misalignment is a logged, counted warning (never a refusal); live M5 helper "
+                f"(informational; asset {live_m5.motion.asset_sha256[:12]}, max sync "
+                f"{live_m5.timeline.max_sync_ns / 1e6:.0f} ms)")
         cc = cfg.get("cameras") or {}
         hw = tuple(cc.get("native_hw", (480, 640)))
         rig = cli.rig_document(cfg, task)
@@ -350,6 +352,10 @@ def main(argv=None, *, operator_input=input) -> int:
         rows = session.run(steps=args.steps, duration_s=args.duration_s)
         say(f"STOPPED: {session.stop_reason}; {len(rows)} steps, executor {executor.counts}")
         say(f"loop rates: {session.loop_stats()}")
+        if getattr(session, "sync", None) is not None:
+            from ops.robot_pc.syncsets import sync_summary
+
+            say(f"multi-view sync (warnings only): {json.dumps(sync_summary(rows, session.loop.counts))}")
         recording_status = "complete" if session.stop_reason in ("budget reached", "operator key",
                                                                  "operator Ctrl-C", "operator Ctrl-C (SIGINT)") \
             else "stopped"

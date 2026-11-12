@@ -32,7 +32,7 @@ from PIL import Image
 
 from ops.policy_serving.client import PolicyClient, StepResult
 from ops.policy_serving.server import PolicyServer
-from ops.robot_pc import cli, devices, dryrun, executor, loop, poses, replay, robot_state, safety, selection, sinks
+from ops.robot_pc import cli, devices, dryrun, executor, loop, poses, replay, robot_state, safety, selection, sinks, syncsets
 from ops.robot_pc import config as C
 from ops.robot_pc import switch_controller as sc
 from ops.robot_pc.cameras import LiveCameras, RecordedCameras
@@ -739,13 +739,168 @@ def test_multiview_rgbd_replay_with_the_live_m5_helper(policies, recording, toy_
         live = m5_live.LiveM5(toy_robot.motion, cams, 1 / 15, 20_000_000)
         sink = sinks.MockSink()
         rows = replay.run(client, _loop(client, state, sink, clock.now, max_age_ms=1e6), cameras, state, clock,
-                          cams=cams, live_m5=live, noise_seed=1)  # CPU fixture inference may exceed 200 ms here
+                          cams=cams, live_m5=live, noise_seed=1,  # CPU fixture inference may exceed 200 ms here
+                          sync_mode="training-sets")
+        client.close()
+        ok = [r for r in rows if r["status"] == "ok"]
+        assert len(ok) >= 10 and len(sink.items) == len(ok), [r.get("code") for r in rows]
+        assert all(r["surface_disp_m"] is not None and r["surface_disp_m"] <= 0.005 for r in rows)
+        assert live.counts["sets"] == len(rows)
+        training_sets = {json.dumps(r["end_ids"], sort_keys=True) for r in rows}
+        # the live rule (default): one step per reference frame on every camera's latest released frame
+        client = PolicyClient("127.0.0.1", srv.port, policy_id="mvp3d-mv", choices=multiview_choices(rec, cams),
+                              step_timeout_s=60)
+        client.connect()
+        clock = replay.ReplayClock(int(cameras.timestamps_ns(CAMS[0])[0]), "max")
+        state = robot_state.RecordedRobotState(rec, clock.offset_ns)
+        live = m5_live.LiveM5(toy_robot.motion, cams, 1 / 15, 20_000_000)
+        sink = sinks.MockSink()
+        loop = _loop(client, state, sink, clock.now, max_age_ms=1e6)
+        rows = replay.run(client, loop, cameras, state, clock, cams=cams, live_m5=live, noise_seed=1)
         client.close()
     ok = [r for r in rows if r["status"] == "ok"]
     assert len(ok) >= 10 and len(sink.items) == len(ok), [r.get("code") for r in rows]
-    assert all(r["surface_disp_m"] is not None and r["surface_disp_m"] <= 0.005 for r in rows)
-    assert live.counts["sets"] == len(rows)
+    assert loop.counts["sync_steps"] == len(rows) and loop.counts["sync_mismatch"] == 0
+    for r in rows:
+        sy = r["sync"]
+        assert sy["rule"] == "latest" and sy["frame_ids"] == r["end_ids"] and set(sy["capture_ns"]) == set(cams)
+        assert r["observation_time_ns"] == max(sy["capture_ns"].values()) and min(sy["age_rel_ms"].values()) == 0
+        assert all(a >= 0 for a in sy["age_ms"].values()) and len(sy["offsets_ms"]) == 3
+        assert sy["surface_disp_m"] is not None and sy["surface_disp_m"] <= 0.005 and not sy["motion_over_bound"]
+    assert all(r["server_sync"]["mismatch"] is False for r in ok)
+    # on the recorded (mutual-nearest) timelines the latest-frame steps are the training sets
+    assert {json.dumps(r["end_ids"], sort_keys=True) for r in rows} <= training_sets
+    assert live.counts["sets"] == len(rows) and live.counts["within_bound"] == len(rows)
     assert spies["live_sink"] == 0 and set(spies["connect"]) == {("127.0.0.1", srv.port)}
+
+
+def test_replay_sync_injection_is_served_with_counted_warnings(policies, recording, toy_robot, spies):
+    """Synthetic misalignment on the recorded streams (user directive 2026-11-12): a camera's capture timeline shifted
+    by 45 ms (its own spacing intact; the latest-frame rule then picks its frame 21.7 ms early), a camera delivered
+    50 ms late (stale frames: mismatches), seeded delivery jitter. Every step is SERVED (no unsynchronized /
+    incomplete_history refusal), each row carries per-camera capture times, ages and pairwise offsets, every client
+    mismatch is also the server's, and the shifted camera's logged offset is exactly the injected one."""
+    rec = RecordedEpisode(recording)
+    cams = list(CAMS)
+    results = {}
+    with serve({"mvp3d-mv": policies["mvp3d_multiview"]}) as srv:
+        for name, inject in (("offset", {"offset_ms": {"cam_b": 45.0}}),
+                             ("lag", {"delay_ms": {"cam_b": 50.0}}),
+                             ("jitter", {"arrival_jitter_ms": 30.0, "seed": 7}),
+                             ("both", {"offset_ms": {"cam_c": -40.0}, "arrival_jitter_ms": 20.0, "seed": 3})):
+            client = PolicyClient("127.0.0.1", srv.port, policy_id="mvp3d-mv", choices=multiview_choices(rec, cams),
+                                  step_timeout_s=60)
+            client.connect()
+            cameras = RecordedCameras(rec, cams, depth=True)
+            clock = replay.ReplayClock(int(cameras.timestamps_ns(CAMS[0])[0]), "max")
+            state = robot_state.RecordedRobotState(rec, clock.offset_ns)
+            lp = _loop(client, state, sinks.MockSink(), clock.now, max_age_ms=1e6)
+            rows = replay.run(client, lp, cameras, state, clock, cams=cams, noise_seed=1, inject=inject,
+                              live_m5=m5_live.LiveM5(toy_robot.motion, cams, 1 / 15, 20_000_000))
+            client.close()
+            results[name] = (rows, lp.counts)
+        with pytest.raises(ValueError, match="not in the session"):
+            replay.injection_shifts(RecordedCameras(rec, cams, depth=True), cams, {"offset_ms": {"cam_x": 1.0}})
+        with pytest.raises(ValueError, match=">= 0"):
+            replay.injection_shifts(RecordedCameras(rec, cams, depth=True), cams, {"delay_ms": {"cam_a": -1.0}})
+    for name, (rows, counts) in results.items():
+        ok = [r for r in rows if r["status"] == "ok"]
+        assert len(rows) >= 10 and len(ok) == len(rows), (name, [r.get("code") for r in rows])
+        assert counts["sync_steps"] == len(rows) and not counts["sync_refused"]
+        for r in ok:
+            sy = r["sync"]
+            assert set(sy["capture_ns"]) == set(cams) and set(sy["age_ms"]) == set(cams) and len(sy["offsets_ms"]) == 3
+            # the server measures the whole history (older steps too): never less than the end step's offset
+            assert r["server_sync"]["max_offset_ms"] >= sy["max_offset_ms"] and (r["server_sync"]["mismatch"] or
+                                                                                  not sy["mismatch"])
+            assert r["observation_time_ns"] == max(sy["capture_ns"].values())
+    rows, counts = results["offset"]
+    assert all(abs(r["sync"]["offsets_ms"]["cam_a|cam_b"]) < 33.4 for r in rows[1:])  # nearest frame picked
+    native = {c: np.asarray(rec.timestamps_ns(c), np.int64) for c in cams}
+    for r in rows:  # the injected shift is visible exactly in the logged capture times
+        sy, ids = r["sync"], r["end_ids"]
+        idx = {c: int(np.flatnonzero(np.asarray(rec.frame_numbers(c)) == ids[c])[0]) for c in cams}
+        rel = {c: sy["capture_ns"][c] - int(native[c][idx[c]]) for c in cams}
+        assert rel["cam_b"] - rel["cam_a"] == 45_000_000 and rel["cam_c"] == rel["cam_a"]
+    rows, counts = results["lag"]  # cam_b's partner arrives after the half-period wait: its previous frame is used
+    assert counts["sync_mismatch"] >= len(rows) // 2 and counts["sync_partner_wait_expired"] >= len(rows) // 2
+    assert all(r["server_sync"]["mismatch"] for r in rows if r["sync"]["mismatch"])
+    for r in rows:
+        if r["sync"]["mismatch"]:  # only the lagging camera is off; the others stay at the reference instant
+            assert r["sync"]["age_ms"]["cam_b"] > r["sync"]["age_ms"]["cam_a"]
+            assert abs(r["sync"]["offsets_ms"]["cam_a|cam_c"]) < 33.4
+    assert spies["live_sink"] == 0
+
+
+def test_latest_frames_rule_waits_bounded_and_counts_warnings():
+    """syncsets.LatestFrames on synthetic timelines: no step until every camera has a frame; a step on every camera's
+    latest frame as soon as its partners are within half a period before the reference; a late camera is waited for
+    at most wait_s, then the step goes ahead on its stale frame (mismatch + partner_wait_expired counted); a newer
+    reference frame supersedes an unstepped one; M5 (informational) is declared to the server when final."""
+    P = PERIOD_NS
+    declared, counts = [], collections.Counter()
+    client = SimpleNamespace(add_sync_set=lambda ids, d: declared.append((dict(ids), d)))
+    cams = ["a", "b", "c"]
+    lf = syncsets.LatestFrames(client, None, None, cams, period_s=1 / 15, counts=counts)
+    T = 10**12
+    lf.add_frame("a", 0, T, now_ns=T + 65_000_000)
+    assert lf.newest_step(T + 65_000_000) is None  # b, c without any frame: never a partial set
+    lf.add_frame("b", 0, T - 10_000_000, now_ns=T + 66_000_000)
+    lf.add_frame("c", 0, T + 9_000_000, now_ns=T + 66_000_000)
+    end_ids, t_obs, ref, rec = lf.newest_step(T + 70_000_000)
+    assert end_ids == {"a": 0, "b": 0, "c": 0} and t_obs == T + 9_000_000 and ref == "latest:0"
+    assert rec["offsets_ms"] == {"a|b": 10.0, "a|c": -9.0, "b|c": -19.0} and rec["max_offset_ms"] == 10.0
+    assert rec["age_ms"] == {"a": 70.0, "b": 80.0, "c": 61.0} and rec["age_rel_ms"] == {"a": 9.0, "b": 19.0, "c": 0.0}
+    assert not rec["mismatch"] and rec["surface_disp_m"] is None and not declared
+    assert lf.newest_step(T + 71_000_000) is None  # no new reference frame
+    lf.add_frame("a", 1, T + P, now_ns=T + P + 65_000_000)  # b lags: its newest is 76.7 ms older
+    lf.add_frame("c", 1, T + P + 9_000_000, now_ns=T + P + 66_000_000)
+    assert lf.newest_step(T + P + 80_000_000) is None  # waiting (< half a period since a's frame arrived)
+    end_ids, _, _, rec = lf.newest_step(T + P + 65_000_000 + P // 2 + 1)
+    assert end_ids == {"a": 1, "b": 0, "c": 1} and rec["mismatch"] and rec["max_offset_ms"] == pytest.approx(76.667, 1e-3)
+    assert counts["sync_partner_wait_expired"] == 1 and counts["sync_mismatch"] == 1 and counts["sync_steps"] == 2
+    lf.add_frame("b", 1, T + P - 5_000_000, now_ns=T + 2 * P)
+    lf.add_frame("a", 2, T + 2 * P, now_ns=T + 2 * P + 65_000_000)
+    lf.add_frame("a", 3, T + 3 * P, now_ns=T + 3 * P + 65_000_000)  # 2 superseded before it could step
+    assert counts["sync_superseded"] == 1
+    end_ids, _, ref, rec = lf.newest_step(T + 3 * P + 65_000_000, flush=True)  # flush: no waiting
+    assert ref == "latest:3" and end_ids == {"a": 3, "b": 1, "c": 1} and rec["mismatch"]
+    for c in "bc":  # partners at the reference instant; c's frame of the NEXT instant is never mixed in
+        lf.add_frame(c, 4, T + 4 * P - 4_000_000, now_ns=T + 4 * P + 60_000_000)
+    lf.add_frame("c", 5, T + 5 * P - 4_000_000, now_ns=T + 5 * P + 60_000_000)
+    lf.add_frame("a", 4, T + 4 * P, now_ns=T + 5 * P + 61_000_000)  # the reference camera delivers late
+    end_ids, _, _, rec = lf.newest_step(T + 5 * P + 61_000_000)
+    assert end_ids == {"a": 4, "b": 4, "c": 4} and not rec["mismatch"] and rec["age_ms"]["a"] == pytest.approx(127.7, 1e-3)
+
+    class M5:  # informational M5: final states -> displacement declared with the step
+        sets = SimpleNamespace(cameras=cams)
+        counts = collections.Counter()
+        disp = 0.007
+        timeline = SimpleNamespace(ready=lambda t: True, states=lambda ts: ([None] * len(ts), np.ones(len(ts), bool)))
+        motion = SimpleNamespace(displacement=lambda states, ok: M5.disp)
+
+        def add_robot(self, *a):
+            pass
+
+        def add_gripper(self, *a):
+            pass
+
+    state = SimpleNamespace(rows=lambda after, up_to: ([], []))
+    counts2 = collections.Counter()
+    m5 = M5()
+    lf = syncsets.LatestFrames(client, m5, state, cams, period_s=1 / 15, counts=counts2)
+    for k, disp in enumerate((0.007, np.inf, 0.001)):
+        M5.disp = disp
+        for c in cams:
+            lf.add_frame(c, k, T + k * P, now_ns=T + k * P + 65_000_000)
+        rec = lf.newest_step(T + k * P + 66_000_000)[3]
+        assert rec["surface_disp_m"] == (disp if np.isfinite(disp) else "no_state")
+        assert rec["motion_over_bound"] == (not disp <= 0.005)
+    assert declared == [({"a": k, "b": k, "c": k}, d) for k, d in enumerate((0.007, None, 0.001))]
+    assert counts2["sync_motion_over_bound"] == 2 and counts2["sync_mismatch"] == 0
+    assert m5.counts == {"sets": 3, "over_bound": 2, "within_bound": 1}
+    with pytest.raises(ValueError, match="training order"):
+        syncsets.LatestFrames(client, m5, state, cams[::-1], period_s=1 / 15, counts=counts2)
 
 
 def test_replay_episode_composition_and_cli_with_a_config(policies, recording, tmp_path, spies):
@@ -2682,7 +2837,7 @@ def test_live_multiview_session_accepts_only_the_trained_camera_order_with_an_m5
     from ops.robot_pc import live
 
     cams = list(CAMS)
-    spec = {"views": 3, "camera_ids": cams, "trained_camera_orders": [cams]}
+    spec = {"views": 3, "camera_ids": cams, "trained_camera_orders": [cams], "frame_period_s": 1 / 15}
     helper = SimpleNamespace(sets=SimpleNamespace(cameras=cams), pending=False)
 
     def session(cams, spec, m5):
@@ -2840,10 +2995,10 @@ class _RecordedLiveState:
 
 
 def test_live_multiview_session_steps_equal_the_recorded_replay(policies, recording, toy_robot):
-    """The live session's multi-view path (LiveSession + LiveSyncSets) on the recorded frames / state in arrival
-    order == the recorded replay (realtime pace: newest set per poll, as live): the same sets reach the server with
-    the same displacements, the same steps are taken on the same end frames with the same measured state, and the
-    fixture policy's actions are bitwise equal (same validation noise seeds)."""
+    """The live session's multi-view path (LiveSession + LatestFrames) on the recorded frames / state in arrival
+    order == the recorded replay (realtime pace, the live rule): the same steps on the same latest end frames with the
+    same M5 evidence declared, the same measured state, the same sync records (offsets, relative ages, displacement)
+    and bitwise-equal fixture actions (same validation noise seeds)."""
     import time
 
     from ops.robot_pc import live
@@ -2875,7 +3030,8 @@ def test_live_multiview_session_steps_equal_the_recorded_replay(policies, record
         client = connect(live_sets)
         offset = time.monotonic_ns() - int(rec.timestamps_ns(cams[0])[-1]) - 5_000_000_000  # all in the past
         lstate = _RecordedLiveState(rec, offset)
-        frames = _RecordedAsLive(rec, cams, replay.frame_events(cameras, cams, 0, stop_at), offset, client, lstate)
+        frames = _RecordedAsLive(rec, cams, [e[:4] for e in replay.frame_events(cameras, cams, 0, stop_at)], offset,
+                                 client, lstate)
         lm5 = m5_live.LiveM5(toy_robot.motion, cams, 1 / 15, 20_000_000)
         session = live.LiveSession(client=client, cameras=frames, cams=cams, state=lstate,
                                    limits=ActionLimits(max_action_age_ms=1e9),
@@ -2887,14 +3043,18 @@ def test_live_multiview_session_steps_equal_the_recorded_replay(policies, record
         client.close()
     assert session.stop_reason == "budget reached"
     assert replay_sets == live_sets and len(live_sets) >= 10
-    assert lp.counts["skipped_behind"] == session.loop.counts["skipped_behind"]
+    assert {k: lp.counts[k] for k in syncsets.SYNC_COUNTS} == {k: session.loop.counts[k] for k in syncsets.SYNC_COUNTS}
+    assert lp.counts["sync_steps"] == len(replay_rows) and lp.counts["sync_mismatch"] == 0
     assert dict(m5.counts) == dict(lm5.counts)
     ok = [r for r in replay_rows if r["status"] == "ok"]
     assert len(ok) >= 8 and len(live_rows) == len(replay_rows)
-    keys = ("reference_id", "end_ids", "status", "code", "padded", "surface_disp_m", "frames_sent", "measured_pose7",
-            "action_norm", "flange_pose", "execution_flange_pose", "gripper_closure", "gripper_origin")
+    keys = ("reference_id", "end_ids", "status", "code", "padded", "frames_sent", "measured_pose7",
+            "action_norm", "flange_pose", "execution_flange_pose", "gripper_closure", "gripper_origin", "server_sync")
+    sync_keys = ("rule", "frame_ids", "age_rel_ms", "offsets_ms", "max_offset_ms", "bound_ms", "mismatch",
+                 "surface_disp_m", "motion_over_bound")
     for a, b in zip(replay_rows, live_rows):
         assert {k: a.get(k) for k in keys} == {k: b.get(k) for k in keys}, a["reference_id"]
+        assert {k: a["sync"][k] for k in sync_keys} == {k: b["sync"][k] for k in sync_keys}, a["reference_id"]
         assert a["observation_time_ns"] - clock.offset_ns == b["observation_time_ns"] - offset
     assert all(r["state_source"] == "live" for r in live_rows)
 
@@ -2945,7 +3105,8 @@ def _rgbd_choices(captures):
 def test_live_multiview_session_dry_run_full_chain(policies, toy_robot):
     """LiveSession on 3 free-running fake RGB-D cameras, the read-only state reader at 1 kHz + the labelled static
     gripper (dry run), the live M5 helper, fixture multi-view 3D-MVP over loopback, validation, the 500 Hz executor ->
-    DryRunSink: one step per final set (newest), every set's displacement sent, commands executed (never sent)."""
+    DryRunSink: one step per new reference frame on every camera's latest frame (sync record per row; M5 informational
+    when the member states are final), commands executed (never sent)."""
     import threading as _th
     import time as _t
 
@@ -2995,26 +3156,30 @@ def test_live_multiview_session_dry_run_full_chain(policies, toy_robot):
         feeder.join(5)
         reader.close()
     assert session.stop_reason == "budget reached" and len(rows) == 10, session.stop_reason
-    assert all(r["reference_id"].startswith("set:") and set(r["end_ids"]) == set(CAMS) for r in rows)
-    assert all(r["surface_disp_m"] == 0.0 for r in rows)  # the robot does not move: every set is accepted
+    assert all(r["reference_id"].startswith("latest:") and set(r["end_ids"]) == set(CAMS) for r in rows)
+    assert all(r["sync"]["frame_ids"] == r["end_ids"] and r["sync"]["max_offset_ms"] < 33.4 for r in rows)
+    assert all(r["sync"]["surface_disp_m"] in (None, 0.0) for r in rows)  # the robot does not move
     ok = [r for r in rows if r["status"] == "ok"]
     assert len(ok) >= 8 and all(r["gripper_origin"].startswith("static") for r in ok), [r.get("code") for r in rows]
     stepped = [r["end_ids"] for r in rows]
-    assert all(s in [ids for ids, _ in sets] for s in stepped) and m5.counts["accepted"] == len(sets) >= 10
-    assert all(a["cam_a"] < b["cam_a"] for a, b in zip(stepped, stepped[1:]))  # newest set, never an older one
+    declared = [r["end_ids"] for r in rows if r["sync"]["surface_disp_m"] is not None]
+    assert [ids for ids, _ in sets] == declared and m5.counts["within_bound"] == len(declared)
+    assert m5.counts["sets"] + m5.counts["not_ready"] == len(rows)
+    assert all(a["cam_a"] < b["cam_a"] for a, b in zip(stepped, stepped[1:]))  # newest frame, never an older one
     assert calls["frame"] == 0 and calls["observation"] >= 30 and calls["step"] == 10  # no native_rgb: no frame rows
     assert ex.counts["accepted"] > 0 and calls["executed"] > 0 and len(sink.items) == calls["executed"]
-    m5_event = [json.loads(e[3:]) for e in events if e.startswith("m5 ")]
-    assert m5_event and m5_event[0]["accepted"] == len(sets) and m5_event[0]["asset_sha256"]
+    sync_event = [json.loads(e[5:]) for e in events if e.startswith("sync ")]
+    assert sync_event and sync_event[0]["sync_steps"] == 10 and sync_event[0]["sync_mismatch"] == 0
+    assert sync_event[0]["m5"] == dict(m5.counts) and sync_event[0]["asset_sha256"]
 
 
 def test_live_multiview_sync_refusals_are_answers_not_route_failures():
-    """A multi-view window the server refuses by the sync contract (M5 motion / missing evidence) produces no action
-    and never stops the session as a server failure; other errors still do (single-view rule unchanged)."""
+    """A multi-view answer without an action (an older server's sync refusal, a camera's own incomplete history)
+    never stops the session as a server failure; other errors still do (single-view rule unchanged)."""
     from ops.robot_pc import live
 
     cams = list(CAMS)
-    spec = {"views": 3, "camera_ids": cams, "trained_camera_orders": [cams]}
+    spec = {"views": 3, "camera_ids": cams, "trained_camera_orders": [cams], "frame_period_s": 1 / 15}
     codes = iter(["timeout"] * 4 + ["unsynchronized"] * 6 + ["incomplete_history"] * 3 + ["timeout"] * 5)
 
     class Sync:
@@ -3024,9 +3189,10 @@ def test_live_multiview_sync_refusals_are_answers_not_route_failures():
         def add_frame(self, *a):
             pass
 
-        def newest_step(self, now, counts):
+        def newest_step(self, now, flush=False):
             self.k += 1
-            return ({c: self.k for c in cams}, now, f"set:{self.k}", 0.009)
+            return ({c: self.k for c in cams}, now, f"latest:{self.k}",
+                    {"mismatch": False, "motion_over_bound": True, "offsets_ms": {}, "surface_disp_m": 0.009})
 
     s = live.LiveSession(client=SimpleNamespace(spec=spec, add_capture=lambda *a, **k: None),
                          cameras=SimpleNamespace(drain=lambda cam: []), cams=cams, state=live.LiveState(
@@ -3040,30 +3206,35 @@ def test_live_multiview_sync_refusals_are_answers_not_route_failures():
     assert [r["code"] for r in rows] == ["timeout"] * 4 + ["unsynchronized"] * 6 + ["incomplete_history"] * 3 + \
         ["timeout"] * 5
     assert s.stop_reason.startswith("policy server: 5 consecutive steps") and s.loop.counts["sync_refused"] == 9
-    assert all(r["surface_disp_m"] == 0.009 for r in rows)
+    assert all(r["sync"]["surface_disp_m"] == 0.009 for r in rows)
 
 
-def test_live_multiview_session_stops_when_no_set_becomes_final():
-    """Frames keep arriving but no synchronised set becomes final (member states never arrive): the session stops
-    instead of idling without steps."""
+def test_live_multiview_session_refuses_a_missing_camera_by_its_idle_timeout():
+    """Two cameras keep delivering, the third never does: no step is ever taken on a partial camera set and the
+    unchanged idle timeout stops the session (missing-camera refusal kept by the 2026-11-12 relaxation)."""
     from ops.robot_pc import live
 
     cams = list(CAMS)
-    spec = {"views": 3, "camera_ids": cams, "trained_camera_orders": [cams]}
+    spec = {"views": 3, "camera_ids": cams, "trained_camera_orders": [cams], "frame_period_s": 1 / 15}
     frames = iter(range(10**6))
 
     def drain(cam):
+        if cam == cams[-1]:
+            return []
         k = next(frames)
-        return [{"frame_id": k, "capture_ns": 10**9 + k, "arrival_ns": 10**9 + k, "rgb": None}]
+        return [{"frame_id": k, "capture_ns": 10**9 + k * PERIOD_NS, "arrival_ns": 10**9 + k, "rgb": None}]
 
+    steps = []
     s = live.LiveSession(client=SimpleNamespace(spec=spec, add_capture=lambda *a, **k: None),
                          cameras=SimpleNamespace(drain=drain), cams=cams,
                          state=live.LiveState(SimpleNamespace(samples=[]), live.StaticGripper()),
                          limits=ActionLimits(), executor=executor.HighRateExecutor(sinks.MockSink()),
                          sink=sinks.DryRunSink(), idle_timeout_s=0.05,
-                         live_m5=SimpleNamespace(sets=SimpleNamespace(cameras=cams), counts={"sets": 0}))
-    s.sync = SimpleNamespace(add_frame=lambda *a: None, newest_step=lambda now, counts: None)
-    assert s.run(duration_s=5) == [] and s.stop_reason.startswith("multi-view: no final synchronised set")
+                         live_m5=SimpleNamespace(sets=SimpleNamespace(cameras=cams), counts=collections.Counter()))
+    s.loop.step = lambda *a, **k: steps.append(a) or {}
+    assert s.run(duration_s=5) == [] and not steps
+    assert s.stop_reason == f"cameras {[cams[-1]]} sent no frame for 0.05 s"
+    assert s.sync.latest[cams[-1]] is None and s.sync.latest[cams[0]] is not None
 
 
 def test_infer_refuses_a_multiview_policy_without_m5_before_touching_any_device(monkeypatch, tmp_path):
@@ -3089,8 +3260,8 @@ def test_infer_refuses_a_multiview_policy_without_m5_before_touching_any_device(
 
 
 def test_live_multiview_dry_run_with_static_state(policies, toy_robot, tmp_path):
-    """dry_run.py's loop (dryrun.run, --state static) on 3 fake RGB-D cameras: steps on final sets with their M5
-    displacement (static state: 0 m), nothing sent; the M5 summary counts every set."""
+    """dry_run.py's loop (dryrun.run, --state static) on 3 fake RGB-D cameras: one step per reference frame on every
+    camera's latest frame with its sync record (static state: M5 0 m where final), nothing sent."""
     captures = _RGBDCaptures(CAMS)
     with serve({"mvp3d-mv": policies["mvp3d_multiview"]}) as srv:
         client = PolicyClient("127.0.0.1", srv.port, policy_id="mvp3d-mv", step_timeout_s=60, ttl_ms=60_000,
@@ -3106,9 +3277,11 @@ def test_live_multiview_dry_run_with_static_state(policies, toy_robot, tmp_path)
         finally:
             client.close()
             sink.close()
-    assert len(rows) == 8 and all(r["surface_disp_m"] == 0.0 and r["state_source"] == "static_latency_only"
-                                  for r in rows)
-    assert sum(r["status"] == "ok" for r in rows) >= 6 and m5.counts["accepted"] >= 8
+    assert len(rows) == 8 and all(r["sync"]["surface_disp_m"] in (None, 0.0) and
+                                  r["state_source"] == "static_latency_only" for r in rows)
+    assert sum(r["status"] == "ok" for r in rows) >= 6 and m5.counts["sets"] + m5.counts["not_ready"] == 8
+    assert lp.counts["sync_steps"] == 8 and lp.counts["sync_mismatch"] == 0
+    assert all(set(r["sync"]["age_ms"]) == set(CAMS) and min(r["sync"]["age_ms"].values()) >= 0 for r in rows)
     assert all(not x["sent_to_robot"] for x in map(json.loads, log.read_text().splitlines()))
 
 

@@ -87,10 +87,14 @@ def main(argv=None) -> int:
                    "state_label": state.label, "sink": "DryRunSink", "dry_run_log": str(args.log),
                    **summarize(rows, route=args.route, mode="live-dry-run"), "loop_counts": dict(loop.counts),
                    "camera_errors": dict(cameras.errors), "client_stats": dict(client.stats)}
+        if len(cams) > 1:
+            from ops.robot_pc.syncsets import sync_summary
+
+            summary["sync"] = sync_summary(rows, loop.counts)
         if live_m5 is not None:
             summary["m5"] = {**dict(live_m5.counts), "asset_sha256": live_m5.motion.asset_sha256,
                              "max_sync_ns": live_m5.timeline.max_sync_ns, "camera_order": list(live_m5.sets.cameras),
-                             "irregular_intervals": live_m5.sets.irregular_intervals}
+                             "use": "informational (displacement of each step's latest frames)"}
     finally:
         rows_out.close()
         cameras.close()

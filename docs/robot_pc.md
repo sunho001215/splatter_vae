@@ -23,7 +23,7 @@ sg dialout -c "venv/bin/python -I src/scripts/robot_pc/infer.py --task drawer-op
 # 2. on the robot (switch_controller running, teleop collector stopped, operator at the e-stop): press ENTER to start
 sg dialout -c "venv/bin/python -I src/scripts/robot_pc/infer.py --task drawer-open --method e2e_cnn --seed 0 --cameras right --duration-s 30"
 #    or by id:  infer.py --policy reviwo-drawer-open-s1 --cameras left
-#    multi-view (all trained cameras in training order, live M5 sets; dry run first):
+#    multi-view (all trained cameras in training order, latest frame per camera; dry run first):
 #               infer.py --task mug-hanging --method mvp3d_multiview --seed 0 --duration-s 20 --dry-run
 #    EXPERIMENTAL BC-flow actor (only where the catalog stages <id>+bcflow; folder <method>+bcflow):
 #               infer.py --task drawer-open --method reviwo --seed 0 --actor bc_flow --cameras middle --dry-run
@@ -41,9 +41,9 @@ eligible only under a user decision that acknowledges the failed criterion and i
 failed criterion, the warning and the decision before START (all recorded in the run's `config.json` `catalog_info`). `--cameras`: camera NAMES; default = the policy contract's first
 trained camera; a single-view policy takes exactly one name; a wrong count / untrained camera is refused with the
 contract in the message. A multi-view policy (3D-MVP multiview, SNeRL) takes ALL its trained cameras in training order
-(default; `--cameras left,middle,right` must name exactly that order) and runs on synchronised sets with the live M5
-helper (section "Live multi-view sessions"); a wrong count / order or a missing M5 asset is refused before any device
-opens.
+(default; `--cameras left,middle,right` must name exactly that order) and steps on every camera's latest valid frame
+(cross-camera misalignment is a logged, counted warning; section "Live multi-view sessions"); a wrong count / order or
+a missing M5 asset is refused before any device opens.
 
 Before START (also in `--dry-run`), colour warmup discards frames until every camera's preprocessed RGB is stable:
 at least 1.5 s of streaming, then a 1 s window with at least 80% of the expected frames and relative ranges of mean
@@ -382,8 +382,8 @@ the live joints (2e-15 m, 2e-13 deg); `state_blockers` empty (`realworld-ops/ser
   loops catch `BaseException` so subsequent resources still close. Worker exceptions latch a stop; main-loop exceptions stop
   then propagate. Consecutive failures count steps without an accepted command, including validation rejection.
 * **Acquisition**: RealSense RGB (+ native depth aligned to RGB only when the policy needs it); never IR. Multi-view
-  policies: all trained cameras in training order + the validated live M5 helper (else refused), one step per final
-  synchronised set ("Live multi-view sessions").
+  policies: all trained cameras in training order + the validated live M5 helper (else refused), one step per new
+  reference-camera frame on every camera's latest valid frame ("Live multi-view sessions").
 * **Recording**: `inference_outputs/inference_YYYYMMDD_HHMMSS/{inference.h5, camera_<serial>.mp4, summary.json}`
   (`ops/robot_pc/recorder.py`), non-blocking writer thread, `.partial` + rename on finalize. Executed rows mark
   `sent=True` only when the execution sink returns successfully; detail distinguishes the arm send from gripper
@@ -473,32 +473,60 @@ freshness notion): stale / frozen state is refused by the state reader and the e
 **Not validated**: live 3-camera arrival on the robot PC, more release episodes. Evidence: `realworld-ops/serving/evidence/
 m5-live-validation-20261110.json`.
 
-## Live multi-view sessions (2026-11-12)
+## Live multi-view sessions (2026-11-12; sync relaxed the same evening)
 
 `infer.py` (`live.LiveSession`) and `dry_run.py` (`dryrun.run`) run multi-view policies on the live cameras with the
-same set logic as recorded replay (`ops/robot_pc/syncsets.py`, shared by all three):
+same step logic as recorded replay (`ops/robot_pc/syncsets.py`, shared by all three).
+
+User directive 2026-11-12 (evening): a session or an observation is NEVER refused only because the cameras' timestamps
+are misaligned. Each step uses the latest valid frame of every camera; a sync mismatch is a WARNING, counted and logged
+on every observation (session H5 / log and server log), never fatal. Everything else is unchanged: the camera set and
+training order, camera identities and preprocessing, per-camera checks (trained spacing, timestamp regularity, frame
+validity, native correction), missing / invalid calibration refusal, the missing-camera refusal (a camera without
+frames for `idle_timeout_s` stops the session; a camera whose end frame never reached the server: `incomplete_history`),
+the action-age bound (`max_action_age_ms`, measured from the newest end frame) and every timeout.
 
 * **Selection** (`config.session_m5`, before any device opens): all trained cameras in training order (reference = the
   first) and the validated M5 helper (`assets.m5_surface` + the unmodified `assets.urdf` whose sha256 the asset pins,
   the task's `m5_max_sync_ns`, the trained frame period). Wrong count / order, a missing or mismatching asset, a
   missing task entry, a bound session whose cameras / period differ: refused (`infer.py` exit 3, `dry_run.py` exit 3).
-* **Sets**: every drained frame of every camera goes to the client (`add_capture`, preprocessed on its camera's reader
-  thread) and to `LiveM5.add_frame`; the state source's robot rows (q7) and gripper samples reach the helper exactly
-  once each (`StateFeed`: per-stream newest fed time, so a sample stamped before a poll but appended after it is not
-  lost); every final complete set goes to the server with its displacement (`add_sync_set`; no valid state -> None,
-  refused by the server); the step is on the NEWEST final set (older ones are history, `skipped_behind`), as
-  single-view live and realtime replay. Rows carry `surface_disp_m`; the recording gets an `m5 {...}` event.
-* **Gating**: the server assembles the 3-step history from the declared sets and refuses a window with a set that moved
-  > 5 mm / has no valid state / lacks evidence (`unsynchronized`, `incomplete_history`): no action, exactly the sets
-  training excluded. In a multi-view LiveSession these answers do NOT count as server / route failures
-  (`max_failed_steps`; counted `sync_refused`): the executor holds as for any step without a command. A multi-view
-  session whose sets never become final (frames arrive, member states do not) stops after 3 x `idle_timeout_s`.
+* **Steps** (`syncsets.LatestFrames`): every drained frame of every camera goes to the client (`add_capture`); one step
+  per new reference-camera frame, newest only (an unstepped older one is `sync_superseded`). Every other camera
+  contributes its newest frame captured no later than half a frame period after the reference frame (a frame of the
+  next instant is never mixed in). A camera whose newest frame is more than half a period older than the reference is
+  waited for at most half a period (`sync_partner_wait_expired`), then its newest (stale) frame is used. No step is
+  taken before every camera has delivered a frame.
+* **Sync record** (row key `sync`, in the session H5 `policy/row_json` and the rows JSONL): per-camera frame ids and
+  capture times, each frame's age at the step (`age_ms`, robot-PC monotonic clock) and relative to the observation
+  time (`age_rel_ms`), pairwise offsets (`offsets_ms`, `a|b` = t_a - t_b), the largest offset from the reference camera
+  vs the training mutual-nearest bound (half a period: `mismatch`), and the M5 robot-surface displacement of exactly
+  these frames (`surface_disp_m`, metres / `"no_state"` / None when the member states are not final yet; > 5 mm:
+  `motion_over_bound`). The helper's value is informational: it is declared to the server (`add_sync_set`) but never
+  gates a step. The server's measurement of the whole assembled history comes back as `server_sync`. Counters:
+  `sync_steps`, `sync_mismatch`, `sync_motion_over_bound`, `sync_partner_wait_expired`, `sync_superseded` (session
+  summary `sync`, recording event `sync {...}`, `infer.py` end-of-session line).
+* **Server** (`ops/policy_serving/server.py`): assembles each camera's trained history ending at its end frame as sent,
+  computes `ObservationWindow.sync_report` (per-camera capture times, ages relative to the observation time, pairwise
+  offsets, per-step spread, declared M5 evidence), logs one `sync session=...` line per multi-view observation (INFO;
+  WARNING with the reason on a mismatch or M5 motion > 5 mm), counts `sync_observations` / `sync_mismatch` /
+  `sync_motion_over_bound` (server and session counters) and returns the report as `outputs["sync"]`. The former
+  refusals (views not mutual-nearest, missing set evidence, steps not declared as sets, M5 motion > 5 mm) are gone;
+  `unsynchronized` remains only for run-start padding that is not step-aligned (structural).
+* **Answers without an action** (`syncsets.SYNC_REFUSALS`: `unsynchronized`, `incomplete_history`, e.g. a camera's own
+  history broken by a dropped frame) do NOT count as server / route failures (`max_failed_steps`; counted
+  `sync_refused`): the executor holds as for any step without a command.
 * **Dry run state**: `dry_run.py --state static` feeds the fixed latency-only state (robot rows 1 kHz, register 100 Hz:
-  displacement 0, every set accepted); `infer.py --dry-run --gripper static` feeds the labelled static register on a
-  10 ms grid (`StaticGripper.rows`). Neither is a measurement.
+  displacement 0); `infer.py --dry-run --gripper static` feeds the labelled static register on a 10 ms grid
+  (`StaticGripper.rows`). Neither is a measurement.
+* **Recorded replay** (`scripts/robot_pc/replay.py --multiview-sync latest|training-sets`): `latest` (default) is the
+  live rule above; `training-sets` steps on the training-equivalent mutual-nearest M5 sets of the live helper (the
+  robot-PC vs in-container bitwise comparison of the auto-eligibility check, which compares the training store's sets).
+  Synthetic sync validation, labelled in the summary: `--inject-offset-ms SERIAL=MS` shifts a camera's capture
+  timeline (its own spacing intact), `--inject-delay-ms SERIAL=MS` delivers a camera late, `--inject-arrival-jitter-ms
+  MS --inject-seed N` jitters delivery (cameras still deliver in order).
 * **Equivalence** (`tests/test_robot_pc.py::test_live_multiview_session_steps_equal_the_recorded_replay`): the live
-  session fed the recorded frames / state in arrival order sends the same sets and takes the same steps as replay
-  (realtime pace), with bitwise-equal fixture actions.
+  session fed the recorded frames / state in arrival order takes the same steps on the same end frames as replay
+  (realtime pace), with the same sync records and bitwise-equal fixture actions.
 
 CPU per step of the live multi-view path (local EPYC 9654 under load, real M5 asset, 3 cameras, 1 kHz robot rows):
 set formation + M5 + `add_sync_set` in the main loop 2.0 ms p50 per set (4.2 ms before the `StateTimeline` ring),

@@ -175,10 +175,22 @@ def test_history_refuses_missing_frames_irregular_time_and_m5(policies):
             h.push(c, f)
         with pytest.raises(ValueError, match="duplicate"):
             h.push(c, frames[-1])
-    for motion in (None, [0.001, 0.006, 0.001], [float("nan")] * 3, {0: 0.001, 1: 0.001}):
-        with pytest.raises(ValueError, match="M5"):
-            h.assemble(dict.fromkeys(spec.camera_ids, 2), surface_disp_m=motion)
-    assert h.assemble(dict.fromkeys(spec.camera_ids, 2), surface_disp_m={0: 0.0, 1: 0.002, 2: 0.005}).frame_ids == \
+    # M5 evidence is optional and informational since 2026-11-12 (user directive): missing / moving / stateless sets
+    # are measured by sync_report (warnings), only malformed evidence is refused
+    end = dict.fromkeys(spec.camera_ids, 2)
+    for motion in (None, [0.001, 0.006, 0.001], {0: 0.001, 1: 0.001}, [float("inf")] * 3, {}):
+        assert h.assemble(end, surface_disp_m=motion).frame_ids == {c: [0, 1, 2] for c in spec.camera_ids}
+    rep = h.assemble(end, surface_disp_m=[0.001, 0.006, 0.001]).sync_report()
+    assert rep["motion_over_bound"] and not rep["mismatch"] and any("M5" in w for w in rep["warnings"])
+    rep = h.assemble(end, surface_disp_m={0: 0.001, 1: 0.001}).sync_report()
+    assert rep["surface_disp_m"] == [0.001, 0.001, None] and not rep["motion_over_bound"] and not rep["warnings"]
+    rep = h.assemble(end, surface_disp_m=[float("inf")] * 3).sync_report()
+    assert rep["surface_disp_m"] == ["no_state"] * 3 and rep["motion_over_bound"]
+    assert h.assemble(end, surface_disp_m={}).sync_report()["surface_disp_m"] is None
+    for bad in ([float("nan")] * 3, [0.001] * 2, [-0.001] * 3, [True] * 3):
+        with pytest.raises(ValueError, match="M5 evidence"):
+            h.assemble(end, surface_disp_m=bad)
+    assert h.assemble(end, surface_disp_m={0: 0.0, 1: 0.002, 2: 0.005}).frame_ids == \
         {c: [0, 1, 2] for c in spec.camera_ids}
     frames = copy.deepcopy(window.frames)
     f = frames["cam_a"][1]
@@ -346,13 +358,29 @@ def test_typed_refusals_and_concurrent_sessions(policies):
         h.push(c, frames[c][2])
     with pytest.raises(IncompleteHistory):
         h.assemble(dict.fromkeys(a.camera_ids, 2), surface_disp_m=[0.0] * 3)
-    with pytest.raises(Unsynchronized):
-        ObservationWindow(a, wa.frames, (0.0, 0.01, 0.0)).validate()
+    moving = ObservationWindow(a, wa.frames, (0.0, 0.01, 0.0))
+    moving.validate()  # M5 motion above 5 mm: a warning since 2026-11-12, never a refusal
+    assert moving.sync_report()["motion_over_bound"] and not moving.sync_report()["mismatch"]
     shifted = dict(wa.frames)
     f = shifted["cam_b"]
     shifted["cam_b"] = tuple(Frame(x.seq, x.timestamp_ns + 40_000_000, x.rgb, x.depth, x.valid, x.metadata) for x in f)
-    with pytest.raises(Unsynchronized):
-        ObservationWindow(a, shifted, (0.0,) * 3).validate()
+    late = ObservationWindow(a, shifted, (0.0,) * 3)
+    late.validate()  # 40 ms >= half a 15 Hz period: not mutual-nearest, served with a warning
+    rep = late.sync_report()
+    cams = list(a.camera_ids)
+    t = late.timestamps_ns
+    assert rep["mismatch"] and rep["max_offset_ms"] == np.abs(t - t[:, :1]).max() / 1e6 >= 40.0 and \
+        rep["bound_ms"] == pytest.approx(a.frame_period_s * 500) and rep["warnings"]
+    assert rep["offsets_ms"][f"{cams[0]}|{cams[1]}"] == (t[-1, 0] - t[-1, 1]) / 1e6 <= -39.0
+    assert rep["capture_ns"] == {c: int(t[-1, i]) for i, c in enumerate(cams)}
+    assert rep["age_rel_ms"] == {c: (t[-1].max() - t[-1, i]) / 1e6 for i, c in enumerate(cams)}
+    assert late.observation_time_ns == max(x.timestamp_ns for c in cams for x in shifted[c][-1:])
+    served = policy.infer(late, [0.3, 0, 0.4, 0, 0, 0, 1], 3, binding(late), noise=noise)
+    assert np.isfinite(np.asarray(served["action_norm"])).all()
+    assert ObservationWindow(a, wa.frames, (0.0,) * 3).sync_report()["warnings"] == []
+    with pytest.raises(Unsynchronized):  # structural: run-start padding must stay step-aligned across cameras
+        ObservationWindow(a, {**wa.frames, cams[0]: (wa.frames[cams[0]][0],) * 2 + wa.frames[cams[0]][1:2]},
+                          (0.0,) * 3, padded=True).validate()
     with pytest.raises(IrregularHistory):
         ObservationWindow(a, {**wa.frames, "cam_a": (f[0], f[2], f[1])}, (0.0,) * 3).validate()
     with pytest.raises(ContractViolation):

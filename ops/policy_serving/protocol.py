@@ -52,7 +52,8 @@ ERROR_CODES = {
     "session_taken_over": "this session was evicted by another client's takeover: the robot loop must stop",
     "incomplete_history": "a frame (or multi-view set) required at the trained history spacing is missing",
     "irregular_spacing": "frame ids or capture times do not follow the trained history spacing",
-    "unsynchronized": "multi-view set fails mutual-nearest synchronisation or the training M5 motion bound",
+    "unsynchronized": "multi-view run-start padding not step-aligned across cameras (cross-camera offsets and M5 "
+                      "motion are logged warnings since 2026-11-12, never this refusal)",
     "binding_refused": "measured pose / gripper sample not bound to the observation as in training (sample age, ids)",
     "duplicate": "repeated frame id, or a repeated request seq whose cached response was evicted",
     "stale": "superseded by a newer request of the session, or its ttl expired before execution",

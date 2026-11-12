@@ -1,7 +1,8 @@
 """Live dry run on the robot PC: live cameras (+ read-only robot state) -> policy server -> robot-side validation ->
-``DryRunSink`` (logs, never sends). One step per new reference frame (single-view) or per final M5 set (multi-view,
-``syncsets.LiveSyncSets``: every final set reaches the server with its displacement), always on the NEWEST observation:
-older frames / sets are sent once as history but never stepped (no backlog of stale observations). Capture times are
+``DryRunSink`` (logs, never sends). One step per new reference frame (single-view; multi-view on the latest valid
+frame of every camera, ``syncsets.LatestFrames``: misalignment is a counted, logged warning, each row carries its
+``sync`` record), always on the NEWEST observation: older frames are sent once as history but never stepped (no
+backlog of stale observations). Capture times are
 the recorder's (``DeviceClock``), so capture->action includes the camera-to-host latency (recordings: ~65 ms).
 ``acquire_ms`` here = device stamp -> frame aligned, preprocessed and queued (newest frame of the step); in replay it
 is the replay-only JPEG decode + rs.align emulation."""
@@ -15,10 +16,11 @@ from ops.robot_pc.robot_state import StateUnavailable
 
 def run(client, loop, cameras, state, *, cams: list, steps: int | None = None, duration_s: float | None = None,
         live_m5=None, on_row=None, idle_timeout_s: float = 2.0) -> list:
-    from ops.robot_pc.syncsets import LiveSyncSets
+    from ops.robot_pc.syncsets import LatestFrames
 
     rows = []
-    sync = None if live_m5 is None else LiveSyncSets(client, live_m5, state, cams)
+    sync = None if len(cams) == 1 else LatestFrames(client, live_m5, state, cams,
+                                                    period_s=float(client.spec["frame_period_s"]), counts=loop.counts)
     t_end = None if duration_s is None else time.monotonic() + float(duration_s)
     last_frame = dict.fromkeys(cams, time.monotonic())  # per required camera
     last_step = time.monotonic()
@@ -37,13 +39,13 @@ def run(client, loop, cameras, state, *, cams: list, steps: int | None = None, d
                                    metadata={"state_source": state.kind})
                 acquire = max(acquire, (cap["arrival_ns"] - cap["capture_ns"]) / 1e6)  # device stamp -> processed
                 if sync is not None:
-                    sync.add_frame(cam, cap["frame_id"], t)
+                    sync.add_frame(cam, cap["frame_id"], t, time.monotonic_ns())
                 elif cam == cams[0]:
                     newest = ({cam: cap["frame_id"]}, t, f"{cam}:{cap['frame_id']}")
-        if sync is not None:  # every final set reaches the server; the step is on the newest one
-            s = sync.newest_step(time.monotonic_ns(), loop.counts)
+        if sync is not None:  # the newest reference frame on every camera's latest valid frame
+            s = sync.newest_step(time.monotonic_ns())
             if s is not None:
-                newest, extra = s[:3], {"surface_disp_m": s[3]}
+                newest, extra = s[:3], {"sync": s[3]}
         now_s = time.monotonic()
         stale = [c for c in cams if now_s - last_frame[c] > idle_timeout_s]
         if stale or now_s - last_step > 3 * idle_timeout_s:

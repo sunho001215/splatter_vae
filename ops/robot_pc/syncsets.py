@@ -1,33 +1,42 @@
-"""Multi-view synchronised camera sets on the robot PC (CPU, no torch), ONE implementation for recorded replay
-(``replay.run``), the live dry run (``dryrun.run``) and the live session (``live.LiveSession``), so all three hand the
-live M5 helper (``s4d.rwlearn.deploy.m5_live.LiveM5``) and the policy client exactly the same data in the same order:
+"""Multi-view camera steps on the robot PC (CPU, no torch), ONE implementation for recorded replay (``replay.run``), the
+live dry run (``dryrun.run``) and the live session (``live.LiveSession``):
 
-* ``StateFeed``: every robot row (time, q7) and gripper register sample of the state source reaches the helper exactly
-  once and in time order, from one second before the first frame on. Each stream remembers the newest time it fed, so
-  a live sample stamped before a poll but appended to the reader's buffer after it is fed by the next poll (feeding up
-  to a wall-clock bound would drop it for good);
-* ``step_sets``: every final set reaches the client with its M5 robot-surface displacement (``add_sync_set``; ``None``
-  = no valid robot state, refused by the server as in training) in the order the helper finalises them, each followed
-  by a policy step on it - except, with ``newest_only``, sets that already have a newer final set: they are history
-  only (counted ``skipped_behind``), the rule of single-view live and realtime replay (no backlog of stale
-  observations);
-* ``LiveSyncSets``: the two above for a live loop (frames as they are drained, state up to now, the newest step).
-
-Training contract kept unchanged (``s4d.rwlearn.deploy.contracts`` / ``train_store.mutual_sync``): all trained cameras
-in TRAINING ORDER (reference = first), mutual-nearest sets, M5 gating by the server's history (moving or stateless sets
-are refused there), 3-step history at the trained spacing assembled by the server from the declared sets.
+* ``LatestFrames`` (the live rule since the user directive of 2026-11-12 evening): one step per new reference-camera
+  frame on the LATEST valid frame of every camera at that instant: each other camera contributes its newest frame
+  captured no later than half a frame period after the reference frame (a frame of the next instant is never mixed
+  in). A step waits at most ``wait_s`` (default half a frame period) for a camera whose newest frame is more than half
+  a period older than the reference, then goes ahead with that camera's newest (stale) frame. Cross-camera
+  misalignment is a WARNING, never a refusal: every step carries a ``sync`` record
+  (per-camera frame ids, capture times, ages at the step, pairwise offsets, the reference offset vs the training
+  mutual-nearest bound, the M5 robot-surface displacement of exactly these frames when the live helper can compute
+  it) and mismatches are counted (``sync_mismatch`` / ``sync_motion_over_bound``). Per-camera checks (trained
+  spacing, timestamp regularity, frame validity, calibration), the camera set / training order and every timeout are
+  unchanged (server deploy history, ``live`` / ``dryrun`` idle timeouts);
+* ``StateFeed``: every robot row (time, q7) and gripper register sample of the state source reaches the M5 helper
+  exactly once and in time order, from one second before the first frame on. Each stream remembers the newest time it
+  fed, so a live sample stamped before a poll but appended to the reader's buffer after it is fed by the next poll
+  (feeding up to a wall-clock bound would drop it for good);
+* ``step_sets`` / ``LiveSyncSets``: the former strict rule (training-equivalent mutual-nearest sets finalised by the
+  live M5 helper, every final set declared with its displacement). Kept for recorded replay's ``training-sets`` mode
+  (the bitwise robot-PC vs in-container comparison on the training store's sets) and tests; live loops no longer use it.
 """
 
 from __future__ import annotations
 
+import collections
+
 import numpy as np
+
+from s4d.rwlearn.store import MAX_SET_MOTION_M
 
 STATE_LEAD_NS = 10**9  # rows from one second before the first frame (the recorded replay's start)
 
-# Server answers of a multi-view window refused by the training sync contract (a set in its history moved > 5 mm, had
-# no valid robot state, or lacks a mutual partner / evidence): an ANSWER without an action, like training's excluded
-# sets - never a route or server failure.
+# Server answers without an action for a multi-view window (a server older than the 2026-11-12 relaxation refusing a
+# moving / unpaired set; any server: a camera's own history incomplete, padding not step-aligned): an ANSWER, never a
+# route or server failure.
 SYNC_REFUSALS = frozenset({"unsynchronized", "incomplete_history"})
+SYNC_COUNTS = ("sync_steps", "sync_mismatch", "sync_motion_over_bound", "sync_partner_wait_expired",
+               "sync_superseded")
 
 
 class StateFeed:
@@ -101,3 +110,129 @@ class LiveSyncSets:
         out = []
         step_sets(self.client, self.m5.poll(), self.cams, lambda *a: out.append(a), newest_only=True, counts=counts)
         return out[-1] if out else None
+
+
+def sync_record(cams: list, end_ids: dict, times: dict, now_ns: int, half_ns: float, disp, max_motion_m: float) -> dict:
+    """The per-observation sync log of one multi-view step (JSON-safe): frame ids and capture times per camera, the
+    age of every frame at the step (``age_ms``, this host's monotonic clock) and relative to the observation time =
+    newest frame (``age_rel_ms``), pairwise offsets ``a|b`` = t_a - t_b, the largest offset from the reference camera
+    vs the training mutual-nearest bound (half a frame period; ``mismatch`` = the former strict refusal) and the M5
+    displacement of exactly these frames (metres; ``"no_state"`` = no valid robot state; None = not computed)."""
+    ref_t, obs = times[cams[0]], max(times.values())
+    ref_off = max(abs(times[c] - ref_t) for c in cams) / 1e6
+    finite = disp is not None and bool(np.isfinite(disp))
+    return {"rule": "latest", "frame_ids": {c: int(end_ids[c]) for c in cams},
+            "capture_ns": {c: int(times[c]) for c in cams},
+            "age_ms": {c: (int(now_ns) - int(times[c])) / 1e6 for c in cams},
+            "age_rel_ms": {c: (int(obs) - int(times[c])) / 1e6 for c in cams},
+            "offsets_ms": {f"{a}|{b}": (int(times[a]) - int(times[b])) / 1e6
+                           for i, a in enumerate(cams) for j, b in enumerate(cams) if i < j},
+            "max_offset_ms": ref_off, "bound_ms": half_ns / 1e6, "mismatch": ref_off * 1e6 >= half_ns,
+            "surface_disp_m": (float(disp) if finite else "no_state") if disp is not None else None,
+            "motion_over_bound": disp is not None and (not finite or float(disp) > max_motion_m)}
+
+
+class LatestFrames:
+    """A multi-view loop's steps on the latest valid frame of every camera (module docstring): ``add_frame`` per drained
+    camera frame (any camera order; ``now_ns`` = when it reached the loop on the loop's clock), ``newest_step`` once per
+    loop iteration -> ``(end_ids, observation_time_ns, reference_id, sync_record)`` or None. ``live_m5`` (optional,
+    informational): the validated live M5 helper on the session cameras in training order (checked); with it, each
+    step's displacement is computed when the member states are final and declared to the server
+    (``add_sync_set``). Counts go to ``counts`` (the loop's)."""
+
+    def __init__(self, client, live_m5, state, cams, *, period_s: float, counts, wait_s: float | None = None,
+                 state_lead_ns: int = 0):
+        cams = [str(c) for c in cams]
+        if live_m5 is not None and list(live_m5.sets.cameras) != cams:
+            raise ValueError(f"the live M5 helper's cameras {live_m5.sets.cameras} are not the session cameras {cams} "
+                             "in training order")
+        self.client, self.m5, self.cams, self.counts = client, live_m5, cams, counts
+        self.feed = None if live_m5 is None else StateFeed(live_m5, state)
+        self.half_ns = float(period_s) * 1e9 / 2
+        self.wait_ns = int(self.half_ns if wait_s is None else float(wait_s) * 1e9)
+        self.latest: dict = dict.fromkeys(cams)  # camera -> newest (frame id, capture ns)
+        self._recent = {c: collections.deque(maxlen=8) for c in cams}  # the last frames (about half a second)
+        self._ref_seen_ns = 0
+        self._stepped = None  # reference frame id of the last step
+        self.state_lead_ns = int(state_lead_ns)  # recorded replay: robot rows reach the host before the frames
+
+    def add_frame(self, camera_id: str, frame_id: int, capture_ns: int, now_ns: int) -> None:
+        camera_id = str(camera_id)
+        if camera_id not in self.latest:
+            raise ValueError(f"camera {camera_id} is not in this session {self.cams}")
+        if self.feed is not None:
+            self.feed.start(capture_ns)
+        if camera_id == self.cams[0]:
+            prev = self.latest[camera_id]
+            if prev is not None and prev[0] != self._stepped:
+                self.counts["sync_superseded"] += 1  # a newer reference frame before this one could step
+            self._ref_seen_ns = int(now_ns)
+        self.latest[camera_id] = (int(frame_id), int(capture_ns))
+        self._recent[camera_id].append(self.latest[camera_id])
+
+    def _member(self, cam: str, t_ref: int) -> tuple:
+        """The camera's newest frame captured no later than half a period after the reference (else its oldest
+        buffered frame: every buffered frame is from a later instant)."""
+        fit = [f for f in self._recent[cam] if f[1] <= t_ref + self.half_ns]
+        return fit[-1] if fit else self._recent[cam][0]
+
+    def newest_step(self, now_ns: int, *, flush: bool = False):
+        """The step on the newest reference frame once its partners are no older than half a period before it or the
+        wait ran out (``flush``: no frame will follow, step now). None: no new reference frame, a camera without any
+        frame yet (the loops' idle timeouts refuse a missing camera), or still waiting."""
+        ref = self.latest[self.cams[0]]
+        if ref is None or ref[0] == self._stepped or any(v is None for v in self.latest.values()):
+            return None
+        late = [c for c in self.cams[1:] if self.latest[c][1] < ref[1] - self.half_ns]
+        if late and not flush and int(now_ns) - self._ref_seen_ns < self.wait_ns:
+            return None
+        if late:
+            self.counts["sync_partner_wait_expired"] += 1
+        self._stepped = ref[0]
+        members = {c: ref if c == self.cams[0] else self._member(c, ref[1]) for c in self.cams}
+        end_ids = {c: members[c][0] for c in self.cams}
+        times = {c: members[c][1] for c in self.cams}
+        disp = self._displacement(times, now_ns)
+        if disp is not None:
+            self.client.add_sync_set(end_ids, float(disp) if np.isfinite(disp) else None)
+        limit = MAX_SET_MOTION_M
+        rec = sync_record(self.cams, end_ids, times, now_ns, self.half_ns, disp, limit)
+        self.counts["sync_steps"] += 1
+        self.counts["sync_mismatch"] += rec["mismatch"]
+        self.counts["sync_motion_over_bound"] += rec["motion_over_bound"]
+        return end_ids, max(times.values()), f"latest:{ref[0]}", rec
+
+    def _displacement(self, times: dict, now_ns: int):
+        """M5 displacement of exactly these frames (informational): None without the helper or while a member's
+        state is not final yet (counted ``not_ready``)."""
+        if self.m5 is None:
+            return None
+        self.feed.feed(int(now_ns) + self.state_lead_ns)
+        stamps = [times[c] for c in self.cams]
+        if not all(self.m5.timeline.ready(t) for t in stamps):
+            self.m5.counts["not_ready"] += 1
+            return None
+        states, ok = self.m5.timeline.states(stamps)
+        disp = self.m5.motion.displacement(states, ok)
+        self.m5.counts["sets"] += 1
+        self.m5.counts["over_bound" if not disp <= MAX_SET_MOTION_M else "within_bound"] += 1
+        return disp
+
+
+def sync_summary(rows: list, counts) -> dict:
+    """Session summary of the multi-view sync records (rows' ``sync``): the counts and p50 / p95 / max of the
+    reference offset and of every camera's frame age at the step."""
+    recs = [r["sync"] for r in rows if isinstance(r.get("sync"), dict)]
+
+    def pct(values):
+        v = np.asarray([x for x in values if x is not None], np.float64)
+        return None if not len(v) else {"n": int(len(v)), "p50": float(np.percentile(v, 50)),
+                                         "p95": float(np.percentile(v, 95)), "max": float(v.max())}
+
+    cams = list(recs[0]["capture_ns"]) if recs else []
+    return {"rule": "latest valid frame per camera; mismatch = warning (counted, logged), never a refusal",
+            **{k: int(counts.get(k, 0)) for k in SYNC_COUNTS},
+            "bound_ms": recs[0]["bound_ms"] if recs else None,
+            "max_offset_ms": pct(r["max_offset_ms"] for r in recs),
+            "age_ms": {c: pct(r["age_ms"][c] for r in recs) for c in cams},
+            "server_mismatch": sum(bool((r.get("server_sync") or {}).get("mismatch")) for r in rows)}

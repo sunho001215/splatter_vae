@@ -38,8 +38,8 @@ deadline, at most `io_timeout_s`) also makes the connection unusable: it is drop
 | WELCOME | s -> c (on connect) | `server`, `nonce`, `auth_required`, `policies: {id or alias: {input_spec (unbound), info {condition, task, seed, run, status, reasons, criteria, usage, usage_reasons, execution_eligible, execution_decision, flags, checkpoint_sha256, resident, alias_of}}}`, `unavailable: {id: {status, reasons}}` |
 | HELLO | c -> s | `policy_id`, `choices` {`camera_id` (single view), `native_hw` {cam: [H, W]}, `calibration` {cam: {K_native, c2w}}, `native_depth_correction` {cam: ...}}, `resume` {session_id, last_ack} or null, `auth` (HMAC), `takeover` |
 | SPEC | s -> c | `session_id`, `resumed`, `input_spec` (bound `InputSpec.to_json()`), `limits`, `last_seq_received`, `redeliver` [seq] |
-| STEP | c -> s | `session_id`, `seq`, `frames` [NEW frames only: `camera_id`, `frame_id` (camera acquisition counter), `capture_ns` (client monotonic), `pose7`, `gripper_register` (measured at that frame), `metadata` (`native_hw` [H, W] of the native colour frame, `K` at the training grid for calibrated conditions; depth: `depth_source`, `native_correction`), `arrays` {rgb, depth, valid}], `sets` [multi-view: `frame_ids` {cam: id}, `surface_disp_m` (M5; null = no valid robot state)], `request` {`end_ids` {cam: id}, `reference_id`, `pose7` + `pose_time_ns`, `gripper_register` + `gripper_time_ns` (the measured samples bound to the observation, client monotonic), `ttl_ms`, `pad_run_start`, validation `noise` (array, float32 (1, 7)) or `noise_seed`} |
-| ACTION | s -> c | `seq`, `ack`, `status: ok`, `reference_id`, `outputs` + `output_arrays` (`DeployPolicy.infer` verbatim: `action_norm`, `delta_phys`, `flange_pose`, `execution_flange_pose`, `gripper_closure`, `gripper_register`, `measured_pose7`, `obs_ids`, `frame_timestamps_ns`, `metadata`, `timings`), `server_ms` {prep, queue, validation, encoder, fql, policy, infer, total} |
+| STEP | c -> s | `session_id`, `seq`, `frames` [NEW frames only: `camera_id`, `frame_id` (camera acquisition counter), `capture_ns` (client monotonic), `pose7`, `gripper_register` (measured at that frame), `metadata` (`native_hw` [H, W] of the native colour frame, `K` at the training grid for calibrated conditions; depth: `depth_source`, `native_correction`), `arrays` {rgb, depth, valid}], `sets` [multi-view, optional and informational since 2026-11-12: `frame_ids` {cam: id}, `surface_disp_m` (M5; null = no valid robot state)], `request` {`end_ids` {cam: id}, `reference_id`, `pose7` + `pose_time_ns`, `gripper_register` + `gripper_time_ns` (the measured samples bound to the observation, client monotonic), `ttl_ms`, `pad_run_start`, validation `noise` (array, float32 (1, 7)) or `noise_seed`} |
+| ACTION | s -> c | `seq`, `ack`, `status: ok`, `reference_id`, `outputs` + `output_arrays` (`DeployPolicy.infer` verbatim: `action_norm`, `delta_phys`, `flange_pose`, `execution_flange_pose`, `gripper_closure`, `gripper_register`, `measured_pose7`, `obs_ids`, `frame_timestamps_ns`, `metadata`, `timings`; multi-view: + `sync`, the server's sync measurement), `server_ms` {prep, queue, validation, encoder, fql, policy, infer, total} |
 | ERROR | s -> c | `code`, `detail`, `seq`/`ack`, `history_reset`, `fatal` |
 | RESET / RESET_OK | c -> s / s -> c | `seq` (same sequence space as STEP): explicit history reset, the session stays bound |
 | PING / PONG | c -> s / s -> c | `t_client_ns` echoed, `t_server_ns` |
@@ -48,7 +48,8 @@ deadline, at most `io_timeout_s`) also makes the connection unusable: it is drop
 Error codes: `version`, `auth` (fatal); `bad_request` (malformed, wrong sizes/dtypes, a frame of another native grid or
 intrinsics than the session's, or an input the deploy contract refuses); `session_unknown` (expired / ended / server
 restarted); `session_busy`; `session_taken_over` (evicted by another client's takeover: stop); `incomplete_history`;
-`irregular_spacing`; `unsynchronized` (mutual-nearest or M5); `binding_refused` (pose / gripper sample not the
+`irregular_spacing`; `unsynchronized` (multi-view run-start padding not step-aligned; cross-camera offsets and M5
+motion are warnings since 2026-11-12, see "Multi-view sync"); `binding_refused` (pose / gripper sample not the
 observation's, training ages 15 / 100 ms); `duplicate` (repeated seq whose response was evicted); `stale`;
 `overloaded` (queue full, or the connection cap); `shutting_down`; `internal` (the worker stays alive).
 Deploy refusals map by class (`s4d.rwlearn.deploy.errors`), never by message text.
@@ -95,7 +96,8 @@ either the server's FQL noise stream is used (production).
   server crops K from the session's grid, so another stream resolution would otherwise get a wrong K silently).
   `RealSenseCapture` checks the stream at start and on every frame.
 * **History.** The client sends each frame once; the server assembles the trained history (3 frames at spacing 1,
-  multi-view: synchronised steps) ending at `end_ids`. A missing frame (or set) -> `incomplete_history`; frame ids or
+  multi-view: each camera's history ending at its own end frame; misalignment is measured, not refused) ending at
+  `end_ids`. A missing frame -> `incomplete_history`; frame ids or
   capture times off the trained spacing -> `irregular_spacing`; never re-spaced, padded or substituted.
   `pad_run_start: true` applies the training rule (frame-stack padding at a run start) and nothing else.
   RESET clears the server history; a frame refused by the contract (or a refused message that carried frames)
@@ -182,7 +184,8 @@ ok, why = check_action(r, reference_id=ref, now_ns=time.monotonic_ns(), max_age_
 
 3D-MVP sessions add `calibration` + `native_depth_correction` (`s4d.rwlearn.deploy.realsense.load_rig_session`) and
 pass native depth aligned to colour (`RealSenseCapture(..., depth=True)` = `rs.align` + the shared crop/resize).
-Live multi-view needs the M5 robot-surface motion per set (`add_sync_set`): see the open items.
+Live multi-view: every camera's latest valid frame; cross-camera misalignment is a counted, logged warning (section
+"Multi-view sync").
 
 ## Deployable policies: inventory, criteria, staging
 
@@ -306,8 +309,24 @@ cd <worktree> && mkdir -p outputs && source scripts/gpu_env.sh && \
   on the colour grid): live 3D-MVP end-to-end is larger by those stages.
 * `ttl_ms` is counted from arrival on the server; the authoritative freshness check is `check_action` on the robot.
 * The token authenticates the client but does not encrypt or integrity-protect payloads (the SSH tunnel does).
-* Live multi-view (SNeRL, 3D-MVP multi-view) must NOT run yet: the robot PC would have to compute each synchronised
-  set's M5 robot-surface displacement with the training rule (URDF surface FK) and no validated helper exists
-  (science API R3). Recorded replay takes it from the training store; single-view conditions need no M5.
+* (Resolved 2026-11-12) Live multi-view runs with the validated live M5 helper (docs/robot_pc.md); since the evening
+  directive of 2026-11-12 its displacement is informational only (section "Multi-view sync").
 * No compression, precision change or compilation: the benchmark decides first (directive item 3).
 * The server trusts the client's clock only relatively (spacing, ages); `ttl_ms` is counted from arrival on the server.
+
+## Multi-view sync (user directive 2026-11-12, evening)
+
+A multi-view session or observation is never refused only because the cameras' timestamps are misaligned. The
+client steps on every camera's latest valid frame (`ops/robot_pc/syncsets.LatestFrames`); the server assembles each
+camera's trained history ending at its end frame as sent and measures the window (`ObservationWindow.sync_report`):
+per-camera capture times (client monotonic clock), ages relative to the observation time (newest end frame), pairwise
+offsets, the per-step spread, the largest offset from the reference camera vs the training mutual-nearest bound (half
+a frame period: `mismatch`) and any declared M5 evidence (`motion_over_bound` above 5 mm). Every multi-view
+observation logs one `sync session=...` server line (INFO; WARNING with the reason on a mismatch / M5 motion) and
+increments `sync_observations` / `sync_mismatch` / `sync_motion_over_bound` (server and session counters, reported in
+the session-end log line); the report is returned as `outputs["sync"]` (network outputs only; the direct
+`DeployPolicy.infer` outputs are unchanged and still bit-identical). Kept unchanged: per-camera history checks (trained
+spacing, timestamp regularity, frame validity / native correction), missing frames (`incomplete_history`), run-start
+padding alignment (`unsynchronized`), calibration / intrinsics checks, binding ages, ttl and the client's action-age
+bound. Older clients that declare M5 sets keep working (their sets only annotate the matching steps).
+

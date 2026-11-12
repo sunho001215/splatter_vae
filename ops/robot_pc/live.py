@@ -5,16 +5,16 @@ follower of its own setpoints, since the real robot does not move - health check
 LiveSink (execution: ControllerLink + gripper command), with the whole session recorded (``recorder.SessionRecorder``).
 
 Steps: single-view, one per new reference-camera frame; multi-view (all trained cameras in training order + the
-validated live M5 helper), one per final synchronised set (``syncsets.LiveSyncSets``: every final set reaches the
-server with its M5 displacement, the step is on the newest one), exactly as recorded replay forms them. A multi-view
-window the server refuses by the training sync contract (``syncsets.SYNC_REFUSALS``: a set in its history moved
-> 5 mm, has no valid state or no mutual partner) is an answer without an action, never a route failure.
+validated live M5 helper), one per new reference-camera frame on the LATEST valid frame of every camera
+(``syncsets.LatestFrames``, user directive 2026-11-12 evening): cross-camera misalignment is a counted, logged
+warning, never a refusal; every step row carries its ``sync`` record (frame ids, capture times, ages, pairwise
+offsets, M5 displacement when final) and the server's (``server_sync``). A multi-view answer without an action
+(``syncsets.SYNC_REFUSALS``: e.g. a camera's own history incomplete) is an answer, never a route failure.
 
 Stops (any of them ends the session; in execution the link then holds at the measured pose and requests IDLE):
 the operator (``stop`` event: Ctrl-C, ``s``, SIGTERM), a latched executor stop (stale / frozen / invalid state, rate
 conflict), ``max_failed_steps`` consecutive policy steps without an action (server / route failure), a camera without
-frames for ``idle_timeout_s``, multi-view: no final synchronised set for 3 x ``idle_timeout_s`` (its member states never
-arrive), the step / duration budget.
+frames for ``idle_timeout_s``, the step / duration budget.
 """
 
 from __future__ import annotations
@@ -32,7 +32,7 @@ from ops.robot_pc.loop import PolicyLoop
 from ops.robot_pc.robot_state import RobotStateSource
 from ops.robot_pc.safety import ExecutionAuthorization, ExecutionRefused
 from ops.robot_pc.sinks import LiveSink as _BaseLiveSink
-from ops.robot_pc.syncsets import SYNC_REFUSALS, LiveSyncSets
+from ops.robot_pc.syncsets import SYNC_COUNTS, SYNC_REFUSALS, LatestFrames
 
 log = logging.getLogger(__name__)
 
@@ -194,11 +194,12 @@ class LiveSession:
                 raise ExecutionRefused("policy execution requires a policy authorization (hardware_test must be None)")
         self.client, self.cameras, self.cams, self.state = client, cameras, list(cams), state
         self.live_m5 = live_m5
-        self.sync = LiveSyncSets(client, live_m5, state, self.cams) if multiview else None
         self.executor, self.sink, self.recorder, self.sent = executor, sink, recorder, bool(sent)
         self._command_lock = threading.Lock()
         self._accepted = 0
         self.loop = PolicyLoop(client, state, limits, _NullSink(), executor=self)
+        self.sync = LatestFrames(client, live_m5, state, self.cams, period_s=float(client.spec["frame_period_s"]),
+                                 counts=self.loop.counts) if multiview else None
         self.max_failed, self.idle_timeout_s, self.on_status = int(max_failed_steps), float(idle_timeout_s), on_status
         self.stop_event = stop_event if stop_event is not None else threading.Event()
         self._stop_lock = threading.RLock()
@@ -366,7 +367,6 @@ class LiveSession:
             self._exec_thread.start()
             t_end = None if duration_s is None else time.monotonic() + float(duration_s)
             last_frame = dict.fromkeys(self.cams, time.monotonic())
-            last_set = time.monotonic()  # multi-view: newest final synchronised set
             failed = 0
             while not self.stop_event.is_set():
                 if (steps is not None and len(self.rows) >= steps) or (t_end is not None and time.monotonic() > t_end):
@@ -395,7 +395,7 @@ class LiveSession:
                                 cam, (cap.get("metadata") or {}).get("color_frame_number", cap["frame_id"]),
                                 t, cap["rgb"], cap.get("depth"))
                         if self.sync is not None:
-                            self.sync.add_frame(cam, cap["frame_id"], t)
+                            self.sync.add_frame(cam, cap["frame_id"], t, time.monotonic_ns())
                         elif cam == self.cams[0]:
                             newest = ({cam: cap["frame_id"]}, t, f"{cam}:{cap['frame_id']}")
                 self._record_streams()
@@ -403,15 +403,13 @@ class LiveSession:
                 if stale:
                     self.stop(f"cameras {stale} sent no frame for {self.idle_timeout_s} s")
                     break
-                if self.sync is not None:  # every final set reaches the server; the step is on the newest one
-                    s = self.sync.newest_step(time.monotonic_ns(), self.loop.counts)
+                if self.sync is not None:  # the newest reference frame on every camera's latest valid frame
+                    s = self.sync.newest_step(time.monotonic_ns())
                     if s is not None:
-                        newest, extra = s[:3], {"surface_disp_m": s[3]}
-                        last_set = time.monotonic()
-                    elif time.monotonic() - last_set > 3 * self.idle_timeout_s:  # frames arrive, no set is final
-                        self.stop(f"multi-view: no final synchronised set for {3 * self.idle_timeout_s} s "
-                                  f"(M5 {dict(self.live_m5.counts)}; robot / gripper state stream?)")
-                        break
+                        newest, extra = s[:3], {"sync": s[3]}
+                        if s[3]["mismatch"] or s[3]["motion_over_bound"]:
+                            log.warning("multi-view sync warning (served): offsets %s ms, M5 %s",
+                                        s[3]["offsets_ms"], s[3]["surface_disp_m"])
                 if newest is None:
                     time.sleep(0.001)
                     continue
@@ -421,8 +419,7 @@ class LiveSession:
                 if self.recorder is not None:
                     self.recorder.step(row)
                 # policy-server / route failures only (no answer): a validation rejection just sends nothing, and so
-                # does a multi-view window refused by the training sync contract (moving / stateless / partial set):
-                # the server answered, so the route works
+                # does a multi-view answer without an action (SYNC_REFUSALS): the server answered, so the route works
                 if self.sync is not None and row.get("status") == "error" and row.get("code") in SYNC_REFUSALS:
                     self.loop.counts["sync_refused"] += 1
                     failed = 0
@@ -447,9 +444,10 @@ class LiveSession:
             if self.recorder is not None:
                 self.recorder.event(time.monotonic_ns(), "loop_stats " + json.dumps(self.loop_stats()))
                 if self.sync is not None:
-                    self.recorder.event(time.monotonic_ns(), "m5 " + json.dumps(
-                        {**dict(self.live_m5.counts), "skipped_behind": self.loop.counts["skipped_behind"],
-                         "sync_refused": self.loop.counts["sync_refused"],
+                    self.recorder.event(time.monotonic_ns(), "sync " + json.dumps(
+                        {"rule": "latest valid frame per camera (mismatch = warning)",
+                         **{k: self.loop.counts[k] for k in SYNC_COUNTS}, "sync_refused": self.loop.counts["sync_refused"],
+                         "m5": dict(self.live_m5.counts) if self.live_m5 is not None else None,
                          "asset_sha256": getattr(getattr(self.live_m5, "motion", None), "asset_sha256", None)}))
         return self.rows
 

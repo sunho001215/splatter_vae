@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import argparse
 import collections
+import dataclasses
 import gc
 import hashlib
 import hmac
@@ -201,6 +202,7 @@ class Job:
     t_recv_ns: int
     t_enqueued_ns: int
     prep_ms: float
+    sync: dict | None = None  # multi-view: the window's sync_report (warnings only), returned in outputs["sync"]
 
 
 class Session:
@@ -209,7 +211,8 @@ class Session:
         self.capacity = capacity
         # mirror of the history: camera -> {frame id: capture_ns}, oldest first, same capacity as HistoryWindow
         self.held = {c: collections.OrderedDict() for c in spec.camera_ids}
-        self.sets: collections.OrderedDict = collections.OrderedDict()  # frame-id tuple -> surface_disp_m
+        # frame-id tuple -> surface_disp_m: declared M5 evidence, informational (logged, never required)
+        self.sets: collections.OrderedDict = collections.OrderedDict()
         self.last_seq = 0
         self.responses: collections.OrderedDict = collections.OrderedDict()  # seq -> encoded response
         self.pending: Job | None = None
@@ -945,6 +948,8 @@ class PolicyServer:
             sp.last_used = time.monotonic()
             try:
                 out = sp.policy.infer(job.window, job.pose7, job.gripper, job.obs_ids, noise=job.noise)
+                if job.sync is not None:
+                    out = {**out, "sync": job.sync}
             except ValueError as exc:
                 return self._error(s, job.seq, classify(exc), f"deploy contract refused the request: {exc}")
             except Exception as exc:  # noqa: BLE001
@@ -1391,25 +1396,45 @@ class PolicyServer:
                 if missing:
                     raise Reject("incomplete_history", f"missing frames {missing} for the trained history "
                                                        f"(length {L}, spacing {k}); never re-spaced")
-                if spec.views > 1:
-                    absent = [key for key in (tuple(wanted[c][j] for c in cams) for j in range(L))
-                              if key not in s.sets]
-                    if absent:
-                        raise Reject("incomplete_history", f"missing multi-view set evidence (M5) for sets {absent}")
-            disp = {key[0]: d for key, d in s.sets.items()} if spec.views > 1 else None  # reference seq -> M5
             try:
-                window = s.history.assemble(dict(end_ids), surface_disp_m=disp, pad_run_start=pad)
+                window = s.history.assemble(dict(end_ids), pad_run_start=pad)
             except ValueError as exc:
                 raise Reject(classify(exc), str(exc)) from exc
-            if spec.views > 1:  # every assembled step must be a set the client declared, not just its reference frame
+            sync = None
+            if spec.views > 1:
+                # Multi-view: each camera's end frame as sent (the client's latest valid frames). Cross-camera offsets
+                # and declared M5 motion are WARNINGS (user directive 2026-11-12): measured, counted, logged and
+                # returned, never refused. Declared sets only annotate the steps they match exactly.
                 steps = [tuple(window.frames[c][j].seq for c in cams) for j in range(L)]
-                foreign = [key for key in steps if key not in s.sets]
-                if foreign:
-                    raise Reject("unsynchronized", f"assembled steps {foreign} are not declared multi-view sets")
+                evidence = [s.sets.get(key) for key in steps]
+                if any(d is not None for d in evidence):
+                    window = dataclasses.replace(window, surface_disp_m=tuple(evidence))
+                sync = window.sync_report()
+                self._count_sync(s, seq, sync, declared=sum(d is not None for d in evidence))
         obs_ids = window.binding(ref, pose_time_ns=pose_t, gripper_time_ns=grip_t)
         now = time.monotonic_ns()
         return Job(s, seq, window, np.asarray(pose7, np.float64), float(grip), obs_ids, noise, float(ttl),
-                   msg.t_recv_ns + int(ttl * 1e6), msg.t_recv_ns, now, (now - msg.t_recv_ns) / 1e6)
+                   msg.t_recv_ns + int(ttl * 1e6), msg.t_recv_ns, now, (now - msg.t_recv_ns) / 1e6, sync)
+
+    def _count_sync(self, s: Session, seq: int, sync: dict, *, declared: int) -> None:
+        """Count and log the cross-camera synchronisation of one multi-view observation (every observation: INFO;
+        a mismatch or an M5 motion above the trained bound: WARNING). Capture times are the client's monotonic clock;
+        ages are relative to the observation time (newest end frame)."""
+        keys = ["sync_observations"] + (["sync_mismatch"] if sync["mismatch"] else []) + \
+            (["sync_motion_over_bound"] if sync["motion_over_bound"] else [])
+        with self.lock:
+            for key in keys:
+                self.counts[key] += 1
+                s.counts[key] += 1
+        warn = sync["mismatch"] or sync["motion_over_bound"]
+        LOG.log(logging.WARNING if warn else logging.INFO,
+                "sync session=%s seq=%d frames=%s capture_ns=%s age_rel_ms=%s offsets_ms=%s step_spread_ms=%s "
+                "m5=%s declared_sets=%d%s", s.id, seq, json.dumps(sync["frame_ids"]), json.dumps(sync["capture_ns"]),
+                json.dumps({c: round(v, 2) for c, v in sync["age_rel_ms"].items()}),
+                json.dumps({c: round(v, 2) for c, v in sync["offsets_ms"].items()}),
+                json.dumps([round(v, 2) for v in sync["step_spread_ms"]]),
+                json.dumps(sync["surface_disp_m"]), declared,
+                (" WARNING " + "; ".join(sync["warnings"])) if warn else "")
 
     def _submit(self, job: Job, conn: Connection) -> None:
         s, superseded, refusal, closed = job.session, None, None, False

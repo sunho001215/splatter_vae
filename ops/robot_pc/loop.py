@@ -76,6 +76,9 @@ class PolicyLoop:
                        flange_pose=np.asarray(o["flange_pose"]).tolist(),
                        execution_flange_pose=np.asarray(o.get("execution_flange_pose", o["flange_pose"])).tolist(),
                        gripper_closure=float(o["gripper_closure"]), measured_pose7=list(st.pose7))
+            if isinstance(o.get("sync"), dict):  # multi-view: the server's measurement of the assembled history
+                row["server_sync"] = {k: o["sync"].get(k) for k in ("mismatch", "max_offset_ms", "step_spread_ms",
+                                                                     "surface_disp_m", "motion_over_bound", "warnings")}
         if cmd is not None:
             self.sink.send(cmd)
             if self.executor is not None:

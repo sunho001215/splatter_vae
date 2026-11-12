@@ -1,9 +1,15 @@
 """Bounded, in-memory camera history (science side, no I/O). It assembles exactly the trained observation history:
-``history_length`` consecutive camera frames (multi-view: synchronised steps) at the trained spacing, oldest first.
+``history_length`` consecutive camera frames per camera at the trained spacing, oldest first.
 Missing frames never compress the spacing: a gap ends the run, and a history is either complete inside one run or,
 only with ``pad_run_start=True``, padded with the first frame of the run exactly as training does
 (``s4d.rwlearn.store.history``: frame-stack reset at a recording run start / episode start). No implicit padding,
 timestamp substitution or dropped-frame compression.
+
+Multi-view cross-camera synchronisation (user directive 2026-11-12, evening) is a WARNING, never a refusal: a window
+whose views are not mutual-nearest frames (an offset of at least half a frame period between two cameras of a step,
+the training ``mutual_sync`` bound) or whose declared M5 robot-surface motion exceeds the trained 5 mm is served as
+assembled; ``ObservationWindow.sync_report`` measures it (per-camera capture times, pairwise offsets, the per-step
+spread, the M5 evidence when declared) so callers count and log it. Every per-camera check is unchanged.
 """
 from __future__ import annotations
 
@@ -36,7 +42,9 @@ class Frame:
 class ObservationWindow:
     spec: InputSpec
     frames: dict[str, tuple[Frame, ...]]
-    surface_disp_m: tuple[float, ...] | None = None  # M5 evidence, one robot-surface spread per assembled step
+    # optional M5 evidence (informational): one robot-surface spread per assembled step, None where not declared,
+    # inf = no valid robot state
+    surface_disp_m: tuple[float | None, ...] | None = None
     padded: bool = False  # run-start padding (training rule) was applied
 
     @property
@@ -89,17 +97,62 @@ class ObservationWindow:
         if len(pads) != 1:
             raise Unsynchronized("multi-view padding must be step-aligned across cameras")
         if s.views > 1:
-            t = self.timestamps_ns
-            # Necessary mutual-nearest bound on regular camera timelines, not a replacement for M5.
-            if (np.abs(t - t[:, :1]) >= s.frame_period_s * 1e9 / 2).any():
-                raise Unsynchronized("views are not mutual-nearest synchronized camera frames")
-            if self.surface_disp_m is None or len(self.surface_disp_m) != s.history_length:
-                raise IncompleteHistory("multi-view history requires M5 robot-surface displacement evidence per step")
-            motion = np.asarray(self.surface_disp_m, np.float64)
-            if not np.isfinite(motion).all() or (motion < 0).any() or (motion > s.max_set_motion_m).any():
-                raise Unsynchronized("multi-view set fails training M5 (robot surface motion <= 5 mm)")
+            # Cross-camera offsets and M5 motion are measured by sync_report (warnings), never refused here; only
+            # malformed evidence is.
+            if self.surface_disp_m is not None:
+                if len(self.surface_disp_m) != s.history_length:
+                    raise ContractViolation("M5 evidence must give one value (or None) per assembled step")
+                for d in self.surface_disp_m:
+                    if d is not None and (isinstance(d, bool) or not isinstance(d, (int, float, np.floating))
+                                          or np.isnan(d) or d < 0):
+                        raise ContractViolation("M5 evidence values are nonnegative metres, inf (no robot state) "
+                                                "or None (not declared)")
         elif self.surface_disp_m is not None:
             raise ContractViolation("single-view windows take no M5 evidence")
+
+    def sync_report(self) -> dict | None:
+        """Cross-camera synchronisation of a multi-view window (None for single-view), measured, never enforced:
+        ``capture_ns`` (end step, per camera), ``age_rel_ms`` (each end frame's age relative to the observation time
+        = the newest end frame), ``offsets_ms`` (end step, pairwise ``a|b`` = t_a - t_b, cameras in session order),
+        ``step_spread_ms`` (max - min capture time of every step, oldest first), ``max_offset_ms`` (largest offset of
+        any view from the reference = first camera, over all steps), ``bound_ms`` (the training mutual-nearest bound,
+        half a frame period), ``mismatch`` (``max_offset_ms`` >= the bound: the former strict refusal),
+        ``surface_disp_m`` / ``motion_over_bound`` (declared M5 evidence per step: metres, ``"no_state"`` = no valid
+        robot state, None = not declared) and ``warnings``: the reasons the former strict contract would have refused
+        this window. JSON-safe (finite numbers only)."""
+        s = self.spec
+        if s.views <= 1:
+            return None
+        cams = list(s.camera_ids)
+        t = self.timestamps_ns
+        end = t[-1]
+        obs = int(end.max())
+        spread = (t.max(1) - t.min(1)) / 1e6
+        ref_offset = float(np.abs(t - t[:, :1]).max()) / 1e6  # the former refusal: |t_view - t_reference| per step
+        bound = s.frame_period_s * 1e3 / 2
+        disp = None if self.surface_disp_m is None else [None if d is None else float(d) for d in self.surface_disp_m]
+        limit = float(s.max_set_motion_m) if s.max_set_motion_m is not None else np.inf
+        over = disp is not None and any(d is not None and d > limit for d in disp)
+        mismatch = ref_offset >= bound
+        warnings = []
+        if mismatch:
+            warnings.append(f"views not mutual-nearest: offset from the reference camera up to {ref_offset:.1f} ms "
+                            f">= {bound:.1f} ms (half a frame period)")
+        if over:
+            worst = max(d for d in disp if d is not None)
+            warnings.append("M5: robot surface moved " + ("(no valid robot state)" if not np.isfinite(worst)
+                                                           else f"{worst * 1e3:.1f} mm") +
+                            f" > {limit * 1e3:.0f} mm within a step")
+        if disp is not None:
+            disp = [d if d is None or np.isfinite(d) else "no_state" for d in disp]
+        return {"cameras": cams, "frame_ids": {c: int(self.frames[c][-1].seq) for c in cams},
+                "capture_ns": {c: int(end[i]) for i, c in enumerate(cams)},
+                "age_rel_ms": {c: (obs - int(end[i])) / 1e6 for i, c in enumerate(cams)},
+                "offsets_ms": {f"{a}|{b}": (int(end[i]) - int(end[j])) / 1e6
+                               for i, a in enumerate(cams) for j, b in enumerate(cams) if i < j},
+                "step_spread_ms": [float(x) for x in spread], "max_offset_ms": ref_offset,
+                "bound_ms": float(bound), "mismatch": mismatch, "surface_disp_m": disp,
+                "motion_over_bound": bool(over), "warnings": warnings}
 
     def observation(self) -> dict:
         """The ``OfflinePolicy.act`` observation: rgb (T, V, S, S, 3) uint8 [+ depth (T, V, S, S) float32 m]
@@ -185,10 +238,12 @@ class HistoryWindow:
 
     def assemble(self, end_ids: dict[str, int], *, surface_disp_m=None, pad_run_start: bool = False
                  ) -> ObservationWindow:
-        """History ending at camera frames ``end_ids`` (multi-view: one synchronised step). ``surface_disp_m``
-        (multi-view M5 evidence): a sequence with one value per assembled step (oldest first) or a dict
-        {reference-camera seq: displacement}. ``pad_run_start``: apply the training run-start padding when fewer than
-        ``history_length`` frames (steps) of the current run exist; otherwise such a history raises."""
+        """History ending at camera frames ``end_ids`` (multi-view: each camera's own end frame, e.g. its latest valid
+        frame; cross-camera offsets are measured by ``sync_report``, not refused). ``surface_disp_m`` (optional
+        multi-view M5 evidence, informational): a sequence with one value per assembled step (oldest first) or a dict
+        {reference-camera seq: displacement} (steps without an entry: None). ``pad_run_start``: apply the training
+        run-start padding when fewer than ``history_length`` frames (steps) of the current run exist; otherwise such a
+        history raises."""
         s = self.spec
         if set(end_ids) != set(s.camera_ids):
             raise ContractViolation("end_ids must identify every session camera exactly")
@@ -215,10 +270,9 @@ class HistoryWindow:
         padded = steps < s.history_length
         if isinstance(surface_disp_m, dict):
             ref = s.camera_ids[0]
-            try:
-                surface_disp_m = [surface_disp_m[f.seq] for f in frames[ref]]
-            except KeyError as e:
-                raise IncompleteHistory(f"M5 evidence missing for reference frame {e}") from None
+            surface_disp_m = [surface_disp_m.get(f.seq) for f in frames[ref]]
+            if all(d is None for d in surface_disp_m):
+                surface_disp_m = None
         window = ObservationWindow(s, frames, None if surface_disp_m is None else tuple(surface_disp_m), padded)
         window.validate()
         return window

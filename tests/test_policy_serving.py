@@ -100,21 +100,27 @@ class Feed:
     def t(self, k: int, v: int) -> int:
         return T0 + int(round(k * self.spec["frame_period_s"] * 1e9)) + v * 1_000_000
 
-    def add(self, k: int, *, jitter_ns: int = 0, disp: float = 0.001) -> None:
+    def add(self, k: int, *, jitter_ns: int = 0, disp: float = 0.001, offsets_ns: dict | None = None,
+            declare: bool = True, cams: list | None = None) -> None:
+        """Frame k of every camera (``cams``: only these) at t(k, v) + jitter_ns + offsets_ns[v]; multi-view: the
+        set is declared with M5 evidence ``disp`` unless ``declare`` is False."""
         for v, cam in enumerate(self.spec["camera_ids"]):
+            if cams is not None and cam not in cams:
+                continue
+            jit = jitter_ns + (offsets_ns or {}).get(v, 0)
             rgb = self.rng.integers(0, 256, (*NATIVE_HW, 3), dtype=np.uint8)
             d = valid = corr = None
             if self.depth:
                 d = self.rng.uniform(0.3, 1.2, NATIVE_HW).astype(np.float32)
                 d[::5, ::7] = 0
                 valid, corr = d > 0, self.choices["native_depth_correction"][cam]
-            out = self.client.add_frame_native(cam, k, self.t(k, v) + jitter_ns, rgb, pose7=POSE, gripper_register=GRIP,
+            out = self.client.add_frame_native(cam, k, self.t(k, v) + jit, rgb, pose7=POSE, gripper_register=GRIP,
                                                depth=d, valid=valid, native_correction=corr,
                                                K_native=self.K_native(cam))
             meta = {"depth_source": "native_realsense", "native_correction": corr} if self.depth else {}
-            self.frames[cam].append(Frame(k, self.t(k, v) + jitter_ns, out["rgb"], out.get("depth"), out.get("valid"),
+            self.frames[cam].append(Frame(k, self.t(k, v) + jit, out["rgb"], out.get("depth"), out.get("valid"),
                                           meta))
-        if self.spec["views"] > 1:
+        if self.spec["views"] > 1 and declare:
             self.client.add_sync_set({c: k for c in self.spec["camera_ids"]}, disp)
 
     def K_native(self, cam):
@@ -128,7 +134,9 @@ class Feed:
         return out
 
     def obs_time(self, k: int) -> int:
-        return max(self.t(k, v) for v in range(len(self.spec["camera_ids"])))
+        """Newest end frame k of any camera (as added, offsets included)."""
+        return max([f.timestamp_ns for fs in self.frames.values() for f in fs if f.seq == k] or
+                   [self.t(k, v) for v in range(len(self.spec["camera_ids"]))])
 
     def request(self, k: int, ref=None) -> dict:
         t = self.obs_time(k)
@@ -184,8 +192,9 @@ def running(srv) -> bool:
 
 
 def assert_same(net: dict, ref: dict) -> None:
-    """Every output bit-identical (dtype included) except timings and the (necessarily different) session ids."""
-    assert set(net) == set(ref)
+    """Every output bit-identical (dtype included) except timings and the (necessarily different) session ids; the
+    network adds only the multi-view ``sync`` measurement."""
+    assert set(net) - {"sync"} == set(ref) and ("sync" not in net or isinstance(net["sync"], dict))
     for key, want in ref.items():
         got = net[key]
         if key == "timings":
@@ -336,7 +345,9 @@ def test_run_start_padding_and_incomplete_history(policies):
         assert_same(r.outputs, direct(policy, feed, 4, noise=P.validation_noise(2), pad=True))
 
 
-def test_irregular_spacing_and_missing_multiview_evidence(policies):
+def test_irregular_spacing_and_multiview_sync_warnings(policies, caplog):
+    """Per-camera checks still refuse (irregular spacing, a missing camera frame); cross-camera misalignment and
+    M5 motion are served with counted, logged warnings (user directive 2026-11-12)."""
     with serve({"reviwo": policies["reviwo"]}) as srv:
         c, feed = client_for(srv, "reviwo", policies["reviwo"])
         feed.add(0)
@@ -345,21 +356,55 @@ def test_irregular_spacing_and_missing_multiview_evidence(policies):
         r = feed.step(2)
         assert r.code == "irregular_spacing"
         c.close()
-    with serve({"mvp3d_multiview": policies["mvp3d_multiview"]}) as srv:
-        c, feed = client_for(srv, "mvp3d_multiview", policies["mvp3d_multiview"])
+    mv = policies["mvp3d_multiview"]
+    with serve({"mvp3d_multiview": mv}) as srv:
+        c, feed = client_for(srv, "mvp3d_multiview", mv)
         for k in range(3):
-            feed.add(k, disp=0.02 if k == 1 else 0.001)  # set 1 moved 2 cm: fails M5
-        assert feed.step(2).code == "unsynchronized"
+            feed.add(k, disp=0.02 if k == 1 else 0.001)  # set 1 moved 2 cm: the former M5 refusal
+        with caplog.at_level(logging.INFO, logger="ops.policy_serving.server"):
+            r = feed.step(2, noise_seed=1)
+        assert r.ok and r.outputs["sync"]["motion_over_bound"] and not r.outputs["sync"]["mismatch"]
+        assert r.outputs["sync"]["surface_disp_m"] == [0.001, 0.02, 0.001]
+        assert srv.counts["sync_observations"] == 1 and srv.counts["sync_motion_over_bound"] == 1
+        assert srv.counts["sync_mismatch"] == 0
+        logged = [m for m in caplog.messages if m.startswith("sync session=")]
+        assert len(logged) == 1 and "WARNING" in logged[0] and "M5" in logged[0] and "capture_ns=" in logged[0] \
+            and "age_rel_ms=" in logged[0] and "offsets_ms=" in logged[0]
         feed.add(3)
         c._sets.pop((4, 4, 4), None)
         for cam in feed.spec["camera_ids"]:
             c.add_frame(cam, 4, feed.t(4, 0), feed.frames[cam][-1].rgb, pose7=POSE, gripper_register=GRIP,
                         depth=feed.frames[cam][-1].depth, valid=feed.frames[cam][-1].valid,
                         metadata=feed.frames[cam][-1].metadata, **feed.geometry(cam))
-        r = feed.step(4)  # frame 4 of every camera without its declared set
+        r = feed.step(4)  # frame 4 of every camera stamped like the reference: off each camera's own timeline
         assert r.code in ("incomplete_history", "irregular_spacing")
         c.close()
-        assert srv.counts["actions"] == 0
+        # one camera 40 ms late on its own regular timeline, no M5 evidence declared: served, mismatch counted,
+        # bit-identical with DeployPolicy on the same window
+        c, feed = client_for(srv, "mvp3d_multiview", mv)
+        for k in range(3):
+            feed.add(k, offsets_ns={1: 40_000_000}, declare=False)
+        caplog.clear()
+        with caplog.at_level(logging.INFO, logger="ops.policy_serving.server"):
+            r = feed.step(2, noise_seed=3)
+        cams = feed.spec["camera_ids"]
+        assert r.ok and r.outputs["sync"]["mismatch"] and r.outputs["sync"]["surface_disp_m"] is None
+        assert r.outputs["sync"]["offsets_ms"][f"{cams[0]}|{cams[1]}"] == -41.0
+        assert r.outputs["sync"]["max_offset_ms"] == 41.0 and r.outputs["sync"]["step_spread_ms"] == [41.0] * 3
+        assert r.outputs["obs_ids"]["observation_time_ns"] == feed.obs_time(2) == feed.t(2, 1) + 40_000_000
+        assert srv.counts["sync_mismatch"] == 1 and srv.counts["sync_observations"] == 2
+        assert any(m.startswith("sync session=") and "not mutual-nearest" in m for m in caplog.messages)
+        c.close()
+        assert_same(r.outputs, direct(mv, feed, 2, noise=P.validation_noise(3)))
+    with serve({"mvp3d_multiview": mv}) as srv:  # a camera whose end frame never arrived: still refused
+        c, feed = client_for(srv, "mvp3d_multiview", mv)
+        cams = feed.spec["camera_ids"]
+        for k in range(3):
+            feed.add(k, declare=False, cams=cams[:-1] if k == 2 else None)
+        r = feed.step(2)
+        assert r.code == "incomplete_history" and cams[-1] in r.detail
+        c.close()
+        assert srv.counts["actions"] == 0 and srv.counts["sync_observations"] == 0
 
 
 def test_explicit_reset_clears_the_history(policies):

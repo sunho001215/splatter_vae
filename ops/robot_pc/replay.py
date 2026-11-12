@@ -7,6 +7,14 @@ Times: every recorded time (frames, robot rows, gripper samples) is moved onto t
 offset, so the trained spacing, the binding ages and the action ages are the recorded ones. ``pace="realtime"``
 releases each frame at its (shifted) recorded time; ``pace="max"`` releases as fast as the path allows, and the
 validation clock then runs on the frame clock (``ReplayClock``) so action ages stay processing latencies.
+
+Multi-view ``sync_mode``: ``latest`` (default, the live rule: ``syncsets.LatestFrames``, one step per reference frame on
+every camera's latest released frame, misalignment = warning) or ``training-sets`` (the training-equivalent mutual-
+nearest M5 sets of the live helper; the robot-PC vs in-container bitwise comparison). ``inject`` (synthetic, labelled
+in the summary): ``offset_ms`` {camera: ms} shifts a camera's whole capture timeline (cross-camera misalignment, its
+own spacing unchanged); ``delay_ms`` {camera: ms} delivers a camera's frames that much later (a lagging camera);
+``arrival_jitter_ms`` delays each frame's delivery by a seeded uniform [0, jitter] (which frame is the latest at a
+step). Delays never change capture times, and a camera still delivers in order.
 """
 
 from __future__ import annotations
@@ -47,39 +55,85 @@ class ReplayClock:
         return time.monotonic_ns() + self._skew
 
 
-def frame_events(cameras, cams: list, start: int, count: int | None) -> list:
-    """(recorded t, camera order, cam, stream index) of the session cameras from the reference camera's frame
-    ``start`` on, for ``count`` reference frames (+ the other cameras' frames inside that span)."""
-    ref = cameras.timestamps_ns(cams[0])
+def frame_events(cameras, cams: list, start: int, count: int | None, shifts: dict | None = None) -> list:
+    """(release t, camera order, cam, stream index, capture t) on the recorded clock, in release order, of the session
+    cameras from the reference camera's frame ``start`` on, for ``count`` reference frames (+ the other cameras' frames
+    inside that span). ``shifts`` (synthetic injection): {cam: (capture shift ns, per-frame release delay ns array)};
+    without it release t = capture t = the recorded time."""
+    shifts = shifts or {}
+
+    def times(c):
+        cap = np.asarray(cameras.timestamps_ns(c), np.int64) + int(shifts.get(c, (0, None))[0])
+        delay = shifts.get(c, (0, None))[1]
+        # a camera delivers in order (one USB queue): a delayed frame holds back the next one
+        return cap, cap if delay is None else np.maximum.accumulate(cap + np.asarray(delay, np.int64)[:len(cap)])
+
+    ref, _ = times(cams[0])
     stop = len(ref) if count is None else min(len(ref), start + count)
     lo, hi = int(ref[start]) - FRAME_ARRIVAL_NS, int(ref[stop - 1]) + FRAME_ARRIVAL_NS
     out = []
     for v, c in enumerate(cams):
-        for i, t in enumerate(cameras.timestamps_ns(c)):
+        cap, rel = times(c)
+        for i, t in enumerate(cap):
             if (c == cams[0] and start <= i < stop) or (c != cams[0] and lo <= t <= hi):
-                out.append((int(t), v, c, i))
+                out.append((int(rel[i]), v, c, i, int(t)))
     return sorted(out)
 
 
-def run(client, loop, cameras, state, clock: ReplayClock, *, cams: list, start: int = 0, count: int | None = None,
-        live_m5=None, noise_seed: int | None = None, on_row=None) -> list:
-    """Replay; returns the rows (``on_row(row)`` per step). Single-view: one step per reference frame. Multi-view: one
-    step per final M5 set (sets reach the server with their displacement; steps whose history lacks evidence are
-    answered ``incomplete_history`` by the server, as in training). realtime pace behaves like the live loop: when the
-    next reference frame is already due, the current observation is sent as history only and the step is taken on the
-    newest one (counted in ``skipped_behind``), so a slow path lowers the step rate instead of building a backlog."""
-    from ops.robot_pc.syncsets import StateFeed, step_sets
+def injection_shifts(cameras, cams: list, inject: dict | None) -> dict | None:
+    """``inject`` {"offset_ms": {cam: ms}, "delay_ms": {cam: ms}, "arrival_jitter_ms": ms, "seed": int} ->
+    ``frame_events`` shifts (capture shift ns, per-frame delivery delay ns or None)."""
+    if not inject:
+        return None
+    offsets, delays = inject.get("offset_ms") or {}, inject.get("delay_ms") or {}
+    unknown = (set(offsets) | set(delays)) - set(cams)
+    if unknown:
+        raise ValueError(f"injection for cameras {sorted(unknown)} not in the session {cams}")
+    rng = np.random.default_rng(int(inject.get("seed", 0)))
+    jitter = int(round(float(inject.get("arrival_jitter_ms", 0.0)) * 1e6))
+    if jitter < 0 or any(float(v) < 0 for v in delays.values()):
+        raise ValueError("delivery delays and jitter must be >= 0")
+    out = {}
+    for c in cams:
+        n = len(cameras.timestamps_ns(c))
+        delay = np.full(n, int(round(float(delays.get(c, 0.0)) * 1e6)), np.int64)
+        if jitter:
+            delay = delay + rng.integers(0, jitter + 1, n)
+        out[c] = (int(round(float(offsets.get(c, 0.0)) * 1e6)), delay if delay.any() else None)
+    return out
 
+
+def run(client, loop, cameras, state, clock: ReplayClock, *, cams: list, start: int = 0, count: int | None = None,
+        live_m5=None, noise_seed: int | None = None, on_row=None, sync_mode: str = "latest",
+        inject: dict | None = None) -> list:
+    """Replay; returns the rows (``on_row(row)`` per step). Single-view: one step per reference frame. Multi-view
+    ``latest``: one step per reference frame on every camera's latest released frame (``syncsets.LatestFrames``, the
+    live rule; rows carry ``sync``); ``training-sets``: one step per final M5 set (sets reach the server with their
+    displacement). realtime pace behaves like the live loop: when the next reference frame is already due, the current
+    observation is sent as history only and the step is taken on the newest one (``skipped_behind`` /
+    ``sync_superseded``), so a slow path lowers the step rate instead of building a backlog."""
+    from ops.robot_pc.syncsets import LatestFrames, StateFeed, step_sets
+
+    if sync_mode not in ("latest", "training-sets"):
+        raise ValueError("sync_mode must be latest or training-sets")
     spec = client.spec
     depth = "depth" in spec["modalities"]
     corr = client.choices.get("native_depth_correction") or {}
     rows, acquired = [], {c: 0.0 for c in cams}
-    feed = None if live_m5 is None else StateFeed(live_m5, state)  # the live loops' feed (syncsets)
-    ref_t = cameras.timestamps_ns(cams[0])
+    multiview = len(cams) > 1
+    if multiview and sync_mode == "training-sets" and live_m5 is None:
+        raise ValueError("training-sets replay needs the live M5 helper")
+    latest = LatestFrames(client, live_m5, state, cams, period_s=float(spec["frame_period_s"]), counts=loop.counts,
+                          state_lead_ns=FRAME_ARRIVAL_NS) if multiview and sync_mode == "latest" else None
+    feed = StateFeed(live_m5, state) if multiview and sync_mode == "training-sets" else None
+    shifts = injection_shifts(cameras, cams, inject)
+    events = frame_events(cameras, cams, start, count, shifts)
+    ref_rel = sorted(e[0] for e in events if e[2] == cams[0])  # reference release times (recorded clock)
+    ref_k = -1  # position of the newest released reference frame in ref_rel
 
     def behind(idx) -> bool:  # realtime: the next reference frame is already due on the replay clock
-        return clock.pace == "realtime" and idx + 1 < len(ref_t) and \
-            time.monotonic_ns() >= int(ref_t[idx + 1]) + clock.offset_ns
+        return clock.pace == "realtime" and ref_k + 1 < len(ref_rel) and \
+            time.monotonic_ns() >= int(ref_rel[ref_k + 1]) + clock.offset_ns
 
     def emit(end_ids, t_obs, ref_id, **extra):
         seed = None if noise_seed is None else noise_seed + len(rows)
@@ -94,9 +148,12 @@ def run(client, loop, cameras, state, clock: ReplayClock, *, cams: list, start: 
         emit(end_ids, t_obs, ref_id, surface_disp_m=disp)
 
     end_of_recording = count is None or start + count >= len(cameras.timestamps_ns(cams[0]))
-    for t_rec, _, cam, idx in frame_events(cameras, cams, start, count):
+    for t_rel, _, cam, idx, t_cap in events:
         n = cameras.native(cam, idx)
-        t = clock.release(t_rec)
+        clock.release(t_rel)
+        t = t_cap + clock.offset_ns  # capture time on this host's clock (= release time without injection)
+        if cam == cams[0]:
+            ref_k += 1
         acquired[cam] += n["acquire_ms"]
         try:
             fs = state.bound_state(t)  # informational per-frame sample (the request binds its own)
@@ -104,22 +161,35 @@ def run(client, loop, cameras, state, clock: ReplayClock, *, cams: list, start: 
         except StateUnavailable:
             pose, grip = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0), 0.0
         meta = {"alignment": f"{n['alignment']} (recorded replay)",
-                "depth_timestamp_ns": int(n["depth_timestamp_ns"]) + clock.offset_ns} if depth else {}
+                "depth_timestamp_ns": int(n["depth_timestamp_ns"]) + clock.offset_ns + t_cap - int(
+                    cameras.timestamps_ns(cam)[idx])} if depth else {}
         client.add_frame_native(cam, int(n["seq"]), t, n["rgb"], pose7=pose, gripper_register=grip,
                                 depth=n.get("depth"), valid=n.get("valid"), native_correction=corr.get(cam),
                                 K_native=cameras.K_native(cam), metadata=meta)
-        if live_m5 is None:
+        if not multiview:
             if cam == cams[0]:
                 if behind(idx) and not (count is not None and idx + 1 >= start + count):
                     loop.counts["skipped_behind"] += 1
                 else:
                     emit({cam: int(n["seq"])}, t, f"{cam}:{idx}")
             continue
+        if latest is not None:
+            latest.add_frame(cam, int(n["seq"]), t, clock.now())
+            if behind(idx):
+                continue  # a newer reference frame is already due: it supersedes this one (sync_superseded)
+            s = latest.newest_step(clock.now())
+            if s is not None:
+                emit(*s[:3], sync=s[3])
+            continue
         feed.start(t)
         live_m5.add_frame(cam, int(n["seq"]), t)
         feed.feed(t + FRAME_ARRIVAL_NS)  # robot rows / gripper samples reach the host before the frame
         step_sets(client, live_m5.poll(), cams, take, newest_only=clock.pace == "realtime", counts=loop.counts)
-    if live_m5 is not None and end_of_recording:  # the recording ends: flush what the stream end decides
+    if latest is not None and end_of_recording:  # the recording ends: the newest reference frame steps on what was
+        s = latest.newest_step(clock.now(), flush=True)  # released (a live stream has no end: no flush mid-recording)
+        if s is not None:
+            emit(*s[:3], sync=s[3])
+    elif feed is not None and end_of_recording:  # the recording ends: flush what the stream end decides
         feed.feed(2**62)
         step_sets(client, live_m5.poll(end_of_stream=True), cams, take, newest_only=False, counts=loop.counts)
     return rows
@@ -161,7 +231,7 @@ def recorded_comparison(recording, cams: list, rows: list, offset_ns: int, spec:
 
 def replay_episode(cfg: dict, args, *, episode, pace: str, start: int = 0, count: int | None = None,
                    name: str = "robot-pc-replay", m5_store=None, on_row=None, route: str = "", warmup: int = 0,
-                   pings: int = 0) -> tuple[list, dict]:
+                   pings: int = 0, sync_mode: str = "latest", inject: dict | None = None) -> tuple[list, dict]:
     """Everything of one recorded replay: policy selection from the server, session choices from the recording and
     the task's rig document, the persistent link, the live M5 helper (multi-view), validation and the MockSink."""
     from ops.robot_pc import cli, safety, selection
@@ -199,7 +269,7 @@ def replay_episode(cfg: dict, args, *, episode, pace: str, start: int = 0, count
         sink = MockSink()
         loop = PolicyLoop(client, state, C.limits(cfg, task), sink, clock=clock.now, pad_run_start=not args.no_pad)
         rows = run(client, loop, cameras, state, clock, cams=cams, start=start, count=count, live_m5=live_m5,
-                   noise_seed=args.noise_seed, on_row=on_row)
+                   noise_seed=args.noise_seed, on_row=on_row, sync_mode=sync_mode, inject=inject)
         summary = {"policy": pid, "task": task, "condition": spec["condition"], "cameras": cams,
                    "catalog_info": info, "execution_eligible": safety.execution_eligible(info),
                    "episode": str(episode), "pace": pace, "sink": "MockSink", "commands_recorded": len(sink.items),
@@ -210,10 +280,21 @@ def replay_episode(cfg: dict, args, *, episode, pace: str, start: int = 0, count
                    "input_note": "recorded JPEG decoded (bit-exact with training); depth: recorded z16 through the "
                                  "rs.align emulation + colour-z + native scale; capture time = replay release time "
                                  "(no camera-to-host latency)"}
+        if inject:
+            summary["injection"] = {**inject, "note": "SYNTHETIC: capture timelines shifted / release order jittered "
+                                                      "on purpose (sync validation); not a recording property"}
+        if len(cams) > 1:
+            from ops.robot_pc.syncsets import sync_summary
+
+            summary["multiview_sync"] = sync_mode
+            if sync_mode == "latest":
+                summary["sync"] = sync_summary(rows, loop.counts)
         if live_m5 is not None:
             summary["m5"] = {"source": "live helper on the recorded joint/gripper stream", **dict(live_m5.counts),
-                             "asset_sha256": live_m5.motion.asset_sha256}
-            if m5_store is not None:
+                             "asset_sha256": live_m5.motion.asset_sha256,
+                             "use": "training-sets: the step sets" if sync_mode == "training-sets" else
+                                    "informational: displacement of each step's latest frames"}
+            if m5_store is not None and sync_mode == "training-sets":
                 from s4d.rwlearn.deploy.replay import m5_from_store
 
                 stored = m5_from_store(m5_store, rec)["disp"]
