@@ -1403,3 +1403,19 @@ def test_remote_driver_uses_owned_cpu_threads():
     driver = (REPO / "ops/campaign/remote_campaign_driver.py").read_text()
     assert "cpu_used = owned_cpu_threads(COTENANT" in driver
     assert "cpu_used += (COTENANT or {}).get('cpus', 0) or 0" not in driver
+
+
+def test_guard_headroom_matches_the_in_lock_guard():
+    from ops.jobs.remote_backend import guard_headroom_gib, COTENANT_GPU_MARGIN_GB
+    # 24192 MiB instance, 21.5 GiB cap: max(2, 23.625 - 21.5) = 2.125 GiB (the guard's headroom)
+    assert abs(guard_headroom_gib({'total_mib': 24192}, 21.5, True) - 2.125) < 1e-9
+    assert guard_headroom_gib({'total_mib': 23000}, 21.5, True) == 2.0
+    assert guard_headroom_gib({}, 21.5, True) == 2.0
+    assert guard_headroom_gib({'total_mib': 24192}, 21.5, False) == COTENANT_GPU_MARGIN_GB
+
+
+def test_remote_driver_and_release_chain_use_guard_consistent_accounting():
+    driver = (REPO / "ops/campaign/remote_campaign_driver.py").read_text()
+    assert "guard_headroom_gib(charge, cap, g.startswith('MIG-'))" in driver
+    chain = (REPO / "ops/campaign/release_chain.py").read_text()
+    assert "cotenant_charges(snapshot)['gpus']" not in chain

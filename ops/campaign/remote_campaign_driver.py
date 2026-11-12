@@ -17,7 +17,8 @@ from ops.jobs.footprints import exclusive, ram_gb  # noqa: E402
 from ops.jobs import host_roles  # noqa: E402
 from ops.jobs import release_reservation  # noqa: E402
 from ops.jobs import scheduler as jobs  # noqa: E402
-from ops.jobs.remote_backend import COTENANT_GPU_MARGIN_GB, RemoteBackend, cotenant_charges, owned_cpu_threads  # noqa: E402
+from ops.jobs.remote_backend import (COTENANT_GPU_MARGIN_GB, RemoteBackend, cotenant_charges,  # noqa: E402
+                                     guard_headroom_gib, owned_cpu_threads)
 from ops.remote.access import RemoteClient  # noqa: E402
 from ops.resources.gpu_guard import APPROVED_HOST_GPUS, REMOTE_MIG_ACTIVE, REMOTE_MIG_INSTANCES  # noqa: E402
 from ops.resources.mig_inventory import INSTANCE_LOAD_LIMIT, device_capacity_gib  # noqa: E402
@@ -688,7 +689,9 @@ else:
             if charge.get('exclusive_gpu'):
                 gpu_exclusive.add(g)
             gpu_load[g] += charge['load']
-            gpu_mem[g] = max(gpu_mem[g] + charge['mem_gb'], GPU_CAP[g] - charge['free_gb'] + (2.0 if g.startswith('MIG-') else COTENANT_GPU_MARGIN_GB))
+            cap = min(GPU_CAP[g], float(queue['hosts']['remote']['limits'].get(g, {}).get('max_mem_gb', GPU_CAP[g])))
+            gpu_mem[g] = max(gpu_mem[g] + charge['mem_gb'],
+                             cap - charge['free_gb'] + guard_headroom_gib(charge, cap, g.startswith('MIG-')))
     reserved += COTENANT['ram_declared_bytes']
     if COTENANT['gpus']:
         messages.append('COTENANT ' + json.dumps({g[4:8]: {k: round(charge[k], 1) for k in ('jobs', 'load', 'mem_gb',

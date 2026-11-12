@@ -304,6 +304,15 @@ def cotenant_charges(snapshot: RemoteSnapshot, own=()) -> dict:
             "cpus": cpus}
 
 
+def guard_headroom_gib(charge: dict, capacity_gib: float, mig: bool) -> float:
+    """The in-lock guard's free-memory headroom (ops/containers/admission.gpu_reasons: max(2 GiB, total - capacity))
+    for a MIG instance whose charge carries the framebuffer total (guard-accounted charges); the legacy margin
+    otherwise. Used by placement code that expresses the guard's free-memory test as a floor on declared memory."""
+    if mig and charge.get('total_mib'):
+        return max(2.0, float(charge['total_mib']) * MIB / GIB - float(capacity_gib))
+    return 2.0 if mig else COTENANT_GPU_MARGIN_GB
+
+
 def owned_cpu_threads(charges: dict | None, reserving: list) -> float:
     """CPU quota threads held by our remote work, as the in-lock guard counts them. ``reserving`` lists the registry's
     reserving remote rows as (container name, cpu threads). With guard-accounted charges (``cotenant_charges`` on a

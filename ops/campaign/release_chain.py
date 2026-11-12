@@ -192,7 +192,9 @@ class Release:
             executing = [c for c in state.values() if c.get('host') == 'remote' and c.get('status') in jobs.RESERVING]
             declared = {g: sum(float(c.get('mem_gb', 0)) for c in executing if c.get('gpu') == g) for g in self.gpus}
             count = {g: sum(1 for c in executing if c.get('gpu') == g) for g in self.gpus}
-            cotenants = cotenant_charges(snapshot)['gpus']
+            # own reservations passed so guard-accounted (MIG) charges report only the residual beyond them (no double count)
+            cotenants = cotenant_charges(snapshot, [(c['gpu'], c.get('container'), float(c.get('mem_gb', 0)))
+                                                    for c in executing if c.get('gpu')])['gpus']
             need = float(POLICIES['native_suite'][3])
             short = set()  # GPUs whose co-tenant-measured free memory cannot hold the suite (choose_gpu's margin test)
             for g, charge in cotenants.items():
