@@ -177,7 +177,7 @@ def localize(fixture, job=None, **kwargs):
     ("scripts/realworld_native_depth.py", "realworld_fql", False, True, "remote"),
     ("scripts/train_sincro.py", "realworld_pretrain", False, True, "remote"),
     ("scripts/realworld_preprocess.py", "realworld_preprocess", False, True, "remote"),
-    ("scripts/train_rl.py", "metaworld", True, True, "remote"),
+    ("scripts/train_rl.py", "metaworld", True, False, "local"),  # 2026-11-12 (user): no Meta-World data remotely
 ])
 def test_admission_matrix_and_existing_placement(script, role, local, remote, host):
     args = ["--config", "configs/realworld/fql/base.yaml"] if role != "metaworld" else ["--task", "hammer"]
