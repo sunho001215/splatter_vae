@@ -438,6 +438,14 @@ class PolicyServer:
                 except Exception as exc:  # noqa: BLE001 - one broken entry must not take the registry down
                     LOG.error("policy %s cannot be described (%s: %s); not offered", pid, type(exc).__name__, exc)
                     entry.status, entry.reasons = "error", (f"cannot be described: {type(exc).__name__}: {exc}",)
+            label, described = entry.entry.get("condition"), (entry.spec or {}).get("condition")
+            if entry.status != "error" and label is not None and label != described:
+                # the advertised spec is checked against the loaded checkpoint (_load), so this binds the published
+                # condition (and any condition-scoped execution grant) to the weights (Codex review of 0f61212, P0)
+                LOG.error("policy %s: catalog condition %r != checkpoint condition %r; not offered", pid, label,
+                          described)
+                entry.status, entry.reasons = "error", (f"catalog condition {label!r} differs from the checkpoint's "
+                                                        f"condition {described!r}",)
             table[pid] = entry
         for alias in aliases:
             if alias in table:
@@ -1020,6 +1028,9 @@ class PolicyServer:
         conn.authenticated = True
         requested = h.get("policy_id")
         resume = h.get("resume")
+        declared = h.get("capabilities")
+        declared = frozenset(declared) if isinstance(declared, list) and all(isinstance(x, str) for x in declared) \
+            else frozenset()
         if resume is not None:  # a live session may run on a resident object whose entry left the catalog meanwhile
             with self.lock:
                 pid = self._resolve(requested) or (requested if isinstance(requested, str) and
@@ -1031,7 +1042,7 @@ class PolicyServer:
                 conn.send(self._error(None, None, "session_unknown", f"cannot resume: policy {pid} is not resident "
                                                                      "(evicted, retired or the server restarted)"))
                 return True
-            return self._resume(conn, sp, resume)
+            return self._resume(conn, sp, resume, capabilities=declared)
         pid = self._resolve(requested)
         if pid is None and self.reload_catalog(only_if_changed=True) is not None:
             pid = self._resolve(requested)  # the staged catalog gained the id since the last read
@@ -1047,13 +1058,8 @@ class PolicyServer:
         with self.lock:
             entry = self.entries.get(pid)
             unavailable = f"policy {pid} left the catalog" if entry is None else self._refusal(entry)
-        declared = h.get("capabilities")
-        declared = set(declared) if isinstance(declared, list) and all(isinstance(x, str) for x in declared) else set()
-        lacking = [] if entry is None else [c for c in entry.requires_client() if c not in declared]
-        if unavailable is None and lacking:
-            unavailable = (f"policy {pid} requires client capabilities {lacking} (a restricted policy executable by "
-                           "user decision: update the robot-PC client, which shows its failed criterion and the "
-                           "decision before START)")
+        if unavailable is None:
+            unavailable = self._capability_refusal(entry, declared)
         if unavailable is not None:
             conn.send(self._error(None, None, "bad_request", unavailable))
             return True
@@ -1062,11 +1068,22 @@ class PolicyServer:
             conn.send(self._error(None, None, *refusal))
             return True
         try:
-            return self._bind(conn, sp, choices, takeover=h.get("takeover") is True)
+            return self._bind(conn, sp, choices, takeover=h.get("takeover") is True, capabilities=declared)
         finally:
             self._release(sp)
 
-    def _bind(self, conn: Connection, sp: ServedPolicy, choices: dict, *, takeover: bool) -> bool:
+    @staticmethod
+    def _capability_refusal(entry: CatalogEntry | None, declared) -> str | None:
+        """Why a HELLO (new session or resume) lacks a client capability the CURRENT entry requires (None: fine)."""
+        lacking = [] if entry is None else [c for c in entry.requires_client() if c not in declared]
+        if not lacking:
+            return None
+        return (f"policy {entry.policy_id} requires client capabilities {lacking} (a restricted policy executable by "
+                "user decision: update the robot-PC client, which shows its failed criterion and the decision before "
+                "START)")
+
+    def _bind(self, conn: Connection, sp: ServedPolicy, choices: dict, *, takeover: bool,
+              capabilities=frozenset()) -> bool:
         from s4d.rwlearn.deploy import HistoryWindow
 
         refusal = None
@@ -1080,6 +1097,8 @@ class PolicyServer:
                                         or current.identity() != sp.entry.identity()):
                     refusal = ("bad_request", f"policy {sp.policy_id} is no longer servable in this form: "
                                               f"{'left the catalog' if current is None else self._refusal(current)}")
+                elif (lack := self._capability_refusal(current, capabilities)) is not None:
+                    refusal = ("bad_request", lack)  # a grant published since the HELLO's first check
                 elif len(sp.sessions) >= self.max_sessions_per_policy:
                     oldest = min(sp.sessions.values(), key=lambda x: x.last_activity)
                     if not takeover:
@@ -1106,6 +1125,8 @@ class PolicyServer:
                                                or current.identity() != sp.entry.identity())):
                         refusal = ("bad_request", f"policy {sp.policy_id} was withdrawn while this session was being "
                                                   "bound")
+                    elif (lack := self._capability_refusal(current, capabilities)) is not None:
+                        refusal = ("bad_request", lack)  # a grant published while this session was being bound
                     else:
                         try:  # SPEC encoded under the lock with the CURRENT labels, before registration
                             spec_msg = self._spec_message(s, resumed=False, redeliver=[])
@@ -1127,7 +1148,7 @@ class PolicyServer:
         conn.send(spec_msg)
         return True
 
-    def _resume(self, conn: Connection, sp: ServedPolicy, resume) -> bool:
+    def _resume(self, conn: Connection, sp: ServedPolicy, resume, *, capabilities=frozenset()) -> bool:
         if not isinstance(resume, dict) or not isinstance(resume.get("session_id"), str) \
                 or type(resume.get("last_ack", 0)) is not int:
             raise P.ProtocolError("bad_request", "resume must be {session_id: str, last_ack: int}")
@@ -1136,6 +1157,10 @@ class PolicyServer:
             if s is None or s.closed or s.served is not sp:
                 conn.send(self._error(None, None, "session_unknown",
                                       f"cannot resume {resume['session_id']}: expired, ended or unknown"))
+                return True
+            lack = None if sp.pinned else self._capability_refusal(self.entries.get(sp.policy_id), capabilities)
+            if lack is not None:  # a grant published since this session was bound by a client without the notice
+                conn.send(self._error(None, None, "bad_request", lack))
                 return True
             old, s.conn, conn.session = s.conn, conn, s
             s.last_activity = time.monotonic()

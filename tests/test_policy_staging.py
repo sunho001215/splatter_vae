@@ -357,6 +357,7 @@ def test_usage_restrictions_eligibility_and_validator_rules():
 
 
 LN_FAIL = {"pass": False, "value": 0.355, "threshold": ">= 0.5"}
+DYNAMO_SPEC = {"condition": "dynamo"}  # the described input_spec (the server binds it to the checkpoint)
 
 
 def _restricted_dynamo_row(condition="dynamo", seed=0, run=None):
@@ -377,7 +378,7 @@ def test_restricted_dynamo_is_execution_eligible_by_the_acknowledging_user_decis
     stay published; the grant names that criterion and is bound to the checkpoint sha256."""
     row = _restricted_dynamo_row()
     assert row["class"]["status"] == "restricted" and row["class"]["reasons"][-1] == C.LN_SPREAD_DECISION
-    e = S.catalog_entry(row)
+    e = S.catalog_entry(row, DYNAMO_SPEC)
     assert e["status"] == "restricted" and e["criteria"]["e1_layernorm_spread"]["pass"] is False
     assert e["execution_eligible"] is True and e["usage"] == "execution"
     d = e["execution_decision"]
@@ -409,7 +410,7 @@ def test_restricted_grant_needs_every_failed_criterion_acknowledged_and_the_chec
                       failed_criteria={"e1_layernorm_spread", "f_stability"})["execution_eligible"] is False
     assert S.usage_of("restricted", "dynamo", checkpoint_sha256="c" * 64,
                       failed_criteria={"e1_layernorm_spread"})["execution_eligible"] is True
-    good = S.catalog_entry(_restricted_dynamo_row())
+    good = S.catalog_entry(_restricted_dynamo_row(), DYNAMO_SPEC)
 
     def cat(**over):
         e = {**good, **over}
@@ -444,7 +445,7 @@ def test_restricted_grant_needs_every_failed_criterion_acknowledged_and_the_chec
 def test_execution_eligibility_requires_valid_checkpoint_hashes_on_both_sides():
     """Codex review of 1847fdd (P0): ``sha256: null`` + an omitted decision hash compared equal; every eligible entry
     (deployable too) now names a valid sha256, and a restricted grant is bound to the same valid hash."""
-    good = S.catalog_entry(_restricted_dynamo_row())
+    good = S.catalog_entry(_restricted_dynamo_row(), DYNAMO_SPEC)
     dep = S.catalog_entry(_row())
     for pid, e in (("dynamo-t-s0", {**good, "sha256": None,
                                     "execution_decision": {k: v for k, v in good["execution_decision"].items()
@@ -462,7 +463,7 @@ def test_execution_eligibility_requires_valid_checkpoint_hashes_on_both_sides():
 
 def _granted_like(condition, run, pid, flags=()):
     """A restricted entry carrying a well-formed DynaMo-type grant, relabelled to another identity."""
-    good = S.catalog_entry(_restricted_dynamo_row())
+    good = S.catalog_entry(_restricted_dynamo_row(), DYNAMO_SPEC)
     e = {**good, "condition": condition, "run": run, "flags": list(flags)}
     return {"schema": "s4d-policy-catalog/1", "policies": {pid: e}, "aliases": {}}
 
@@ -506,6 +507,26 @@ def test_catalog_entry_derives_the_setting_from_the_run_id_and_refuses_inconsist
     assert S.restricted_grant("restricted", "dynamo", "a10nq", "c" * 64, {"e1_layernorm_spread"}) is None
     assert S.restricted_grant("restricted", "dynamo", None, "c" * 64, {"e1_layernorm_spread"})["scope"] == \
         {"condition": "dynamo", "fql_setting": "legacy"}
+
+
+def test_a_restricted_grant_needs_the_checkpoint_bound_input_spec_of_its_condition():
+    """Codex review of 0f61212 (P0): the grant's condition is bound to the checkpoint through its input_spec."""
+    row = _restricted_dynamo_row()
+    for spec in (None, {"condition": "reviwo"}, {}):
+        e = S.catalog_entry(row, spec)
+        assert e["status"] == "restricted" and e["execution_eligible"] is False and "execution_decision" not in e
+        assert e["usage"] == "dry_run_replay_only" and e["usage_reasons"][-1] == S.NOT_ELIGIBLE
+    good = S.catalog_entry(row, DYNAMO_SPEC)
+    assert good["execution_eligible"] is True
+    for spec, match in (({"condition": "reviwo"}, "differs from its input_spec"), (None, "input_spec")):
+        bad = {k: v for k, v in good.items() if k != "input_spec"}
+        if spec is not None:
+            bad["input_spec"] = spec
+        with pytest.raises(ValueError, match=match):
+            validate_catalog({"schema": "s4d-policy-catalog/1", "policies": {"dynamo-t-s0": bad}, "aliases": {}})
+    with pytest.raises(ValueError, match="differs from its input_spec"):  # any entry, eligible or not
+        validate_catalog({"schema": "s4d-policy-catalog/1", "aliases": {}, "policies": {
+            "dynamo-t-s0": {**S.catalog_entry(_row()), "input_spec": {"condition": "reviwo"}}}})
 
 
 def test_validator_fql_setting_prefixes_equal_the_staging_rule():

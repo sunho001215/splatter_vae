@@ -251,6 +251,10 @@ class PolicyClient:
                 raise ServingError(msg.header["code"], msg.header["detail"])
             self._handle(msg)  # late answers of the previous session's requests (never a nested HELLO: _renewing)
         h = msg.header
+        bound_requires = sorted(set((h.get("info") or {}).get("requires_client") or []) - CAPABILITIES)
+        if bound_requires:  # the bound policy's CURRENT labels require what this client does not implement
+            raise ServingError("bad_request", f"{self.policy_id} (bound) requires client capabilities "
+                                              f"{bound_requires} that this client does not implement")
         if resume is None or h["session_id"] != self.session_id:
             self._new_session_state(h["session_id"])
         self.spec, self.limits = h["input_spec"], h["limits"]

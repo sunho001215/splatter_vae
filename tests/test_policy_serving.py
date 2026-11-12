@@ -1161,7 +1161,7 @@ def staged(tmp_path_factory):
     root = tmp_path_factory.mktemp("serving-catalog")
     out = {name: stage_fixture(root, name, cond) for name, cond in
            (("r1", "reviwo"), ("r2", "reviwo"), ("r3", "reviwo"), ("r1b", "reviwo"), ("s1", "sincro"),
-            ("e1", "e2e_cnn"))}
+            ("e1", "e2e_cnn"), ("d1", "dynamo"))}
     yield root, out
     torch.set_num_threads(old)
 
@@ -1199,7 +1199,9 @@ def test_lazy_load_on_first_hello_alias_and_advertised_spec(staged, tmp_path):
 def test_spec_mismatch_and_quarantine_are_refused(staged, tmp_path):
     root, fx = staged
     (pol, e), spol = fx["r1"], fx["s1"][0]
-    lying = {**e, "input_spec": spec_json(spol.input_spec)}  # advertises sincro's contract for a reviwo checkpoint
+    # advertises sincro's contract (label consistent with it: the validator refuses a label/spec mismatch) for a reviwo
+    # checkpoint: only the load-time comparison with the checkpoint can catch it
+    lying = {**e, "condition": "sincro", "input_spec": spec_json(spol.input_spec)}
     q = {**fx["r2"][1], "status": "quarantined", "reasons": ["vision-blind adapter input (fixture label)"]}
     cat = write_catalog(tmp_path / "catalog.json", {"lying-s0": lying, "q-s0": q})
     with serve_catalog(root, cat) as srv:
@@ -1398,30 +1400,51 @@ def test_label_refresh_keeps_the_resident_model_and_execution_eligibility_fails_
         assert welcome(srv)["policies"]["r1"]["info"]["status"] == "deployable"
 
 
-def test_restricted_grant_is_scoped_bound_published_and_needs_the_client_capability(staged, tmp_path):
-    """User decision 2026-11-12 (DynaMo): a restricted entry executes only under a scoped grant that acknowledges its
-    FAILED criterion and is bound to its checkpoint; the failure stays published, the model stays resident across the
-    label change, and the server binds the granted entry only for a client declaring the notice capability (an older
-    client is refused at HELLO; Codex review of 1847fdd)."""
-    from ops.policy_serving.config import RESTRICTED_EXECUTION_CAPABILITY
-
-    root, fx = staged
-    pol, e = fx["r1"]
-    pid = "dynamo-fixture-task-s0"
+def _dynamo_grant_entries(root, fx):
+    """A REAL DynaMo fixture checkpoint staged as a restricted entry (+ its granted form), with its described spec."""
+    pol, e = fx["d1"]
+    spec = describe_entry(e, root)
+    assert spec["condition"] == "dynamo"
     restricted = {**e, "condition": "dynamo", "run": "rwtest-20261112-fql-dynamo-fixture-task-s0", "seed": 0,
-                  "status": "restricted", "reasons": ["e1 LayerNorm-spread FAIL (fixture label)"],
+                  "input_spec": spec, "status": "restricted", "reasons": ["e1 LayerNorm-spread FAIL (fixture label)"],
                   "usage": "dry_run_replay_only", "execution_eligible": False, "usage_reasons": ["decision"],
                   "criteria": {"e1_layernorm_spread": {"pass": False, "value": 0.35, "threshold": ">= 0.5"}}}
     grant = {"decided_by": "user", "at": "2026-11-12", "text": "fixture DynaMo decision",
              "scope": {"condition": "dynamo", "fql_setting": "legacy"},
              "acknowledged_failures": ["e1_layernorm_spread"], "checkpoint_sha256": e["sha256"]}
     granted = {**restricted, "usage": "execution", "execution_eligible": True, "execution_decision": grant}
+    return pol, e, restricted, grant, granted
+
+
+def hello_with(srv, pid: str, choices: dict, *, capabilities=None, resume=None) -> P.Message:
+    w = P.Wire(socket.create_connection(("127.0.0.1", srv.port), timeout=5))
+    try:
+        assert w.recv(5).type == P.WELCOME
+        h = {"type": P.HELLO, "policy_id": pid, "choices": P.jsonable(choices), "resume": resume}
+        if capabilities is not None:
+            h["capabilities"] = capabilities
+        w.send(P.encode(h))
+        return w.recv(30)
+    finally:
+        w.close()
+
+
+def test_restricted_grant_is_scoped_bound_published_and_needs_the_client_capability(staged, tmp_path):
+    """User decision 2026-11-12 (DynaMo): a restricted entry executes only under a scoped grant that acknowledges its
+    FAILED criterion and is bound to its checkpoint; the failure stays published, the model stays resident across the
+    label change, and the server binds the granted entry (new session or resume) only for a client declaring the notice
+    capability (an older client is refused; Codex reviews of 1847fdd / 0f61212)."""
+    from ops.policy_serving.config import RESTRICTED_EXECUTION_CAPABILITY
+
+    root, fx = staged
+    pol, e, restricted, grant, granted = _dynamo_grant_entries(root, fx)
+    pid = "dynamo-fixture-task-s0"
     cat = write_catalog(tmp_path / "catalog.json", {pid: restricted})
     with serve_catalog(root, cat) as srv:
         assert welcome(srv)["policies"][pid]["info"]["requires_client"] == []
-        c, _ = client_for(srv, pid, pol)  # not granted: any client binds (dry run / replay)
-        assert c.spec_info["execution_eligible"] is False and c.spec_info["status"] == "restricted"
-        c.close()
+        c0, _ = client_for(srv, pid, pol)  # not granted: any client binds (dry run / replay)
+        assert c0.spec_info["execution_eligible"] is False and c0.spec_info["status"] == "restricted"
+        old_session = c0.session_id
         sp = srv.policies[pid]
         for bad in ({**granted, "execution_decision": {**grant, "checkpoint_sha256": "0" * 64}},  # other weights
                     {**granted, "sha256": None, "execution_decision": {k: v for k, v in grant.items()
@@ -1429,6 +1452,7 @@ def test_restricted_grant_is_scoped_bound_published_and_needs_the_client_capabil
                     {**granted, "execution_decision": {k: v for k, v in grant.items() if k != "scope"}},
                     {**granted, "condition": "reviwo", "run": "rwtest-20261112-fql-reviwo-fixture-task-s0"},
                     {**granted, "run": "rwnq-20261112-fql-dynamo-fixture-task-s0"},
+                    {k: v for k, v in granted.items() if k != "input_spec"},  # no checkpoint-bound spec
                     {**granted, "status": "quarantined"}):
             write_catalog(cat, {pid: bad})
             assert srv.reload_catalog() is None  # refused by the validator: the current table stays
@@ -1440,7 +1464,11 @@ def test_restricted_grant_is_scoped_bound_published_and_needs_the_client_capabil
         assert info["status"] == "restricted" and info["criteria"]["e1_layernorm_spread"]["pass"] is False
         assert info["execution_eligible"] is True and info["execution_decision"] == grant
         assert info["requires_client"] == [RESTRICTED_EXECUTION_CAPABILITY]
-        refused = raw_hello(srv, pid, choices_of(pol))  # an older client's HELLO: no capabilities declared
+        # the session bound BEFORE the grant cannot resume without the capability (it would receive an eligible SPEC)
+        refused = hello_with(srv, pid, choices_of(pol), resume={"session_id": old_session, "last_ack": 0})
+        assert refused.type == P.ERROR and "requires client capabilities" in refused.header["detail"]
+        c0.close()
+        refused = hello_with(srv, pid, choices_of(pol))  # an older client's new HELLO: no capabilities declared
         assert refused.type == P.ERROR and "requires client capabilities" in refused.header["detail"]
         c, _ = client_for(srv, pid, pol)  # this client declares the capability it implements
         published = c.spec_info  # what SPEC publishes: the CURRENT labels of the bound policy
@@ -1448,6 +1476,60 @@ def test_restricted_grant_is_scoped_bound_published_and_needs_the_client_capabil
         assert published["execution_decision"]["acknowledged_failures"] == ["e1_layernorm_spread"]
         assert published["checkpoint_sha256"] == e["sha256"]
         c.close()
+
+
+def test_a_grant_published_while_a_session_is_being_bound_is_enforced_at_the_final_check(staged, tmp_path):
+    root, fx = staged
+    pol, e, restricted, grant, granted = _dynamo_grant_entries(root, fx)
+    pid = "dynamo-fixture-task-s0"
+    cat = write_catalog(tmp_path / "catalog.json", {pid: restricted})
+    with serve_catalog(root, cat) as srv:
+        c, _ = client_for(srv, pid, pol)
+        c.close()
+        sp = srv.policies[pid]
+        real = sp.policy.reset_session
+
+        def publish_then_bind(**kw):  # the reload lands between the HELLO's checks and the session registration
+            write_catalog(cat, {pid: granted})
+            assert srv.reload_catalog() is not None
+            return real(**kw)
+
+        sp.policy.reset_session = publish_then_bind
+        try:
+            refused = hello_with(srv, pid, choices_of(pol))  # no capabilities; the grant was not there at HELLO
+        finally:
+            sp.policy.reset_session = real
+        assert refused.type == P.ERROR and "requires client capabilities" in refused.header["detail"]
+        assert not sp.sessions
+
+
+def test_a_condition_label_that_differs_from_the_checkpoint_is_never_offered_or_granted(staged, tmp_path):
+    """Codex review of 0f61212 (P0): a DynaMo grant on a ReViWo checkpoint must not publish condition=dynamo."""
+    root, fx = staged
+    rpol, re_ = fx["r1"]
+    _, _, restricted, grant, granted = _dynamo_grant_entries(root, fx)
+    pid = "dynamo-fixture-task-s0"
+    reviwo_spec = describe_entry(re_, root)
+    relabelled = {**granted, "checkpoint": re_["checkpoint"], "sha256": re_["sha256"], "export": re_.get("export"),
+                  "execution_decision": {**grant, "checkpoint_sha256": re_["sha256"]}}
+    with pytest.raises(ValueError, match="differs from its input_spec"):  # label vs the ReViWo checkpoint's spec
+        validate_catalog({"schema": CATALOG_SCHEMA, "policies": {pid: {**relabelled, "input_spec": reviwo_spec}},
+                          "aliases": {}})
+    # a deployable entry labelled dynamo without input_spec: described from the ReViWo checkpoint -> not offered
+    plain = {k: v for k, v in re_.items()}
+    cat = write_catalog(tmp_path / "catalog.json", {"dynamo-fixture-task-s0": {**plain, "condition": "dynamo"}})
+    with serve_catalog(root, cat) as srv:
+        w = welcome(srv)
+        assert pid not in w["policies"] and "differs from the checkpoint" in str(w["unavailable"][pid]["reasons"])
+    # labels AND input_spec edited to dynamo on ReViWo weights: offered, but the load compares the checkpoint's spec
+    forged = {**relabelled, "input_spec": {**reviwo_spec, "condition": "dynamo"}}
+    validate_catalog({"schema": CATALOG_SCHEMA, "policies": {pid: forged}, "aliases": {}})
+    cat = write_catalog(tmp_path / "catalog2.json", {pid: forged})
+    with serve_catalog(root, cat) as srv:
+        from ops.policy_serving.config import RESTRICTED_EXECUTION_CAPABILITY
+
+        refused = hello_with(srv, pid, choices_of(rpol), capabilities=[RESTRICTED_EXECUTION_CAPABILITY])
+        assert refused.type == P.ERROR and pid not in srv.policies  # never loaded, never bound
 
 
 def _blocking_loads(monkeypatch, gate: threading.Event, started: threading.Event):
@@ -1650,3 +1732,17 @@ def test_client_declares_capabilities_only_when_required_and_refuses_unknown_req
     with pytest.raises(ServingError, match="does not implement"):
         c._hello(None)
     assert sent == []
+
+    class SpecWire:  # the WELCOME offered no requirement, the bound SPEC does
+        def send(self, data):
+            sent.append(data)
+
+        def recv(self, timeout):
+            return P.decode(P.encode({"type": P.SPEC, "session_id": "s", "input_spec": {}, "limits": {},
+                                      "info": {"requires_client": ["unknown/9"]}}))
+
+    c = PolicyClient("127.0.0.1", 1, policy_id="p", choices={})
+    c.welcome = {"policies": {"p": {"input_spec": {}, "info": {}}}, "auth_required": False}
+    c.wire = SpecWire()
+    with pytest.raises(ServingError, match=r"\(bound\) requires client capabilities \['unknown/9'\]"):
+        c._hello(None)

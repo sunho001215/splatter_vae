@@ -218,7 +218,7 @@ def main(argv=None, *, operator_input=input) -> int:
         selected = info
         # the BOUND policy's current labels (SPEC), never only the earlier WELCOME snapshot (Codex review of 1847fdd)
         info = confirm_policy(selected, getattr(client, "spec_info", None), execute=args.execute, stage="binding")
-        if any(info.get(k) != selected.get(k) for k in (*POLICY_LABELS, "usage_reasons", "reasons", "criteria")):
+        if any(info.get(k) != selected.get(k) for k in POLICY_LABELS):
             say("catalog labels at binding (SPEC) differ from the selection (WELCOME); current labels:")
             for line in restriction_notes(info):
                 say(line)
@@ -285,9 +285,8 @@ def main(argv=None, *, operator_input=input) -> int:
                 raise ExecutionRefused("robot state is not healthy at START: " + "; ".join(blockers))
             # a grant revoked / a checkpoint re-staged since the selection refuses here, before any motion
             info = confirm_policy(info, current_catalog_info(cfg, args, pid), execute=True, stage="START re-check")
-            if recorder is not None:
-                recorder.event(time.monotonic_ns(), "start_recheck " + json.dumps(
-                    {k: info.get(k) for k in ("checkpoint_sha256", "status", "usage", "execution_eligible")}))
+            if recorder is not None:  # the full label snapshot execution was authorized on
+                recorder.event(time.monotonic_ns(), "start_recheck " + json.dumps(info, default=str))
             auth = authorize_execution(cli_execute=True, operator_start=True, policy_info=info)
             if auth.hardware_test is not None:
                 raise ExecutionRefused("policy execution requires hardware_test is None")
@@ -434,7 +433,9 @@ def restriction_notes(info: dict) -> list:
 
 
 POLICY_IDENTITY = ("checkpoint_sha256", "condition", "task", "seed", "run", "actor")
-POLICY_LABELS = ("status", "usage", "execution_eligible", "execution_decision")
+# for execution, every label the operator was shown (or that gates execution) must be unchanged since the selection
+POLICY_LABELS = ("status", "usage", "execution_eligible", "execution_decision", "reasons", "usage_reasons",
+                 "criteria", "requires_client")
 
 
 def confirm_policy(selected: dict, current, *, execute: bool, stage: str) -> dict:
@@ -458,8 +459,14 @@ def confirm_policy(selected: dict, current, *, execute: bool, stage: str) -> dic
         if not valid_sha256(current.get("checkpoint_sha256")):
             raise ExecutionRefused(f"{stage}: the policy's checkpoint sha256 is not published")
         changed = sorted(k for k in POLICY_LABELS if selected.get(k) != current.get(k))
-        if changed:
-            raise ExecutionRefused(f"{stage}: the catalog labels {changed} changed since the selection; run again")
+        if changed:  # never execute on labels (warnings, criteria, requirements) the operator was not shown
+            raise ExecutionRefused(f"{stage}: the catalog labels {changed} changed since the selection; run again "
+                                   "to see the current notes")
+        from ops.policy_serving.client import CAPABILITIES
+
+        lacking = sorted(set(current.get("requires_client") or []) - CAPABILITIES)
+        if lacking:
+            raise ExecutionRefused(f"{stage}: the policy requires client capabilities {lacking} this client lacks")
         if not execution_eligible(current):
             raise ExecutionRefused(f"{stage}: the catalog does not mark this policy execution_eligible")
     return dict(current)

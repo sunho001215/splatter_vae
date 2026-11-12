@@ -344,7 +344,11 @@ REVOKED = {"usage": "dry_run_replay_only", "execution_eligible": False, "executi
     ("bound", None, False),                             # a SPEC without info (old server): cannot confirm
     ("current", REVOKED, True),                         # revoked between binding and START
     ("current", {"checkpoint_sha256": "cd" * 32}, True),
-    ("current", {"usage_reasons": ["changed"]}, False),  # label-only change: proceeds (identity + grant equal)
+    ("current", {"usage_reasons": ["changed"]}, True),  # a warning the operator was not shown
+    ("current", {"criteria": {"e1_layernorm_spread": {"pass": False, "value": 0.1}}}, True),
+    ("current", {"requires_client": ["unknown/9"]}, True),
+    ("bound", {"reasons": ["other"]}, False),
+    ("current", {"resident": True, "device": "cuda"}, True),  # non-label keys: proceeds
     ("current", None, True)])                           # no longer offered at START
 def test_execution_refuses_when_the_grant_changes_between_selection_binding_and_start(warmup_launcher, stage, change,
                                                                                       prompted):
@@ -353,9 +357,12 @@ def test_execution_refuses_when_the_grant_changes_between_selection_binding_and_
     f = warmup_launcher
     f.state["selected"] = dict(GRANTED)
     f.state[stage] = None if change is None else {**GRANTED, **change}
-    ok = stage == "current" and change == {"usage_reasons": ["changed"]}
+    ok = stage == "current" and change == {"resident": True, "device": "cuda"}
     assert f.launch() == (0 if ok else 3)
-    assert ("prompt" in f.order) is (prompted or ok)
+    assert ("prompt" in f.order) is prompted
+    if ok:
+        snap = json.loads(next(e.removeprefix("start_recheck ") for e in f.events if e.startswith("start_recheck ")))
+        assert snap["execution_decision"] == GRANTED["execution_decision"] and snap["device"] == "cuda"
     assert ("engage" in f.order) is ok and ("link" in f.order) is ok
     if not ok:
         assert any(str(m).startswith("REFUSED: ") and ("binding" in str(m) or "START re-check" in str(m))
@@ -381,7 +388,6 @@ def test_restricted_policy_executes_only_with_the_catalog_grant_and_prints_the_f
                                                                                       granted):
     """A restricted (DynaMo-type) policy: the launcher prints the FAILED criterion + warning (+ the decision when
     granted) before anything starts; execution engages only when the catalog marks it eligible (user 2026-11-12)."""
-    from ops.robot_pc import cli
 
     f = warmup_launcher
     info = {**GRANTED, "execution_eligible": granted, "execution_decision": GRANTED["execution_decision"]

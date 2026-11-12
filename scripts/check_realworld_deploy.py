@@ -160,10 +160,15 @@ def _proxy_m5(rec, step_times: np.ndarray) -> float:
     return float(max(np.linalg.norm(p[a] - p[b]) for a in range(len(p)) for b in range(a + 1, len(p))))
 
 
-def _windows(policy, spec, rec, args, m5):
-    """Recorded windows through the client path: [(window, info)]."""
+def _windows(policy, spec, rec, args, m5, skipped: list | None = None):
+    """Recorded windows through the client path: [(window, info)]. A window whose trained history is incomplete in the
+    recording (a dropped camera frame at the trained spacing: the deploy API refuses it, as the training loader
+    excludes it) is skipped and its end stream index appended to ``skipped``."""
     from s4d.realworld.train_store import mutual_sync
     from s4d.rwlearn.deploy import HistoryWindow
+    from s4d.rwlearn.deploy.errors import IncompleteHistory
+
+    skipped = [] if skipped is None else skipped
 
     depth = "depth" in spec.modalities
     corr = spec.native_depth_correction
@@ -176,8 +181,12 @@ def _windows(policy, spec, rec, args, m5):
             h = HistoryWindow(spec)
             for i in range(end - 2, end + 1):
                 h.push(cams[0], rec.frame(cams[0], int(i), depth=depth, correction=corr.get(cams[0])))
-            out.append((h.assemble({cams[0]: int(rec.frame_numbers(cams[0])[end])}),
-                        {"stream_index": {cams[0]: int(end)}, "m5": None}))
+            try:
+                w = h.assemble({cams[0]: int(rec.frame_numbers(cams[0])[end])})
+            except IncompleteHistory:
+                skipped.append({cams[0]: int(end)})
+                continue
+            out.append((w, {"stream_index": {cams[0]: int(end)}, "m5": None}))
         return out
     if m5 is not None:
         steps, disp, source = m5["steps"], m5["disp"], "training store sync/surface_disp_m (M5)"
@@ -203,6 +212,9 @@ def _windows(policy, spec, rec, args, m5):
                         for st in chain}
         try:
             w = h.assemble({c: int(rec.frame_numbers(c)[chain[-1][c]]) for c in cams}, surface_disp_m=evidence)
+        except IncompleteHistory:
+            skipped.append(dict(chain[-1]))
+            continue
         except ValueError as e:
             if "M5" in str(e):
                 continue  # a moving set the training loader would also have excluded
@@ -277,7 +289,8 @@ def cmd_equality(args) -> dict:
                         if r["raw_sha256"] == raw_sha), None)
         rows = []
         store = EpisodeFile(args.store) if args.store else None
-        for w, info in _windows(policy, spec, rec, args, m5):
+        skipped = []
+        for w, info in _windows(policy, spec, rec, args, m5, skipped):
             st = rec.state_at(w.observation_time_ns)
             ids = w.binding(f"robot@{st['pose_time_ns']}", pose_time_ns=st["pose_time_ns"],
                             gripper_time_ns=st["gripper_time_ns"])
@@ -342,6 +355,7 @@ def cmd_equality(args) -> dict:
             "condition": spec.condition, "checkpoint": str(ckpt), "checkpoint_sha256": sha256(ckpt),
             "export": str(export) if export else None, "contract_source": str(sidecar or dataset),
             "dataset_episode": episode, "InputSpec": spec.to_json(), "windows": rows,
+            "windows_skipped_incomplete_history": skipped,
             "all_bitwise_equal": all(r["infer_equals_training_precision_act_bitwise"] for r in rows),
             "unrounded_offline_act_action_max_abs": max(r["unrounded_offline_act_action_max_abs"] for r in rows),
             "deterministic_given_noise": all(r["repeat_act_bitwise"] for r in rows)}

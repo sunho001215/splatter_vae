@@ -464,6 +464,12 @@ def catalog_entry(row: dict, input_spec: dict | None = None) -> dict:
            "criteria": criteria,
            **usage_of(status, row["condition"], setting, checkpoint_sha256=row["policy"]["sha256"],
                       failed_criteria=failed)}
+    if status == "restricted" and out["execution_eligible"] and (input_spec or {}).get("condition") != row["condition"]:
+        # a restricted grant is published only with the checkpoint's described input_spec of the same condition (the
+        # server binds it to the weights; the validator refuses a grant without it): otherwise dry run / replay only
+        out = {k: v for k, v in out.items() if k not in ("usage", "execution_eligible", "execution_decision",
+                                                          "usage_reasons")}
+        out.update(usage_of(status, row["condition"], setting))
     if input_spec is not None:
         out["input_spec"] = input_spec
     return out
@@ -508,7 +514,8 @@ RESTRICTED_EXECUTION_DECISIONS = {
                "scope": {"condition": "dynamo", "fql_setting": "legacy"},
                "acknowledged_failures": ["e1_layernorm_spread"]}}
 RESTRICTED_EXECUTION_WARNINGS = {
-    "dynamo": "WARNING: execution-eligible by user decision 2026-11-12, NOT a validated-performance claim. Known "
+    "dynamo": "WARNING: execution-eligible by user decision 2026-11-12, NOT a validated-performance claim; DIAG "
+              "assessed it NOT healthy enough for an execution test as-is (DIAG-REPORT.md 4). Known "
               "offline findings: e1 LayerNorm-spread FAIL (0.33-0.36 < 0.5); one-step actor 24-30 mm off the "
               "demonstrations with an optimistic critic (realworld-ops/diag/DIAG-REPORT.md 3, 7, 8); representation "
               "weaker than ReViWo/SinCro, view-specific, most sensitive to the camera colour start-up cast "

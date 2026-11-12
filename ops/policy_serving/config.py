@@ -313,6 +313,14 @@ def validate_catalog(raw: dict, source="catalog") -> dict:
             raise ValueError(f"{source}: policy {pid}: usage_reasons must be a list of strings")
         if not isinstance(entry.get("criteria", {}), dict):
             raise ValueError(f"{source}: policy {pid}: criteria must be an object")
+        spec = entry.get("input_spec")
+        if isinstance(spec, dict) and "condition" in spec and spec["condition"] != entry["condition"]:
+            raise ValueError(f"{source}: policy {pid}: condition {entry['condition']!r} differs from its input_spec's "
+                             f"{spec['condition']!r} (the server binds the input_spec to the checkpoint)")
+        if entry.get("execution_eligible") is True and entry["status"] == "restricted" and \
+                not (isinstance(spec, dict) and spec.get("condition") == entry["condition"]):
+            raise ValueError(f"{source}: policy {pid}: a restricted grant needs the entry's input_spec (its condition "
+                             "bound to the checkpoint by the server)")
         out["policies"][str(pid)] = copy.deepcopy(entry)
     for pid, entry in out["policies"].items():
         if entry.get("actor", "onestep") == "bc_flow":
