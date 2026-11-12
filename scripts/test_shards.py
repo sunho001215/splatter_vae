@@ -14,6 +14,7 @@ FILE_CLASSES = {
     "tests/test_launch_hold.py": "cpu",
     "tests/test_mig_validation.py": "cpu",
     "tests/test_remote_mig.py": "cpu",
+    "tests/test_release_repin_review.py": "cpu",
     "tests/test_arm4_configs.py": "cpu",
     "tests/test_baseline_representation.py": "gpu",
     "tests/test_baselines.py": "gpu",

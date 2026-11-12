@@ -901,6 +901,11 @@ def job_release(job):
     previous = state.get(job['id'], {})
     if job['id'] in SNERL_NT_IDS and not previous.get('commit'):  # new launches only (see SNERL_NT_COMMIT)
         return SNERL_NT_COMMIT, POOL_IMAGE
+    if previous.get('repinned_from'):
+        target = previous.get('repinned_target', {})
+        if (target.get('commit'), target.get('image_digest')) != (previous.get('commit'), previous.get('image_digest')):
+            raise ValueError(f"{job['id']}: release differs from recorded re-pin target")
+        return target['commit'], target['image_digest']
     if previous.get('commit'):
         return previous['commit'], previous.get('image_digest', IMAGE)
     if kind(job['id']) == 'role':

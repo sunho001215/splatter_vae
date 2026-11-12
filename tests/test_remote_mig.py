@@ -457,7 +457,8 @@ def test_repin_scope_allows_only_the_gpu_allowlist_files():
 
     same = release_repin.scope_comparison(["scripts/train.py"], *reader(before), *reader(after))
     assert same["identical"] and set(same["operational_differences"]) == {"ops/resources/gpu_guard.py",
-                                                                         "ops/resources/mig_inventory.py"}
+                                                                         "ops/resources/mig_inventory.py",
+                                                                         "configs/hosts/remote-mig.yaml"}
     for relative, value in (("s4d/model.py", b"x = 2\n"), ("configs/realworld/a.yaml", b"a: 2\n"), ("uv.lock", b"2")):
         changed = release_repin.scope_comparison(["scripts/train.py"], *reader(before),
                                                  *reader({**after, relative: value}))
@@ -649,7 +650,7 @@ def test_runtime_provenance_accepts_exactly_the_recorded_repin():
     new = {**old, "git_commit": C2, "attempt": 2}
     with pytest.raises(ri.RunIdentityError, match="git_commit"):
         ri._check_previous(old, new)  # no recorded transition: refused as before
-    moved = {**new, "repinned_from": {"git_commit": C1, "image_digest": IMG}}
+    moved = {**new, "repinned_from": {"git_commit": C1, "image_digest": IMG, "to_git_commit": C2, "to_image_digest": IMG}}
     ri._check_previous(old, moved)
     history = ri._release_history(old, moved)
     assert len(history) == 1 and history[0]["from_commit"] == C1 and history[0]["to_commit"] == C2

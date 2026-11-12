@@ -362,7 +362,8 @@ def build_remote_command(spec: dict, data_identity: str, origin_commit: str, pro
     }
     if "repinned_from" in spec:  # runtime provenance accepts exactly this transition (ops/jobs/run_identity.py)
         environment.update(S4D_REPINNED_FROM_COMMIT=spec["repinned_from"]["commit"],
-                           S4D_REPINNED_FROM_IMAGE=spec["repinned_from"]["image_digest"])
+                           S4D_REPINNED_FROM_IMAGE=spec["repinned_from"]["image_digest"],
+                           S4D_REPINNED_TO_COMMIT=spec["commit"], S4D_REPINNED_TO_IMAGE=spec["image_digest"])
     if purpose is not None:
         environment.update({
             "S4D_TEST_EVIDENCE_DIR": verification_output(purpose, spec["id"], spec["attempt"]),

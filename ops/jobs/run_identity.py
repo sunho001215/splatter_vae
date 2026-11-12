@@ -105,7 +105,9 @@ def verify_remote_identity(repo: Path, env: Mapping[str, str] | None = None) -> 
     repinned_from = None
     if "S4D_REPINNED_FROM_COMMIT" in env or "S4D_REPINNED_FROM_IMAGE" in env:  # both or neither (launch.py)
         repinned_from = {"git_commit": _required(env, "S4D_REPINNED_FROM_COMMIT", COMMIT_RE),
-                         "image_digest": _required(env, "S4D_REPINNED_FROM_IMAGE", IMAGE_RE)}
+                         "image_digest": _required(env, "S4D_REPINNED_FROM_IMAGE", IMAGE_RE),
+                         "to_git_commit": _required(env, "S4D_REPINNED_TO_COMMIT", COMMIT_RE),
+                         "to_image_digest": _required(env, "S4D_REPINNED_TO_IMAGE", IMAGE_RE)}
     data_id = _required(env, "S4D_DATA_ID", SHA256_RE)
     job_id = _required(env, "S4D_JOB_ID", JOB_RE)
     attempt = _required(env, "S4D_ATTEMPT", re.compile(r"[1-9][0-9]*"))
@@ -187,6 +189,10 @@ def _repinned(previous: dict, identity: dict) -> bool:
     authorization recorded): the container receives the source release as S4D_REPINNED_FROM_COMMIT/_IMAGE."""
     source = identity.get("repinned_from")
     return (isinstance(source, dict) and "git_commit" in previous and "image_digest" in previous
+            and identity.get("git_commit") == source.get("to_git_commit")
+            and identity.get("image_digest") == source.get("to_image_digest")
+            and previous["image_digest"] == identity.get("image_digest")
+            and not previous.get("release_history")
             and previous["git_commit"] == source.get("git_commit")
             and previous["image_digest"] == source.get("image_digest")
             and (previous["git_commit"], previous["image_digest"]) != (identity.get("git_commit"),

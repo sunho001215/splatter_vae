@@ -266,15 +266,18 @@ def read_registry(path: Path = REGISTRY) -> dict[str, dict]:
                 # release whose execution scope equals its pinned release except the GPU-allowlist files
                 # (ops/jobs/release_repin.py); same host, job id, arguments and fingerprint, resumed from its own
                 # checkpoint under the next attempt. Recorded only with the user's explicit authorization.
-                if (job["status"] in ACTIVE or job.get("unknown") or job.get("host") != "remote"
+                if (job["status"] not in {"crashed", "pending", "failed"} or job.get("unknown")
+                        or job.get("repinned_from") or job.get("host") != "remote"
                         or event.get("host") != "remote" or event.get("sources_identical") is not True
                         or event.get("from_commit") != job.get("commit")
                         or event.get("from_image_digest") != job.get("image_digest")
+                        or event.get("image_digest") != job.get("image_digest")
                         or not isinstance(event.get("authorization"), str) or not event["authorization"].strip()
                         or not all(isinstance(event.get(key), str) and event[key] for key in ("commit", "image_digest"))
                         or (event["commit"], event["image_digest"]) == (job.get("commit"), job.get("image_digest"))):
                     raise ValueError(f"invalid release re-pin event for {event['id']}")
                 job.update(commit=event["commit"], image_digest=event["image_digest"],
+                           repinned_target={"commit": event["commit"], "image_digest": event["image_digest"]},
                            repinned_from={"commit": event["from_commit"], "image_digest": event["from_image_digest"],
                                           "attempt": job.get("attempt")})
             elif kind == "host_unreachable":
