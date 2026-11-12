@@ -118,14 +118,20 @@ def hw_env(monkeypatch, tmp_path):
             if active and env.problem == "dq":
                 dq[0] = 0.06
             ee = sc.ee_from_flange(p)
-            last = int((time.monotonic_ns() - epoch) // 1_000_000)
-            for seq in range(max(self.seq + 1, last - self.rows.maxlen + 1), last + 1):
-                q = np.full(7, 1 + seq * 1e-12)
-                signature = b"frozen" if active and env.problem == "frozen" else seq.to_bytes(8, "little")
-                self.rows.append({"t_ns": epoch + seq * 1_000_000, "seq": seq, "q": q, "dq": dq,
-                                  "tau": np.zeros(7), "flange_pose7": p,
-                                  "ee_pose7": ee, "signature": signature})
-            self.seq = last
+            # Catch up until the newest row is current: generating up to maxlen rows can itself take longer than
+            # the 50 ms state timeout on a slow or profiled CPU (release suite under cProfile on the remote host,
+            # 2026-11-12), which would make the fake's own newest row look stale.
+            while True:
+                last = int((time.monotonic_ns() - epoch) // 1_000_000)
+                if last <= self.seq:
+                    break
+                for seq in range(max(self.seq + 1, last - self.rows.maxlen + 1), last + 1):
+                    q = np.full(7, 1 + seq * 1e-12)
+                    signature = b"frozen" if active and env.problem == "frozen" else seq.to_bytes(8, "little")
+                    self.rows.append({"t_ns": epoch + seq * 1_000_000, "seq": seq, "q": q, "dq": dq,
+                                      "tau": np.zeros(7), "flange_pose7": p,
+                                      "ee_pose7": ee, "signature": signature})
+                self.seq = last
             return self.rows
 
         def close(self):
