@@ -195,6 +195,8 @@ def main(argv=None, *, operator_input=input) -> int:
         shutdown.state = state
         pid, task, spec, info = cli.choose_policy(cfg, args)
         say(f"policy {pid} ({task}); execution_eligible={execution_eligible(info)}")
+        for line in restriction_notes(info):
+            say(line)
         if args.execute and not execution_eligible(info):
             say("REFUSED: the catalog does not mark this policy execution_eligible")
             return 3
@@ -403,6 +405,21 @@ def resolve_cameras(spec: dict, names: dict, requested: str | None, serial: str 
                            "policy (infer.py --list shows the views)")
 
 
+def restriction_notes(info: dict) -> list:
+    """Console lines for a ``restricted`` policy (a criterion FAILED, not waived): its reasons, usage notes and, when
+    the catalog marks it execution-eligible, the user decision that acknowledges the failure (recorded with the
+    session's catalog_info as well). [] for every other status."""
+    if (info or {}).get("status") != "restricted":
+        return []
+    lines = [f"RESTRICTED policy (criterion FAILED, not waived): {r}" for r in info.get("reasons", [])]
+    lines += [f"note: {r}" for r in info.get("usage_reasons", []) if r not in info.get("reasons", [])]
+    d = info.get("execution_decision") or {}
+    if info.get("execution_eligible") is True and d:
+        lines.append(f"execution allowed by the user decision of {d.get('at')}: acknowledged FAILED criteria "
+                     f"{d.get('acknowledged_failures')} (checkpoint {str(d.get('checkpoint_sha256'))[:12]})")
+    return lines
+
+
 def list_policies(cfg: dict, args) -> int:
     from ops.robot_pc.safety import execution_eligible
 
@@ -424,6 +441,12 @@ def list_policies(cfg: dict, args) -> int:
         print("  ".join(x.ljust(w[i]) for i, x in enumerate(r)))
     print(f"\ncamera names: {names} (config/camera_names.yaml); 'eligible' = may run on the robot (catalog); "
           f"{aliases} legacy alias ids not shown")
+    flagged = sorted(pid for pid, p in offered.items() if not (p.get("info") or {}).get("alias_of")
+                     and (p.get("info") or {}).get("status") == "restricted"
+                     and execution_eligible(p.get("info") or {}))
+    if flagged:
+        print(f"restricted but eligible (a criterion FAILED, not waived; execution by user decision, see the warning "
+              f"printed at start): {', '.join(flagged)}")
     return 0
 
 

@@ -1396,6 +1396,21 @@ def test_label_refresh_keeps_the_resident_model_and_execution_eligibility_fails_
                                    "execution_eligible": True, "execution_decision": decision}})
         assert srv.reload_catalog() is None  # refused by the validator: the current (eligible deployable) table stays
         assert welcome(srv)["policies"]["r1"]["info"]["status"] == "deployable"
+        # user decision 2026-11-12 (DynaMo): a restricted entry executes only with a grant that acknowledges its FAILED
+        # criterion and is bound to its checkpoint; the failure stays published and the model stays resident
+        grant = {**decision, "acknowledged_failures": ["e1_layernorm_spread"], "checkpoint_sha256": e["sha256"]}
+        granted = {**restricted, "usage": "execution", "execution_eligible": True, "execution_decision": grant}
+        write_catalog(cat, {"r1": {**granted, "execution_decision": {**grant, "checkpoint_sha256": "0" * 64}}})
+        assert srv.reload_catalog() is None  # a grant for other weights is refused
+        write_catalog(cat, {"r1": granted})
+        summary = srv.reload_catalog()
+        assert summary["changed"] == [] and srv.policies["r1"] is sp
+        info = welcome(srv)["policies"]["r1"]["info"]
+        assert info["status"] == "restricted" and info["criteria"]["e1_layernorm_spread"]["pass"] is False
+        assert info["execution_eligible"] is True and info["execution_decision"] == grant
+        published = srv._current_info(srv.policies["r1"])  # what SPEC publishes
+        assert published["status"] == "restricted" and published["execution_eligible"] is True
+        assert published["execution_decision"]["acknowledged_failures"] == ["e1_layernorm_spread"]
 
 
 def _blocking_loads(monkeypatch, gate: threading.Event, started: threading.Event):

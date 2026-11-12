@@ -33,7 +33,10 @@ venv/bin/python -I src/scripts/robot_pc/verify_session.py inference_outputs/draw
 
 Selection: `--task` + `--method` (alias `--baseline`) + `--seed` select the unique catalog policy (or `--policy <id>`).
 Execution (no `--dry-run`) needs the catalog's `execution_eligible: true` (`--list` column `eligible`) and the
-operator's ENTER; `--dry-run` runs any offered policy. `--cameras`: camera NAMES; default = the policy contract's first
+operator's ENTER; `--dry-run` runs any offered policy. A `restricted` policy (a criterion FAILED, not waived) is
+eligible only under a user decision that acknowledges the failed criterion and is bound to its checkpoint sha256
+(DynaMo, user decision 2026-11-12: e1 LayerNorm-spread FAIL); `--list` names such policies and the launcher prints the
+failed criterion, the warning and the decision before START (all recorded in the run's `config.json` `catalog_info`). `--cameras`: camera NAMES; default = the policy contract's first
 trained camera; a single-view policy takes exactly one name; a wrong count / untrained camera is refused with the
 contract in the message. Live multi-view policies (synchronised camera sets) are not implemented yet (clear error).
 
@@ -107,7 +110,7 @@ recorder read-back. Needs HARDWARE: everything in the procedure above.
 | guarantee | mechanism | test |
 |---|---|---|
 | no live command path exists | `safety.EXECUTION_PERMITTED = False` (Directive I): `LiveSink` refuses at construction AND on every send, `execute.py` refuses before any network activity; the package creates no command socket (the controller binding is the RobotAction MESSAGE FORMAT only) | `test_execution_mode_needs_all_three_explicit_conditions`, `test_live_sink_is_bound_to_the_action_format_but_refused_in_this_revision`, `test_execute_script_refuses_even_fully_authorized` (exit 3, no socket) |
-| manual execution needs 4 explicit conditions (for a later directive) | `safety.authorize_execution`: `--execute` + typed `CONFIRMATION` + config `execution.armed: true` + the policy's catalog entry `execution_eligible: true` (missing = NOT eligible; DynaMo is dry-run/replay only by user decision); the authorization object is only issued by that function | same tests |
+| manual execution needs 4 explicit conditions (for a later directive) | `safety.authorize_execution`: `--execute` + typed `CONFIRMATION` + config `execution.armed: true` + the policy's catalog entry `execution_eligible: true` (missing = NOT eligible; a restricted entry such as DynaMo only with a user decision acknowledging its failed criterion, bound to its checkpoint: `config._check_restricted_grant`); the authorization object is only issued by that function | same tests |
 | replay / dry run / bench never build a live sink or connect to the controller | MockSink / DryRunSink only; `--state live` is refused before anything connects (no read-only gripper source); `safety.admit_endpoint` refuses every connection to ports 28400-28404 (switch_controller channels) | runtime spies in the replay / dry-run tests (0 LiveSink / LiveStateReader constructions, every TCP connect = the policy server) |
 | no robot transport in the code | no serial / ROS / Franka / Modbus import; zmq only in `switch_controller.py`, which never binds, never creates a PUB and never sends (read-only SUB, approval-gated, unused here) | `test_no_robot_io_in_the_robot_pc_sources` (AST + text scan), `test_live_state_reader_is_a_read_only_subscriber` |
 | no output can open a device | `safety.safe_output`: logs / rows / summaries only to regular files outside /dev, /proc, /sys, never through a symlink | used by DryRunSink, JsonlRows, write_json, selfcheck |

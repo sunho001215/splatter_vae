@@ -32,8 +32,12 @@ F2_Q_RUNAWAY = 100.0
 F3_Q_FEASIBLE = 1.0
 F3_LATE_FRACTION = 0.8
 Q_KEYS = ("training/critic/q_mean", "validation/critic/q_mean")
-LN_SPREAD_DECISION = ("user decision 2026-11-10: dry-run/replay only while it fails the e1 LayerNorm-spread "
-                      "criterion and passes visual sensitivity (no waiver; DYNAMO-LN-CRITERION-REVIEW.md)")
+# The restricted class (amendment A2) keeps the failed gate FAILED. Since the user decision 2026-11-12 a restricted entry
+# may execute ONLY under a user execution decision that acknowledges the failed criteria and is bound to the checkpoint
+# (ops/policy_serving/config.py ``_check_restricted_grant``; DynaMo: staging.RESTRICTED_EXECUTION_DECISIONS).
+LN_SPREAD_DECISION = ("user decision 2026-11-10: the e1 LayerNorm-spread criterion stays FAILED, not waived, while visual "
+                      "sensitivity passes (DYNAMO-LN-CRITERION-REVIEW.md); restricted = dry run / replay only unless "
+                      "a user execution decision acknowledges this failure (DynaMo: user decision 2026-11-12)")
 
 
 def check(passed: bool | None, **detail) -> dict:

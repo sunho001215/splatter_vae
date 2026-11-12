@@ -300,6 +300,31 @@ def warmup_launcher(monkeypatch, tmp_path):
                            results=results, scenario=scenario, messages=messages)
 
 
+@pytest.mark.parametrize("granted", [True, False])
+def test_restricted_policy_executes_only_with_the_catalog_grant_and_prints_the_failure(warmup_launcher, monkeypatch,
+                                                                                      granted):
+    """A restricted (DynaMo-type) policy: the launcher prints the FAILED criterion + warning (+ the decision when
+    granted) before anything starts; execution engages only when the catalog marks it eligible (user 2026-11-12)."""
+    from ops.robot_pc import cli
+
+    f = warmup_launcher
+    grant = {"decided_by": "user", "at": "2026-11-12", "text": "DynaMo must support actual execution",
+             "acknowledged_failures": ["e1_layernorm_spread"], "checkpoint_sha256": "ab" * 32}
+    info = {"status": "restricted", "reasons": ["e1 LayerNorm-spread FAIL: LN unit std 0.355 < 0.5"],
+            "usage_reasons": ["WARNING: offline findings"], "execution_eligible": granted,
+            "execution_decision": grant if granted else None}
+    monkeypatch.setattr(cli, "choose_policy", lambda *a:
+                        ("p", "t", {"views": 1, "modalities": ["rgb"], "trained_camera_orders": [["a"]]}, info))
+    assert f.launch() == (0 if granted else 3)
+    text = "\n".join(str(m) for m in f.messages)
+    assert "RESTRICTED policy (criterion FAILED, not waived): e1 LayerNorm-spread FAIL" in text
+    assert "WARNING: offline findings" in text
+    assert ("execution allowed by the user decision of 2026-11-12" in text) is granted
+    assert ("engage" in f.order) is granted
+    if not granted:
+        assert "REFUSED: the catalog does not mark this policy execution_eligible" in text and "link" not in f.order
+
+
 @pytest.mark.parametrize("dry_run", [False, True])
 def test_warmup_precedes_prompt_engagement_and_streaming_and_records_event(warmup_launcher, dry_run):
     f = warmup_launcher
@@ -445,3 +470,28 @@ def test_dry_run_selection_reaches_restricted_policies():
         selection.select_policy(offered, condition="dynamo", task="drawer-open", seed=0)
     assert selection.select_policy(offered, condition="dynamo", task="drawer-open", seed=0,
                                    allow_restricted=True) == "dynamo-drawer-open-s0"
+
+
+def test_execution_selection_reaches_restricted_policies_only_when_the_catalog_grants_execution():
+    """User decision 2026-11-12: DynaMo (restricted, e1 LN-spread FAILED) is execution-eligible through the catalog;
+    selection by method / task / seed then works without --dry-run, and the launcher prints the failure + decision."""
+    from ops.robot_pc import selection
+
+    grant = {"decided_by": "user", "at": "2026-11-12", "text": "DynaMo must support actual execution",
+             "acknowledged_failures": ["e1_layernorm_spread"], "checkpoint_sha256": "ab" * 32}
+    info = {"task": "drawer-open", "condition": "dynamo", "seed": 0, "status": "restricted",
+            "reasons": ["e1 LayerNorm-spread FAIL: LN unit std 0.355 < 0.5"], "usage_reasons": ["WARNING: x"],
+            "execution_eligible": True, "execution_decision": grant}
+    offered = {"dynamo-drawer-open-s0": {"info": info, "input_spec": {}},
+               "dynamo-mug-hanging-s0": {"info": {**info, "task": "mug-hanging", "execution_eligible": False,
+                                                  "execution_decision": None}, "input_spec": {}}}
+    assert selection.select_policy(offered, condition="dynamo", task="drawer-open", seed=0) == "dynamo-drawer-open-s0"
+    with pytest.raises(selection.SelectionError):  # restricted and NOT granted: dry run only
+        selection.select_policy(offered, condition="dynamo", task="mug-hanging", seed=0)
+    notes = _infer().restriction_notes(info)
+    assert notes[0].startswith("RESTRICTED policy (criterion FAILED, not waived): e1 LayerNorm-spread FAIL")
+    assert any("WARNING: x" in n for n in notes)
+    assert "acknowledged FAILED criteria ['e1_layernorm_spread'] (checkpoint abababababab)" in notes[-1]
+    assert _infer().restriction_notes({**info, "status": "deployable"}) == []
+    not_granted = _infer().restriction_notes(offered["dynamo-mug-hanging-s0"]["info"])
+    assert not any("execution allowed" in n for n in not_granted)

@@ -220,8 +220,12 @@ late-phase q_mean <= +1. Explicit decisions (rwcal-20261109 3D-MVP: quarantined)
 true only if the entry says exactly true). User decision 2026-11-10 21:10: every `deployable` entry (all criteria
 passed) is staged with `execution_eligible: true`, `usage: execution` and an `execution_decision` record
 {decided_by: user, at, text}; the validator accepts `true` ONLY for a deployable entry with usage execution and that
-record, and refuses it for `restricted` (DynaMo: dry run / replay only) and `quarantined` entries; withdrawn entries
-are never eligible. Execution on the robot PC additionally needs its own manual execution mode. A withdrawn policy's remaining
+record, and refuses it for `quarantined` entries. A `restricted` entry (its failed criterion stays FAILED and
+published, never waived) is eligible ONLY with a user decision whose `acknowledged_failures` name every failed
+criterion of the entry and whose `checkpoint_sha256` equals the entry's (`config._check_restricted_grant`); user
+decision 2026-11-12: the DynaMo entries (`staging.RESTRICTED_EXECUTION_DECISIONS`, acknowledging
+`e1_layernorm_spread`, with the warning `RESTRICTED_EXECUTION_WARNINGS` in `usage_reasons`); a restricted entry of an
+excluded FQL setting (a10nq / a100) stays dry run / replay only. Withdrawn entries are never eligible. Execution on the robot PC additionally needs its own manual execution mode. A withdrawn policy's remaining
 sessions see `status: withdrawn`, `usage: none`; non-finite numbers are refused in catalog entries (JSON wire safety). The robot-PC client refuses execution mode for any other policy. A
 re-evaluation that no longer passes withdraws the run's catalog entry (quarantined, usage none). Label changes
 (status / criteria / usage) refresh on reload without reloading the model; the catalog transaction is serialised by a

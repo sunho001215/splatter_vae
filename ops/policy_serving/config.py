@@ -120,13 +120,39 @@ def _finite_json(x) -> bool:
     return True
 
 
+def _failed_criteria(entry: dict) -> set:
+    """Catalog ``criteria`` keys published as FAILED (``pass`` exactly false)."""
+    crit = entry.get("criteria") or {}
+    return {k for k, v in crit.items() if isinstance(v, dict) and v.get("pass") is False}
+
+
+def _check_restricted_grant(source, pid, entry: dict, decision) -> None:
+    """A ``restricted`` entry (a criterion FAILED, not waived) is execution-eligible only under a user decision that
+    names every failed criterion of the entry in ``acknowledged_failures`` and is bound to the entry's checkpoint
+    (``checkpoint_sha256``; user decision 2026-11-12 for DynaMo). The status and the failed criterion stay published."""
+    failed = _failed_criteria(entry)
+    ack = decision.get("acknowledged_failures") if isinstance(decision, dict) else None
+    if not failed:
+        raise ValueError(f"{source}: policy {pid}: a restricted entry publishes its FAILED criterion (criteria)")
+    if not isinstance(ack, list) or not all(isinstance(x, str) for x in ack) or not failed <= set(ack):
+        raise ValueError(f"{source}: policy {pid}: an execution-eligible restricted entry needs a user decision whose "
+                         f"acknowledged_failures name every failed criterion {sorted(failed)}")
+    if decision.get("checkpoint_sha256") != entry.get("sha256"):
+        raise ValueError(f"{source}: policy {pid}: the execution decision of a restricted entry is bound to its "
+                         "checkpoint_sha256")
+
+
 def _check_eligibility(source, pid, entry: dict) -> None:
     """``execution_eligible: true`` only for a ``deployable`` entry with usage ``execution`` and a non-empty user
-    ``execution_decision`` {decided_by: user, at, text} (user decision 2026-11-10 21:10); restricted / quarantined
-    entries can never be eligible; usage ``execution`` without eligibility is refused (fail closed)."""
+    ``execution_decision`` {decided_by: user, at, text} (user decision 2026-11-10 21:10), or for a ``restricted`` entry
+    whose user decision acknowledges its failed criteria and is bound to its checkpoint (``_check_restricted_grant``,
+    user decision 2026-11-12); quarantined entries can never be eligible; usage ``execution`` without eligibility is
+    refused (fail closed)."""
     eligible, usage, decision = entry.get("execution_eligible") is True, entry.get("usage"), entry.get("execution_decision")
     if eligible:
-        if entry["status"] != "deployable":
+        if entry["status"] == "restricted":
+            _check_restricted_grant(source, pid, entry, decision)
+        elif entry["status"] != "deployable":
             raise ValueError(f"{source}: policy {pid}: a {entry['status']} entry is never execution-eligible")
         if usage != "execution":
             raise ValueError(f"{source}: policy {pid}: an execution-eligible entry has usage 'execution'")

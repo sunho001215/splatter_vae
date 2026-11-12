@@ -443,14 +443,17 @@ def catalog_entry(row: dict, input_spec: dict | None = None) -> dict:
     against the loaded policy)."""
     exp = row.get("export") or {}
     status = row["class"]["status"]
+    criteria = C.criteria_summary(row["condition"], row.get("checks") or {})
+    failed = {k for k, v in criteria.items() if isinstance(v, dict) and v.get("pass") is False}
     out = {"checkpoint": row["policy"]["path"], "sha256": row["policy"]["sha256"],
            "export": exp.get("path"), "training_contract": f"contracts/{row['run']}.deploy_contract.json",
            "condition": row["condition"], "task": row["task"], "seed": row["seed"], "run": row["run"],
            "status": status, "reasons": row["class"]["reasons"],
            "flags": list(row["class"]["flags"]) + ([f"fql_setting_{row['fql_setting']}"]
                                                    if row.get("fql_setting") else []),
-           "criteria": C.criteria_summary(row["condition"], row.get("checks") or {}),
-           **usage_of(status, row["condition"], row.get("fql_setting"))}
+           "criteria": criteria,
+           **usage_of(status, row["condition"], row.get("fql_setting"), checkpoint_sha256=row["policy"]["sha256"],
+                      failed_criteria=failed)}
     if input_spec is not None:
         out["input_spec"] = input_spec
     return out
@@ -480,15 +483,58 @@ def exclusions(condition: str | None, setting: str | None) -> list[str]:
         ([setting_reason(setting)] if setting else [])
 
 
-def usage_of(status: str, condition: str | None = None, setting: str | None = None) -> dict:
+# User decision 2026-11-12 (Task 3, relayed by the coordinator): DynaMo must EXECUTE on the robot PC. Its entries stay
+# ``restricted`` with the e1 LayerNorm-spread gate FAILED (not waived; no criterion, threshold or class changes); the
+# grant names the failed criteria it acknowledges and is bound to each checkpoint's sha256 (config._check_eligibility).
+# Scope: restricted entries of these conditions WITHOUT an exclusion (a new FQL setting such as a10nq still awaits its
+# own user decision; 3D-MVP is never covered). The warning travels with every entry (usage_reasons, robot-PC console).
+RESTRICTED_EXECUTION_DECISIONS = {
+    "dynamo": {"decided_by": "user", "at": "2026-11-12 (KST; Task 3 request relayed by the coordinator)",
+               "text": "DynaMo must support actual execution on the Robot PC, not just dry-run testing. Investigate and "
+                       "implement whatever is necessary to enable its real execution through the existing "
+                       "robot-control and policy-serving interfaces. (scope: the restricted DynaMo entries; the e1 "
+                       "LayerNorm-spread criterion stays FAILED, not waived)",
+               "acknowledged_failures": ["e1_layernorm_spread"]}}
+RESTRICTED_EXECUTION_WARNINGS = {
+    "dynamo": "WARNING: execution-eligible by user decision 2026-11-12, NOT a validated-performance claim. Known "
+              "offline findings: e1 LayerNorm-spread FAIL (0.33-0.36 < 0.5); one-step actor 24-30 mm off the "
+              "demonstrations with an optimistic critic (realworld-ops/diag/DIAG-REPORT.md 3, 7, 8); representation "
+              "weaker than ReViWo/SinCro, view-specific, most sensitive to the camera colour start-up cast "
+              "(realworld-ops/diag/DYNAMO-REPRESENTATION.md); never run on the robot before 2026-11-12"}
+
+
+def restricted_grant(status: str, condition: str | None, setting: str | None, checkpoint_sha256: str | None,
+                     failed_criteria=None) -> dict | None:
+    """The user execution decision covering a ``restricted`` entry (bound to its checkpoint), or None: only when the
+    entry's published FAILED criteria are non-empty and all acknowledged by the decision (the validator's rule)."""
+    if status != "restricted" or condition not in RESTRICTED_EXECUTION_DECISIONS or exclusions(condition, setting) or \
+            not checkpoint_sha256 or not failed_criteria or \
+            not set(failed_criteria) <= set(RESTRICTED_EXECUTION_DECISIONS[condition]["acknowledged_failures"]):
+        return None
+    return {**RESTRICTED_EXECUTION_DECISIONS[condition], "checkpoint_sha256": checkpoint_sha256}
+
+
+def usage_of(status: str, condition: str | None = None, setting: str | None = None, *,
+             checkpoint_sha256: str | None = None, failed_criteria=None) -> dict:
     """Usage restriction of a staged entry (user decision 2026-11-10 21:10): a ``deployable`` entry (every criterion
     passed) is execution-eligible with the recorded decision; ``restricted`` stays dry run / replay only, quarantined
     is not usable; anything else fails closed (a missing field means not eligible for every consumer). Execution on
-    the robot PC still needs its own explicit manual mode (flag, typed confirmation, armed config).
+    the robot PC still needs its own explicit manual mode (``infer.py`` without --dry-run + the operator's start).
     Exceptions for a deployable entry (status unchanged; dry run / replay only, ``execution_decision`` None): a
     3D-MVP condition (``INELIGIBLE_CONDITIONS``, user 2026-11-12 ~00:20) and any new FQL ``setting`` (rwnq / rwa100
-    rows: awaiting a user decision); both reasons are listed when both apply."""
+    rows: awaiting a user decision); both reasons are listed when both apply.
+    Exception for a ``restricted`` entry (status, reasons and the FAILED criterion unchanged): a condition with a
+    user decision in ``RESTRICTED_EXECUTION_DECISIONS`` (DynaMo, user 2026-11-12) and no exclusion is
+    execution-eligible with that decision bound to ``checkpoint_sha256`` and its warning, provided the entry's FAILED
+    criteria (``failed_criteria``, the catalog ``criteria`` keys with pass false) are all acknowledged by it."""
     held = exclusions(condition, setting)
+    grant = restricted_grant(status, condition, setting, checkpoint_sha256, failed_criteria)
+    if grant is not None:
+        return {"usage": "execution", "execution_eligible": True, "execution_decision": grant,
+                "usage_reasons": [C.LN_SPREAD_DECISION, RESTRICTED_EXECUTION_WARNINGS[condition],
+                                  f"user decision {grant['at']}: restricted {condition} -> execution-eligible with the "
+                                  f"FAILED criteria {grant['acknowledged_failures']} acknowledged; robot-PC manual "
+                                  "execution mode still required"]}
     if status == "deployable" and held:
         return {"usage": "dry_run_replay_only", "execution_eligible": False, "execution_decision": None,
                 "usage_reasons": held + [NOT_ELIGIBLE]}
@@ -502,7 +548,7 @@ def usage_of(status: str, condition: str | None = None, setting: str | None = No
                                   NOT_ELIGIBLE]}
     reasons = [NOT_ELIGIBLE]
     if status == "restricted":
-        reasons.insert(0, C.LN_SPREAD_DECISION)
+        reasons[:0] = [C.LN_SPREAD_DECISION, *held]
     return {"usage": "dry_run_replay_only", "execution_eligible": False, "usage_reasons": reasons}
 
 

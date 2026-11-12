@@ -789,7 +789,7 @@ def test_selection_from_the_server_contracts(policies):
     assert selection.depth_corrections(mv, list(CAMS), None, identity=True)["cam_a"]["factor"] == 1.0
     with pytest.raises(selection.SelectionError, match="does not offer"):
         selection.select_policy(w["policies"], "nope")
-    with pytest.raises(selection.SelectionError, match="0 deployable"):  # FIXTURE policies are never auto-selected
+    with pytest.raises(selection.SelectionError, match="0 selectable"):  # FIXTURE policies are never auto-selected
         selection.select_policy(w["policies"], condition="reviwo")
     assert selection.select_policy(w["policies"], "reviwo-a") == "reviwo-a"
 

@@ -189,9 +189,11 @@ def test_new_setting_variants_default_to_not_eligible_and_alpha10_rules_are_unch
     assert _entry("sincro", "a100")["usage_reasons"][0] == S.setting_reason("a100")
     base = _entry("reviwo")  # the alpha-10 rule (user decision 2026-11-10 21:10) is unchanged
     assert base["execution_eligible"] is True and base["usage"] == "execution" and base["execution_decision"]
-    dyn = _entry("dynamo", status="restricted")  # the DynaMo LN-spread restriction is unchanged
+    dyn = _entry("dynamo", status="restricted")  # no published FAILED criterion: the grant cannot apply
     assert dyn["usage"] == "dry_run_replay_only" and dyn["usage_reasons"][0] == C.LN_SPREAD_DECISION
     assert "execution_decision" not in dyn
+    dyn_nq = _entry("dynamo", "a10nq", status="restricted")  # a new setting keeps its own pending decision
+    assert dyn_nq["execution_eligible"] is False and S.setting_reason("a10nq") in dyn_nq["usage_reasons"]
     q = _entry("mvp3d_single", status="quarantined")
     assert q["usage"] == "none" and "execution_decision" not in q
 

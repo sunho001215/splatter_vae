@@ -32,15 +32,17 @@ def describe(policies: dict) -> list[dict]:
                      "modalities": spec.get("modalities"), "needs_calibration": spec.get("needs_calibration"),
                      "trained_cameras": [list(o) for o in spec.get("trained_camera_orders", [])],
                      "flags": info.get("flags", []), "alias_of": info.get("alias_of"),
-                     "actor": info.get("actor", "onestep")})
+                     "actor": info.get("actor", "onestep"), "execution_eligible": info.get("execution_eligible") is True})
     return rows
 
 
 def select_policy(policies: dict, policy_id: str | None = None, *, condition: str | None = None,
                   task: str | None = None, seed: int | None = None, allow_restricted: bool = False,
                   actor: str = "onestep") -> str:
-    """An explicit id, or the unique deployable id matching condition / task / seed / actor (``onestep`` = FQL's
-    policy; ``bc_flow`` = the EXPERIMENTAL ``<id>+bcflow`` variants, selected only when asked for)."""
+    """An explicit id, or the unique selectable id matching condition / task / seed / actor (``onestep`` = FQL's
+    policy; ``bc_flow`` = the EXPERIMENTAL ``<id>+bcflow`` variants, selected only when asked for). Selectable: a
+    ``deployable`` entry; a ``restricted`` one with ``allow_restricted`` (dry run) or when the catalog marks it
+    execution-eligible (a user decision that acknowledges its failed criterion, e.g. DynaMo 2026-11-12)."""
     if policy_id is not None:
         if policy_id not in policies:
             raise SelectionError(f"the server does not offer {policy_id!r}; it offers {sorted(policies)}")
@@ -51,11 +53,12 @@ def select_policy(policies: dict, policy_id: str | None = None, *, condition: st
     match = [r["policy_id"] for r in describe(policies)
              if (condition is None or r["condition"] == condition) and (task is None or r["task"] == task)
              and (seed is None or r["seed"] == seed) and not r["fixture"]
-             and (r["status"] == "deployable" or (allow_restricted and r["status"] == "restricted"))
+             and (r["status"] == "deployable" or (r["status"] == "restricted" and
+                                                   (allow_restricted or r["execution_eligible"])))
              and r["actor"] == actor
              and not r["alias_of"]]  # a legacy alias names the same checkpoint as its canonical id
     if len(match) != 1:
-        raise SelectionError(f"{len(match)} deployable policies match condition={condition} task={task} seed={seed}: "
+        raise SelectionError(f"{len(match)} selectable policies match condition={condition} task={task} seed={seed}: "
                              f"{match}; give --policy")
     return match[0]
 

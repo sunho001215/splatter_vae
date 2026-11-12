@@ -335,9 +335,10 @@ def test_usage_restrictions_eligibility_and_validator_rules():
     validate_catalog(cat())  # deployable + usage execution + user decision
     with pytest.raises(ValueError, match="states its reasons"):
         validate_catalog(cat(status="restricted", reasons=[]))
-    for over in ({"status": "restricted", "reasons": ["x"]}, {"status": "quarantined", "reasons": ["x"]}):
-        with pytest.raises(ValueError, match="never execution-eligible"):
-            validate_catalog(cat(**over))
+    with pytest.raises(ValueError, match="never execution-eligible"):
+        validate_catalog(cat(status="quarantined", reasons=["x"]))
+    with pytest.raises(ValueError, match="FAILED criterion"):  # restricted: only with an acknowledging grant
+        validate_catalog(cat(status="restricted", reasons=["x"]))
     for decision in (None, {}, {"decided_by": "coordinator", "at": "t", "text": "x"},
                      {"decided_by": "user", "at": "t", "text": " "}):
         with pytest.raises(ValueError, match="execution_decision"):
@@ -353,6 +354,86 @@ def test_usage_restrictions_eligibility_and_validator_rules():
         validate_catalog(cat(usage="anything"))
     with pytest.raises(ValueError, match="true or false"):
         validate_catalog(cat(execution_eligible="yes"))
+
+
+LN_FAIL = {"pass": False, "value": 0.355, "threshold": ">= 0.5"}
+
+
+def _restricted_dynamo_row(condition="dynamo", seed=0, run=None):
+    """A restricted row as the inventory classifies DynaMo: every criterion passes except e1's LN-spread gate."""
+    row = {**_row(status="restricted", seed=seed), "condition": condition}
+    if run:
+        row["run"] = run
+    row["checks"] = {"a": C.check(True, kind="epochs", budget=40, done=40),
+                     "b": C.check(True, steps=1_000_000, budget=1_000_000, checkpoint_step=1_000_000),
+                     "e1": C.check(False, offset_pass=True, ln_pass=False, offset_to_signal=2.48, ln_unit_std_raw=0.355),
+                     "e2": C.check(True, d_vis_over_spread=0.69, d_vis_over_noise=34.3, samples=192)}
+    row["class"] = C.classify(condition, {**row["checks"], "c": C.check(True), "d": C.check(True),
+                                          "f": C.check(True)})
+    return row
+
+
+def test_restricted_dynamo_is_execution_eligible_by_the_acknowledging_user_decision():
+    """User decision 2026-11-12: DynaMo executes on the robot PC. Status, reasons and the FAILED e1 LN-spread criterion
+    stay published; the grant names that criterion and is bound to the checkpoint sha256."""
+    row = _restricted_dynamo_row()
+    assert row["class"]["status"] == "restricted" and row["class"]["reasons"][-1] == C.LN_SPREAD_DECISION
+    e = S.catalog_entry(row)
+    assert e["status"] == "restricted" and e["criteria"]["e1_layernorm_spread"]["pass"] is False
+    assert e["execution_eligible"] is True and e["usage"] == "execution"
+    d = e["execution_decision"]
+    assert d["decided_by"] == "user" and d["acknowledged_failures"] == ["e1_layernorm_spread"]
+    assert d["checkpoint_sha256"] == row["policy"]["sha256"] and "DynaMo must support actual execution" in d["text"]
+    assert e["usage_reasons"][0] == C.LN_SPREAD_DECISION
+    assert e["usage_reasons"][1] == S.RESTRICTED_EXECUTION_WARNINGS["dynamo"]
+    assert any("LayerNorm-spread" in r for r in e["reasons"])  # the failure itself is never removed
+    validate_catalog(json.loads(json.dumps(S.build_catalog({"dynamo-t-s0": e}, aliases={}, criteria_sha256=None))))
+
+
+@pytest.mark.parametrize("condition,run", [("reviwo", None), ("sincro", None),
+                                           ("dynamo", "rwnq-20261111-fql-dynamo-t-s0"),
+                                           ("dynamo", "rwa100-20261111-fql-dynamo-t-s0")])
+def test_restricted_grant_does_not_reach_other_conditions_or_new_fql_settings(condition, run):
+    row = _restricted_dynamo_row(condition, run=run)
+    row["fql_setting"] = S.fql_setting(row["run"])
+    e = S.catalog_entry(row)
+    assert e["status"] == "restricted" and e["execution_eligible"] is False and e["usage"] == "dry_run_replay_only"
+    assert "execution_decision" not in e and e["usage_reasons"][-1] == S.NOT_ELIGIBLE
+    validate_catalog(json.loads(json.dumps(S.build_catalog({"x-t-s0": e}, aliases={}, criteria_sha256=None))))
+
+
+def test_restricted_grant_needs_every_failed_criterion_acknowledged_and_the_checkpoint():
+    assert S.usage_of("restricted", "dynamo", checkpoint_sha256="c" * 64)["execution_eligible"] is False
+    assert S.usage_of("restricted", "dynamo", failed_criteria={"e1_layernorm_spread"})["execution_eligible"] is False
+    assert S.usage_of("restricted", "dynamo", checkpoint_sha256="c" * 64,
+                      failed_criteria={"e1_layernorm_spread", "f_stability"})["execution_eligible"] is False
+    assert S.usage_of("restricted", "dynamo", checkpoint_sha256="c" * 64,
+                      failed_criteria={"e1_layernorm_spread"})["execution_eligible"] is True
+    good = S.catalog_entry(_restricted_dynamo_row())
+
+    def cat(**over):
+        e = {**good, **over}
+        return {"schema": "s4d-policy-catalog/1", "policies": {"p": {k: v for k, v in e.items() if v is not None}},
+                "aliases": {}}
+
+    validate_catalog(cat())
+    d = good["execution_decision"]
+    for bad, match in (({**d, "acknowledged_failures": []}, "acknowledged_failures"),
+                       ({k: v for k, v in d.items() if k != "acknowledged_failures"}, "acknowledged_failures"),
+                       ({**d, "acknowledged_failures": "e1_layernorm_spread"}, "acknowledged_failures"),
+                       ({**d, "checkpoint_sha256": "d" * 64}, "checkpoint_sha256"),
+                       ({**d, "decided_by": "coordinator"}, "execution_decision"),
+                       ({**d, "text": " "}, "execution_decision"),
+                       (None, "acknowledged_failures")):
+        with pytest.raises(ValueError, match=match):
+            validate_catalog(cat(execution_decision=bad))
+    with pytest.raises(ValueError, match="acknowledged_failures"):  # a second failed criterion is not covered
+        validate_catalog(cat(criteria={**good["criteria"], "f_stability": {"pass": False}}))
+    with pytest.raises(ValueError, match="FAILED criterion"):  # a restricted entry must publish what failed
+        validate_catalog(cat(criteria={}))
+    with pytest.raises(ValueError, match="never execution-eligible"):  # quarantined: never, decision or not
+        validate_catalog(cat(status="quarantined"))
+    validate_catalog(cat(usage="dry_run_replay_only", execution_eligible=False, execution_decision=None))
 
 
 def test_completion_must_be_the_evaluated_checkpoint():
