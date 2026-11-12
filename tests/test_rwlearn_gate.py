@@ -464,6 +464,50 @@ def test_qa_families_gate_each_consumer_on_its_own_families():
     assert not any("QA family" in p for p in gate.task_problems(rep, "mug-hanging", "dynamo"))
 
 
+def test_reviwo_needs_only_the_m5_sets_of_a_calibration_optional_episode():
+    """Every camera held (calibration_optional/1): the multi-view contract and geometry families fail, the derived
+    ``multiview_sets`` family (M5 sets + robot motion) passes -> ReViWo, DynaMo, e2e_cnn and the single-view FQL
+    conditions may train; every geometric consumer stays refused (2026-11-12)."""
+    m = manifest()
+    for e in m["episodes"].values():
+        e["preprocessing"]["stages"]["qa"].update(output_format="rwprep-qa/3", metrics={"families": {
+            "singleview": {"passed": True}, "multiview": {"passed": False}, "geometry": {"passed": False},
+            "multiview_sets": {"passed": True}}})
+    no_sets = m["episodes"]["drawer-open/episode_000004.h5"]["preprocessing"]["stages"]["qa"]["metrics"]["families"]
+    no_sets["multiview_sets"]["passed"] = False
+    rep = gate.evaluate(m, ["drawer-open", "mug-hanging"])
+    assert rep["passed"] and not rep["geometry_passed"]
+    assert rep["families"]["mug-hanging"]["multiview_sets"]["passed"]
+    assert rep["families"]["drawer-open"]["multiview_sets"]["failed_episodes"] == ["drawer-open/episode_000004.h5"]
+    for consumer in ("reviwo", "dynamo", "e2e_cnn", "fql_reviwo"):
+        assert gate.task_passed(rep, "mug-hanging", consumer)
+    assert not gate.task_passed(rep, "drawer-open", "reviwo") and gate.task_passed(rep, "drawer-open", "dynamo")
+    assert any("QA family multiview_sets" in p for p in gate.task_problems(rep, "drawer-open", "reviwo"))
+    for consumer in ("ours", "snerl", "mvp3d", "sincro", "fql_sincro", "fql_ours", "mvp3d_single", None, "unknown"):
+        assert not gate.task_passed(rep, "mug-hanging", consumer)
+
+
+def test_multiview_sets_derives_from_a_passed_multiview_family_and_older_reports():
+    """Records and reports written before the derived family keep their ReViWo verdict: a passed ``multiview``
+    family contains both M5 gates; a report without the key falls back to its ``multiview`` entry."""
+    m = manifest(validated=True)
+    for e in m["episodes"].values():
+        _families(e)  # QA_FAMILIES only, no multiview_sets key (the pre-2026-11-12 QA)
+    _families(m["episodes"]["mug-hanging/episode_000010.h5"], multiview=False)
+    stages = m["episodes"]["drawer-open/episode_000000.h5"]["preprocessing"]["stages"]
+    assert gate.qa_families(stages) == {"singleview": True, "multiview": True, "geometry": True,
+                                        "multiview_sets": True}
+    rep = gate.evaluate(m, ["drawer-open", "mug-hanging"])
+    assert rep["families"]["drawer-open"]["multiview_sets"]["passed"]
+    assert not rep["families"]["mug-hanging"]["multiview_sets"]["passed"]
+    old = copy.deepcopy(rep)
+    for fams in old["families"].values():
+        fams.pop("multiview_sets")
+    for report in (rep, old):
+        assert gate.task_passed(report, "drawer-open", "reviwo") and not gate.task_passed(report, "mug-hanging", "reviwo")
+        assert gate.task_passed(report, "drawer-open", "ours") and not gate.task_passed(report, "mug-hanging", "ours")
+
+
 @pytest.mark.parametrize("fmt", [None, "rwprep-qa/1", "rwprep-qa/2", "rwprep-qa/3"])
 @pytest.mark.parametrize("with_families", [False, True])
 def test_only_current_qa_with_explicit_families_can_pass(fmt, with_families):

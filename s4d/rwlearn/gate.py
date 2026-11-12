@@ -34,7 +34,9 @@ calibration evidence. Only bound reports list ``store_episodes``. Everything fai
 CONSUMER FAMILIES (PREP2, 2026-11-06): the per-episode QA is reported per consumer family (``QA_FAMILIES``; the qa
 record's status is the base single-view family); each consumer needs its families (``CONSUMER_FAMILIES``) on every
 episode, so an episode without an all-camera multi-view window or without a valid calibration never blocks a
-single-view, non-geometric consumer, and never passes a consumer that needs the failed family.
+single-view, non-geometric consumer, and never passes a consumer that needs the failed family. ReViWo (RGB of the
+all-camera M5 sets, no camera geometry) needs the DERIVED family ``multiview_sets`` (``DERIVED_FAMILIES``) instead of
+the full multi-view family, whose contract checks run our model on calibrated geometry (2026-11-12).
 
 CALIBRATION HOLD (user decision 2026-11-06 ~11:20, item 2: only geometry-dependent outputs and their training
 eligibility are held until the calibration is validated). Consumers are classified in ``CONSUMERS``:
@@ -103,8 +105,16 @@ _SHA = re.compile(r"^[0-9a-f]{64}$")
 # record's status is the base (single-view) family; a consumer additionally needs ITS families on all ``target``
 # episodes. Only rwprep-qa/3 with explicit family verdicts is current; older records never prove a pass.
 QA_FAMILIES = ("singleview", "multiview", "geometry")
+# DERIVED family (2026-11-12, calibration_optional/1 stores, e.g. pick-and-place with every camera held):
+# ``multiview_sets`` = the episode's all-camera M5 sets exist with their recorded robot motion (QA gates
+# ``train_data:m5_motion_recorded`` + ``train_data:m5_sets``) WITHOUT the multi-view contract family (our model's forward
+# and the SNeRL scenes, which need the calibrated geometry). It is what an RGB-only multi-view consumer (ReViWo) reads.
+# A qa record proves it by its own ``multiview_sets`` verdict or by a passed ``multiview`` family (which contains both
+# M5 gates); a gate report written before this family (no such key) falls back to its ``multiview`` verdict.
+DERIVED_FAMILIES = {"multiview_sets": "multiview"}
+REPORT_FAMILIES = QA_FAMILIES + tuple(DERIVED_FAMILIES)
 CONSUMER_FAMILIES = {"ours": QA_FAMILIES, "snerl": QA_FAMILIES, "mvp3d": QA_FAMILIES, "sincro": QA_FAMILIES,
-                     "reviwo": ("singleview", "multiview"), "dynamo": ("singleview",), "e2e_cnn": ("singleview",),
+                     "reviwo": ("singleview", "multiview_sets"), "dynamo": ("singleview",), "e2e_cnn": ("singleview",),
                      "fql_reviwo": ("singleview",), "fql_sincro": ("singleview", "geometry"),
                      "fql_ours": ("singleview", "geometry"), "mvp3d_single": ("singleview", "geometry")}
 _TRAIN_FORMAT = re.compile(r"^s4d\.realworld\.train/(\d+)\.(\d+)\.(\d+)$")
@@ -116,8 +126,17 @@ def consumer_families(name: str | None) -> tuple:
     return CONSUMER_FAMILIES.get(name, QA_FAMILIES)
 
 
+def _report_family(fams: dict, family: str) -> dict:
+    """A task's report entry of ``family``; a derived family missing from an older report is its source family's."""
+    entry = fams.get(family)
+    if entry is None and family in DERIVED_FAMILIES:
+        entry = fams.get(DERIVED_FAMILIES[family])
+    return entry if isinstance(entry, dict) else {}
+
+
 def qa_families(stages: dict) -> dict | None:
-    """{family: passed} of an episode's ``qa`` record (None: a family-QA record without families, fail closed)."""
+    """{family: passed} of an episode's ``qa`` record over ``REPORT_FAMILIES`` (None: a family-QA record without
+    families, fail closed); a derived family passes on its own verdict or on its passed source family."""
     rec = stages.get("qa") or {}
     metrics = rec.get("metrics") or {}
     if not isinstance(metrics, dict):
@@ -127,7 +146,10 @@ def qa_families(stages: dict) -> dict | None:
     fam = metrics.get("families")
     if not isinstance(fam, dict):
         return None
-    return {f: isinstance(fam.get(f), dict) and fam[f].get("passed") is True for f in QA_FAMILIES}
+    out = {f: isinstance(fam.get(f), dict) and fam[f].get("passed") is True for f in REPORT_FAMILIES}
+    for derived, source in DERIVED_FAMILIES.items():
+        out[derived] = out[derived] or out[source]
+    return out
 
 
 # ---------------------------------------------------------------------------------------------- calibration hold
@@ -289,7 +311,7 @@ def evaluate(manifest: dict, tasks, *, required_stages=REQUIRED_STAGES, target: 
     all_ok = geo_ok = True
     for task in tasks:
         problems, hold_problems, hold_ok, identities = [], [], {}, {}
-        family_fail = {f: [] for f in QA_FAMILIES}
+        family_fail = {f: [] for f in REPORT_FAMILIES}
         counts = (manifest.get("counts") or {}).get(task) or {}
         amend = amendments.get(task)
         rec = amend["record"] if amend else None
@@ -300,7 +322,7 @@ def evaluate(manifest: dict, tasks, *, required_stages=REQUIRED_STAGES, target: 
                                      "excluded": [], "problems": [f"gate amendment: {why}"], "problem_count": 1,
                                      "episodes": [], "episode_identities": {}, "store_episodes": []}
             report["families"][task] = {f: {"passed": False, "failed_count": 0, "failed_episodes": []}
-                                        for f in QA_FAMILIES}
+                                        for f in REPORT_FAMILIES}
             report["calibration_hold"][task] = {"passed": False, "validated": 0, "problems": [], "problem_count": 0,
                                                 "episodes": {}}
             all_ok = geo_ok = False
@@ -395,7 +417,7 @@ def evaluate(manifest: dict, tasks, *, required_stages=REQUIRED_STAGES, target: 
             identities[key] = {**identity, "store_episode": None}
             valid.append(key)
             fams = qa_families(stages)
-            for f in QA_FAMILIES:
+            for f in REPORT_FAMILIES:
                 if fams is None or not fams[f]:
                     family_fail[f].append(key if fams is not None else f"{key} (requires rwprep-qa/3 with families)")
             why = calibration_record_problem(stages, sha)
@@ -422,7 +444,7 @@ def evaluate(manifest: dict, tasks, *, required_stages=REQUIRED_STAGES, target: 
                                  "episodes": valid if passed else [],
                                  "episode_identities": identities if passed else {}, "store_episodes": []}
         report["families"][task] = {f: {"passed": passed and not family_fail[f], "failed_count": len(family_fail[f]),
-                                        "failed_episodes": family_fail[f][:50]} for f in QA_FAMILIES}
+                                        "failed_episodes": family_fail[f][:50]} for f in REPORT_FAMILIES}
         hold_passed = passed and not hold_problems and len(hold_ok) == task_target
         geo_ok &= hold_passed
         report["calibration_hold"][task] = {
@@ -474,7 +496,7 @@ def task_passed(report: dict, task: str, consumer: str | None) -> bool:
     dependent consumers."""
     base = bool(((report or {}).get("tasks") or {}).get(task, {}).get("passed"))
     fams = ((report or {}).get("families") or {}).get(task) or {}
-    base = base and all((fams.get(f) or {}).get("passed") is True for f in consumer_families(consumer))
+    base = base and all(_report_family(fams, f).get("passed") is True for f in consumer_families(consumer))
     if not consumer_info(consumer).geometry:
         return base
     return base and bool(((report or {}).get("calibration_hold") or {}).get(task, {}).get("passed"))
@@ -487,7 +509,7 @@ def task_problems(report: dict, task: str, consumer: str | None, limit: int = 5)
     out = list(t.get("problems", []))
     fams = ((report or {}).get("families") or {}).get(task) or {}
     for f in consumer_families(consumer):
-        x = fams.get(f) or {}
+        x = _report_family(fams, f)
         if x.get("passed") is not True and t.get("passed"):
             out.append(f"QA family {f}: {x.get('failed_count', 'not evaluated')} episodes failed "
                        f"{x.get('failed_episodes', [])[:3]}")
