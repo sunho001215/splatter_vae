@@ -26,6 +26,13 @@ REPO = Path(__file__).resolve().parents[2]
 ACTIVITY = ("console.log", "metrics.jsonl", "train.jsonl", "eval.jsonl", "log.txt", "checkpoints/latest.pt")
 
 
+
+def disk_root() -> str:
+    """The workspace filesystem whose free space is reported: /home/ws on the hosts; inside a container (no /home/ws
+    since the Meta-World data mount was dropped, 2026-11-12) the repository's own filesystem."""
+    import os
+    return "/home/ws" if os.path.isdir("/home/ws") else str(Path(__file__).resolve().parents[2])
+
 def running_jobs() -> dict[str, dict]:
     state: dict[str, dict] = {}
     path = REPO / "experiments/registry.jsonl"
@@ -102,7 +109,7 @@ def main() -> None:
         daemon_ok = alive(int(pidfile.read_text()))
         problems += not daemon_ok
         print(f"{'OK   ' if daemon_ok else 'DEAD '} scheduler daemon pid={pidfile.read_text().strip()}")
-    print(f"INFO  free_disk_gb={shutil.disk_usage('/home/ws').free / 1e9:.0f}")
+    print(f"INFO  free_disk_gb={shutil.disk_usage(disk_root()).free / 1e9:.0f}")
     print("HEARTBEAT_OK" if problems == 0 else f"HEARTBEAT_PROBLEM {problems}")
     sys.exit(1 if problems else 0)
 

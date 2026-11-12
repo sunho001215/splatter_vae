@@ -47,6 +47,13 @@ DISK_LOW_GB, DISK_CLEAR_GB = 400.0, 420.0
 GPU_QUERY_TIMEOUT = 180  # the detailed MIG query took 70 s with ~60 local DrM processes (2026-10-18)
 
 
+
+def disk_root() -> str:
+    """The workspace filesystem whose free space is reported: /home/ws on the hosts; inside a container (no /home/ws
+    since the Meta-World data mount was dropped, 2026-11-12) the repository's own filesystem."""
+    import os
+    return "/home/ws" if os.path.isdir("/home/ws") else str(Path(__file__).resolve().parents[2])
+
 def load_state() -> dict:
     state = json.loads(STATE.read_text()) if STATE.is_file() else {}
     state.setdefault("registry_offset", 0)
@@ -212,7 +219,7 @@ def gpu_events(state: dict) -> list[str]:
 
 
 def disk_events(state: dict) -> list[str]:
-    free_gb = shutil.disk_usage("/home/ws").free / 1e9
+    free_gb = shutil.disk_usage(disk_root()).free / 1e9
     if free_gb < DISK_LOW_GB and not state["disk_low"]:
         state["disk_low"] = True
         return [f"DISK_LOW free_gb={free_gb:.0f}"]

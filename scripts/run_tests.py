@@ -415,19 +415,29 @@ def main():
     mode, marker, selected, deselected, selection_problems = select_partition(mode, collected, marked)
     problems.extend(selection_problems)
     shards = partition(selected, REPO, cpu, gpu) if not problems else []
-    concurrent = len(shards)
+    # The serial shard (timing-, signal- and port-sensitive files) runs first and ALONE with the whole budget: under a
+    # container CPU quota, concurrent shards throttle it and its live deadlines become flaky (remote 2026-11-12: two
+    # attempts failed different hwtest deadline tests while every other shard passed). The rest then run in parallel.
+    serial = [shard for shard in shards if shard["class"] == "serial"]
+    parallel = [shard for shard in shards if shard["class"] != "serial"]
+    concurrent = len(parallel)
     threads = threads_per_shard(budget, concurrent)
-    log(f"Collected {len(collected)} tests; starting {concurrent} shards, {threads} threads each")
+    serial_threads = threads_per_shard(budget, 1)
+    log(f"Collected {len(collected)} tests; {len(serial)} exclusive serial shard(s) with {serial_threads} threads, "
+        f"then {concurrent} parallel shards, {threads} threads each")
 
-    def run(shard):
+    def run(shard, shard_threads):
         index = shard["index"]
         start = time.perf_counter()
-        result = invoke(f"shard-{index}", shard["files"], threads, marker=marker)
+        result = invoke(f"shard-{index}", shard["files"], shard_threads, marker=marker)
         log(f"Shard {index} ({shard['class']}): exit={result[0]}, seconds={time.perf_counter() - start:.1f}")
         return result
 
+    by_index = {shard["index"]: run(shard, serial_threads) for shard in serial}
     with ThreadPoolExecutor(max_workers=max(1, concurrent)) as pool:
-        executed = list(pool.map(run, shards))
+        by_index.update(zip((shard["index"] for shard in parallel),
+                            pool.map(lambda shard: run(shard, threads), parallel)))
+    executed = [by_index[shard["index"]] for shard in shards]
     counts, completeness = validate_completeness(selected, [(r[0], r[1]) for r in executed])
     problems.extend(completeness)
     for shard, result in zip(shards, executed):
@@ -475,8 +485,8 @@ def main():
         "source_changed_during_suite": changed,
         "executed_functions": {path: sorted(names) for path, names in sorted(functions.items())},
         "trace_method": "cprofile", "shards": shards,
-        "parallel": {"cpu_shards": cpu, "gpu_shards": gpu, "serial_shards": int(any(
-            s["class"] == "serial" for s in shards)), "concurrent_shards": concurrent,
+        "parallel": {"cpu_shards": cpu, "gpu_shards": gpu, "serial_shards": len(serial), "serial_exclusive": True,
+            "serial_threads": serial_threads, "concurrent_shards": concurrent,
             "cpu_threads": budget, "threads_per_shard": threads, "timeout_seconds": timeout},
         "problems": problems,
         **({} if mode == "all" else {
