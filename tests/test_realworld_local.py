@@ -1236,3 +1236,175 @@ def test_measured_realworld_fql_ram_is_shared_by_admission_and_running_growth(co
     assert scheduler.reservation({'ram_gb': 64}, row, 'ram_gb') == expected
     assert ram_gb(row) == expected
     assert ram_gb({'script': 'scripts/train_snerl.py', 'ram_gb': 64}) == 64
+
+
+# ---- baseline pretraining + local dataset construction (pick-and-place image family, 2026-11-13; user directive
+# 2026-11-12 local capacity)
+OUTCOMES = "learning_inputs/cal/task/outcomes.json"
+
+
+def baseline_rows(f, *, source="realworld"):
+    for b in ("dynamo", "reviwo"):
+        config = f.root / f"configs/realworld/baselines/{b}/task.yaml"
+        config.parent.mkdir(parents=True, exist_ok=True)
+        config.write_text("dataset: {hdf5_path: " + PREFIX + "/learning_inputs/old/store.yaml, batch_size: 4}\n"
+                          "data_interface: {source: " + source + ", split_manifest: " + PREFIX + "/old/split.json, "
+                          "gate_report: " + PREFIX + "/old/gate.json, frame_spacing: 1}\ntrain: {seed: 0}\n")
+    sets = ["--set", "dataset.hdf5_path=" + PREFIX + "/" + STORE, "data_interface.split_manifest=" + PREFIX + "/" + SPLIT,
+            "data_interface.gate_report=" + PREFIX + "/" + GATE]
+    dynamo = row("dyn-pre", role="realworld_pretrain", script="scripts/train_dynamo.py", deps=[], args=[
+        "--config", "configs/realworld/baselines/dynamo/task.yaml", "--name", "dyn-pre", "--output-root", "runs",
+        "--resume", "auto", *sets])
+    reviwo = row("rev-pre", role="realworld_pretrain", script="scripts/train_reviwo.py", deps=[], args=[
+        "--config", "configs/realworld/baselines/reviwo/task.yaml", "--name", "rev-pre", "--output-root", "runs", *sets])
+    return dynamo, reviwo
+
+
+def dataset_row(f, condition="dynamo", export=True):
+    if not (f.mirror / OUTCOMES).exists():
+        (f.remote / OUTCOMES).write_bytes(b'{"schema": "rw-outcomes/1"}\n')
+        rw.fetch([OUTCOMES], f.client, mirror=f.mirror)
+    args = ["build", "--store", PREFIX + "/" + STORE, "--condition", condition, "--out", "runs/data-row/dataset.h5",
+            "--gate-report", PREFIX + "/" + GATE, "--outcomes", PREFIX + "/" + OUTCOMES]
+    args += ["--export", "runs/dyn-pre/encoder.pt", "--device", "cuda"] if export else ["--device", "cpu"]
+    return row("data-row", role="realworld_fql", script=rw.FQL_DATASET, deps=["dyn-pre"], args=args)
+
+
+def test_baseline_pretraining_resolvers_map_inputs_and_pin_outputs(mirrored):
+    f = mirrored
+    for job in baseline_rows(f):
+        assert rw.applies(job, ROLES) and host_roles.role_hosts(job, ROLES) == ("local", "remote")
+        effective, record = localize(f, job)
+        assert effective == [a.replace(PREFIX, str(f.mirror)) for a in job["args"]]
+        assert set(record["input_closure"]) >= {STORE, EPISODE + "/episode.h5"} and "raw_map" not in record
+        assert rw.needed_inputs(job) == {"mirror": sorted([STORE, SPLIT, GATE]), "dependency_files": []}
+
+
+@pytest.mark.parametrize("edit,reason", [
+    ("output_root", "--output-root runs --name"), ("name", "--output-root runs --name"),
+    ("reviwo_resume", "unsupported local input options"), ("abbreviation", "invalid local resolver"),
+    ("init_export", "unsupported local input options"), ("unset_override", "not plain checked arguments"),
+    ("config_outside", "configs/realworld/baselines"), ("source", "data_interface.source realworld"),
+])
+def test_baseline_pretraining_resolvers_fail_closed(mirrored, edit, reason):
+    f = mirrored
+    dynamo, reviwo = baseline_rows(f, source="metaworld" if edit == "source" else "realworld")
+    job = reviwo if edit == "reviwo_resume" else dynamo
+    args = job["args"]
+    if edit == "output_root":
+        args[args.index("--output-root") + 1] = "runs/pretrain"
+    elif edit == "name":
+        args[args.index("--name") + 1] = "other"
+    elif edit == "reviwo_resume":
+        args += ["--resume", "auto"]
+    elif edit == "abbreviation":
+        args[0] = "--conf"
+    elif edit == "init_export":
+        args += ["--init-export-only"]
+    elif edit == "unset_override":  # the config's own remote gate path would be read unverified
+        args.remove("data_interface.gate_report=" + PREFIX + "/" + GATE)
+    elif edit == "config_outside":
+        (f.root / "configs/realworld/fql/b.yaml").write_text((f.root / args[1]).read_text())
+        args[1] = "configs/realworld/fql/b.yaml"
+    if edit == "config_outside":
+        assert not rw.has_resolver(job)
+        with pytest.raises(rw.LocalInputError, match="no local input resolver|no explicit"):
+            localize(f, job)
+        return
+    with pytest.raises(rw.LocalInputError, match=reason):
+        localize(f, job)
+
+
+def test_local_dataset_construction_maps_inputs_dependency_and_raw_root(mirrored, monkeypatch, tmp_path):
+    f = mirrored
+    raw_root = tmp_path / "raw-originals"
+    raw_root.mkdir()
+    monkeypatch.setattr(rw, "LOCAL_RAW_ROOT", raw_root)
+    job = dataset_row(f)
+    assert rw.applies(job, ROLES) and host_roles.role_hosts(job, ROLES) == ("local", "remote")
+    with pytest.raises(rw.LocalInputError, match="dependency must be done"):
+        localize(f, job)
+    dependency(f, "dyn-pre", "encoder.pt")
+    effective, record = localize(f, job)
+    assert effective == [a.replace(PREFIX, str(f.mirror)) for a in job["args"]] + [
+        "--raw-root", f"{rw.REMOTE_RAW_ROOT}={raw_root}"]
+    assert record["raw_map"] == {"from": rw.REMOTE_RAW_ROOT, "to": str(raw_root)}
+    assert record["dependency_inputs"] == {"runs/dyn-pre/encoder.pt": sha(b"verified output")}
+    assert set(record["inputs"]) == {PREFIX + "/" + STORE, PREFIX + "/" + GATE, PREFIX + "/" + OUTCOMES}
+    e2e = dataset_row(f, "e2e_cnn", export=False)
+    assert localize(f, e2e)[0][-2:] == ["--raw-root", f"{rw.REMOTE_RAW_ROOT}={raw_root}"]
+    raw_root.rmdir()
+    with pytest.raises(rw.LocalInputError, match="local raw recordings root missing"):
+        localize(f, job)
+
+
+@pytest.mark.parametrize("edit,reason", [
+    ("smoke", "invalid local resolver|unsupported local input options"),
+    ("episodes", "invalid local resolver|unsupported local input options"),
+    ("assume", "invalid local resolver|unsupported local input options"),
+    ("raw_root", "invalid local resolver|unsupported local input options"),
+    ("export_other", "runs/<declared dependency>/encoder.pt"), ("out", "runs/<own id>/"),
+    ("store_local", "mirrored compact store.yaml"), ("no_outcomes", "--outcomes must name a mirrored remote input"),
+])
+def test_local_dataset_construction_fails_closed(mirrored, monkeypatch, tmp_path, edit, reason):
+    f = mirrored
+    monkeypatch.setattr(rw, "LOCAL_RAW_ROOT", tmp_path)
+    dependency(f, "dyn-pre", "encoder.pt")
+    job = dataset_row(f)
+    args = job["args"]
+    if edit == "smoke":
+        args += ["--smoke"]
+    elif edit == "episodes":
+        args += ["--episodes", "a"]
+    elif edit == "assume":
+        args += ["--assume-final-success"]
+    elif edit == "raw_root":
+        args += ["--raw-root", "/a=/b"]
+    elif edit == "export_other":
+        args[args.index("--export") + 1] = "runs/other/encoder.pt"
+    elif edit == "out":
+        args[args.index("--out") + 1] = "runs/elsewhere/dataset.h5"
+    elif edit == "store_local":
+        args[args.index("--store") + 1] = "runs/x/store.yaml"
+    else:
+        i = args.index("--outcomes")
+        del args[i:i + 2]
+    with pytest.raises(rw.LocalInputError, match=reason):
+        localize(f, job)
+
+
+def _dataset_script():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("realworld_fql_dataset_test", rw.REPO / "scripts/realworld_fql_dataset.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_dataset_builder_raw_root_mapping_verifies_every_file(tmp_path):
+    script = _dataset_script()
+    local = tmp_path / "local"
+    (local / "task").mkdir(parents=True)
+    good = local / "task/episode_000001.h5"
+    good.write_bytes(b"raw recording")
+    want = sha(b"raw recording")
+    store = SimpleNamespace(raw_recording=lambda ep: f"/home/compu/kaist/sunho/data/real_world/task/{ep}.h5",
+                            raw_sha256=lambda ep: want)
+    mapping = f"/home/compu/kaist/sunho/data/real_world={local}"
+    assert script.mapped_raw_recordings(store, ["episode_000001"], mapping) == {"episode_000001": str(good)}
+    with pytest.raises(SystemExit, match="sha256"):
+        script.mapped_raw_recordings(SimpleNamespace(raw_recording=store.raw_recording, raw_sha256=lambda ep: "0" * 64),
+                                     ["episode_000001"], mapping)
+    with pytest.raises(SystemExit, match="sha256"):  # no recorded identity: never read unverified
+        script.mapped_raw_recordings(SimpleNamespace(raw_recording=store.raw_recording, raw_sha256=lambda ep: ""),
+                                     ["episode_000001"], mapping)
+    with pytest.raises(SystemExit, match="not below"):
+        script.mapped_raw_recordings(store, ["episode_000001"], f"/other/root={local}")
+    with pytest.raises(SystemExit, match="not a regular file"):
+        script.mapped_raw_recordings(store, ["episode_000002"], mapping)
+    (local / "task/episode_000003.h5").symlink_to(good)
+    with pytest.raises(SystemExit, match="not a regular file"):
+        script.mapped_raw_recordings(store, ["episode_000003"], mapping)
+    for bad in ("no-separator", "relative=/x", "/x=relative"):
+        with pytest.raises(SystemExit, match="RECORDED_ROOT=LOCAL_ROOT"):
+            script.mapped_raw_recordings(store, ["episode_000001"], bad)

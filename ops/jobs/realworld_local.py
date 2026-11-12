@@ -1,8 +1,13 @@
 """Explicit local placement and verified inputs for remote-resident training (unified pool, 2026-11-11 ~20:15).
 
-Only never-launched training rows move. Preprocessing and dataset construction still execute remotely, where their
-source data lives. The queue's arguments and scientific fingerprint never change: the scheduler maps input paths at
-launch and records their content identities. Compact descriptors retain their byte-identical remote originals beside
+Only never-launched training rows move. Preprocessing still executes remotely, where its source data lives. Dataset
+construction (scripts/realworld_fql_dataset.py build) may now also run locally when its pretraining ran locally (user
+directive 2026-11-12, local capacity): its store / gate / outcome inputs are mirrored like every other input, its encoder
+is a declared local dependency, and the raw recordings it reads for the actions are the local read-only originals
+(``LOCAL_RAW_ROOT``) through an explicit ``--raw-root`` mapping that the dataset builder sha256-verifies against the
+store's recorded raw identity before use (never a mirror of the raw files, never a write under the originals).
+The queue's arguments and scientific fingerprint never change: the scheduler maps input paths at launch and records
+their content identities. Compact descriptors retain their byte-identical remote originals beside
 the localized copies; every referenced episode file is inventoried. Large files use the verified transfer's size and
 mtime at admission, small files are hashed again. ``verify`` can audit every byte independently of admission.
 
@@ -54,6 +59,19 @@ RESOLVERS = {
     "scripts/train.py": {"inputs": ("--set",), "outputs": OUTPUT_OPTIONS, "config": "pretrain"},
     "scripts/export_encoder.py": {"inputs": ("--run", "--checkpoint"), "outputs": ("--out",), "config": None},
 }
+# Baseline pretraining trainers (scripts/train_<b>.py, s4d.config.load_config of ONE --config + --set): their full option
+# spellings (argparse defaults allow abbreviations; local launches require these exact spellings, as for the FQL trainer)
+BASELINE_OPTIONS = {"scripts/train_dynamo.py": ("--config", "--name", "--output-root", "--set", "--resume", "--no-wandb"),
+                    "scripts/train_reviwo.py": ("--config", "--name", "--output-root", "--set", "--no-wandb")}
+for _script in BASELINE_OPTIONS:
+    RESOLVERS[_script] = {"inputs": ("--set",), "outputs": OUTPUT_OPTIONS, "config": "baseline"}
+FQL_DATASET = "scripts/realworld_fql_dataset.py"
+RESOLVERS[FQL_DATASET] = {"inputs": ("--store", "--gate-report", "--outcomes", "--export"), "outputs": ("--out",),
+                          "config": None}
+# Raw recordings (actions) for local dataset construction: the remote copies' root and the local read-only originals the
+# ingestion verified (realworld-ops/ingest/manifest.json); the builder checks each file's sha256 before reading it.
+REMOTE_RAW_ROOT = "/home/compu/kaist/sunho/data/real_world"
+LOCAL_RAW_ROOT = Path("/home/ws/data/real_world")
 REMOTE_LOCK = REPO / "runs/setup/remote-driver.lock"
 
 
@@ -115,6 +133,10 @@ def has_resolver(job: dict) -> bool:
         return "--regime" in args and args[args.index("--regime") + 1:][:1] == ["realworld"]
     if script == "scripts/train.py":
         return any(a.startswith("configs/realworld/") or a == "data.regime=realworld" for a in args)
+    if script in BASELINE_OPTIONS:
+        return any(a.startswith("configs/realworld/baselines/") for a in args)
+    if script == FQL_DATASET:
+        return args[:1] == ["build"]
     return True
 
 
@@ -139,6 +161,22 @@ def _arguments(job: dict):
         parser.add_argument("--output-root", default="runs")
         parser.add_argument("--resume", choices=["auto"])
         parser.add_argument("--no-wandb", action="store_true")
+    elif script in BASELINE_OPTIONS:
+        parser.add_argument("--config", required=True)
+        parser.add_argument("--set", nargs="*", default=[])
+        parser.add_argument("--name", required=True)
+        parser.add_argument("--output-root", required=True)
+        parser.add_argument("--no-wandb", action="store_true")
+        if "--resume" in BASELINE_OPTIONS[script]:
+            parser.add_argument("--resume", choices=["auto"])
+    elif script == FQL_DATASET:
+        parser.add_argument("command", choices=["build"])
+        for option in ("--store", "--condition", "--out"):
+            parser.add_argument(option, required=True)
+        for option in ("--export", "--gate-report", "--outcomes", "--reward", "--device"):
+            parser.add_argument(option)
+        # --smoke / --episodes / --assume-final-success / --raw-root are refused (unknown here): a full local build
+        # uses every store episode with recorded outcomes, and the raw mapping is added only by localization
     elif script == "scripts/compute_workspace_stats.py":
         parser.add_argument("--regime", choices=["realworld"], required=True)
         parser.add_argument("--path", required=True)
@@ -157,8 +195,9 @@ def _arguments(job: dict):
             raise LocalInputError(f"unsupported local input options: {other[:3]}")
     except (argparse.ArgumentError, SystemExit) as exc:
         raise LocalInputError(f"invalid local resolver arguments: {exc}") from exc
-    if script == "scripts/train.py":
-        # train.py's default output-root is outside runs: require the explicit portable output location.
+    if script == "scripts/train.py" or script in BASELINE_OPTIONS:
+        # the trainers' default output-root is outside runs (train_<b>.py: runs/pretrain): require the explicit
+        # portable output location
         if known.name != job["id"] or known.output_root != "runs" or not any(
                 a == "--output-root" or a.startswith("--output-root=") for a in job.get("args", [])):
             raise LocalInputError("local training outputs must be --output-root runs --name <own id>")
@@ -166,6 +205,16 @@ def _arguments(job: dict):
         output = _rel(known.out)
         if not output.startswith(f"runs/{job['id']}/"):
             raise LocalInputError("local output must be runs/<own id>/<file>")
+    if script == FQL_DATASET:
+        if _mapped(known.store) is None or PurePosixPath(known.store).name != "store.yaml":
+            raise LocalInputError("local dataset --store must name a mirrored compact store.yaml")
+        for option, value in (("--gate-report", known.gate_report), ("--outcomes", known.outcomes)):
+            if value is None or _mapped(value) is None:
+                raise LocalInputError(f"local dataset {option} must name a mirrored remote input")
+        if known.export is not None:
+            parts = PurePosixPath(_rel(known.export)).parts
+            if len(parts) != 3 or parts[0] != "runs" or parts[1] not in job.get("deps", []) or parts[2] != "encoder.pt":
+                raise LocalInputError("local dataset --export must be runs/<declared dependency>/encoder.pt")
     if script == "scripts/compute_workspace_stats.py":
         if _mapped(known.path) is None or PurePosixPath(known.path).name != "store.yaml":
             raise LocalInputError("realworld stats --path must name a mirrored compact store.yaml")
@@ -520,7 +569,8 @@ def _resolved_paths(job: dict, root: Path, remote_prefix: str = REMOTE_PREFIX, *
     if resolver.get("config") is None:
         return set()
     args = [str(a) for a in job.get("args", [])]
-    options = TRAINER_OPTIONS + (("--resume",) if resolver["config"] == "pretrain" else ())
+    options = (BASELINE_OPTIONS[job["script"]] if resolver["config"] == "baseline"
+               else TRAINER_OPTIONS + (("--resume",) if resolver["config"] == "pretrain" else ()))
     odd = [a for a in args if a.startswith("--") and a.split("=", 1)[0] not in options]
     if odd:
         raise LocalInputError(f"options other than the trainer's full spellings are not supported locally: {odd[:3]}")
@@ -538,6 +588,12 @@ def _resolved_paths(job: dict, root: Path, remote_prefix: str = REMOTE_PREFIX, *
         cfg = load_config([Path(c) if Path(c).is_absolute() else root / c for c in configs], known.set)
         if resolver["config"] == "pretrain" and cfg.get("data", {}).get("regime") != "realworld":
             raise LocalInputError("local train.py resolver requires data.regime realworld")
+        if resolver["config"] == "baseline" and (
+                any(Path(c).is_absolute() or ".." in Path(c).parts or not c.startswith("configs/realworld/baselines/")
+                    for c in configs)
+                or (cfg.get("data_interface") or {}).get("source") != "realworld"):
+            raise LocalInputError("local baseline trainers need a configs/realworld/baselines/ configuration with "
+                                  "data_interface.source realworld")
     except (argparse.ArgumentError, SystemExit, OSError, ValueError, TypeError, AttributeError, yaml.YAMLError) as exc:
         raise LocalInputError(f"cannot resolve the trainer configuration: {exc}") from exc
     found, todo = set(), [cfg]
@@ -600,6 +656,14 @@ def _inputs(job: dict, state: dict, mirror: Path, manifest: Path, runs: Path,
         relative = _mapped(value, remote_prefix)
         effective.append(str(arg)[:len(str(arg)) - len(value)] + str(mirror) + value[len(remote_prefix):]
                          if relative is not None else arg)
+    raw_map = None
+    if job.get("script") == FQL_DATASET:
+        # actions come from the raw recordings: the local read-only originals, sha256-verified by the builder against
+        # each episode's recorded raw identity before use (scripts/realworld_fql_dataset.py --raw-root)
+        if not LOCAL_RAW_ROOT.is_dir():
+            raise LocalInputError(f"local raw recordings root missing: {LOCAL_RAW_ROOT}")
+        raw_map = {"from": REMOTE_RAW_ROOT, "to": str(LOCAL_RAW_ROOT)}
+        effective += ["--raw-root", f"{REMOTE_RAW_ROOT}={LOCAL_RAW_ROOT}"]
     # The configuration the trainer will ACTUALLY resolve (config files + the effective, mapped arguments) may hold no
     # unmapped remote path, no absolute path outside the verified mirror inputs and no run output other than a checked
     # dependency file: an unused --set spelling cannot stand in for a consumed configuration value.
@@ -612,7 +676,8 @@ def _inputs(job: dict, state: dict, mirror: Path, manifest: Path, runs: Path,
             raise LocalInputError(f"the effective configuration names an unverified absolute path: {found}")
         if normal.startswith("runs/") and normal not in checked:
             raise LocalInputError(f"the effective configuration names an unchecked run output: {found}")
-    return effective, {"input_map": {"from": remote_prefix, "to": str(mirror)}, "manifest_sha256": _sha(raw or b""),
+    return effective, {"input_map": {"from": remote_prefix, "to": str(mirror)}, **({"raw_map": raw_map} if raw_map else {}),
+                       "manifest_sha256": _sha(raw or b""),
                        "inputs": inputs, "dependency_inputs": dependencies,
                        "input_closure": {name: files[name]["sha256"] for name in sorted(closure)}}
 

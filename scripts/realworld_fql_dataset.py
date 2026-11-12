@@ -34,6 +34,39 @@ from s4d.rwlearn.gate import FQL_CONSUMER  # noqa: E402
 from s4d.rwlearn.store import open_store  # noqa: E402
 
 
+def mapped_raw_recordings(store, episodes, mapping: str) -> dict:
+    """{episode: local raw path} for ``RECORDED_ROOT=LOCAL_ROOT``: the recorded path must lie below RECORDED_ROOT, the
+    mapped file must be a regular file (no symlink) inside LOCAL_ROOT, and its sha256 must equal the episode's recorded
+    raw identity (the ingestion manifest's sha256, written into the training store and bound by the gate report)."""
+    import hashlib
+
+    recorded, sep, local = mapping.partition("=")
+    if not sep or not recorded.startswith("/") or not local.startswith("/"):
+        raise SystemExit("--raw-root must be RECORDED_ROOT=LOCAL_ROOT (absolute paths)")
+    recorded_root, local_root = Path(recorded), Path(local).resolve(strict=True)
+    out = {}
+    for ep in episodes:
+        source = Path(store.raw_recording(ep))
+        try:
+            relative = source.relative_to(recorded_root)
+        except ValueError:
+            raise SystemExit(f"{ep}: raw recording {source} is not below {recorded_root}") from None
+        if ".." in relative.parts:
+            raise SystemExit(f"{ep}: unsafe raw recording path {source}")
+        path = local_root / relative
+        if path.is_symlink() or not path.is_file() or local_root not in path.resolve(strict=True).parents:
+            raise SystemExit(f"{ep}: mapped raw recording {path} is not a regular file inside {local_root}")
+        want = str(getattr(store, "raw_sha256", lambda _ep: "")(ep) or "")
+        digest = hashlib.sha256()
+        with path.open("rb") as stream:
+            for block in iter(lambda: stream.read(8 * 2**20), b""):
+                digest.update(block)
+        if not want or digest.hexdigest() != want:
+            raise SystemExit(f"{ep}: mapped raw recording {path} sha256 {digest.hexdigest()} != recorded {want or None}")
+        out[ep] = str(path)
+    return out
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -51,6 +84,11 @@ def main() -> None:
                                      "{episode: true|false} (true = successful demonstration)")
     b.add_argument("--assume-final-success", action="store_true",
                    help="treat every recording as a successful demonstration (no outcome marker in the files)")
+    b.add_argument("--raw-root", metavar="RECORDED_ROOT=LOCAL_ROOT",
+                   help="read each episode's raw recording (actions) from LOCAL_ROOT/<path below RECORDED_ROOT> instead "
+                        "of the recorded path; every mapped file must be a regular file whose sha256 equals the "
+                        "episode's recorded raw identity (fail closed). Local dataset construction (ops/jobs/"
+                        "realworld_local.py) maps the remote copies to the read-only ingested originals")
     args = ap.parse_args()
 
     store = open_store(args.store)
@@ -67,8 +105,9 @@ def main() -> None:
     out.parent.mkdir(parents=True, exist_ok=True)
     if (CONDITIONS[args.condition].encoder_type is None) != (args.export is None):
         raise SystemExit("--export is required for frozen-encoder conditions and refused for e2e_cnn")
+    raw_paths = mapped_raw_recordings(store, episodes, args.raw_root) if args.raw_root else None
     print(json.dumps(build_fql_dataset(store, args.condition, args.export, out, episodes=episodes,
-                                       reward=args.reward, device=args.device,
+                                       reward=args.reward, device=args.device, raw_paths=raw_paths,
                                        outcomes=json.loads(Path(args.outcomes).read_text()) if args.outcomes else None,
                                        assume_final_success=args.assume_final_success), indent=1))
 
