@@ -1140,6 +1140,32 @@ def test_rwprep_uses_the_same_capacity_guard_and_release_reservation(monkeypatch
         adapter.guard_payload(job)
 
 
+def test_rwprep_cpu_budget_and_ram_reserve_follow_the_scheduler_queue(monkeypatch, tmp_path):
+    """rwprep admits against the SAME hosts.remote budget the scheduler reads (no hard-coded 320)."""
+    from ops.containers import rwprep_capacity as adapter
+    from ops.jobs import scheduler
+
+    assert adapter.DEFAULT_CPU_THREAD_BUDGET == scheduler.REMOTE_CPU_THREAD_BUDGET
+    instances = inv.validate_allowlist(allowlist())
+    monkeypatch.setattr(adapter, 'REMOTE_MIG_INSTANCES', instances)
+    monkeypatch.setattr(adapter.release_reservation, 'reserved_gpus', lambda: set())
+    job = {'gpu': instances[0]['uuid'], 'gpu_need_bytes': 2 * 2**30, 'ram_bytes': 8 * 2**30, 'cpus': 4}
+    queue = tmp_path / 'queue.yaml'
+    queue.write_text(yaml.safe_dump({'hosts': {'remote': {'host_ram_reserve_gb': 120}}, 'jobs': []}))
+    data = adapter.guard_payload(job, queue)['input']
+    assert data['cpu_thread_budget'] == 320 and data['reserve_bytes'] == 120 * 2**30
+    queue.write_text(yaml.safe_dump({'hosts': {'remote': {'cpu_thread_budget': 352, 'host_ram_reserve_gb': 100}},
+                                     'jobs': []}))
+    data = adapter.guard_payload(job, queue)['input']
+    assert data['cpu_thread_budget'] == 352 and data['reserve_bytes'] == 100 * 2**30
+    for bad in (0, 2000, 352.0, '352', True):
+        queue.write_text(yaml.safe_dump({'hosts': {'remote': {'cpu_thread_budget': bad}}, 'jobs': []}))
+        with pytest.raises(ValueError, match='cpu_thread_budget'):
+            adapter.guard_payload(job, queue)
+        with pytest.raises(ValueError, match='cpu_thread_budget'):
+            scheduler.load_queue(queue)
+
+
 def test_local_fair_share_keeps_exclusive_placement_and_shared_capacity():
     from ops.jobs.fair_share import select
     limits = {'mig': {'max_jobs': 3, 'max_mem_gb': 22}}

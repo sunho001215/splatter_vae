@@ -7,15 +7,41 @@ this task's writable scope.
 """
 from __future__ import annotations
 
+import math
+from pathlib import Path
+
+import yaml
+
 from ops.containers.slot_guard import SOURCE
 from ops.jobs import release_reservation
 from ops.resources.gpu_guard import REMOTE_MIG_INSTANCES
 from ops.resources.mig_inventory import queue_limits
 
 ROOT = "/home/compu/kaist/sunho"
+QUEUE = Path(__file__).resolve().parents[2] / "experiments/queue.yaml"
+# Defaults identical to the scheduler (ops/jobs/scheduler.py REMOTE_CPU_THREAD_BUDGET, hosts.remote.host_ram_reserve_gb).
+DEFAULT_CPU_THREAD_BUDGET = 320
+DEFAULT_HOST_RAM_RESERVE_GIB = 120
 
 
-def guard_payload(job: dict) -> dict:
+def remote_host_policy(queue_path: Path = QUEUE) -> dict:
+    """The remote host's CPU-thread quota budget and host RAM reserve, read from the SAME queue configuration
+    (experiments/queue.yaml hosts.remote) the scheduler and its in-lock guard use, so rwprep and the scheduler admit
+    against one budget (2026-11-12: a hard-coded 320 here could diverge from the scheduler's configured budget).
+    Fails closed on an unreadable or invalid value."""
+    queue = yaml.safe_load(Path(queue_path).read_text()) or {}
+    host = (queue.get("hosts") or {}).get("remote") or {}
+    budget = host.get("cpu_thread_budget", DEFAULT_CPU_THREAD_BUDGET)
+    reserve = host.get("host_ram_reserve_gb", DEFAULT_HOST_RAM_RESERVE_GIB)
+    if type(budget) is not int or not 1 <= budget <= 1024:
+        raise ValueError("invalid remote cpu_thread_budget")
+    if type(reserve) not in (int, float) or not math.isfinite(reserve) or reserve < 0:
+        raise ValueError("invalid remote host_ram_reserve_gb")
+    return {"cpu_thread_budget": budget, "reserve_bytes": math.ceil(reserve * 2**30)}
+
+
+def guard_payload(job: dict, queue_path: Path = QUEUE) -> dict:
+    policy = remote_host_policy(queue_path)
     instances = REMOTE_MIG_INSTANCES or ()
     gpu = job['gpu']
     item = next((item for item in instances if item['uuid'] == gpu), None)
@@ -38,7 +64,7 @@ def guard_payload(job: dict) -> dict:
     data = {'uuid': gpu, 'parent': item['parent'], 'gpu_instance_id': item['gpu_instance_id'],
             'device': item['device'], 'max_jobs': max_jobs, 'exclusive_gpu': job.get('exclusive_gpu', False),
             'idle_mib': 256, 'gpu_bytes': job['gpu_need_bytes'], 'capacity_bytes': cap,
-            'ram_bytes': job['ram_bytes'], 'reserve_bytes': 120 * 2**30,
+            'ram_bytes': job['ram_bytes'], 'reserve_bytes': policy['reserve_bytes'],
             'disk_bytes': job.get('disk_bytes', 0), 'floor_bytes': 0, 'disk_floor_fraction': 0.15,
-            'cpu_threads': threads, 'cpu_thread_budget': 320, 'root': ROOT}
+            'cpu_threads': threads, 'cpu_thread_budget': policy['cpu_thread_budget'], 'root': ROOT}
     return {'source': SOURCE, 'input': data}
