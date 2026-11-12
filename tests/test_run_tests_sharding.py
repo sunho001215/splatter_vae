@@ -295,3 +295,28 @@ def test_seeded_model_cache_is_private(tmp_path):
     assert copied.read_bytes() == weights.read_bytes()
     copied.write_bytes(b"test-write")
     assert weights.read_bytes() == b"verified-model"
+
+
+def test_release_suite_partitions_select_exactly_and_complement():
+    """User 2026-11-12: the remote runs every test but the metaworld_data ones; the local partition exactly those."""
+    collected = ["a.py::x", "a.py::y", "b.py::z", "c.py::w"]
+    marked = ["a.py::y"]
+    mode, marker, selected, deselected, problems = runner.select_partition("remote", collected, marked)
+    assert (mode, marker, selected, deselected, problems) == (
+        "remote", ("-m", "not metaworld_data"), ["a.py::x", "b.py::z", "c.py::w"], ["a.py::y"], [])
+    mode, marker, selected, deselected, problems = runner.select_partition("metaworld_data", collected, marked)
+    assert (mode, marker, selected, deselected, problems) == (
+        "metaworld_data", ("-m", "metaworld_data"), ["a.py::y"], ["a.py::x", "b.py::z", "c.py::w"], [])
+    assert runner.select_partition("all", collected, marked)[2:4] == (collected, [])
+    # nothing marked: the remote suite is the complete suite; an empty local partition fails closed
+    assert runner.select_partition("remote", collected, [])[0] == "all"
+    assert runner.select_partition("metaworld_data", collected, [])[4]
+
+
+def test_the_metaworld_marker_is_registered_and_used():
+    import subprocess
+    import sys
+    listed = subprocess.run([sys.executable, "-I", "-m", "pytest", "--markers", "-p", "no:cacheprovider"],
+                            cwd=REPO, capture_output=True, text=True, timeout=120).stdout
+    assert f"@pytest.mark.{runner.MARKER}:" in listed
+    assert "@pytest.mark.metaworld_data" in (REPO / "tests/test_baselines_snerl.py").read_text()

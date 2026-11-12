@@ -18,6 +18,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
+MARKER = "metaworld_data"  # tests reading the Meta-World development data (pyproject.toml markers)
 sys.path.insert(0, str(REPO / "scripts"))
 sys.path.insert(0, str(REPO))
 KINDS = ("passed", "error", "failed", "skipped")
@@ -118,7 +119,7 @@ def shard_cache_root(cache, output, name, repository=REPO):
     The output-path hash prevents concurrent runs from sharing writable caches.
     """
     token = hashlib.sha256(str(output).encode()).hexdigest()[:8]
-    leaf = "c" if name == "collection" else name.removeprefix("shard-")
+    leaf = {"collection": "c", "collection-marked": "m"}.get(name, name.removeprefix("shard-"))
     suffix = Path("ts") / token / leaf
     root = cache / suffix
     socket_suffix = "/tmp/pymp-abcdefgh/listener-abcdefgh"
@@ -232,6 +233,22 @@ def validate_completeness(collected, results):
     return {kind: counts[kind] for kind in KINDS}, problems
 
 
+def select_partition(mode, collected, marked):
+    """(mode, pytest marker args, selected, deselected, problems) of a release-suite partition: 'all' runs the complete
+    collection; 'remote' every test but the MARKER ones (the complete suite when none is marked); MARKER exactly those."""
+    problems = []
+    if mode != "all" and not marked:
+        if mode == "remote":
+            mode = "all"  # nothing needs the Meta-World data: the remote suite is the complete suite
+        else:
+            problems.append({"phase": "collection", "error": f"No {MARKER} tests to run in this partition"})
+    marker = () if mode == "all" else ("-m", f"not {MARKER}") if mode == "remote" else ("-m", MARKER)
+    marked_set = set(marked)
+    selected = list(collected) if mode == "all" else [n for n in collected if (n in marked_set) == (mode == MARKER)]
+    selected_set = set(selected)
+    return mode, marker, selected, [n for n in collected if n not in selected_set], problems
+
+
 def full_suite_passed(*, targeted, code, counts, problems):
     return (not targeted and code == 0 and not problems and counts["passed"] > 0
             and not any(counts[kind] for kind in ("failed", "error", "skipped")))
@@ -249,6 +266,8 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--output-dir", default=os.environ.get("S4D_TEST_EVIDENCE_DIR", str(REPO / "docs")))
     ap.add_argument("--files", nargs="+", help="Development subset; never produces full-suite acceptance")
+    ap.add_argument("--partition", choices=("all", "remote", "metaworld_data"),
+                    help="default: remote on the remote host (no Meta-World development data there), all elsewhere")
     ap.add_argument("--shards-cpu", type=int)
     ap.add_argument("--shards-gpu", type=int)
     ap.add_argument("--worker", type=Path, help=argparse.SUPPRESS)
@@ -298,7 +317,7 @@ def main():
         with log_path.open("a") as stream:
             stream.write(message + "\n")
 
-    def invoke(name, files, threads, collect=False):
+    def invoke(name, files, threads, collect=False, marker=()):
         directory = output / name
         # Reusing an evidence directory cannot accidentally adopt a stale worker report.
         directory.mkdir(parents=True, exist_ok=True)
@@ -306,7 +325,7 @@ def main():
         junit = directory / "tests.junit.xml"
         for path in (result_path, junit):
             path.unlink(missing_ok=True)
-        args = [*files, "-q", "--tb=short", "--basetemp", str(output / "tmp" / name),
+        args = [*files, *marker, "-q", "--tb=short", "--basetemp", str(output / "tmp" / name),
                 "-o", f"cache_dir={directory / 'pytest-cache'}"]
         args += ["--collect-only"] if collect else [f"--junitxml={junit}"]
         spec = directory / "spec.json"
@@ -334,7 +353,21 @@ def main():
     if collect_code or not collection or collection.get("problems") or timed_out:
         problems.append({"phase": "collection", "error": f"Collection failed (exit {collect_code})",
                          "details": collection})
-    shards = partition(collected, REPO, cpu, gpu) if not problems else []
+    # Release-suite partitions (user 2026-11-12; ops/containers/suite_partition.py): the remote host has no Meta-World
+    # development data, so its suite runs every test but the metaworld_data ones; the release chain runs exactly those
+    # on the local host. Only the combination of both is a complete suite (full_suite_passed stays false here).
+    mode = options.partition or ("remote" if HOST_NAME == "remote" else "all")
+    marked = []
+    if mode != "all" and not problems:
+        marked_code, marked_result, _, marked_timeout = invoke("collection-marked", collection_files, budget, True,
+                                                               marker=("-m", MARKER))
+        marked = marked_result.get("nodeids", []) if marked_result else []
+        if (marked_code not in (0, 5) or not marked_result or marked_result.get("problems") or marked_timeout
+                or not set(marked) <= set(collected)):
+            problems.append({"phase": "collection", "error": f"Marker collection failed (exit {marked_code})"})
+    mode, marker, selected, deselected, selection_problems = select_partition(mode, collected, marked)
+    problems.extend(selection_problems)
+    shards = partition(selected, REPO, cpu, gpu) if not problems else []
     concurrent = len(shards)
     threads = threads_per_shard(budget, concurrent)
     log(f"Collected {len(collected)} tests; starting {concurrent} shards, {threads} threads each")
@@ -342,13 +375,13 @@ def main():
     def run(shard):
         index = shard["index"]
         start = time.perf_counter()
-        result = invoke(f"shard-{index}", shard["files"], threads)
+        result = invoke(f"shard-{index}", shard["files"], threads, marker=marker)
         log(f"Shard {index} ({shard['class']}): exit={result[0]}, seconds={time.perf_counter() - start:.1f}")
         return result
 
     with ThreadPoolExecutor(max_workers=max(1, concurrent)) as pool:
         executed = list(pool.map(run, shards))
-    counts, completeness = validate_completeness(collected, [(r[0], r[1]) for r in executed])
+    counts, completeness = validate_completeness(selected, [(r[0], r[1]) for r in executed])
     problems.extend(completeness)
     for shard, result in zip(shards, executed):
         shard["seconds"] = result[1].get("duration_seconds", 0) if result[1] else 0
@@ -389,8 +422,8 @@ def main():
         "pytest_args": [r[2] for r in executed], "exit_code": code,
         "duration_seconds": time.perf_counter() - clock, "counts": counts, "total": sum(counts.values()),
         "collected_total": len(collected),
-        "full_suite_passed": full_suite_passed(targeted=options.files is not None, code=code,
-                                               counts=counts, problems=problems),
+        "full_suite_passed": mode == "all" and full_suite_passed(targeted=options.files is not None, code=code,
+                                                                 counts=counts, problems=problems),
         "source_sha256": fingerprints, "source_sha256_before": source_before,
         "source_changed_during_suite": changed,
         "executed_functions": {path: sorted(names) for path, names in sorted(functions.items())},
@@ -399,6 +432,10 @@ def main():
             s["class"] == "serial" for s in shards)), "concurrent_shards": concurrent,
             "cpu_threads": budget, "threads_per_shard": threads, "timeout_seconds": timeout},
         "problems": problems,
+        **({} if mode == "all" else {
+            "partition": mode, "partition_marker": MARKER, "selected": selected, "deselected": deselected,
+            "partition_passed": full_suite_passed(targeted=options.files is not None, code=code, counts=counts,
+                                                  problems=problems)}),
         "limitations": "Function evidence unions shard processes; nested test subprocesses are not profiled. "
                        "Gloo child results are asserted by tests/test_ddp.py. Synthetic renders are not CUDA acceptance.",
     }

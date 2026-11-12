@@ -30,7 +30,7 @@ TAG = sys.argv[sys.argv.index('--tag') + 1] if '--tag' in sys.argv else ''
 short = commit[:7] + (f'-{TAG}' if TAG else '')
 out = ROOT / 'runs/remote/acceptance' / short
 out.mkdir(parents=True, exist_ok=True)
-state = jobs.read_registry()
+state = jobs.read_registry(ROOT / 'experiments/registry.jsonl')
 
 
 def verified(job_id, name):

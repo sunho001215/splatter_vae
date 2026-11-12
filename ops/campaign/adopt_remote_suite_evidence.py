@@ -29,7 +29,7 @@ from _bootstrap import source_fingerprints  # noqa: E402
 
 job_id = sys.argv[1]
 local = [sys.argv[i + 1] for i, a in enumerate(sys.argv) if a == '--local']
-state = jobs.read_registry()[job_id]
+state = jobs.read_registry(ROOT / 'experiments/registry.jsonl')[job_id]
 assert state['status'] == jobs.DONE and state['host'] == 'remote', state['status']
 assert state['sync']['final'] is True and state['sync']['verified'] is True
 path = ROOT / 'runs' / job_id / 'evidence' / 'tests.json'

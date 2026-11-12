@@ -149,9 +149,10 @@ class Release:
         launched_logged = set()
         stage_start = time.time()
         while True:
-            for m in jobs.tick(queue_path=Path(qpath), remote_backend=backend, scope=scope):
+            for m in jobs.tick(queue_path=Path(qpath), registry=ROOT / 'experiments/registry.jsonl', runs=ROOT / 'runs',
+                                remote_backend=backend, scope=scope):
                 log(m)
-            state = jobs.read_registry()
+            state = jobs.read_registry(ROOT / 'experiments/registry.jsonl')
             status = {i: state.get(i, {}).get('status') for i in ids}
             for i in ids:
                 if i not in launched_logged and status[i] in (jobs.RUNNING, 'sync_pending', jobs.DONE):
@@ -177,7 +178,7 @@ class Release:
         avoided. A choice only: admission and the launch guard still decide; first GPU on any error."""
         try:
             snapshot = RemoteBackend(ROOT, ROOT / 'runs').snapshot()
-            state = jobs.read_registry()
+            state = jobs.read_registry(ROOT / 'experiments/registry.jsonl')
             executing = [c for c in state.values() if c.get('host') == 'remote' and c.get('status') in jobs.RESERVING]
             declared = {g: sum(float(c.get('mem_gb', 0)) for c in executing if c.get('gpu') == g) for g in self.gpus}
             count = {g: sum(1 for c in executing if c.get('gpu') == g) for g in self.gpus}
