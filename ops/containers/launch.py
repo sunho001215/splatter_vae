@@ -171,12 +171,15 @@ def validate_spec(spec: dict) -> dict:
     if (fraction > 1 or cap > 90 or memory > cap or isinstance(slots, bool)
             or not isinstance(slots, int) or not 1 <= slots <= 20):
         raise ValueError("Invalid host resource ceilings")
-    if spec.get("gpu") in REMOTE_MIG_DEVICES and slots != 1:
-        raise ValueError("A MIG instance is an exclusive slot (max_jobs must be 1)")
+    if type(spec.get("exclusive_gpu", False)) is not bool:
+        raise ValueError("Invalid exclusive_gpu")
+    if spec.get("gpu") in REMOTE_MIG_DEVICES and cap > 21.5:
+        raise ValueError("MIG capacity must preserve headroom (max 21.5 GiB)")
     threads = spec.get("cpu_threads", DEFAULT_CPU_THREADS)
     if isinstance(threads, bool) or not isinstance(threads, int) or not 1 <= threads <= MAX_CPU_THREADS:
         raise ValueError("Invalid CPU thread limit")
-    return {**spec, "gpu_backend": gpu_backend, "cpu_threads": threads,
+    return {**spec, "exclusive_gpu": spec.get("exclusive_gpu", False) or purpose is not None,
+            "gpu_backend": gpu_backend, "cpu_threads": threads,
             "ram_bytes": math.ceil(ram * 1024**3), "gpu_bytes": math.ceil(memory * 1024**3),
             "gpu_cap_bytes": math.floor(cap * 1024**3), "reserve_bytes": math.ceil(reserve * 1024**3),
             "ramp_seconds": math.ceil(ramp * 60), "disk_bytes": math.ceil(disk * 1024**3),
@@ -328,7 +331,7 @@ def build_remote_command(spec: dict, data_identity: str, origin_commit: str, pro
               "--oom-score-adj", str(spec["oom_score_adj"]),
               "--workdir", CONTAINER_REPO, "--init", "--shm-size", "8g"]
     purpose = spec.get("verification_purpose")
-    if purpose is not None or spec.get("enforce_limits") is True:  # verification, or ARCH Phase 2 campaign limits
+    if purpose is not None or spec.get("enforce_limits") is True or spec["gpu"] in REMOTE_MIG_DEVICES:  # verification, or ARCH Phase 2 campaign limits
         docker += ["--memory", str(spec["ram_bytes"]), "--memory-swap", str(spec["ram_bytes"]),
                    "--cpus", str(spec["cpu_threads"])]
     if spec["gpu_backend"] == "cdi":
@@ -339,6 +342,8 @@ def build_remote_command(spec: dict, data_identity: str, origin_commit: str, pro
         docker += ["--label", f"{key}={value}"]
     docker += ["--label", f"s4d.ram_bytes={spec['ram_bytes']}", "--label", f"s4d.disk_bytes={spec['disk_bytes']}",
                "--label", f"s4d.mem_bytes={spec['gpu_bytes']}", "--label", f"s4d.gpu={spec['gpu']}"]
+    if spec["exclusive_gpu"] or spec["gpu"] in REMOTE_MIG_DEVICES:
+        docker += ["--label", "s4d.exclusive_gpu=" + str(spec["exclusive_gpu"]).lower()]
     for source, target, readonly in mounts:
         _bound_path(source)
         docker += ["--mount", f"type=bind,src={source},dst={target}" + (",readonly" if readonly else "")]
@@ -489,7 +494,9 @@ def build_remote_command(spec: dict, data_identity: str, origin_commit: str, pro
     if spec["gpu"] in REMOTE_MIG_DEVICES:
         parent, instance, device = REMOTE_MIG_DEVICES[spec["gpu"]]
         guard_input = {"uuid": spec["gpu"], "parent": parent, "gpu_instance_id": instance, "device": device,
-                       "max_jobs": spec["max_jobs"], "idle_mib": 256, "gpu_bytes": spec["gpu_bytes"],
+                       "max_jobs": spec["max_jobs"], "exclusive_gpu": spec["exclusive_gpu"],
+                       "cpu_threads": spec["cpu_threads"], "cpu_thread_budget": spec.get("cpu_thread_budget", 320),
+                       "idle_mib": 256, "gpu_bytes": spec["gpu_bytes"],
                        "capacity_bytes": spec["gpu_cap_bytes"], "ram_bytes": spec["ram_bytes"],
                        "reserve_bytes": spec["reserve_bytes"], "disk_bytes": spec["disk_bytes"],
                        "floor_bytes": spec["floor_bytes"], "disk_floor_fraction": spec["disk_floor_fraction"],

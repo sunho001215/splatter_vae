@@ -711,6 +711,8 @@ def _packing(queue: dict, state: dict, paused_fn=None) -> tuple[dict, float]:
             job = by_id.get(job_id, {})
             gpu = current.get("gpu")
             if gpu in slots:
+                slots[gpu]["exclusive_gpu"] = (slots[gpu].get("exclusive_gpu", False)
+                    or current.get("exclusive_gpu", False) or job.get("exclusive_gpu", False))
                 slots[gpu]["jobs"] += 1
                 slots[gpu]["mem_gb"] += max(float(current.get("mem_gb", 0)), float(job.get("mem_gb", 0)))
     def waiting(job):
@@ -734,8 +736,10 @@ def _packing(queue: dict, state: dict, paused_fn=None) -> tuple[dict, float]:
 
 def _pack(job: dict, slots: dict) -> str | None:
     for gpu, slot in slots.items():
-        if (job.get("gpu", "any") in ("any", gpu) and slot["jobs"] < int(slot["max_jobs"])
+        if (not slot.get("exclusive_gpu", False) and not (job.get("exclusive_gpu", False) and slot["jobs"])
+                and job.get("gpu", "any") in ("any", gpu) and slot["jobs"] < int(slot["max_jobs"])
                 and slot["mem_gb"] + float(job.get("mem_gb", 0)) <= float(slot["max_mem_gb"])):
+            slot["exclusive_gpu"] = job.get("exclusive_gpu", False)
             slot["jobs"] += 1
             slot["mem_gb"] += float(job.get("mem_gb", 0))
             return gpu

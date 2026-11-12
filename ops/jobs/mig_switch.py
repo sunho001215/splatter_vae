@@ -9,7 +9,7 @@ switch, compute-complete attempts of physical GPUs still reconcile and clean up 
 accepts the MIG parents for EXISTING attempts only; nothing can be launched on them).
 
     python -I ops/jobs/mig_switch.py preflight --allowlist <remote-mig.yaml> [--queue experiments/queue.yaml]
-    python -I ops/jobs/mig_switch.py rewrite-queue --allowlist <remote-mig.yaml> [--queue ...] [--max-jobs 1] [--write]
+    python -I ops/jobs/mig_switch.py rewrite-queue --allowlist <remote-mig.yaml> [--queue ...] [--max-jobs 4] [--max-mem-gb 21.5] [--write]
 """
 
 from __future__ import annotations
@@ -62,14 +62,14 @@ def _child(node, key):
     return next((value for k, value in node.value if k.value == key), None)
 
 
-def rewrite_hosts(text: str, instances, max_jobs: int = 1) -> str:
+def rewrite_hosts(text: str, instances, max_jobs: int = 4, max_mem_gb: float = 21.5) -> str:
     """The queue text with ONLY the ``hosts.remote.limits`` mapping replaced by one entry per instance; every other
     byte (comments, e.g. the ``hold: true`` annotation, and the jobs) is kept."""
     limits = _child(_child(_child(yaml.compose(text), "hosts"), "remote"), "limits")
     if limits is None or not isinstance(limits, yaml.MappingNode) or not limits.value:
         raise ValueError("queue has no block mapping hosts.remote.limits to replace")
     indent = " " * limits.start_mark.column
-    dumped = yaml.safe_dump(queue_limits(instances, max_jobs=max_jobs), sort_keys=False)
+    dumped = yaml.safe_dump(queue_limits(instances, max_jobs=max_jobs, max_mem_gb=max_mem_gb), sort_keys=False)
     block = "".join(indent + line if line.strip() else line for line in dumped.splitlines(True))
     start = text.rfind("\n", 0, limits.start_mark.index) + 1
     end = limits.end_mark.index
@@ -88,6 +88,8 @@ def main(argv=None) -> int:
     parser.add_argument("--queue", type=Path, default=REPO / "experiments/queue.yaml")
     parser.add_argument("--extra-queue", type=Path, action="append", default=[],
                         help="further queues to check, e.g. runs/remote/verification/*-queue.yaml")
+    parser.add_argument("--max-jobs", type=int, default=4)
+    parser.add_argument("--max-mem-gb", type=float, default=21.5)
     parser.add_argument("--write", action="store_true")
     args = parser.parse_args(argv)
     instances = load_allowlist(args.allowlist)
@@ -101,7 +103,7 @@ def main(argv=None) -> int:
         print(json.dumps(report, indent=1))
         return 3 if report["blockers"] else 0
     text = args.queue.read_text()
-    new = rewrite_hosts(text, instances)
+    new = rewrite_hosts(text, instances, args.max_jobs, args.max_mem_gb)
     before, after = yaml.safe_load(text), yaml.safe_load(new)
     if before["jobs"] != after["jobs"] or {k: v for k, v in before["hosts"].items() if k != "remote"} != {
             k: v for k, v in after["hosts"].items() if k != "remote"}:

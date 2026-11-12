@@ -1,4 +1,4 @@
-"""Shared remote exclusive-slot admission, embedded by launchers under admission.lock.
+"""Shared remote capacity admission, embedded by launchers under admission.lock.
 
 SOURCE is stdlib-only and runs as ``python3 -I -c SOURCE <json>`` on the host.
 Exit 0 admits, 20 refuses a resource decision, 1 means evidence/input error.
@@ -95,7 +95,10 @@ def instance(listing, query, uuid, parent, gi, device):
             elif key == "Used GPU Memory":
                 if process is None or len(process) != 2:
                     raise ValueError("unreadable MIG process record")
-                processes.append(process)
+                match = re.fullmatch(r"(\d+) MiB", value)
+                if not match:
+                    raise ValueError("unreadable process memory")
+                processes.append([*process, int(match[1])])
                 process = None
     if process is not None or listed != 1 or query_parents != [parent]:
         raise ValueError("incomplete MIG parent/process evidence")
@@ -108,7 +111,7 @@ def instance(listing, query, uuid, parent, gi, device):
     total, used = found[0]["Total"], found[0]["Used"]
     if total <= 0 or not 0 <= used <= total:
         raise ValueError("invalid MIG framebuffer")
-    return total, used, [pid for instance_id, pid in processes if instance_id == gi]
+    return total, used, {pid: memory * 1048576 for instance_id, pid, memory in processes if instance_id == gi}
 
 
 def decide(data):
@@ -117,8 +120,10 @@ def decide(data):
         raise ValueError("invalid device identity")
     gi = integer(data["gpu_instance_id"], "gpu_instance_id")
     device = integer(data["device"], "device")
-    if integer(data["max_jobs"], "max_jobs", 1) != 1:
-        raise ValueError("exclusive slots require max_jobs=1")
+    max_jobs = integer(data["max_jobs"], "max_jobs", 1)
+    exclusive = data.get("exclusive_gpu", False)
+    if type(exclusive) is not bool:
+        raise ValueError("invalid exclusive_gpu")
     threshold = integer(data["idle_mib"], "idle_mib")
     need = integer(data["gpu_bytes"], "gpu_bytes", 1)
     capacity = integer(data["capacity_bytes"], "capacity_bytes", 1)
@@ -133,19 +138,19 @@ def decide(data):
     smi, docker = paths.get("nvidia_smi", "nvidia-smi"), paths.get("docker", "docker")
     total, used, processes = instance(run(smi, "-L"), run(smi, "-q", "-i", parent), uuid, parent, gi, device)
     reasons = []
-    if processes:
-        reasons.append("instance has processes")
-    if used > threshold:
-        reasons.append("instance framebuffer above idle threshold")
     if need > capacity:
         reasons.append("declared GPU need exceeds capacity")
     if capacity > total * 1048576:
         raise ValueError("declared capacity exceeds fresh framebuffer")
+    # The cap itself leaves headroom; retain at least 2 GiB even with a custom cap.
+    headroom = max(2 * 2**30, total * 1048576 - capacity)
     ids = run(docker, "ps", "-q", "--no-trunc", "--filter", "label=s4d.project=splatter4d",
               "--filter", "label=s4d.owner=kaist-sunho").split()
     if len(ids) != len(set(ids)) or any(not re.fullmatch(r"[0-9a-f]{64}", cid) for cid in ids):
         raise ValueError("invalid live container listing")
-    pending_ram = reserved_disk = count = 0
+    pending_ram = reserved_disk = count = gpu_reserved = gpu_pending = cpu_used = 0
+    known = set()
+    tenant_exclusive = False
     for cid in ids:
         records = json.loads(run(docker, "inspect", cid))
         if not isinstance(records, list) or len(records) != 1 or records[0]["Id"] != cid:
@@ -157,10 +162,42 @@ def decide(data):
         state = item["State"]
         if not (state["Running"] or state.get("Restarting", False) or state.get("Paused", False)):
             continue
-        count += labels.get("s4d.gpu") == uuid
+        if labels.get("s4d.gpu") == uuid:
+            count += 1
+            tenant_exclusive |= labels.get("s4d.exclusive_gpu") == "true" or labels.get("s4d.role") == "migval"
+            # Unknown owned tools cannot silently become trusted shared tenants.
+            if labels.get("s4d.role") == "migval":
+                tenant_exclusive = True
+            else:
+                managed = labels.get("s4d.managed") == "true" and labels.get("s4d.host") == "remote"
+                cotenant = labels.get("s4d.managed") == "false" and labels.get("s4d.role") in ("rwprep", "rwprep-study", "rwprep-maint")
+                if not (managed or cotenant):
+                    raise ValueError("unidentified owned GPU tenant")
+                config = item["HostConfig"]
+                requests = config.get("DeviceRequests") or []
+                request = requests[0] if len(requests) == 1 else {}
+                if (config.get("Devices") or request.get("Driver") != "cdi" or request.get("Count", 0) != 0
+                        or request.get("Capabilities") or request.get("Options")
+                        or request.get("DeviceIDs") != ["nvidia.com/gpu=" + uuid]):
+                    raise ValueError("GPU tenant binding is not exact CDI")
+                declared = decimal(labels.get("s4d.mem_bytes"), "GPU reservation")
+                if declared <= 0:
+                    raise ValueError("missing GPU reservation")
+                rows = run(docker, "top", cid, "-eo", "pid").strip().splitlines()
+                if not rows or rows[0].strip().lower() != "pid" or any(not row.strip().isdigit() for row in rows[1:]):
+                    raise ValueError("unreadable container process list")
+                pids = {int(row) for row in rows[1:]}
+                if known & pids:
+                    raise ValueError("ambiguous process ownership")
+                known |= pids
+                measured = sum(processes.get(pid, 0) for pid in pids)
+                gpu_reserved += max(declared, measured)
+                gpu_pending += max(0, declared - measured)
         limit = integer(item["HostConfig"]["Memory"], "container RAM limit")
         if limit == 0:  # Codex review 3 (16): a declaration bounds nothing; every live container needs an enforced limit
             raise ValueError("live container of ours without an enforced RAM limit")
+        nano = integer(item["HostConfig"].get("NanoCpus"), "container CPU quota", 1)
+        cpu_used += nano
         cgroup = Path(paths.get("cgroup_root", "/sys/fs/cgroup/system.slice")) / ("docker-" + cid + ".scope")
         # non-reclaimable usage (anon + shmem): page cache is already counted as available in MemAvailable (review 3, 15)
         stat = dict(line.split() for line in (cgroup / "memory.stat").read_text().splitlines() if len(line.split()) == 2)
@@ -169,7 +206,21 @@ def decide(data):
         # Preserve launch.py's disk reservation: scheduler-managed remote jobs.
         if labels.get("s4d.managed") == "true" and labels.get("s4d.host") == "remote":
             reserved_disk += decimal(labels.get("s4d.disk_bytes"), "container disk reservation")
-    if count >= data["max_jobs"]:
+    if set(processes) - known:
+        reasons.append("foreign processes on instance")
+    if not count and used > threshold:
+        reasons.append("instance framebuffer above idle threshold")
+    if (exclusive and count) or tenant_exclusive:
+        reasons.append("exclusive GPU placement")
+    if gpu_reserved + need > capacity:
+        reasons.append("GPU reservation sum exceeds capacity")
+    if (total - used) * 1048576 - gpu_pending < need + headroom:
+        reasons.append("measured free GPU memory/headroom")
+    cpu_need = integer(data.get("cpu_threads", 8), "cpu_threads", 1)
+    cpu_budget = integer(data.get("cpu_thread_budget", 320), "cpu_thread_budget", 1)
+    if cpu_used + cpu_need * 10**9 > cpu_budget * 10**9:
+        reasons.append("host CPU thread budget")
+    if count >= max_jobs:
         reasons.append("slot container limit reached")
     meminfo = Path(paths.get("meminfo", "/proc/meminfo")).read_text()
     available = re.findall(r"^MemAvailable:\s+(\d+) kB\s*$", meminfo, re.MULTILINE)
@@ -188,7 +239,7 @@ def decide(data):
     if disk_free - reserved_disk - disk_need < max(floor, math.ceil(disk_total * fraction)):
         reasons.append("disk floor")
     return {"admit": not reasons, "reasons": reasons, "uuid": uuid, "containers": count,
-            "used_mib": used, "pending_ram_bytes": pending_ram, "reserved_disk_bytes": reserved_disk}
+            "used_mib": used, "gpu_reserved_bytes": gpu_reserved, "gpu_pending_bytes": gpu_pending, "pending_ram_bytes": pending_ram, "reserved_disk_bytes": reserved_disk}
 
 
 try:

@@ -384,6 +384,7 @@ def test_pinned_real_launch_argv_and_wrapper(tmp_path, monkeypatch, script, args
     expected_env = {**os.environ, "CUDA_VISIBLE_DEVICES": LOCAL_GPU, "MUJOCO_GL": "egl", "PYOPENGL_PLATFORM": "egl",
                     "S4D_HOST_CONFIG": str(jobs.HOST_CONFIG_PATH), "S4D_EXIT_FILE": str(tmp_path / "pinned/exit_code")}
     expected_env.pop("MUJOCO_EGL_DEVICE_ID")
+    expected_env.update(dict.fromkeys(jobs.THREAD_ENV, "8"))
     job = row("pinned", script=script, args=args, host="local")
     effective = [a.replace(PREFIX, str(tmp_path / "mirror")) for a in args] if override else args
     if override:
@@ -410,7 +411,7 @@ def test_local_remote_resident_launch_bounds_thread_pools_like_the_container(tmp
     jobs.launch({**job, "id": "four"}, LOCAL_GPU, 1, tmp_path, args=job["args"], cpu_threads=4)
     jobs.launch({**job, "id": "plain"}, LOCAL_GPU, 1, tmp_path)
     assert [{k: e.get(k) for k in jobs.THREAD_ENV} for e in captured] == [
-        dict.fromkeys(jobs.THREAD_ENV, "8"), dict.fromkeys(jobs.THREAD_ENV, "4"), dict.fromkeys(jobs.THREAD_ENV)]
+        dict.fromkeys(jobs.THREAD_ENV, "8"), dict.fromkeys(jobs.THREAD_ENV, "4"), dict.fromkeys(jobs.THREAD_ENV, "8")]
     assert jobs.THREAD_ENV == ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS")
     for bad in (0, -1, 65, 2.0, 8.9, "8", True, None):
         with pytest.raises(ValueError, match="cpu_threads"):
@@ -419,7 +420,7 @@ def test_local_remote_resident_launch_bounds_thread_pools_like_the_container(tmp
     jobs.launch({**job, "id": "inherited"}, LOCAL_GPU, 1, tmp_path, args=job["args"], cpu_threads=64)
     assert captured[-1]["OMP_NUM_THREADS"] == "64"
     jobs.launch({**job, "id": "plain2"}, LOCAL_GPU, 1, tmp_path)  # ... and left alone elsewhere
-    assert captured[-1]["OMP_NUM_THREADS"] == "384"
+    assert captured[-1]["OMP_NUM_THREADS"] == "8"
     from ops.containers import launch as container  # the quota this mirrors
     assert (jobs.DEFAULT_CPU_THREADS, jobs.MAX_CPU_THREADS) == (container.DEFAULT_CPU_THREADS, container.MAX_CPU_THREADS)
     assert '("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS")' in (
@@ -1213,3 +1214,25 @@ def test_remote_driver_keeps_previous_role_releases_for_retries_only():
                                  ('a' * 40, 'i'): f"runs/remote/acceptance/{'a' * 7}-cc/manifest.json"}
     release = source[source.index('def job_release(job):'):source.index('\n\n\n', source.index('def job_release(job):'))]
     assert release.index("if previous.get('commit'):") < release.index("if kind(job['id']) == 'role':")
+
+
+@pytest.mark.parametrize('condition,expected', [('ours', 3), ('dynamo', 3), ('e2e_cnn', 8)])
+def test_measured_realworld_fql_ram_is_shared_by_admission_and_running_growth(condition, expected):
+    import ast
+    from ops.jobs import scheduler
+    from ops.jobs.footprints import ram_gb
+
+    row = {'script': 'scripts/train_realworld_fql.py', 'args': ['--set', 'condition=' + condition],
+           'fql_condition': condition, 'ram_gb': 64}
+    source = (Path(__file__).resolve().parents[1] / 'ops/campaign/baseline_local_driver.py').read_text()
+    tree = ast.parse(source)
+    names = {}
+    for name in ('footprint', 'active_footprint'):
+        node = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == name)
+        exec(compile(ast.Module(body=[node], type_ignores=[]), '<driver-functions>', 'exec'), names)
+    names['by_queue'] = {'fql': row}
+    assert names['footprint'](row) == expected * 2**30
+    assert names['active_footprint']('fql', {'ram_gb': 64}) == expected * 2**30
+    assert scheduler.reservation({'ram_gb': 64}, row, 'ram_gb') == expected
+    assert ram_gb(row) == expected
+    assert ram_gb({'script': 'scripts/train_snerl.py', 'ram_gb': 64}) == 64

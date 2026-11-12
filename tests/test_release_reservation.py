@@ -231,7 +231,8 @@ def _driver_block():
 
 def _run_driver_block(path):
     names = {"candidates": [{"id": "x"}], "COTENANT": {"gpus": {}}, "messages": [], "json": json,
-             "gpu_load": {g: 3.0 for g in GPUS}, "gpu_mem": {g: 30.0 for g in GPUS}, "reserved": 10 * GIB,
+             "gpu_jobs": {g: 0 for g in GPUS}, "gpu_exclusive": set(),
+                 "gpu_load": {g: 3.0 for g in GPUS}, "gpu_mem": {g: 30.0 for g in GPUS}, "reserved": 10 * GIB,
              "release_reservation": rr}
     rr_path = rr.PATH
     try:

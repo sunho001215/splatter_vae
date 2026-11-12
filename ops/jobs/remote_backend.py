@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ops.provenance import upstreams as third_party
+from ops.jobs.footprints import exclusive, ram_gb
 from ops.jobs.host_roles import DOMAIN, job_class
 from ops.resources.gpu_guard import APPROVED_HOST_GPUS, LOCAL_MIG_PARENTS, REMOTE_MIG_DEVICES, REMOTE_MIG_PARENTS
 from ops.resources.mig_inventory import InventoryError, parse_list, parse_query
@@ -170,7 +171,7 @@ def identify_cotenant(item: dict, pids: set[int], ram_used: int | None) -> dict 
             "gpu_verified": verified or (not requests and not devices), "pids": set(pids),
             "gpu_mem_declared_bytes": declared if verified else None,
             "ram_limit_bytes": _positive(config.get("Memory")),  # enforced limit only (a label bounds nothing)
-            "ram_used_bytes": ram_used, "cpus": nano / 1e9 if nano else None}
+            "ram_used_bytes": ram_used, "cpus": nano / 1e9 if nano else None, "exclusive_gpu": labels_.get("s4d.exclusive_gpu") == "true"}
 
 
 def cotenant_charges(snapshot: RemoteSnapshot, own=()) -> dict:
@@ -194,13 +195,18 @@ def cotenant_charges(snapshot: RemoteSnapshot, own=()) -> dict:
         measured = sum(memory for pid, memory in snapshot.usage.get(item["gpu"], []) if pid in item["pids"]) * MIB
         declared = item["gpu_mem_declared_bytes"]
         charge = gpus.setdefault(item["gpu"], {"containers": [], "pids": set(), "jobs": 0, "load": 0.0,
-                                               "mem_gb": 0.0, "pending_gb": 0.0})
+                                               "mem_gb": 0.0, "pending_gb": 0.0, "exclusive_gpu": False})
+        charge["exclusive_gpu"] |= item.get("exclusive_gpu", False)
         charge["containers"].append(name)
         charge["pids"] |= item["pids"]
         charge["jobs"] += 1
         charge["load"] += COTENANT_GPU_LOAD
         charge["mem_gb"] += max(measured, declared) / GIB
         charge["pending_gb"] += max(0.0, declared - measured) / GIB
+    for gpu in snapshot.gpu_memory:
+        if gpu.startswith("MIG-"):
+            gpus.setdefault(gpu, {"containers": [], "pids": set(), "jobs": 0, "load": 0.0,
+                                  "mem_gb": 0.0, "pending_gb": 0.0, "exclusive_gpu": False})
     for gpu, container, mem_gb in own:
         if gpu in gpus:
             pids = (snapshot.containers.get(container) or {}).get("pids", set())
@@ -881,7 +887,8 @@ class RemoteBackend:
                 "gpu": gpu, "gpu_backend": backend, "commit": host["commit"], "image_digest": host["image_digest"],
                 "root": self.client.root, "host_config": "configs/hosts/remote.yaml", "script": str(script),
                 "args": args, "required_results": job["required_results"], "oom_score_adj": adj,
-                "ram_gb": float(job.get("ram_gb", 0)), "mem_gb": float(job["mem_gb"]),
+                "ram_gb": ram_gb(job), "exclusive_gpu": exclusive(job),
+                "cpu_thread_budget": int(host.get("cpu_thread_budget", 320)), "mem_gb": float(job["mem_gb"]),
                 "disk_gb": float(job.get("disk_gb", 0)), "disk_floor_gb": float(host.get("disk_floor_gb", 0)),
                 "disk_floor_fraction": max(0.15, float(host.get("disk_floor_fraction", 0.15))),
                 "max_jobs": int(host["limits"][gpu]["max_jobs"]),
@@ -897,7 +904,7 @@ class RemoteBackend:
             spec["role"] = classification.cls
         if "cpu_threads" in job:
             spec["cpu_threads"] = job["cpu_threads"]
-        if purpose is None and host.get("enforce_resource_limits") is True:
+        if purpose is None and (host.get("enforce_resource_limits") is True or gpu.startswith("MIG-")):
             # ARCH Phase 2: campaign containers get --memory/--memory-swap/--cpus like verification and rwprep do;
             # attempts launched before the switch keep their recorded (unlimited) configuration
             if float(job.get("ram_gb", 0)) <= 0:

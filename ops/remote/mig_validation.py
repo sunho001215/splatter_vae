@@ -271,7 +271,7 @@ def container_spec(boot: str, index: int, instance: dict, other: str, image: str
     spec["marker"] = "s4d-migval-child-" + spec["fingerprint"][:32]
     # s4d.gpu publishes the reservation to every other launcher's exclusive-slot check (Codex review 2, finding 4)
     spec["labels"] = {"s4d.project": "splatter4d", "s4d.owner": "kaist-sunho", "s4d.role": "migval",
-                      "s4d.migval.spec": spec["fingerprint"], "s4d.gpu": spec["uuid"]}
+                      "s4d.migval.spec": spec["fingerprint"], "s4d.gpu": spec["uuid"], "s4d.exclusive_gpu": "true"}
     return spec
 
 

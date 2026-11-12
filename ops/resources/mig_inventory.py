@@ -24,6 +24,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import re
 import sys
 import time
@@ -45,9 +46,11 @@ INSTANCES_PER_PARENT = 4
 # 1g.24gb on the RTX PRO 6000 Blackwell (local GPUs 4/5): 24192 MiB framebuffer per instance
 MIN_MEMORY_MIB = 23_000
 # Admission headroom inside one instance: CUDA context, allocator fragmentation, the launch-guard margin
-INSTANCE_RESERVE_GIB = 1.0
+INSTANCE_RESERVE_GIB = 2.0
+INSTANCE_MAX_MEM_GIB = 21.5
+INSTANCE_MAX_JOBS = 4
 # Load units per instance (one GPU-heavy row = 1.0, an FQL / RL row = 0.5); physical GPUs keep their own limit
-INSTANCE_LOAD_LIMIT = 1.0
+INSTANCE_LOAD_LIMIT = 4.0
 PHYSICAL_MEMORY_GIB = 90.0
 INVENTORY_RELATIVE = "configs/hosts/remote-mig.yaml"
 GPU_UUID = re.compile(r"GPU-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\Z")
@@ -244,7 +247,8 @@ def allowlist_document(report: dict) -> dict:
     doc = {"schema": SCHEMA, "host": "remote", "profile": report["profile"],
            "instances_per_parent": report["instances_per_parent"], "min_memory_mib": report["min_memory_mib"],
            "parents": [p["uuid"] for p in report["parents"]],
-           "instances": [{k: item[k] for k in keys} for item in report["instances"]],
+           "instances": [{**{k: item[k] for k in keys}, **queue_limits(report["instances"])[item["uuid"]]}
+                         for item in report["instances"]],
            "excluded": report["excluded"], "evidence_sha256": report["evidence_sha256"],
            "discovered_at": report["discovered_at"]}
     validate_allowlist(doc)
@@ -282,6 +286,12 @@ def validate_allowlist(doc, authorized=REMOTE_PHYSICAL_GPUS, profile: str = EXPE
         if any(type(item.get(k)) is not int or item[k] < 0
                for k in ("parent_index", "device", "gpu_instance_id", "compute_instance_id", "memory_total_mib")):
             raise InventoryError(f"{item['uuid']}: invalid numeric field")
+        if "max_jobs" in item and (type(item["max_jobs"]) is not int or item["max_jobs"] < 1):
+            raise InventoryError(f"{item['uuid']}: invalid max_jobs")
+        if "max_mem_gb" in item and (type(item["max_mem_gb"]) not in (int, float)
+                or not math.isfinite(item["max_mem_gb"]) or not 0 < item["max_mem_gb"] <= min(
+                    INSTANCE_MAX_MEM_GIB, item["memory_total_mib"] / 1024 - INSTANCE_RESERVE_GIB)):
+            raise InventoryError(f"{item['uuid']}: invalid max_mem_gb/headroom")
         if item["memory_total_mib"] < minimum:
             raise InventoryError(f"{item['uuid']}: framebuffer below the minimum")
         if item["uuid"] in seen or (item["parent"], item["gpu_instance_id"]) in slots:
@@ -312,17 +322,18 @@ def device_capacity_gib(uuid: str, instances=()) -> float:
     GPU keeps the campaign's 90 GiB cap."""
     for item in instances:
         if item["uuid"] == uuid:
-            return round(item["memory_total_mib"] / 1024 - INSTANCE_RESERVE_GIB, 3)
+            return min(INSTANCE_MAX_MEM_GIB, round(item["memory_total_mib"] / 1024 - INSTANCE_RESERVE_GIB, 3))
     return PHYSICAL_MEMORY_GIB
 
 
-def queue_limits(instances, max_jobs: int = 1) -> dict:
-    if max_jobs != 1:
-        raise ValueError("a MIG instance is an exclusive slot: max_jobs is 1 (user decision 2026-11-11)")
-    """``hosts.remote.limits`` for experiments/queue.yaml: one entry per instance, exclusive by default (user decision
-    2026-11-11: one container per MIG instance). The scheduler refuses limits for non-authorized devices, so this block
-    replaces the physical one in the same change as the allowlist (ops/jobs/mig_switch.py rewrite-queue)."""
-    return {item["uuid"]: {"max_jobs": int(max_jobs), "max_mem_gb": device_capacity_gib(item["uuid"], instances)}
+def queue_limits(instances, max_jobs: int = INSTANCE_MAX_JOBS, max_mem_gb: float = INSTANCE_MAX_MEM_GIB) -> dict:
+    """Per-instance shared capacity; keep headroom below measured usable framebuffer, never nominal 24 GB."""
+    if type(max_jobs) is not int or max_jobs < 1:
+        raise ValueError("max_jobs must be a positive integer")
+    if type(max_mem_gb) not in (int, float) or not 0 < max_mem_gb <= INSTANCE_MAX_MEM_GIB:
+        raise ValueError("max_mem_gb must be positive and at most 21.5 GiB")
+    return {item["uuid"]: {"max_jobs": max_jobs,
+                           "max_mem_gb": min(max_mem_gb, device_capacity_gib(item["uuid"], instances))}
             for item in instances}
 
 
@@ -381,7 +392,7 @@ def main(argv=None) -> int:
         doc = allowlist_document(report)
         (args.repo / INVENTORY_RELATIVE).write_text(yaml.safe_dump(doc, sort_keys=False))
         host = {"name": "remote", "gpu_uuids": [item["uuid"] for item in doc["instances"]],
-                "runtime_root": "/home/compu/kaist/sunho"}
+                "runtime_root": "/home/compu/kaist/sunho", "limits": queue_limits(doc["instances"])}
         (args.repo / "configs/hosts/remote.yaml").write_text(yaml.safe_dump(host, sort_keys=False))
         print(yaml.safe_dump({"hosts": {"remote": {"limits": queue_limits(doc["instances"])}}}, sort_keys=False))
         return 0

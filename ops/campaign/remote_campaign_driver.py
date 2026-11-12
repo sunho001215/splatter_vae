@@ -13,6 +13,7 @@ import yaml
 
 REPO = Path('/home/ws/ws/splatter4d')
 sys.path.insert(0, str(REPO))
+from ops.jobs.footprints import exclusive, ram_gb  # noqa: E402
 from ops.jobs import host_roles  # noqa: E402
 from ops.jobs import release_reservation  # noqa: E402
 from ops.jobs import scheduler as jobs  # noqa: E402
@@ -647,13 +648,18 @@ if not SNERL_NT_READY:
 candidates.sort(key=dispatch_key)
 # 2026-10-27: capacity is reserved only by executing jobs; a compute-complete container awaiting backup holds none
 active = {i: s for i, s in state.items() if s.get('host') == 'remote' and s['status'] in jobs.RESERVING}
-reserved = sum(int(float(by_id.get(i, {}).get('ram_gb', 0)) * 2**30) for i in active)
+reserved = sum(int(jobs.reservation(s, by_id.get(i, {}), 'ram_gb') * 2**30) for i, s in active.items())
+gpu_jobs = {g: 0 for g in GPUS}
+gpu_exclusive = set()
 gpu_load = {g: 0.0 for g in GPUS}
 gpu_mem = {g: 0.0 for g in GPUS}
 for i, s in active.items():
     if s.get('gpu') in gpu_load and i in by_id:
+        gpu_jobs[s['gpu']] += 1
+        if exclusive(s) or exclusive(by_id[i]):
+            gpu_exclusive.add(s['gpu'])
         gpu_load[s['gpu']] += load(by_id[i])
-        gpu_mem[s['gpu']] += float(by_id[i]['mem_gb'])
+        gpu_mem[s['gpu']] += jobs.reservation(s, by_id[i], 'mem_gb')
 # Campaign-owned co-tenants (the rwprep containers outside the scheduler, 2026-11-06; remote_backend.cotenant_charges):
 # their load units, GPU memory (max of measured and declared) and declared RAM limits (campaign cap) are charged before
 # any placement; on their GPUs the measured free memory less pending reservations must also hold a row's mem_gb plus
@@ -667,7 +673,7 @@ if candidates or (POOL_READY and not DRY and ROLES is not None
         snapshot = RemoteBackend(REPO, REPO / 'runs').snapshot()
         if not snapshot.resources_ready:  # e.g. a co-tenant inspect failure: its reservation would be lost
             raise RuntimeError('remote resource evidence not ready')
-        COTENANT = cotenant_charges(snapshot, [(s['gpu'], s.get('container'), float(by_id[i]['mem_gb']))
+        COTENANT = cotenant_charges(snapshot, [(s['gpu'], s.get('container'), jobs.reservation(s, by_id[i], 'mem_gb'))
                                                for i, s in active.items() if i in by_id])
     except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as exc:  # incl. RemoteJobError/-Unreachable
         COTENANT = {'error': f'evidence unavailable ({type(exc).__name__})'}
@@ -678,8 +684,11 @@ if 'error' in COTENANT or COTENANT['unbounded']:
 else:
     for g, charge in COTENANT['gpus'].items():
         if g in gpu_load:
+            gpu_jobs[g] += charge['jobs']
+            if charge.get('exclusive_gpu'):
+                gpu_exclusive.add(g)
             gpu_load[g] += charge['load']
-            gpu_mem[g] = max(gpu_mem[g] + charge['mem_gb'], GPU_CAP[g] - charge['free_gb'] + COTENANT_GPU_MARGIN_GB)
+            gpu_mem[g] = max(gpu_mem[g] + charge['mem_gb'], GPU_CAP[g] - charge['free_gb'] + (2.0 if g.startswith('MIG-') else COTENANT_GPU_MARGIN_GB))
     reserved += COTENANT['ram_declared_bytes']
     if COTENANT['gpus']:
         messages.append('COTENANT ' + json.dumps({g[4:8]: {k: round(charge[k], 1) for k in ('jobs', 'load', 'mem_gb',
@@ -701,16 +710,33 @@ if RELEASE_HOLD:
         if g in gpu_load:
             gpu_load[g] += charge['load']
             gpu_mem[g] += charge['mem_gb']
+            if g.startswith("MIG-"):
+                gpu_exclusive.add(g)  # verification reservation remains exclusive on MIG
     reserved += int(_release['ram_gb'] * 2**30)
     messages.append(f"RELEASE_RESERVED {RELEASE_HOLD['short']} ({RELEASE_HOLD['stage']}) "
                     + json.dumps({g[4:8]: c for g, c in _release['gpus'].items()}) + f" ram {_release['ram_gb']:.0f} GB")
 reviwo = sum(1 for i in active if i.startswith('s4-reviwo-'))
 chosen, total, taken = [], reserved, set()
+CPU_BUDGET = float(queue['hosts']['remote'].get('cpu_thread_budget', jobs.REMOTE_CPU_THREAD_BUDGET))
+cpu_used = sum(jobs.reservation(s, by_id.get(i, {}), 'cpu_threads') or 8 for i, s in active.items())
+cpu_used += (COTENANT or {}).get('cpus', 0) or 0
+if RELEASE_HOLD:
+    cpu_used += release_reservation.charges(RELEASE_HOLD)['cpu_threads']
+if COTENANT is not None and COTENANT.get('cpus', 0) is None:
+    candidates, COTENANT = [], None  # unknown CPU quotas cannot admit shared work
+
+
+def capacity_fits(job, g):
+    limit = queue['hosts']['remote']['limits'].get(g, {})
+    return (cpu_used + jobs.thread_limit(job.get('cpu_threads', 8)) <= CPU_BUDGET
+            and g not in gpu_exclusive and not (exclusive(job) and gpu_jobs[g])
+            and gpu_jobs[g] < int(limit.get('max_jobs', 4 if g.startswith('MIG-') else 20))
+            and gpu_mem[g] + float(job['mem_gb']) <= min(GPU_CAP[g], float(limit.get('max_mem_gb', GPU_CAP[g]))))
 
 
 def place(job):
     fitting = [g for g in GPUS
-               if gpu_load[g] + load(job) <= GPU_LOAD_LIMIT + (2.0 if kind(job['id']) == 'proxy' and not REMOTE_MIG_ACTIVE
+               if capacity_fits(job, g) and gpu_load[g] + load(job) <= GPU_LOAD_LIMIT + (2.0 if kind(job['id']) == 'proxy' and not REMOTE_MIG_ACTIVE
                                                               else 0.0) + 1e-9
                and gpu_mem[g] + float(job['mem_gb']) <= GPU_CAP[g]
                and (g != hyb_reserved or may_use_reserved(job['id']))]
@@ -743,7 +769,7 @@ for job in candidates:
             continue
     if job['id'].startswith('s4-reviwo-') and reviwo >= MAX_REVIWO:
         continue
-    need = int(float(job['ram_gb']) * 2**30)
+    need = int(ram_gb(job) * 2**30)
     if total + need > CAP:
         continue
     gpu = place(job)
@@ -754,6 +780,10 @@ for job in candidates:
             messages.append(f"HYB_RESERVED {hyb_reserved} for waiting {job['id']} (load {gpu_load[hyb_reserved]:.1f} + "
                             f"{load(job):.1f} > {GPU_LOAD_LIMIT}; no new lower-priority rows there this pass)")
         continue
+    cpu_used += jobs.thread_limit(job.get('cpu_threads', 8))
+    gpu_jobs[gpu] += 1
+    if exclusive(job):
+        gpu_exclusive.add(gpu)
     gpu_load[gpu] += load(job)
     gpu_mem[gpu] += float(job['mem_gb'])
     chosen.append({**with_role(job), 'gpu': gpu})
@@ -815,19 +845,27 @@ if POOL_READY and not DRY and not held and ROLES is not None and COTENANT is not
             row_load = load(u) if u['id'].startswith(GPU_HEAVY) or kind(u['id']) == 'role' else (
                 1.0 if u['script'] == 'scripts/train.py' else (0.3 if u['id'].endswith('-eval') else (
                     0.1 if u['script'] == 'scripts/export_encoder.py' else 0.5)))
-            need = int(float(u['ram_gb']) * 2**30)
-            fitting = [g for g in GPUS if gpu_load[g] + row_load <= GPU_LOAD_LIMIT + 1e-9
+            need = int(ram_gb(u) * 2**30)
+            fitting = [g for g in GPUS if capacity_fits(u, g) and gpu_load[g] + row_load <= GPU_LOAD_LIMIT + 1e-9
                        and gpu_mem[g] + float(u['mem_gb']) <= GPU_CAP[g]
                        and (g != hyb_reserved or may_use_reserved(u['id']))]
             if total + need > CAP or not fitting:
                 break
             g = min(fitting, key=lambda g: (gpu_load[g], gpu_mem[g]))
+            cpu_used += jobs.thread_limit(u.get('cpu_threads', 8))
+            gpu_jobs[g] += 1
+            if exclusive(u):
+                gpu_exclusive.add(g)
             gpu_load[g] += row_load
             gpu_mem[g] += float(u['mem_gb'])
             total += need
             tentative.append((u['id'], g, row_load, float(u['mem_gb']), need))
         if len(tentative) != len(members):
-            for _, g, row_load, mem, need in tentative:
+            for row_id, g, row_load, mem, need in tentative:
+                cpu_used -= jobs.thread_limit(by_id.get(row_id, {}).get('cpu_threads', 8))
+                gpu_jobs[g] -= 1
+                if exclusive(by_id.get(row_id, {})):
+                    gpu_exclusive.discard(g)
                 gpu_load[g] -= row_load
                 gpu_mem[g] -= mem
                 total -= need
@@ -849,6 +887,10 @@ if POOL_READY and not DRY and not held and ROLES is not None and COTENANT is not
                     chosen.append({**with_role(by_id[i]), 'gpu': g})
                     taken.add(i)
                 else:  # placed but not startable yet (e.g. export upload pending): admitted by a later pass
+                    cpu_used -= jobs.thread_limit(by_id[i].get('cpu_threads', 8))
+                    gpu_jobs[g] -= 1
+                    if exclusive(by_id[i]):
+                        gpu_exclusive.discard(g)
                     gpu_load[g] -= row_load
                     gpu_mem[g] -= mem
                     total -= need

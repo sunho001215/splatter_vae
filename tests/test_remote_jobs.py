@@ -2320,9 +2320,10 @@ def test_remote_driver_charges_cotenants_before_any_placement(tmp_path):
                 return snapshot
         names = {"candidates": [{"id": "x"}], "POOL_READY": False, "DRY": False, "ROLES": {}, "REPO": tmp_path,
                  "active": {"own": {"gpu": REMOTE, "container": "s4d-own-a1"}}, "by_id": {"own": {"mem_gb": 5}},
+                 "gpu_jobs": {g: 0 for g in gpus}, "gpu_exclusive": set(),
                  "gpu_load": {g: 0.5 if g == REMOTE else 0.0 for g in gpus},
                  "gpu_mem": {g: 5.0 if g == REMOTE else 0.0 for g in gpus}, "reserved": 6 * GIB, "messages": [],
-                 "RemoteBackend": Backend, "cotenant_charges": remote.cotenant_charges, "json": json,
+                 "RemoteBackend": Backend, "cotenant_charges": remote.cotenant_charges, "json": json, "jobs": jobs,
                  "COTENANT_GPU_MARGIN_GB": remote.COTENANT_GPU_MARGIN_GB, "subprocess": subprocess,
                  "release_reservation": release_reservation,
                  "GPU_CAP": {g: 90.0 for g in gpus}}  # per-device cap (physical GPUs: 90 GiB; MIG: instance size)

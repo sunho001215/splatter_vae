@@ -64,6 +64,8 @@ def select(candidates: list[dict], active: list[dict], limits: dict, ram_cap: fl
         for k, v in demand(row).items():
             usage[row["family"]][k] += v
         if row.get("gpu") in slots:
+            slots[row["gpu"]]["exclusive_gpu"] = (slots[row["gpu"]].get("exclusive_gpu", False)
+                                                or row.get("exclusive_gpu", False))
             slots[row["gpu"]]["jobs"] += 1
             slots[row["gpu"]]["mem_gb"] += float(row.get("mem_gb", 0))
     total = {k: sum(u[k] for u in usage.values()) for k in RESOURCES}
@@ -85,6 +87,8 @@ def select(candidates: list[dict], active: list[dict], limits: dict, ram_cap: fl
         best = None
         for gpu, slot in slots.items():
             if (row.get("gpu", "any") in ("any", gpu) and reserved.get(gpu, row["id"]) == row["id"]
+                    and not slot.get("exclusive_gpu", False)
+                    and not (row.get("exclusive_gpu", False) and slot["jobs"])
                     and slot["jobs"] < int(slot["max_jobs"])
                     and slot["mem_gb"] + float(row.get("mem_gb", 0)) <= float(slot["max_mem_gb"])):
                 memory = slot["mem_gb"] + float(row.get("mem_gb", 0))
@@ -101,6 +105,7 @@ def select(candidates: list[dict], active: list[dict], limits: dict, ram_cap: fl
     def start(row, gpu):
         admitted.append(row["id"])
         assigned[row["id"]] = gpu
+        slots[gpu]["exclusive_gpu"] = row.get("exclusive_gpu", False)
         slots[gpu]["jobs"] += 1
         slots[gpu]["mem_gb"] += float(row.get("mem_gb", 0))
         for k, v in demand(row).items():

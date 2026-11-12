@@ -180,10 +180,10 @@ def test_partial_allowlist_is_valid_but_incomplete_reports_refuse_render(tmp_pat
 def test_capacity_limits_and_oversized_rows():
     doc = allowlist()
     instances = inv.validate_allowlist(doc)
-    assert inv.device_capacity_gib(instances[0]["uuid"], instances) == pytest.approx(24192 / 1024 - 1.0, abs=1e-3)
+    assert inv.device_capacity_gib(instances[0]["uuid"], instances) == pytest.approx(21.5)
     assert inv.device_capacity_gib(PARENTS[0], ()) == 90.0
     limits = inv.queue_limits(instances)
-    assert set(limits) == {item["uuid"] for item in instances} and all(v["max_jobs"] == 1 for v in limits.values())
+    assert set(limits) == {item["uuid"] for item in instances} and all(v["max_jobs"] == 4 for v in limits.values())
     jobs = [{"id": "fql", "host": "remote", "mem_gb": 6}, {"id": "rwprep-ntb", "host": "remote", "mem_gb": 34},
             {"id": "prep", "host": "remote", "mem_gb": 24}, {"id": "local", "host": "local", "mem_gb": 40}]
     assert inv.oversized_rows(jobs, instances) == [("rwprep-ntb", 34.0), ("prep", 24.0)]
@@ -700,7 +700,7 @@ def test_queue_rewrite_replaces_only_the_remote_limits(tmp_path):
     assert "# keep me" in new and after["jobs"] == [{"id": "a", "host": "remote"}]
     assert after["hosts"]["remote"]["gpu_backend"] == "cdi" and after["limits"] == {"MIG-local": {"max_jobs": 3}}
     assert set(after["hosts"]["remote"]["limits"]) == {i["uuid"] for i in doc["instances"]}
-    assert all(v == {"max_jobs": 1, "max_mem_gb": 22.625} for v in after["hosts"]["remote"]["limits"].values())
+    assert all(v == {"max_jobs": 4, "max_mem_gb": 21.5} for v in after["hosts"]["remote"]["limits"].values())
     allow = tmp_path / "remote-mig.yaml"
     allow.write_text(yaml.safe_dump(doc))
     queue = tmp_path / "queue.yaml"
@@ -834,15 +834,18 @@ else:
                               '--filter', 'label=s4d.owner=kaist-sunho']
         print('\\n'.join(containers))
     else:
-        assert sys.argv[1] == 'inspect'
-        print(json.dumps([containers[sys.argv[2]]]))
+        if sys.argv[1] == 'top':
+            print('PID\\n' + '\\n'.join(map(str, containers[sys.argv[2]].get('Pids', []))))
+        else:
+            assert sys.argv[1] == 'inspect'
+            print(json.dumps([containers[sys.argv[2]]]))
 '''.replace('PARENT', repr(PARENTS[0]))
     for command in ('nvidia-smi', 'docker', 'df'):
         path = tmp_path / command
         path.write_text('#!' + sys.executable + '\n' + script)
         path.chmod(0o755)
     return {"uuid": mig_uuid(0, 0), "parent": PARENTS[0], "gpu_instance_id": 3, "device": 0,
-            "max_jobs": 1, "idle_mib": 256, "gpu_bytes": 16 * 2**30, "capacity_bytes": 22 * 2**30,
+            "max_jobs": 1, "idle_mib": 256, "gpu_bytes": 16 * 2**30, "capacity_bytes": int(21.5 * 2**30),
             "ram_bytes": 32 * 2**30, "reserve_bytes": 120 * 2**30, "disk_bytes": 4 * 2**30,
             "floor_bytes": 100 * 2**30, "disk_floor_fraction": 0.15, "root": str(tmp_path),
             "test_paths": {"nvidia_smi": str(tmp_path / 'nvidia-smi'), "docker": str(tmp_path / 'docker'),
@@ -869,7 +872,9 @@ def slot_container(tmp_path, gpu=None, managed='false', limit=48 * 2**30, curren
     item = {'Id': cid, 'State': {'Running': True}, 'Config': {'Labels': {
         's4d.project': 'splatter4d', 's4d.owner': 'kaist-sunho', 's4d.managed': managed,
         's4d.host': 'remote', 's4d.gpu': gpu, 's4d.ram_bytes': str(64 * 2**30),
-        's4d.disk_bytes': str(10 * 2**30), **labels}}, 'HostConfig': {'Memory': limit}}
+        's4d.disk_bytes': str(10 * 2**30), 's4d.mem_bytes': str(2**30),
+        's4d.role': 'rwprep', **labels}}, 'HostConfig': {'Memory': limit, 'NanoCpus': 8 * 10**9,
+        'DeviceRequests': [{'Driver': 'cdi', 'DeviceIDs': ['nvidia.com/gpu=' + str(gpu)]}]}}
     (tmp_path / 'containers').write_text(json.dumps({cid: item}))
     return item
 
@@ -892,11 +897,11 @@ def test_slot_counts_every_owned_live_container(slot_evidence, tmp_path, managed
     item['State'] = {'Running': state != 'restarting', 'Paused': state == 'paused', 'Restarting': state == 'restarting'}
     (tmp_path / 'containers').write_text(json.dumps({item['Id']: item}))
     code, result = run_slot(slot_evidence)
-    assert code == 20 and 'slot container limit reached' in result['reasons']
+    assert code == 20 and 'slot container limit reached' in result['reasons'], result
 
 
 @pytest.mark.parametrize('case,reason', [
-    ('process', 'instance has processes'), ('framebuffer', 'instance framebuffer above idle threshold'),
+    ('process', 'foreign processes on instance'), ('framebuffer', 'instance framebuffer above idle threshold'),
     ('capacity', 'declared GPU need exceeds capacity'), ('ram', 'host RAM reserve'),
     ('disk_need', 'disk floor'), ('disk_floor', 'disk floor'), ('disk_fraction', 'disk floor'),
     ('reserved_disk', 'disk floor'),
@@ -985,7 +990,7 @@ def test_slot_evidence_errors_fail_closed(slot_evidence, tmp_path, case):
     elif case == 'inspect_bad':
         (tmp_path / 'containers').write_text(json.dumps({'b' * 64: {}}))
     elif case == 'max_jobs':
-        data['max_jobs'] = 2
+        data['max_jobs'] = 0
     elif case == 'capacity_drift':
         data['capacity_bytes'] = 25 * 2**30
     path.write_text(query)
@@ -996,7 +1001,7 @@ def test_slot_evidence_errors_fail_closed(slot_evidence, tmp_path, case):
 def test_slot_ram_exact_resource_boundaries_and_no_declaration_fallback(slot_evidence, tmp_path):
     data = slot_evidence
     slot_container(tmp_path, limit=64 * 2**30, current=16 * 2**30)
-    data.update(gpu_bytes=22 * 2**30, disk_bytes=650 * 2**30)
+    data.update(gpu_bytes=21 * 2**30, disk_bytes=650 * 2**30)
     (tmp_path / 'meminfo').write_text(f'MemAvailable: {200 * 1024**2} kB\n')  # 200 - (64-16) == 120+32
     path = tmp_path / 'query'
     path.write_text(path.read_text().replace(': 67 MiB', ': 256 MiB'))
@@ -1035,7 +1040,117 @@ def test_release_reservation_accepts_all_16_mig_slots_and_charges_exclusively(mo
         charges = rr.charges(doc)
         limits = inv.queue_limits(inv.validate_allowlist(allowlist()))
         assert max(c['mem_gb'] for c in charges['gpus'].values()) <= 22.625
-        phantom = [dict(host='remote', gpu=g, mem_gb=c['mem_gb']) for g, c in charges['gpus'].items()]
+        phantom = [dict(host='remote', gpu=g, mem_gb=c['mem_gb'], exclusive_gpu=True) for g, c in charges['gpus'].items()]
         assert scheduler.choose_gpu(dict(host='remote', gpu='any', mem_gb=1), limits, phantom, set()) is None
     with pytest.raises(ValueError, match='gpu entry'):
         rr.validate({**doc, 'gpus': {'MIG-malformed': dict(mem_gb=1, load=0)}})
+
+
+@pytest.mark.parametrize('managed', ['true', 'false'])
+def test_capacity_guard_shares_with_training_or_rwprep_and_reserves_growth(slot_evidence, tmp_path, managed):
+    data = {**slot_evidence, 'max_jobs': 4, 'gpu_bytes': 3 * 2**30}
+    item = slot_container(tmp_path, gpu=data['uuid'], managed=managed, **{'s4d.mem_bytes': str(3 * 2**30)})
+    item['Pids'] = [777]
+    (tmp_path / 'containers').write_text(json.dumps({item['Id']: item}))
+    (tmp_path / 'query').write_text(render_query([(PARENTS[0], True)], processes={0: [(3, 777, 512)]}))
+    code, result = run_slot(data)
+    assert code == 0 and result['containers'] == 1
+    assert result['gpu_reserved_bytes'] == 3 * 2**30
+    assert result['gpu_pending_bytes'] == int(2.5 * 2**30)
+    data['gpu_bytes'] = 19 * 2**30
+    code, result = run_slot(data)
+    assert code == 20 and 'GPU reservation sum exceeds capacity' in result['reasons']
+
+
+@pytest.mark.parametrize('exclusive_new,exclusive_old', [(True, False), (False, True)])
+def test_capacity_guard_honours_both_directions_of_exclusivity(slot_evidence, tmp_path, exclusive_new, exclusive_old):
+    data = {**slot_evidence, 'max_jobs': 4, 'gpu_bytes': 2**30, 'exclusive_gpu': exclusive_new}
+    slot_container(tmp_path, gpu=data['uuid'], managed='true',
+                   **{'s4d.exclusive_gpu': str(exclusive_old).lower()})
+    code, result = run_slot(data)
+    assert code == 20 and 'exclusive GPU placement' in result['reasons']
+
+
+def test_capacity_guard_refuses_foreign_pid_even_beside_known_tenant(slot_evidence, tmp_path):
+    data = {**slot_evidence, 'max_jobs': 4, 'gpu_bytes': 2**30}
+    slot_container(tmp_path, gpu=data['uuid'], managed='true')
+    (tmp_path / 'query').write_text(render_query([(PARENTS[0], True)], processes={0: [(3, 12345, 100)]}))
+    code, result = run_slot(data)
+    assert code == 20 and 'foreign processes on instance' in result['reasons']
+
+
+def test_capacity_guard_checks_free_memory_headroom_and_cpu(slot_evidence, tmp_path):
+    data = {**slot_evidence, 'max_jobs': 4, 'gpu_bytes': 3 * 2**30, 'cpu_thread_budget': 12}
+    slot_container(tmp_path, gpu=data['uuid'], managed='true')
+    code, result = run_slot(data)
+    assert code == 20 and 'host CPU thread budget' in result['reasons']
+    data['cpu_thread_budget'] = 320
+    path = tmp_path / 'query'
+    path.write_text(path.read_text().replace(': 67 MiB', ': 21000 MiB'))
+    code, result = run_slot(data)
+    assert code == 20 and 'measured free GPU memory/headroom' in result['reasons']
+
+
+@pytest.mark.parametrize('host', ['local', 'remote'])
+def test_scheduler_shares_but_refuses_memory_exclusive_and_foreign(host):
+    from ops.jobs import scheduler
+    gpu = scheduler.APPROVED_HOST_GPUS[host][0]
+    limits = {gpu: {'max_jobs': 4, 'max_mem_gb': 21.5}}
+    row = {'id': 'new', 'host': host, 'mem_gb': 3}
+    running = [{'host': host, 'gpu': gpu, 'mem_gb': 3}]
+    assert scheduler.choose_gpu(row, limits, running, set()) == gpu
+    assert scheduler.choose_gpu({**row, 'mem_gb': 19}, limits, running, set()) is None
+    assert scheduler.choose_gpu({**row, 'exclusive_gpu': True}, limits, running, set()) is None
+    assert scheduler.choose_gpu(row, limits, [{**running[0], 'exclusive_gpu': True}], set()) is None
+    assert scheduler.choose_gpu(row, limits, running, {gpu}) is None
+    assert scheduler.choose_gpu({**row, 'verification_purpose': 'native_suite'}, limits, running, set()) is None
+
+
+def test_committed_post_reboot_allowlist_and_limits():
+    instances = inv.load_allowlist(REPO / inv.INVENTORY_RELATIVE)
+    assert len(instances) == 16
+    assert {item['parent'] for item in instances} == set(PARENTS)
+    assert all(sum(item['parent'] == parent for item in instances) == 4 for parent in PARENTS)
+    host = yaml.safe_load((REPO / 'configs/hosts/remote.yaml').read_text())
+    assert set(host['gpu_uuids']) == {item['uuid'] for item in instances}
+    assert host['limits'] == inv.queue_limits(instances)
+    assert all(item['max_jobs'] == 4 and item['max_mem_gb'] == 21.5 for item in instances)
+
+
+def test_rwprep_uses_the_same_capacity_guard_and_release_reservation(monkeypatch):
+    from ops.containers import rwprep_capacity as adapter
+    from ops.containers.slot_guard import SOURCE
+
+    instances = inv.validate_allowlist(allowlist())
+    monkeypatch.setattr(adapter, 'REMOTE_MIG_INSTANCES', instances)
+    monkeypatch.setattr(adapter.release_reservation, 'reserved_gpus', lambda: set())
+    job = {'gpu': instances[0]['uuid'], 'gpu_need_bytes': 4 * 2**30, 'ram_bytes': 8 * 2**30,
+           'cpus': 4, 'test_paths': {'docker': '/untrusted'}}
+    payload = adapter.guard_payload(job)
+    assert payload['source'] == SOURCE
+    assert payload['input']['max_jobs'] == 4 and payload['input']['capacity_bytes'] == 21.5 * 2**30
+    assert 'test_paths' not in payload['input']
+    assert adapter.guard_payload({**job, 'exclusive_gpu': True})['input']['exclusive_gpu'] is True
+    with pytest.raises(ValueError, match='memory cap'):
+        adapter.guard_payload({**job, 'gpu_cap_bytes': 90 * 2**30})
+    monkeypatch.setattr(adapter.release_reservation, 'reserved_gpus', lambda: {job['gpu']})
+    with pytest.raises(ValueError, match='reserved for release verification'):
+        adapter.guard_payload(job)
+
+
+def test_local_fair_share_keeps_exclusive_placement_and_shared_capacity():
+    from ops.jobs.fair_share import select
+    limits = {'mig': {'max_jobs': 3, 'max_mem_gb': 22}}
+    first = {'id': 'a', 'family': 'realworld', 'ram_bytes': 3 * 2**30, 'mem_gb': 3, 'gpu': 'mig'}
+    second = {**first, 'id': 'b'}
+    assert select([first, second], [], limits, 100 * 2**30, 0)['admitted'] == ['a', 'b']
+    assert select([{**first, 'exclusive_gpu': True}, second], [], limits, 100 * 2**30, 0)['admitted'] == ['a']
+    assert select([{**second, 'exclusive_gpu': True}], [first], limits, 100 * 2**30, 0)['admitted'] == []
+
+
+def test_local_gpu_query_requires_measured_usable_capacity(monkeypatch):
+    from ops.jobs import scheduler
+    gpu = scheduler.APPROVED_HOST_GPUS['local'][0]
+    monkeypatch.setattr(scheduler, 'mig_query', lambda *a, **kw: {gpu: {'processes': []}})
+    with pytest.raises(ValueError, match='framebuffer evidence unavailable'):
+        scheduler.gpu_usage()

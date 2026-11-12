@@ -174,6 +174,11 @@ def session_pss():
 
 
 def footprint(job):
+    from ops.jobs.footprints import fql_ram_gb
+
+    measured = fql_ram_gb(job)
+    if measured is not None:
+        return int(measured * 2**30)
     # DrM rows use the measured campaign footprints (scheduling rule: measured, not declared; observed baseline DrM
     # trainers 2.7-3.4 GB and evaluators ~1.9 GB RSS on 2026-10-17); other new-baseline jobs: declared ram_gb.
     args = job['args']
@@ -253,6 +258,8 @@ charge = memory['budget_usage']
 active_share = memory['active_file'] / max(1, memory['active_file'] + memory['inactive_file'])
 pss = session_pss()
 # Measured footprints of the existing campaign scripts (the Stage 2 driver's table); new-baseline jobs: declared ram_gb.
+# Real-world FQL (2026-11-12): VmHWM 1.5 GiB frozen / 4.3 GiB e2e_cnn; charge 3 / 8 GiB
+# via footprints.fql_ram_gb for admission AND active_footprint growth reservation.
 # scripts/train_sac.py (2026-10-28): measured 2.0-2.2 GB RSS (csw4, ReViWo, 3D-MVP A; 100k-latent replay),
 # charged as the DrM trainer's 3.5 GB
 MEASURED = {'scripts/train.py': 10.77e9, 'scripts/train_rl.py': 3.5e9, 'scripts/train_sac.py': 3.5e9,
@@ -293,10 +300,12 @@ def family(job):
 fair_active = [{'id': i, 'family': family(by_queue.get(i, {})),
                 'ram_bytes': max(active_footprint(i, current), pss.get(int(current.get('pid') or -1), 0))
                 if i not in FROZEN else pss.get(int(current.get('pid') or -1), 0),
+                'exclusive_gpu': current.get('exclusive_gpu', False) or by_queue.get(i, {}).get('exclusive_gpu', False),
                 'gpu': current.get('gpu'), 'mem_gb': jobs.reservation(current, by_queue.get(i, {}), 'mem_gb')}
                for i, current in state.items() if current.get('host', 'local') == 'local'
                and current['status'] in jobs.RESERVING]
 fair_candidates = [{'id': j['id'], 'family': family(j), 'ram_bytes': footprint(j),
+                    'exclusive_gpu': j.get('exclusive_gpu', False),
                     'gpu': j.get('gpu', 'any'), 'mem_gb': float(j.get('mem_gb', 0)),
                     'evaluator': j['script'] == 'scripts/eval_rl.py', 'trainer': trained_by(j),
                     'trainer_ready': status(trained_by(j)) in jobs.ACTIVE | {jobs.DONE}}

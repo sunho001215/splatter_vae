@@ -1197,7 +1197,7 @@ def test_mig_launch_uses_shared_slot_guard_under_existing_lock(monkeypatch):
     monkeypatch.setattr(launcher, 'APPROVED_HOST_GPUS', {**launcher.APPROVED_HOST_GPUS, 'remote': (uuid,)})
     monkeypatch.setattr(launcher, 'REMOTE_MIG_DEVICES', {uuid: (parent, 3, 0)})
     spec = job_spec()
-    spec.update(gpu=uuid, max_jobs=1, max_mem_gb=22)
+    spec.update(gpu=uuid, max_jobs=4, max_mem_gb=21.5)
     # Spec path overrides must never reach the remote guard.
     spec['test_paths'] = {'docker': '/untrusted'}
     command = build_remote_command(spec, DATA_ID, 'e' * 40, 'f' * 64, {'tests.json': '1' * 64},
@@ -1209,7 +1209,7 @@ def test_mig_launch_uses_shared_slot_guard_under_existing_lock(monkeypatch):
     data = json.loads(argv[-1])
     assert argv[:3] == ['python3', '-I', '-c'] and argv[3] == SOURCE
     assert data['uuid'] == uuid and data['gpu_instance_id'] == 3 and data['device'] == 0
-    assert data['max_jobs'] == 1 and data['idle_mib'] == 256 and 'test_paths' not in data
+    assert data['max_jobs'] == 4 and data['idle_mib'] == 256 and 'test_paths' not in data
     assert command.index('flock -x 9') < start < command.index('cid=$(docker run')
     for obsolete in ('owned_pids=', 'co_pending=', 'gpu_used()', 'mig_probe=', 'gpu_free='):
         assert obsolete not in command

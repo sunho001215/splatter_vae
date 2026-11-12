@@ -21,6 +21,7 @@ import yaml
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
 from ops.containers.verification import validate_report, validate_verification, verification_resources  # noqa: E402
+from ops.jobs.footprints import exclusive, fql_ram_gb, ram_gb  # noqa: E402
 from ops.jobs import host_roles, realworld_local  # noqa: E402
 from ops.jobs import release_reservation  # noqa: E402
 from ops.jobs.arguments import option as _option  # noqa: E402
@@ -85,8 +86,6 @@ def load_queue(path: Path = QUEUE) -> dict:
         for uuid, limit in host.get("limits", {}).items():
             if uuid not in APPROVED_HOST_GPUS[name]:
                 raise ValueError(f"queue limit for a non-authorized {name} GPU {uuid}")
-            if name == "remote" and uuid in REMOTE_MIG_DEVICES and int(limit.get("max_jobs", 0)) != 1:
-                raise ValueError(f"remote MIG instance {uuid} is an exclusive slot: max_jobs must be 1")
             if int(limit.get("max_jobs", 0)) < 1 or float(limit.get("max_mem_gb", 0)) <= 0:
                 raise ValueError(f"invalid admission limits for {uuid}")
         for key in ("host_ram_reserve_gb", "host_ram_ramp_minutes", "disk_floor_gb", "disk_floor_fraction"):
@@ -122,6 +121,8 @@ def load_queue(path: Path = QUEUE) -> dict:
             value = float(job.get(key, 0))
             if not math.isfinite(value) or value < 0:
                 raise ValueError(f"job {job_id}: invalid {key}")
+        if type(job.get("exclusive_gpu", False)) is not bool:
+            raise ValueError(f"job {job_id}: invalid exclusive_gpu")
         validate_verification(job, queued=True)
     return queue
 
@@ -298,11 +299,22 @@ def session_id(pid: int) -> int | None:
         return None
 
 
+_LOCAL_GPU_MEMORY = {}
+
+
 def gpu_usage() -> dict[str, list[tuple[int, float]]]:
     # Local devices are MIG instances: the compute-apps CSV query cannot attribute their processes, the per-GPU
     # detailed query can (GPU instance ID + PID).
     # The detailed per-GPU query lists every process; with ~60 local DrM processes it took 70 s (2026-10-18)
     found = mig_query(MIG_DEVICES, state_dir=REPO / "experiments", timeout=180)
+    for uuid in APPROVED_HOST_GPUS["local"]:
+        item = found.get(uuid, {})
+        total, used = item.get("total_mib"), item.get("used_mib")
+        if (not isinstance(total, (int, float)) or not isinstance(used, (int, float))
+                or not math.isfinite(total) or not math.isfinite(used) or not 0 <= used <= total or total <= 0):
+            raise ValueError("local MIG framebuffer evidence unavailable")
+    _LOCAL_GPU_MEMORY.clear()
+    _LOCAL_GPU_MEMORY.update(found)
     return {uuid: found[uuid]["processes"] for uuid in APPROVED_HOST_GPUS["local"]}
 
 
@@ -349,12 +361,17 @@ def choose_gpu(job: dict, limits: dict, running: list[dict], foreign: set[str],
         if uuid in foreign or uuid not in limits:
             continue
         here = [item for item in running if item.get("host", "local") == host and item["gpu"] == uuid]
+        if any(exclusive(item) for item in here) or (exclusive(job) and here):
+            continue
         memory = sum(item["mem_gb"] for item in here) + float(job["mem_gb"])
         count = len(here)
         shared = (cotenant or {}).get(uuid)
         if shared is not None:  # known co-tenants on this GPU (_charge_cotenants): count, memory, measured free memory
             count, memory = count + shared["jobs"], memory + shared["mem_gb"]
-            if shared["free_gb"] - COTENANT_GPU_MARGIN_GB < float(job["mem_gb"]):
+            if shared.get("exclusive_gpu") or (exclusive(job) and shared["jobs"]):
+                continue
+            margin = 2.0 if uuid.startswith("MIG-") else COTENANT_GPU_MARGIN_GB
+            if shared["free_gb"] - margin < float(job["mem_gb"]):
                 continue
         if count < limits[uuid]["max_jobs"] and memory <= limits[uuid]["max_mem_gb"]:
             if best is None or memory < best[0]:
@@ -376,6 +393,8 @@ def job_fingerprint(job: dict) -> str:
 
 
 def reservation(current: dict, job: dict, key: str) -> float:
+    if key == "ram_gb" and fql_ram_gb(job) is not None:
+        return ram_gb(job)
     return max(float(current.get(key, 0)), float(job.get(key, 0)))
 
 
@@ -410,8 +429,8 @@ def launch(job: dict, gpu: str, attempt: int, runs: Path = RUNS, args: list | No
     """Start one local job. ``cpu_threads`` (remote-resident training placed on local: the unified pool) bounds the
     OpenMP / MKL / OpenBLAS pools exactly as the remote container environment does (ops/containers/launch.py; thread
     count only, not a hyperparameter): without it every pool spans the shared host's cores (2026-11-12: one local
-    train_realworld_fql.py used ~95 cores). Every other local launch keeps its environment unchanged (argument not
-    given). The variables bound the default intra-op pools only; unlike the container's NanoCpus quota they do not cap
+    train_realworld_fql.py used ~95 cores). Every MIG launch defaults to eight threads when no explicit quota is given.
+    The variables bound the default intra-op pools only; unlike the container's NanoCpus quota they do not cap
     inter-op pools, total threads or aggregate CPU time."""
     script = check_guarded(job["script"])
     run_dir = runs / job["id"]
@@ -420,7 +439,9 @@ def launch(job: dict, gpu: str, attempt: int, runs: Path = RUNS, args: list | No
     env = {**os.environ, "CUDA_VISIBLE_DEVICES": gpu, "MUJOCO_GL": "egl", "PYOPENGL_PLATFORM": "egl",
            "S4D_HOST_CONFIG": str(HOST_CONFIG_PATH)}
     env.pop("MUJOCO_EGL_DEVICE_ID", None)
-    if cpu_threads is not _UNBOUNDED:  # remote-resident rows only: the inherited values are overridden
+    if cpu_threads is _UNBOUNDED and gpu in MIG_DEVICES:
+        cpu_threads = thread_limit(job.get("cpu_threads", DEFAULT_CPU_THREADS))
+    if cpu_threads is not _UNBOUNDED:  # bound every MIG launch, including older local families
         env.update({name: str(thread_limit(cpu_threads)) for name in THREAD_ENV})
     adj = int(job.get("oom_score_adj", 0))
     if not 0 <= adj <= 1000:
@@ -1029,7 +1050,7 @@ def _charge_cotenants(resources: dict, state: dict, jobs: dict, messages: list[s
     a job's mem_gb plus COTENANT_GPU_MARGIN_GB (choose_gpu). Host RAM: the part of their RAM limits not yet in use. A
     co-tenant without an enforced RAM limit cannot be accounted: no remote launch. Without co-tenants nothing changes."""
     snapshot = resources["remote"].pop("snapshot", None)
-    if snapshot is None or not snapshot.cotenants:
+    if snapshot is None:
         return
     own = [(current["gpu"], current.get("container"), reservation(current, jobs.get(job_id, {}), "mem_gb"))
            for job_id, current in state.items() if current.get("host") == "remote" and current["status"] in RESERVING]
@@ -1153,7 +1174,8 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
                 current["status"] = FAILED
                 messages.append(f"{job_id} exhausted restarts; diagnose before retrying")
     running = [{"host": current.get("host", "local"), "gpu": current["gpu"],
-                "mem_gb": reservation(current, jobs.get(job_id, {}), "mem_gb"), "pid": current.get("pid")}
+                "mem_gb": reservation(current, jobs.get(job_id, {}), "mem_gb"), "pid": current.get("pid"),
+                "exclusive_gpu": exclusive(current) or exclusive(jobs.get(job_id, {}))}
                for job_id, current in state.items() if current["status"] in RESERVING]
     if "remote" in resources:
         _charge_cotenants(resources, state, jobs, messages)
@@ -1164,7 +1186,17 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
         total, free = disk_usage(runs) if disk_bytes is None else disk_bytes
         resources["local"] = {"available": host_available_gb() if available_gb is None else available_gb,
                               "disk_total": total, "disk_free": free, "foreign": foreign}
+        # Use the same fresh MIG query as occupancy; reserve unallocated growth of every local job.
+        local_shared = {}
+        for uuid, measured in _LOCAL_GPU_MEMORY.items():
+            here = [item for item in running if item["host"] == "local" and item["gpu"] == uuid]
+            pending = sum(max(0, item["mem_gb"] - sum(mem for pid, mem in usage.get(uuid, [])
+                          if session_id(pid) == item["pid"]) / 1024) for item in here)
+            local_shared[uuid] = {"jobs": 0, "mem_gb": 0,
+                                  "free_gb": (measured["total_mib"] - measured["used_mib"]) / 1024 - pending}
+        resources["local"]["cotenant"] = local_shared
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError, ValueError) as exc:
+        resources.pop("local", None)
         messages.append(f"GPU process query failed ({type(exc).__name__}); no jobs launched on local")
     if (queue_path.parent / "HOLD").exists():
         return messages
@@ -1207,15 +1239,18 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
                 charge["mem_gb"] = max(0.0, charge["mem_gb"] - reservation(current, jobs.get(job_id, {}), "mem_gb"))
             for key in ("ram_gb", "disk_gb", "cpu_threads"):
                 release_charge[key] = max(0, release_charge[key] - reservation(current, jobs.get(job_id, {}), key))
-    phantom = [{"host": "remote", "gpu": uuid, "mem_gb": charge["mem_gb"], "pid": None}
+    phantom = [{"host": "remote", "gpu": uuid, "mem_gb": charge["mem_gb"], "pid": None, "exclusive_gpu": uuid.startswith("MIG-")}
                for uuid, charge in release_charge["gpus"].items()]
-    # remote CPU threads in use (checked only while a release is pending): our executing containers plus known
+    # Remote CPU threads in use for every admission: our executing containers plus known
     # co-tenants, updated after every launch of this tick
     cotenant_cpus = resources.get("remote", {}).get("cotenant_cpus", 0.0)  # absent: no co-tenants
     cpu_used = (sum(reservation(current, jobs.get(job_id, {}), "cpu_threads") or DEFAULT_REMOTE_CPU_THREADS
                     for job_id, current in state.items()
                     if current.get("host") == "remote" and current["status"] in RESERVING)
                 + (cotenant_cpus or 0.0))
+    local_cpu_used = sum(reservation(current, jobs.get(job_id, {}), "cpu_threads") or DEFAULT_REMOTE_CPU_THREADS
+                         for job_id, current in state.items()
+                         if current.get("host", "local") == "local" and current["status"] in RESERVING)
     for job in eligible(list(jobs.values()), state):
         host_name = job.get("host", "local")
         host, resource = queue["hosts"][host_name], resources.get(host_name)
@@ -1244,19 +1279,26 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
                                         resource.get("cotenant")) is not None:
                 messages.append(f"{job['id']}: waiting for GPU capacity reserved for release {release_hold['short']}")
             continue
-        need, reserve = float(job.get("ram_gb", 0)), float(host.get("host_ram_reserve_gb", 0))
+        need, reserve = ram_gb(job), float(host.get("host_ram_reserve_gb", 0))
         available = resource["available"] - (release_charge["ram_gb"] if held_back else 0.0)
         if available - need < reserve:
             messages.append(f"{job['id']}: waiting for host RAM ({available:.0f} GB available"
                             + (f" after {release_charge['ram_gb']:.0f} GB reserved for release {release_hold['short']}"
                                if held_back else "") + f", needs {need:.0f} + {reserve:.0f}) on {host_name}")
             continue
-        threads = float(job.get("cpu_threads", DEFAULT_REMOTE_CPU_THREADS))
-        if host_name == "remote" and release_hold and cotenant_cpus is None:
-            messages.append(f"{job['id']}: co-tenant CPU use is unbounded while release {release_hold['short']} is "
-                            "pending; not admitted")
+        try:
+            threads = thread_limit(job.get("cpu_threads", DEFAULT_REMOTE_CPU_THREADS))
+        except ValueError as exc:
+            messages.append(f"{job['id']}: not admitted on {host_name}: {exc}")
             continue
-        if host_name == "remote" and release_hold:  # the release's own jobs are checked against what is free too
+        if host_name == "local" and local_cpu_used + threads > float(host.get("cpu_thread_budget", os.cpu_count() or 1)):
+            messages.append(f"{job['id']}: waiting for local CPU thread budget")
+            continue
+        if host_name == "remote" and cotenant_cpus is None:
+            messages.append(f"{job['id']}: co-tenant CPU use is unbounded; "
+                            "not admitted")
+            continue
+        if host_name == "remote":  # every shared admission must fit the host thread budget
             budget = float(host.get("cpu_thread_budget", REMOTE_CPU_THREAD_BUDGET))
             charged = release_charge["cpu_threads"] if held_back else 0
             if cpu_used + threads + charged > budget:
@@ -1317,7 +1359,8 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
                      "spec_path": str(path), "required_results": spec["required_results"],
                      "script": job["script"], "args": list(map(str, job.get("args", []))),
                      "job_sha256": job_fingerprint(job), "expected_config_sha256": job.get("expected_config_sha256"),
-                     "mem_gb": float(job["mem_gb"]), "ram_gb": need, "disk_gb": float(job.get("disk_gb", 0))}
+                     "mem_gb": float(job["mem_gb"]), "ram_gb": need, "disk_gb": float(job.get("disk_gb", 0)),
+                     "exclusive_gpu": exclusive(job), "cpu_threads": threads}
             if "role" in spec:
                 # The launcher preserves input-only role evidence here; reconciliation must use the same decision.
                 event["role"] = spec["role"]
@@ -1332,7 +1375,7 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
             record({"event": "launching", **event}, registry)
             resource["available"] -= need
             resource["disk_free"] -= disk_need
-            running.append({"host": "remote", "gpu": gpu, "mem_gb": float(job["mem_gb"]), "pid": None})
+            running.append({"host": "remote", "gpu": gpu, "mem_gb": float(job["mem_gb"]), "pid": None, "exclusive_gpu": exclusive(job)})
             cpu_used += threads
             if gpu in resource.get("cotenant", {}):
                 resource["cotenant"][gpu]["free_gb"] -= float(job["mem_gb"])
@@ -1379,12 +1422,16 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
             # Device provenance: the MIG instance and its parent physical GPU (CUDA reports the parent's UUID).
             record({"event": "launched", "id": job["id"], "host": "local", "pid": pid, "gpu": gpu,
                     "gpu_parent": MIG_DEVICES[gpu][0] if gpu in MIG_DEVICES else gpu,
-                    "attempt": attempt, "mem_gb": float(job["mem_gb"]), "ram_gb": need,
+                    "attempt": attempt, "exclusive_gpu": exclusive(job), "cpu_threads": int(threads),
+                    "mem_gb": float(job["mem_gb"]), "ram_gb": need,
                     "disk_gb": float(job.get("disk_gb", 0)), "job_sha256": job_fingerprint(job),
                     **identity, **input_event}, registry)
             resource["available"] -= need
             resource["disk_free"] -= disk_need
-            running.append({"host": "local", "gpu": gpu, "mem_gb": float(job["mem_gb"]), "pid": pid})
+            running.append({"host": "local", "gpu": gpu, "mem_gb": float(job["mem_gb"]), "pid": pid, "exclusive_gpu": exclusive(job)})
+            local_cpu_used += threads
+            if gpu in resource.get("cotenant", {}):
+                resource["cotenant"][gpu]["free_gb"] -= float(job["mem_gb"])
             messages.append(f"launched {job['id']} on {gpu} (pid {pid}, attempt {attempt})")
     return messages
 
