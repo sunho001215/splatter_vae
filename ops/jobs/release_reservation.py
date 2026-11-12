@@ -39,7 +39,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[2]
 PATH = REPO / "runs/setup/release-reservation.json"
 EXPIRY_SECONDS = 900  # a reservation not renewed within this window lapses (the chain's heartbeat renews every 60 s)
-MAX_LIFETIME_SECONDS = 4 * 3600  # never longer than this after its creation (suite timeout 2 h + isolation + slack)
+MAX_LIFETIME_SECONDS = 6 * 3600  # the chain stops renewing (and fails) before this; a document older is never valid
 CLOCK_SLACK_SECONDS = 120
 SCHEMA = 1
 

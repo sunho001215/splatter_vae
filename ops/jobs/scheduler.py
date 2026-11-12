@@ -960,6 +960,7 @@ def _charge_cotenants(resources: dict, state: dict, jobs: dict, messages: list[s
         return
     resources["remote"]["available"] -= charges["ram_pending_bytes"] / GIB
     resources["remote"]["cotenant"] = charges["gpus"]
+    resources["remote"]["cotenant_cpus"] = charges["cpus"]  # their CPU quotas; None if any is unlimited
     messages.append(f"remote co-tenants: {len(snapshot.cotenants)} known, {charges['ram_pending_bytes'] / GIB:.0f} GB "
                     "RAM not yet in use charged; " + ", ".join(
                         f"{uuid[:12]} {charge['jobs']} ({charge['mem_gb']:.1f} GB charged, {charge['free_gb']:.1f} GB "
@@ -1124,11 +1125,11 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
                for uuid, charge in release_charge["gpus"].items()]
     # remote CPU threads in use (checked only while a release is pending): our executing containers plus known
     # co-tenants, updated after every launch of this tick
+    cotenant_cpus = resources.get("remote", {}).get("cotenant_cpus", 0.0)  # absent: no co-tenants
     cpu_used = (sum(reservation(current, jobs.get(job_id, {}), "cpu_threads") or DEFAULT_REMOTE_CPU_THREADS
                     for job_id, current in state.items()
                     if current.get("host") == "remote" and current["status"] in RESERVING)
-                + DEFAULT_REMOTE_CPU_THREADS * sum(int(charge.get("jobs", 0)) for charge in
-                                                   (resources.get("remote", {}).get("cotenant") or {}).values()))
+                + (cotenant_cpus or 0.0))
     for job in eligible(list(jobs.values()), state):
         host_name = job.get("host", "local")
         host, resource = queue["hosts"][host_name], resources.get(host_name)
@@ -1158,6 +1159,10 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
                                if held_back else "") + f", needs {need:.0f} + {reserve:.0f}) on {host_name}")
             continue
         threads = float(job.get("cpu_threads", DEFAULT_REMOTE_CPU_THREADS))
+        if host_name == "remote" and release_hold and cotenant_cpus is None:
+            messages.append(f"{job['id']}: co-tenant CPU use is unbounded while release {release_hold['short']} is "
+                            "pending; not admitted")
+            continue
         if host_name == "remote" and release_hold:  # the release's own jobs are checked against what is free too
             budget = float(host.get("cpu_thread_budget", REMOTE_CPU_THREAD_BUDGET))
             charged = release_charge["cpu_threads"] if held_back else 0

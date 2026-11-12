@@ -31,12 +31,15 @@ sys.path.insert(0, str(ROOT))
 from ops.containers.verification import POLICIES  # noqa: E402
 from ops.jobs import release_poll, release_reservation  # noqa: E402
 from ops.jobs import scheduler as jobs  # noqa: E402
-from ops.jobs.remote_backend import RemoteBackend, cotenant_charges  # noqa: E402
+from ops.jobs.remote_backend import COTENANT_GPU_MARGIN_GB, RemoteBackend, cotenant_charges  # noqa: E402
 from ops.resources.gpu_guard import APPROVED_HOST_GPUS  # noqa: E402
 
 PY = str(ROOT / '.venv/bin/python')
 POLL_SECONDS = 10
 HEARTBEAT_SECONDS = 60  # reservation renewal by a background thread (independent of syncs, ticks and lock waits)
+# the chain's supported duration: past it the chain stops renewing and fails (the reservation then lapses within
+# EXPIRY_SECONDS, well before release_reservation.MAX_LIFETIME_SECONDS); the verification can simply be re-run
+DEADLINE_SECONDS = release_reservation.MAX_LIFETIME_SECONDS - release_reservation.EXPIRY_SECONDS - 600
 MAX_QUIET_SECONDS = 240
 PENDING_RETRY_SECONDS = 15
 NATIVE_LOAD = 1.0  # remote driver load units of the native suite on its GPU
@@ -72,6 +75,7 @@ class Release:
         self.started = time.time()
         self._lock = threading.Lock()
         self._stop = threading.Event()
+        self._heartbeat = None
 
     # ---- reservation (release_reservation) ----
     def isolation_share(self):
@@ -79,8 +83,14 @@ class Release:
         return {'mem_gb': gpu, 'load': ISOLATION_LOAD, 'ram_gb': ram, 'cpu_threads': 8, 'disk_gb': 1}
 
     def renew(self):
-        """Write the reservation for the current stage (ownership-checked; created stays the chain's start)."""
+        """Write the reservation for the current stage (ownership-checked; created stays the chain's start). Never
+        after clear() (checked under the same mutex) or past the chain's deadline."""
         with self._lock:
+            if self._stop.is_set():
+                return
+            if time.time() - self.started > DEADLINE_SECONDS:
+                self._stop.set()
+                raise SystemExit(f'release chain deadline ({DEADLINE_SECONDS / 3600:.1f} h) passed; reservation not renewed')
             native = self.native or {'mem_gb': POLICIES['native_suite'][3], 'load': NATIVE_LOAD,
                                      'ram_gb': POLICIES['native_suite'][2], 'cpu_threads': 8, 'disk_gb': 1}
             release_reservation.write(release_reservation.plan(
@@ -99,11 +109,13 @@ class Release:
         while not self._stop.wait(HEARTBEAT_SECONDS):
             try:
                 self.renew()
-            except Exception as exc:  # noqa: BLE001  (logged; the reservation lapses by itself if it keeps failing)
+            except BaseException as exc:  # noqa: BLE001  (logged; the reservation lapses by itself if it keeps failing)
                 log(f'reservation heartbeat failed ({type(exc).__name__}: {str(exc)[:120]})')
 
     def clear(self):
         self._stop.set()
+        if self._heartbeat is not None:
+            self._heartbeat.join(timeout=HEARTBEAT_SECONDS)
         with self._lock:
             if release_reservation.clear(self.commit):
                 log('release reservation cleared')
@@ -160,13 +172,22 @@ class Release:
             executing = [c for c in state.values() if c.get('host') == 'remote' and c.get('status') in jobs.RESERVING]
             declared = {g: sum(float(c.get('mem_gb', 0)) for c in executing if c.get('gpu') == g) for g in self.gpus}
             count = {g: sum(1 for c in executing if c.get('gpu') == g) for g in self.gpus}
+            cotenants = cotenant_charges(snapshot)['gpus']
+            need = float(POLICIES['native_suite'][3])
+            short = set()  # GPUs whose co-tenant-measured free memory cannot hold the suite (choose_gpu's margin test)
+            for g, charge in cotenants.items():
+                if g in declared:
+                    declared[g] += charge['mem_gb']
+                    count[g] += charge['jobs']
+                    if charge['free_gb'] - COTENANT_GPU_MARGIN_GB < need:
+                        short.add(g)
             free = {g: (snapshot.gpu_memory.get(g) or (0, 0)) for g in self.gpus}
             free = {g: total - used for g, (total, used) in free.items()}
             owned = set().union(*[set(item.get('pids') or ()) for item in snapshot.containers.values()])
-            known = {g: set(c['pids']) for g, c in cotenant_charges(snapshot)['gpus'].items()}
+            known = {g: set(c['pids']) for g, c in cotenants.items()}
             busy = {g for g, procs in snapshot.usage.items()  # processes of other users (the tick's foreign test)
                     if g in self.gpus and any(pid not in owned and pid not in known.get(g, ()) for pid, _ in procs)}
-            order = sorted(self.gpus, key=lambda g: (g in busy, declared[g], count[g], -free[g]))
+            order = sorted(self.gpus, key=lambda g: (g in busy or g in short, declared[g], count[g], -free[g]))
             self.native_gpu = order[0]
             log(f'native GPU {self.native_gpu} (declared {declared[self.native_gpu]:.0f} GB, '
                 f'{count[self.native_gpu]} jobs, {free[self.native_gpu] / 1024:.0f} GiB measured free)')
@@ -180,7 +201,8 @@ class Release:
             if self.native_gpu is None:
                 self.pick_native_gpu()
             self.publish('native')  # reserve from the start: capacity freed during the code sync is kept for the suite
-            threading.Thread(target=self.heartbeat, name='reservation-heartbeat', daemon=True).start()
+            self._heartbeat = threading.Thread(target=self.heartbeat, name='reservation-heartbeat', daemon=True)
+            self._heartbeat.start()
             start = time.time()
             if not self.skip_sync:  # the release bundle is already deployed (same commit, another image)
                 log(run([PY, '-I', str(self.sync_repo / 's4d/remote_access.py'), 'sync-code', self.commit]))
