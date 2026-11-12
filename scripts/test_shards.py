@@ -74,6 +74,7 @@ FILE_CLASSES = {
     "tests/test_realworld_calibration.py": "cpu",
     "tests/test_realworld_calibration_board.py": "cpu",
     "tests/test_realworld_calibration_release.py": "cpu",
+    "tests/test_realworld_calibration_criteria.py": "cpu",  # criteria v2 (rig_loma-release/2), numpy fixtures, 2026-11-12
     "tests/test_realworld_calibration_rig.py": "cpu",
     "tests/test_realworld_cli.py": "cpu",
     "tests/test_realworld_contract_workers.py": "cpu",
