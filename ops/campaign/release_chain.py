@@ -16,9 +16,11 @@ Release turnaround (user 2026-11-12; every gate step above is unchanged):
   live evidence sync); a job still waiting for admission is retried every PENDING_RETRY_SECONDS.
 - timing: the wall time of every stage is logged and written to runs/setup/release-timing/<short>.json.
 """
+import fcntl
 import json
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -29,11 +31,12 @@ sys.path.insert(0, str(ROOT))
 from ops.containers.verification import POLICIES  # noqa: E402
 from ops.jobs import release_poll, release_reservation  # noqa: E402
 from ops.jobs import scheduler as jobs  # noqa: E402
-from ops.jobs.remote_backend import RemoteBackend  # noqa: E402
+from ops.jobs.remote_backend import RemoteBackend, cotenant_charges  # noqa: E402
 from ops.resources.gpu_guard import APPROVED_HOST_GPUS  # noqa: E402
 
 PY = str(ROOT / '.venv/bin/python')
 POLL_SECONDS = 10
+HEARTBEAT_SECONDS = 60  # reservation renewal by a background thread (independent of syncs, ticks and lock waits)
 MAX_QUIET_SECONDS = 240
 PENDING_RETRY_SECONDS = 15
 NATIVE_LOAD = 1.0  # remote driver load units of the native suite on its GPU
@@ -67,6 +70,8 @@ class Release:
         self.native = None
         self.timing = {'commit': self.commit, 'short': self.short, 'stages': {}}
         self.started = time.time()
+        self._lock = threading.Lock()
+        self._stop = threading.Event()
 
     # ---- reservation (release_reservation) ----
     def isolation_share(self):
@@ -74,15 +79,34 @@ class Release:
         return {'mem_gb': gpu, 'load': ISOLATION_LOAD, 'ram_gb': ram, 'cpu_threads': 8, 'disk_gb': 1}
 
     def renew(self):
-        native = self.native or {'mem_gb': POLICIES['native_suite'][3], 'load': NATIVE_LOAD,
-                                 'ram_gb': POLICIES['native_suite'][2], 'cpu_threads': 8, 'disk_gb': 1}
-        release_reservation.write(release_reservation.plan(
-            self.commit, self.short, self.stage, self.native_gpu or self.gpus[0], self.gpus, native=native,
-            isolation=self.isolation_share()))
+        """Write the reservation for the current stage (ownership-checked; created stays the chain's start)."""
+        with self._lock:
+            native = self.native or {'mem_gb': POLICIES['native_suite'][3], 'load': NATIVE_LOAD,
+                                     'ram_gb': POLICIES['native_suite'][2], 'cpu_threads': 8, 'disk_gb': 1}
+            release_reservation.write(release_reservation.plan(
+                self.commit, self.short, self.stage, self.native_gpu or self.gpus[0], self.gpus, native=native,
+                isolation=self.isolation_share(), created=self.started))
+
+    def publish(self, stage):
+        """Publish a new reservation content under the scheduler's registry lock, so that a tick either ran entirely
+        before it or sees it (every remote launch goes through the tick under that lock)."""
+        with open(ROOT / 'experiments/registry.lock', 'w') as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            self.stage = stage
+            self.renew()
+
+    def heartbeat(self):
+        while not self._stop.wait(HEARTBEAT_SECONDS):
+            try:
+                self.renew()
+            except Exception as exc:  # noqa: BLE001  (logged; the reservation lapses by itself if it keeps failing)
+                log(f'reservation heartbeat failed ({type(exc).__name__}: {str(exc)[:120]})')
 
     def clear(self):
-        if release_reservation.clear(self.commit):
-            log('release reservation cleared')
+        self._stop.set()
+        with self._lock:
+            if release_reservation.clear(self.commit):
+                log('release reservation cleared')
 
     # ---- timing ----
     def mark(self, name, start):
@@ -104,15 +128,14 @@ class Release:
         launched_logged = set()
         stage_start = time.time()
         while True:
-            self.renew()
             for m in jobs.tick(queue_path=Path(qpath), remote_backend=backend, scope=scope):
                 log(m)
             state = jobs.read_registry()
             status = {i: state.get(i, {}).get('status') for i in ids}
             for i in ids:
                 if i not in launched_logged and status[i] in (jobs.RUNNING, 'sync_pending', jobs.DONE):
-                    launched_logged.add(i)
-                    self.timing['stages'].setdefault(f'admit:{i}', round(time.time() - stage_start, 1))
+                    launched_logged.add(i)  # observed after the tick that launched it (an upper bound)
+                    self.timing['stages'].setdefault(f'observed_admit:{i}', round(time.time() - stage_start, 1))
             action, running = release_poll.next_action(state, ids)
             if action == 'done':
                 log(f'done {status}')
@@ -122,20 +145,32 @@ class Release:
                 raise SystemExit(2)
             log(f'wait {status}')
             if action == 'watch':
-                release_poll.wait_for_exit(backend.container_states, list(running.values()), renew=self.renew,
+                release_poll.wait_for_exit(backend.container_states, list(running.values()),
                                            poll_seconds=POLL_SECONDS, max_quiet=MAX_QUIET_SECONDS, log=log)
             else:  # admission pending, launching, or an exited job awaiting its result sync: tick again soon
                 time.sleep(PENDING_RETRY_SECONDS)
 
     def pick_native_gpu(self):
-        """Without --native-gpu: the authorized GPU with the most free memory in one snapshot (first GPU on error)."""
+        """Without --native-gpu: the scheduler's own criterion (least declared memory of executing remote jobs and
+        fewest jobs, as choose_gpu), measured free memory as the tie-break; GPUs with processes of other users are
+        avoided. A choice only: admission and the launch guard still decide; first GPU on any error."""
         try:
-            memory = RemoteBackend(ROOT, ROOT / 'runs').snapshot().gpu_memory
-            free = {g: total - used for g, (total, used) in memory.items() if g in self.gpus}
-            if free:
-                self.native_gpu = max(free, key=free.get)
-                log(f'native GPU {self.native_gpu} ({free[self.native_gpu] / 1024:.0f} GiB free)')
-                return
+            snapshot = RemoteBackend(ROOT, ROOT / 'runs').snapshot()
+            state = jobs.read_registry()
+            executing = [c for c in state.values() if c.get('host') == 'remote' and c.get('status') in jobs.RESERVING]
+            declared = {g: sum(float(c.get('mem_gb', 0)) for c in executing if c.get('gpu') == g) for g in self.gpus}
+            count = {g: sum(1 for c in executing if c.get('gpu') == g) for g in self.gpus}
+            free = {g: (snapshot.gpu_memory.get(g) or (0, 0)) for g in self.gpus}
+            free = {g: total - used for g, (total, used) in free.items()}
+            owned = set().union(*[set(item.get('pids') or ()) for item in snapshot.containers.values()])
+            known = {g: set(c['pids']) for g, c in cotenant_charges(snapshot)['gpus'].items()}
+            busy = {g for g, procs in snapshot.usage.items()  # processes of other users (the tick's foreign test)
+                    if g in self.gpus and any(pid not in owned and pid not in known.get(g, ()) for pid, _ in procs)}
+            order = sorted(self.gpus, key=lambda g: (g in busy, declared[g], count[g], -free[g]))
+            self.native_gpu = order[0]
+            log(f'native GPU {self.native_gpu} (declared {declared[self.native_gpu]:.0f} GB, '
+                f'{count[self.native_gpu]} jobs, {free[self.native_gpu] / 1024:.0f} GiB measured free)')
+            return
         except Exception as exc:  # noqa: BLE001  (a choice, never a gate)
             log(f'native GPU choice fell back to the first GPU ({type(exc).__name__})')
         self.native_gpu = self.gpus[0]
@@ -144,7 +179,8 @@ class Release:
         try:
             if self.native_gpu is None:
                 self.pick_native_gpu()
-            self.renew()  # reserve from the start: capacity freed during the code sync is kept for the suite
+            self.publish('native')  # reserve from the start: capacity freed during the code sync is kept for the suite
+            threading.Thread(target=self.heartbeat, name='reservation-heartbeat', daemon=True).start()
             start = time.time()
             if not self.skip_sync:  # the release bundle is already deployed (same commit, another image)
                 log(run([PY, '-I', str(self.sync_repo / 's4d/remote_access.py'), 'sync-code', self.commit]))
@@ -159,6 +195,7 @@ class Release:
             self.native_gpu = job['gpu']
             self.native = {'mem_gb': float(job['mem_gb']), 'load': NATIVE_LOAD, 'ram_gb': float(job['ram_gb']),
                            'cpu_threads': int(job.get('cpu_threads', 8)), 'disk_gb': float(job.get('disk_gb', 1))}
+            self.publish('native')  # the prepared job's exact resources
             self.mark('prepare_native', start)
             start = time.time()
             self.drive(qpath, [f'verify-native-{self.short}'])
@@ -168,8 +205,7 @@ class Release:
             self.timing['suite_seconds'] = round(float(report.get('duration_seconds', 0)), 1)
             log(json.dumps({k: v for k, v in report.items() if k in ('counts', 'exit_code', 'full_suite_passed')}))
             start = time.time()
-            self.stage = 'isolation'
-            self.renew()
+            self.publish('isolation')
             qpath = run([PY, '-I', str(ROOT / 'runs/setup/tools/prepare_remote_verification.py'), self.commit,
                          '--suite', str(suite), *self.image_args])
             self.mark('prepare_isolation', start)

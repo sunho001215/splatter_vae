@@ -9,30 +9,43 @@ it; the release's own verification jobs are admitted against it:
 
 - the scheduler tick (ops/jobs/scheduler.py ``_tick``): campaign rows see phantom running entries on the reserved GPUs
   (slot + memory), host RAM, disk and CPU threads reduced by the reservation; the release's verification jobs are
-  admitted without these charges and with a small dedicated slice of the remote disk floor;
+  admitted without these charges (every other admission rule, e.g. the disk floor the remote launch guard enforces,
+  is unchanged). Every remote launch goes through the tick under the registry lock, and the chain publishes a new
+  reservation content under that lock, so no tick admits work against a stale view;
 - the remote campaign driver's placement and pool moves (ops/campaign/remote_campaign_driver.py): load units and
   memory per GPU and the RAM cap are charged before any candidate is placed;
 - the real-world preprocessing dispatcher reads ``reserved_gpus``.
 
 Running jobs are never touched: if capacity is already in use the release waits for it to free, and no new work takes
-it meanwhile. The reservation is valid only while the process that wrote it is alive AND before its expiry, which the
-chain renews (heartbeat) at every poll; a crashed chain's reservation lapses by itself (EXPIRY_SECONDS). A missing file
-means no reservation; an unreadable or malformed file raises ValueError so that callers fail closed (no admission).
+it meanwhile. The reservation is valid only while the process that wrote it is alive, before its expiry (renewed by
+the chain's heartbeat thread every 60 s; a crashed chain's reservation lapses within EXPIRY_SECONDS) and within
+MAX_LIFETIME_SECONDS of its creation. One release at a time: a live reservation of another release or writer is never
+overwritten (ReservationConflict); writes and clears are serialized by a lock file. A missing file means no
+reservation; an unreadable or malformed file (incl. non-finite or future timestamps) raises ValueError so that callers
+fail closed (no admission).
 """
 
 from __future__ import annotations
 
+import fcntl
 import json
+import math
 import os
 import re
 import time
+from contextlib import contextmanager
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 PATH = REPO / "runs/setup/release-reservation.json"
-EXPIRY_SECONDS = 900  # a reservation not renewed within this window lapses (the chain renews every poll, <= 60 s)
-RELEASE_DISK_SLICE_GB = 16.0  # part of the remote disk floor usable only by the reserved release's verification jobs
+EXPIRY_SECONDS = 900  # a reservation not renewed within this window lapses (the chain's heartbeat renews every 60 s)
+MAX_LIFETIME_SECONDS = 4 * 3600  # never longer than this after its creation (suite timeout 2 h + isolation + slack)
+CLOCK_SLACK_SECONDS = 120
 SCHEMA = 1
+
+
+class ReservationConflict(ValueError):
+    """Another live release already holds the reservation."""
 _HEX40 = re.compile(r"[0-9a-f]{40}\Z")
 
 
@@ -55,8 +68,10 @@ def validate(doc: dict) -> dict:
     if type(doc.get("pid")) is not int or doc["pid"] <= 0:
         raise ValueError("release reservation: owner pid")
     for key in ("created", "expires"):
-        if type(doc.get(key)) not in (int, float):
+        if type(doc.get(key)) not in (int, float) or not math.isfinite(doc[key]):
             raise ValueError(f"release reservation: {key}")
+    if not 0 < doc["expires"] - doc["created"] <= MAX_LIFETIME_SECONDS + EXPIRY_SECONDS:
+        raise ValueError("release reservation: lifetime")
     jobs = doc.get("jobs")
     if not isinstance(jobs, list) or not jobs or not all(isinstance(i, str) and i.startswith("verify-") for i in jobs):
         raise ValueError("release reservation: jobs must be verify-* ids")
@@ -91,32 +106,51 @@ def load(path: Path | None = None, now: float | None = None, alive=_alive) -> di
     except json.JSONDecodeError as exc:
         raise ValueError("release reservation is not JSON") from exc
     now = time.time() if now is None else now
-    if now > float(doc["expires"]) or not alive(doc["pid"]):
+    if doc["expires"] > now + EXPIRY_SECONDS + CLOCK_SLACK_SECONDS or doc["created"] > now + CLOCK_SLACK_SECONDS:
+        raise ValueError("release reservation: timestamps in the future")
+    if now > doc["expires"] or now - doc["created"] > MAX_LIFETIME_SECONDS or not alive(doc["pid"]):
         return None
     return doc
 
 
-def write(doc: dict, path: Path | None = None) -> None:
+@contextmanager
+def _locked(path: Path):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path.with_name(path.name + ".lock"), "a") as handle:
+        fcntl.flock(handle, fcntl.LOCK_EX)
+        yield
+
+
+def write(doc: dict, path: Path | None = None, alive=_alive) -> None:
+    """Publish or renew ``doc``. Refuses (ReservationConflict) while another release or writer holds a live
+    reservation; an expired, orphaned or malformed one is replaced."""
     path = PATH if path is None else path
     validate(doc)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(path.name + f".tmp-{os.getpid()}")
-    tmp.write_text(json.dumps(doc, indent=1, sort_keys=True) + "\n")
-    os.replace(tmp, path)
+    with _locked(path):
+        try:
+            current = load(path, alive=alive)
+        except ValueError:
+            current = None
+        if current is not None and (current["commit"], current["pid"]) != (doc["commit"], doc["pid"]):
+            raise ReservationConflict(f"release {current['short']} (pid {current['pid']}) holds the reservation")
+        tmp = path.with_name(path.name + f".tmp-{os.getpid()}")
+        tmp.write_text(json.dumps(doc, indent=1, sort_keys=True) + "\n")
+        os.replace(tmp, path)
 
 
 def clear(commit: str, path: Path | None = None, pid: int | None = None) -> bool:
     """Remove the reservation of ``commit`` written by ``pid`` (default: this process). Another release's or another
     writer's reservation is left in place."""
     path = PATH if path is None else path
-    try:
-        doc = json.loads(path.read_text())
-    except (FileNotFoundError, json.JSONDecodeError):
-        return False
-    if doc.get("commit") != commit or doc.get("pid") != (os.getpid() if pid is None else pid):
-        return False
-    path.unlink(missing_ok=True)
-    return True
+    with _locked(path):
+        try:
+            doc = json.loads(path.read_text())
+        except (FileNotFoundError, json.JSONDecodeError):
+            return False
+        if doc.get("commit") != commit or doc.get("pid") != (os.getpid() if pid is None else pid):
+            return False
+        path.unlink(missing_ok=True)
+        return True
 
 
 def covers(doc: dict | None, job: dict) -> bool:
@@ -139,7 +173,7 @@ def reserved_gpus(path: Path | None = None) -> set[str]:
 
 
 def plan(commit: str, short: str, stage: str, native_gpu: str, gpus: list[str], *, native: dict, isolation: dict,
-         pid: int | None = None, now: float | None = None) -> dict:
+         pid: int | None = None, now: float | None = None, created: float | None = None) -> dict:
     """The reservation document for a release at ``stage`` ('native' or 'isolation'). The native stage reserves the
     native suite's resources on its GPU AND the isolation checks' small share on every GPU, so the isolation stage
     launches without waiting; the isolation stage keeps only the isolation share."""
@@ -159,5 +193,5 @@ def plan(commit: str, short: str, stage: str, native_gpu: str, gpus: list[str], 
         cpu += int(native["cpu_threads"])
         disk += float(native["disk_gb"])
     return {"schema": SCHEMA, "commit": commit, "short": short, "stage": stage, "pid": os.getpid() if pid is None else pid,
-            "created": now, "expires": now + EXPIRY_SECONDS, "jobs": jobs, "gpus": share,
+            "created": now if created is None else created, "expires": now + EXPIRY_SECONDS, "jobs": jobs, "gpus": share,
             "ram_gb": ram, "cpu_threads": cpu, "disk_gb": disk}

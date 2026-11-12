@@ -57,7 +57,8 @@ def test_load_write_clear_and_lifetime(tmp_path):
 @pytest.mark.parametrize("change", [{"schema": 2}, {"commit": "abc"}, {"pid": 0}, {"pid": True}, {"jobs": []},
                                     {"jobs": ["r"]}, {"gpus": {}}, {"gpus": {"x": {"mem_gb": 1, "load": 0}}},
                                     {"gpus": {REMOTE: {"mem_gb": -1, "load": 0}}}, {"ram_gb": "1"},
-                                    {"expires": None}])
+                                    {"expires": None}, {"expires": float("nan")}, {"expires": 1e309},
+                                    {"created": float("inf")}, {"expires": time.time() + 10 * 86400}])
 def test_malformed_reservations_fail_closed(tmp_path, change):
     path = tmp_path / "r.json"
     path.write_text(json.dumps({**plan(), **change}))
@@ -138,22 +139,33 @@ def test_reserved_disk_holds_new_campaign_work(tmp_path):
     assert launched(backend) == [] and any("disk floor" in m for m in messages)
 
 
-def test_the_releases_own_job_is_admitted_against_the_reservation_with_a_floor_slice(tmp_path, monkeypatch):
+def test_the_releases_own_job_is_admitted_against_the_reservation(tmp_path, monkeypatch):
     # stands in for the release's verification job (its full typed plumbing is covered in test_remote_jobs.py)
     monkeypatch.setattr(rr, "covers", lambda doc, queued: bool(doc) and queued["id"] == "r")
     queue = write_queue(tmp_path, [job(mem_gb=5, disk_gb=1)])
     backend = FakeBackend(tmp_path / "runs")
-    backend.value.disk_free_bytes = int(150 * GIB - 8 * GIB)  # below the 150 GiB floor, within the 16 GiB slice
     tick(tmp_path, queue, backend, reservation_path=reserve(tmp_path, mem_gb=34))
     assert launched(backend) == ["r"]
 
 
-def test_a_campaign_job_never_gets_the_release_floor_slice(tmp_path):
+def test_the_releases_own_job_keeps_the_normal_disk_floor(tmp_path, monkeypatch):
+    # Codex review 2026-11-12: the remote launch guard enforces the configured floor, so admission never lowers it
+    monkeypatch.setattr(rr, "covers", lambda doc, queued: bool(doc) and queued["id"] == "r")
     queue = write_queue(tmp_path, [job(mem_gb=5, disk_gb=1)])
     backend = FakeBackend(tmp_path / "runs")
-    backend.value.disk_free_bytes = int(150 * GIB - 8 * GIB)
-    tick(tmp_path, queue, backend, reservation_path=tmp_path / "absent.json")
-    assert launched(backend) == []
+    backend.value.disk_free_bytes = int(150 * GIB - 8 * GIB)  # below the 150 GiB floor
+    messages = tick(tmp_path, queue, backend, reservation_path=reserve(tmp_path, mem_gb=34))
+    assert launched(backend) == [] and any("disk floor" in m for m in messages)
+
+
+def test_cpu_threads_are_counted_across_launches_of_one_tick(tmp_path):
+    # budget 96: 64 reserved; the first 8-thread job fits (8 + 64 <= 96), the next ones must count it
+    queue = write_queue(tmp_path, [job("a", mem_gb=1), job("b", mem_gb=1), job("c", mem_gb=1), job("d", mem_gb=1),
+                                   job("e", mem_gb=1)], cpu_thread_budget=96,
+                        limits={REMOTE: {"max_jobs": 20, "max_mem_gb": 90}})
+    backend = FakeBackend(tmp_path / "runs")
+    messages = tick(tmp_path, queue, backend, reservation_path=reserve(tmp_path, mem_gb=1, ram_gb=1))
+    assert len(launched(backend)) == 4 and any("CPU threads" in m for m in messages)  # 4 x 8 + 64 = 96
 
 
 def test_expired_or_orphaned_reservations_reserve_nothing(tmp_path):
@@ -317,3 +329,51 @@ def test_container_states_query_is_read_only_and_parses_names():
     for bad in ([], ["x; rm -rf /"], ["s4d-a b"], ["../s4d-x"]):
         with pytest.raises(ValueError):
             backend.container_states(bad)
+
+
+def test_future_timestamps_fail_closed_and_lifetime_is_bounded(tmp_path):
+    path = tmp_path / "r.json"
+    rr.write(plan(now=time.time() + 3600), path)  # a clock far ahead: malformed for every reader
+    with pytest.raises(ValueError):
+        rr.load(path)
+    created = time.time() - rr.MAX_LIFETIME_SECONDS - 10
+    doc = rr.plan(COMMIT, "eeeeeee-cc", "native", REMOTE, GPUS, native=NATIVE, isolation=ISOLATION, created=created)
+    doc["expires"] = time.time() + 60  # still renewed, but past its maximum lifetime: reserves nothing
+    path.write_text(json.dumps(doc))
+    assert rr.load(path) is None
+    doc["expires"] = created + rr.MAX_LIFETIME_SECONDS + rr.EXPIRY_SECONDS + 1  # beyond any valid lifetime
+    path.write_text(json.dumps(doc))
+    with pytest.raises(ValueError):
+        rr.load(path)
+
+
+def test_a_live_reservation_of_another_release_or_writer_is_never_overwritten(tmp_path):
+    path = tmp_path / "r.json"
+    rr.write(plan(), path)
+    other = rr.plan("f" * 40, "fffffff-cc", "native", REMOTE, GPUS, native=NATIVE, isolation=ISOLATION)
+    with pytest.raises(rr.ReservationConflict):
+        rr.write(other, path)
+    with pytest.raises(rr.ReservationConflict):
+        rr.write(plan(pid=os.getppid()), path)  # same commit, another live writer
+    rr.write(plan(), path)  # its own renewal is fine
+    rr.write(other, path, alive=lambda pid: False)  # an orphaned reservation is replaced
+    assert json.loads(path.read_text())["commit"] == "f" * 40
+
+
+def test_scoped_reconciliation_owns_only_validated_out_of_scope_containers(tmp_path):
+    from tests.test_remote_jobs import inspected
+    backend = FakeBackend(tmp_path / "runs")
+    launch_event(tmp_path, "q")
+    good = {**inspected("q", status="running"), "pids": {101}}
+    state = jobs.read_registry(tmp_path / "registry.jsonl")
+    snapshot = backend.value
+    snapshot.containers["s4d-q-a1"] = good
+    owned, _ = jobs._reconcile_remote(backend, snapshot, state, tmp_path / "registry.jsonl", tmp_path / "runs", [],
+                                      scope={"verify-x"})
+    assert owned == {101}
+    snapshot.containers["s4d-q-a1"] = {**good, "Image": "sha256:" + "0" * 64}  # identity mismatch
+    owned, _ = jobs._reconcile_remote(backend, snapshot, state, tmp_path / "registry.jsonl", tmp_path / "runs", [],
+                                      scope={"verify-x"})
+    assert owned == set()
+    events = [json.loads(line)["event"] for line in (tmp_path / "registry.jsonl").read_text().splitlines()]
+    assert events == ["launched"]  # nothing recorded for out-of-scope jobs

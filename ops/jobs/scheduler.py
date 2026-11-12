@@ -685,8 +685,13 @@ def _reconcile_remote(backend, snapshot, state: dict, registry: Path, runs: Path
             continue
         item = snapshot.containers.get(current["container"])
         if scope is not None and job_id not in scope:
-            # out of scope (release chain tick): only the processes of a running container are counted as owned
+            # out of scope (release chain tick): only the processes of a running container whose identity and isolation
+            # validate are counted as owned; nothing is recorded (the daemon reconciles it, e.g. as unknown)
             if item is not None and item.get("State", {}).get("Status") in {"running", "restarting", "paused"}:
+                try:
+                    validate_container(item, job_id, current)
+                except (RemoteJobError, KeyError, ValueError, TypeError):
+                    continue
                 owned.update(item.get("pids", set()))
             continue
         if item is None and _retired_after_verification(current):
@@ -1117,6 +1122,13 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
                 release_charge[key] = max(0, release_charge[key] - reservation(current, jobs.get(job_id, {}), key))
     phantom = [{"host": "remote", "gpu": uuid, "mem_gb": charge["mem_gb"], "pid": None}
                for uuid, charge in release_charge["gpus"].items()]
+    # remote CPU threads in use (checked only while a release is pending): our executing containers plus known
+    # co-tenants, updated after every launch of this tick
+    cpu_used = (sum(reservation(current, jobs.get(job_id, {}), "cpu_threads") or DEFAULT_REMOTE_CPU_THREADS
+                    for job_id, current in state.items()
+                    if current.get("host") == "remote" and current["status"] in RESERVING)
+                + DEFAULT_REMOTE_CPU_THREADS * sum(int(charge.get("jobs", 0)) for charge in
+                                                   (resources.get("remote", {}).get("cotenant") or {}).values()))
     for job in eligible(list(jobs.values()), state):
         host_name = job.get("host", "local")
         host, resource = queue["hosts"][host_name], resources.get(host_name)
@@ -1145,22 +1157,18 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
                             + (f" after {release_charge['ram_gb']:.0f} GB reserved for release {release_hold['short']}"
                                if held_back else "") + f", needs {need:.0f} + {reserve:.0f}) on {host_name}")
             continue
-        if held_back:
+        threads = float(job.get("cpu_threads", DEFAULT_REMOTE_CPU_THREADS))
+        if host_name == "remote" and release_hold:  # the release's own jobs are checked against what is free too
             budget = float(host.get("cpu_thread_budget", REMOTE_CPU_THREAD_BUDGET))
-            used = sum(reservation(current, jobs.get(job_id, {}), "cpu_threads") or DEFAULT_REMOTE_CPU_THREADS
-                       for job_id, current in state.items()
-                       if current.get("host") == "remote" and current["status"] in RESERVING)
-            threads = float(job.get("cpu_threads", DEFAULT_REMOTE_CPU_THREADS))
-            if used + threads + release_charge["cpu_threads"] > budget:
-                messages.append(f"{job['id']}: waiting for CPU threads ({used:.0f} used + {threads:.0f} + "
-                                f"{release_charge['cpu_threads']} reserved for release {release_hold['short']} > "
-                                f"{budget:.0f}) on {host_name}")
+            charged = release_charge["cpu_threads"] if held_back else 0
+            if cpu_used + threads + charged > budget:
+                messages.append(f"{job['id']}: waiting for CPU threads ({cpu_used:.0f} used + {threads:.0f}"
+                                + (f" + {charged:.0f} reserved for release {release_hold['short']}" if held_back else "")
+                                + f" > {budget:.0f}) on {host_name}")
                 continue
         floor = max(float(host.get("disk_floor_gb", 0)) * GIB,
                     resource["disk_total"] * (max(0.15, float(host.get("disk_floor_fraction", 0.15)))
                                               if host_name == "remote" else float(host.get("disk_floor_fraction", 0))))
-        if release_job:  # a dedicated slice of the floor, usable only by the pending release's verification jobs
-            floor = max(0.0, floor - release_reservation.RELEASE_DISK_SLICE_GB * GIB)
         disk_need = float(job.get("disk_gb", 0)) * GIB
         disk_free = resource["disk_free"] - (release_charge["disk_gb"] * GIB if held_back else 0.0)
         if disk_free - disk_need < floor:
@@ -1219,6 +1227,7 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
             resource["available"] -= need
             resource["disk_free"] -= disk_need
             running.append({"host": "remote", "gpu": gpu, "mem_gb": float(job["mem_gb"]), "pid": None})
+            cpu_used += threads
             if gpu in resource.get("cotenant", {}):
                 resource["cotenant"][gpu]["free_gb"] -= float(job["mem_gb"])
             try:
