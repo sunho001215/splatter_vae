@@ -113,7 +113,9 @@ def build(args) -> dict:
                     "assets": {"urdf_sha256": sha256(URDF), "m5_header": validation["header"],
                                "m5_validation": {"pass": validation["pass"], "episodes": [
                                    {k: e[k] for k in ("episode", "pass")} for e in validation["episodes"]]}},
-                    "safety": "dry run / replay only; execution.armed false; EXECUTION_PERMITTED False; no command transport"}
+                    "safety": "execution only via infer.py without --dry-run + operator ENTER + catalog "
+                              "execution_eligible (confirmed at binding and START); controller protections + "
+                              "hardware e-stop unchanged"}
         (top / "BUNDLE.json").write_text(json.dumps(manifest, indent=1, sort_keys=True) + "\n")
         args.out_dir.mkdir(parents=True, exist_ok=True)
         out = args.out_dir / f"{name}.tar.gz"

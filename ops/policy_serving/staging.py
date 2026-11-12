@@ -16,6 +16,7 @@ only a deployable policy. Criteria: ``ops/policy_serving/criteria.py``. Nothing 
 from __future__ import annotations
 
 import argparse
+import copy
 import datetime
 import hashlib
 import json
@@ -443,16 +444,25 @@ def catalog_entry(row: dict, input_spec: dict | None = None) -> dict:
     against the loaded policy)."""
     exp = row.get("export") or {}
     status = row["class"]["status"]
+    # the FQL setting and identity come from the RUN ID, never from a cached label: an inventory row whose label
+    # disagrees (e.g. a missing fql_setting on an rwnq run) is refused instead of being granted another setting's
+    # usage (Codex review of 1847fdd, P0)
+    m, setting = FQL_RE.match(str(row.get("run") or "")), fql_setting(str(row.get("run") or ""))
+    if m is None or (m["condition"], m["task"], int(m["seed"])) != (row.get("condition"), row.get("task"),
+                                                                    int(row.get("seed", -1))) \
+            or row.get("fql_setting") != setting:
+        raise ValueError(f"inventory row {row.get('run')!r}: condition/task/seed/fql_setting "
+                         f"{(row.get('condition'), row.get('task'), row.get('seed'), row.get('fql_setting'))} differ "
+                         f"from its run id (setting {setting}): re-evaluate")
     criteria = C.criteria_summary(row["condition"], row.get("checks") or {})
     failed = {k for k, v in criteria.items() if isinstance(v, dict) and v.get("pass") is False}
     out = {"checkpoint": row["policy"]["path"], "sha256": row["policy"]["sha256"],
            "export": exp.get("path"), "training_contract": f"contracts/{row['run']}.deploy_contract.json",
            "condition": row["condition"], "task": row["task"], "seed": row["seed"], "run": row["run"],
            "status": status, "reasons": row["class"]["reasons"],
-           "flags": list(row["class"]["flags"]) + ([f"fql_setting_{row['fql_setting']}"]
-                                                   if row.get("fql_setting") else []),
+           "flags": list(row["class"]["flags"]) + ([f"fql_setting_{setting}"] if setting else []),
            "criteria": criteria,
-           **usage_of(status, row["condition"], row.get("fql_setting"), checkpoint_sha256=row["policy"]["sha256"],
+           **usage_of(status, row["condition"], setting, checkpoint_sha256=row["policy"]["sha256"],
                       failed_criteria=failed)}
     if input_spec is not None:
         out["input_spec"] = input_spec
@@ -485,15 +495,17 @@ def exclusions(condition: str | None, setting: str | None) -> list[str]:
 
 # User decision 2026-11-12 (Task 3, relayed by the coordinator): DynaMo must EXECUTE on the robot PC. Its entries stay
 # ``restricted`` with the e1 LayerNorm-spread gate FAILED (not waived; no criterion, threshold or class changes); the
-# grant names the failed criteria it acknowledges and is bound to each checkpoint's sha256 (config._check_eligibility).
-# Scope: restricted entries of these conditions WITHOUT an exclusion (a new FQL setting such as a10nq still awaits its
-# own user decision; 3D-MVP is never covered). The warning travels with every entry (usage_reasons, robot-PC console).
+# grant has a machine-readable scope (condition + FQL setting), names the failed criteria it acknowledges and is bound to
+# each checkpoint's sha256. The validator re-checks all of it against its own allowlist
+# (config.RESTRICTED_EXECUTION_SCOPES: dynamo / legacy only; a new FQL setting such as a10nq awaits its own decision,
+# 3D-MVP is never covered). The warning travels with every entry (usage_reasons, robot-PC console, session record).
 RESTRICTED_EXECUTION_DECISIONS = {
     "dynamo": {"decided_by": "user", "at": "2026-11-12 (KST; Task 3 request relayed by the coordinator)",
                "text": "DynaMo must support actual execution on the Robot PC, not just dry-run testing. Investigate and "
                        "implement whatever is necessary to enable its real execution through the existing "
-                       "robot-control and policy-serving interfaces. (scope: the restricted DynaMo entries; the e1 "
-                       "LayerNorm-spread criterion stays FAILED, not waived)",
+                       "robot-control and policy-serving interfaces. (scope: the restricted DynaMo entries of the "
+                       "legacy FQL setting; the e1 LayerNorm-spread criterion stays FAILED, not waived)",
+               "scope": {"condition": "dynamo", "fql_setting": "legacy"},
                "acknowledged_failures": ["e1_layernorm_spread"]}}
 RESTRICTED_EXECUTION_WARNINGS = {
     "dynamo": "WARNING: execution-eligible by user decision 2026-11-12, NOT a validated-performance claim. Known "
@@ -505,13 +517,21 @@ RESTRICTED_EXECUTION_WARNINGS = {
 
 def restricted_grant(status: str, condition: str | None, setting: str | None, checkpoint_sha256: str | None,
                      failed_criteria=None) -> dict | None:
-    """The user execution decision covering a ``restricted`` entry (bound to its checkpoint), or None: only when the
-    entry's published FAILED criteria are non-empty and all acknowledged by the decision (the validator's rule)."""
-    if status != "restricted" or condition not in RESTRICTED_EXECUTION_DECISIONS or exclusions(condition, setting) or \
-            not checkpoint_sha256 or not failed_criteria or \
-            not set(failed_criteria) <= set(RESTRICTED_EXECUTION_DECISIONS[condition]["acknowledged_failures"]):
+    """The user execution decision covering a ``restricted`` entry (bound to its checkpoint), or None: only for a
+    (condition, setting) pair in the validator's allowlist with a recorded decision whose scope names it, a valid
+    checkpoint sha256, and published FAILED criteria that are non-empty and all acknowledged (the validator's rule).
+    ``setting``: the run id's FQL setting (None = legacy)."""
+    from ops.policy_serving.config import LEGACY_SETTING, RESTRICTED_EXECUTION_SCOPES, valid_sha256
+
+    decision = RESTRICTED_EXECUTION_DECISIONS.get(condition)
+    setting = setting or LEGACY_SETTING
+    if status != "restricted" or decision is None or (condition, setting) not in RESTRICTED_EXECUTION_SCOPES or \
+            decision["scope"] != {"condition": condition, "fql_setting": setting} or \
+            exclusions(condition, None if setting == LEGACY_SETTING else setting) or \
+            not valid_sha256(checkpoint_sha256) or not failed_criteria or \
+            not set(failed_criteria) <= set(decision["acknowledged_failures"]):
         return None
-    return {**RESTRICTED_EXECUTION_DECISIONS[condition], "checkpoint_sha256": checkpoint_sha256}
+    return {**copy.deepcopy(decision), "checkpoint_sha256": checkpoint_sha256}
 
 
 def usage_of(status: str, condition: str | None = None, setting: str | None = None, *,

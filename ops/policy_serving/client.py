@@ -33,6 +33,12 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from ops.policy_serving import protocol as P
+from ops.policy_serving.config import RESTRICTED_EXECUTION_CAPABILITY
+
+# What this client implements (declared at HELLO only when the offered entry requires it, so a HELLO to a server
+# without requirements is unchanged): a restricted entry executable by user decision is shown with its failed
+# criterion and decision before START (scripts/robot_pc/infer.py); dry run / replay never execute.
+CAPABILITIES = frozenset({RESTRICTED_EXECUTION_CAPABILITY})
 
 TERMINAL_CODES = frozenset({"session_taken_over"})
 
@@ -164,6 +170,7 @@ class PolicyClient:
         self.welcome: dict | None = None
         self.session_id: str | None = None
         self.spec: dict | None = None
+        self.spec_info: dict | None = None  # the bound policy's CURRENT catalog labels (SPEC ``info``), not WELCOME's
         self.limits: dict | None = None
         self.taken_over: str | None = None  # terminal: why this client no longer holds the policy
         self.last_ack = 0  # newest seq answered in this session (resume)
@@ -217,10 +224,17 @@ class PolicyClient:
         offered = self.welcome.get("policies", {})
         if self.policy_id not in offered:
             raise ServingError("bad_request", f"server does not serve {self.policy_id!r}; serves {sorted(offered)}")
+        required = (offered[self.policy_id].get("info") or {}).get("requires_client") or []
+        lacking = sorted(set(required) - CAPABILITIES)
+        if lacking:
+            raise ServingError("bad_request", f"{self.policy_id} requires client capabilities {lacking} that this "
+                                              "client does not implement")
         if callable(self.choices):
             self.choices = P.jsonable(self.choices(offered[self.policy_id]["input_spec"]))
         header = {"type": P.HELLO, "policy_id": self.policy_id, "choices": self.choices, "client": self.name,
                   "takeover": self.takeover, "resume": resume}
+        if required:
+            header["capabilities"] = sorted(set(required))
         if self.welcome["auth_required"]:
             if self.token is None:
                 raise ServingError("auth", "server requires the shared token")
@@ -240,6 +254,7 @@ class PolicyClient:
         if resume is None or h["session_id"] != self.session_id:
             self._new_session_state(h["session_id"])
         self.spec, self.limits = h["input_spec"], h["limits"]
+        self.spec_info = dict(h.get("info") or {})
         span = (self.spec["history_length"] - 1) * self.spec["frame_spacing"] + 1
         cap = max(span, int(self.frame_buffer or span))
         for cam in self.spec["camera_ids"]:

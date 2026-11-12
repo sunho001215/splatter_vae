@@ -10,6 +10,7 @@ from __future__ import annotations
 import copy
 import json
 import math
+import re
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
@@ -73,6 +74,23 @@ CATALOG_STATUSES = ("deployable", "restricted", "quarantined")  # restricted: se
 SERVABLE_STATUSES = ("deployable", "restricted")
 CATALOG_USAGES = ("execution", "dry_run_replay_only", "none")  # usage restriction published to the robot-PC client
 EXECUTION_DECISION_KEYS = ("decided_by", "at", "text")
+SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+# FQL settings by run-id prefix (== staging.FQL_SETTINGS names, pinned by a test; no staging import here): an entry of
+# a setting is served as ``<condition>-<task>-s<seed>-<setting>`` with the flag ``fql_setting_<setting>``; the earlier
+# rows (alpha 10, normalize_q_loss false) have no prefix, no suffix and no flag (setting ``legacy``).
+FQL_SETTING_PREFIXES = {"rwnq-": "a10nq", "rwa100-": "a100"}
+LEGACY_SETTING = "legacy"
+FQL_RUN_RE = re.compile(r"^(?P<prefix>.+)-fql-(?P<condition>[a-z0-9_]+)-(?P<task>[a-z0-9-]+)-s(?P<seed>\d+)$")
+# The ONLY (condition, FQL setting) pairs whose ``restricted`` entries (a criterion FAILED, not waived) may be
+# execution-eligible, each under its recorded user decision (validator-side allowlist: a catalog cannot widen it).
+# User decision 2026-11-12 (Task 3): "DynaMo must support actual execution on the Robot PC, not just dry-run testing"
+# -> the restricted DynaMo entries of the legacy setting (alpha 10, normalize_q_loss false); a new FQL setting (a10nq,
+# a100) awaits its own decision, 3D-MVP is never covered.
+RESTRICTED_EXECUTION_SCOPES = frozenset({("dynamo", LEGACY_SETTING)})
+# A restricted execution grant is published with this client requirement: the server binds such a policy only for a
+# client whose HELLO declares the capability (it shows the failed criterion, the warning and the decision before
+# START), so an older client cannot execute it without the notice (Codex review of 1847fdd, P1).
+RESTRICTED_EXECUTION_CAPABILITY = "restricted-execution-notice/1"
 
 
 def _load_file(path: Path) -> dict:
@@ -126,30 +144,78 @@ def _failed_criteria(entry: dict) -> set:
     return {k for k, v in crit.items() if isinstance(v, dict) and v.get("pass") is False}
 
 
+def valid_sha256(x) -> bool:
+    return isinstance(x, str) and SHA256_RE.match(x) is not None
+
+
+def entry_fql_setting(pid, entry: dict) -> str:
+    """The FQL setting of a catalog entry derived from its IDENTITY (run-id prefix, policy-id suffix, flags), never
+    from a free label; every source must agree (ValueError otherwise). ``legacy`` = the earlier rows."""
+    run = str(entry.get("run") or "")
+    by_run = next((v for k, v in FQL_SETTING_PREFIXES.items() if run.startswith(k)), LEGACY_SETTING)
+    base = str(pid)[:-len(BCFLOW_SUFFIX)] if str(pid).endswith(BCFLOW_SUFFIX) else str(pid)
+    by_id = next((v for v in FQL_SETTING_PREFIXES.values() if base.endswith(f"-{v}")), LEGACY_SETTING)
+    flagged = {f[len("fql_setting_"):] for f in entry.get("flags", []) if isinstance(f, str)
+               and f.startswith("fql_setting_")}
+    by_flag = flagged.pop() if len(flagged) == 1 else (LEGACY_SETTING if not flagged else None)
+    if not (by_run == by_id == by_flag):
+        raise ValueError(f"policy {pid}: inconsistent FQL setting (run {by_run}, id {by_id}, flags {by_flag})")
+    return by_run
+
+
 def _check_restricted_grant(source, pid, entry: dict, decision) -> None:
-    """A ``restricted`` entry (a criterion FAILED, not waived) is execution-eligible only under a user decision that
-    names every failed criterion of the entry in ``acknowledged_failures`` and is bound to the entry's checkpoint
-    (``checkpoint_sha256``; user decision 2026-11-12 for DynaMo). The status and the failed criterion stay published."""
+    """A ``restricted`` entry (a criterion FAILED, not waived) is execution-eligible only (user decision 2026-11-12):
+    within ``RESTRICTED_EXECUTION_SCOPES`` (condition and FQL setting derived from the entry's identity: run id,
+    policy id, flags, all consistent), under a user decision whose machine-readable ``scope`` names exactly that
+    condition + setting, whose ``acknowledged_failures`` name every failed criterion of the entry, and which is bound to
+    the entry's checkpoint (``checkpoint_sha256`` == the entry's ``sha256``, both valid sha256 hex). The status and the
+    failed criterion stay published."""
+    if not isinstance(decision, dict):
+        raise ValueError(f"{source}: policy {pid}: an execution-eligible restricted entry needs a user decision")
+    try:
+        setting = entry_fql_setting(pid, entry)
+    except ValueError as exc:
+        raise ValueError(f"{source}: {exc}") from None
+    cond, run = entry.get("condition"), str(entry.get("run") or "")
+    m = FQL_RUN_RE.match(run)
+    if m is None or m["condition"] != cond or m["task"] != entry.get("task") or \
+            str(m["seed"]) != str(entry.get("seed")):
+        raise ValueError(f"{source}: policy {pid}: a restricted grant needs a run id <prefix>-fql-<condition>-<task>-"
+                         f"s<seed> matching the entry (run {run!r}, {cond}/{entry.get('task')}/s{entry.get('seed')})")
+    expected = f"{cond}-{entry.get('task')}-s{entry.get('seed')}" + ("" if setting == LEGACY_SETTING else f"-{setting}")
+    if str(pid) != expected:
+        raise ValueError(f"{source}: policy {pid}: a restricted grant is published under its own id {expected!r}")
+    if (cond, setting) not in RESTRICTED_EXECUTION_SCOPES:
+        raise ValueError(f"{source}: policy {pid}: no user decision lets a restricted {cond} entry of the {setting} "
+                         f"FQL setting execute (allowed: {sorted(RESTRICTED_EXECUTION_SCOPES)})")
+    scope = decision.get("scope")
+    if not isinstance(scope, dict) or scope.get("condition") != cond or scope.get("fql_setting") != setting:
+        raise ValueError(f"{source}: policy {pid}: the execution decision's scope {scope!r} does not name this entry "
+                         f"(condition {cond!r}, fql_setting {setting!r})")
     failed = _failed_criteria(entry)
-    ack = decision.get("acknowledged_failures") if isinstance(decision, dict) else None
+    ack = decision.get("acknowledged_failures")
     if not failed:
         raise ValueError(f"{source}: policy {pid}: a restricted entry publishes its FAILED criterion (criteria)")
     if not isinstance(ack, list) or not all(isinstance(x, str) for x in ack) or not failed <= set(ack):
         raise ValueError(f"{source}: policy {pid}: an execution-eligible restricted entry needs a user decision whose "
                          f"acknowledged_failures name every failed criterion {sorted(failed)}")
-    if decision.get("checkpoint_sha256") != entry.get("sha256"):
+    bound = decision.get("checkpoint_sha256")
+    if not valid_sha256(bound) or not valid_sha256(entry.get("sha256")) or bound != entry.get("sha256"):
         raise ValueError(f"{source}: policy {pid}: the execution decision of a restricted entry is bound to its "
-                         "checkpoint_sha256")
+                         "checkpoint_sha256 (both valid sha256 hex, equal)")
 
 
 def _check_eligibility(source, pid, entry: dict) -> None:
     """``execution_eligible: true`` only for a ``deployable`` entry with usage ``execution`` and a non-empty user
     ``execution_decision`` {decided_by: user, at, text} (user decision 2026-11-10 21:10), or for a ``restricted`` entry
-    whose user decision acknowledges its failed criteria and is bound to its checkpoint (``_check_restricted_grant``,
-    user decision 2026-11-12); quarantined entries can never be eligible; usage ``execution`` without eligibility is
-    refused (fail closed)."""
+    within ``RESTRICTED_EXECUTION_SCOPES`` whose scoped user decision acknowledges its failed criteria and is bound to
+    its checkpoint (``_check_restricted_grant``, user decision 2026-11-12); every eligible entry names a valid
+    checkpoint sha256 (the server verifies the weights against it); quarantined entries can never be eligible; usage
+    ``execution`` without eligibility is refused (fail closed)."""
     eligible, usage, decision = entry.get("execution_eligible") is True, entry.get("usage"), entry.get("execution_decision")
     if eligible:
+        if not valid_sha256(entry.get("sha256")):
+            raise ValueError(f"{source}: policy {pid}: an execution-eligible entry names its checkpoint sha256")
         if entry["status"] == "restricted":
             _check_restricted_grant(source, pid, entry, decision)
         elif entry["status"] != "deployable":

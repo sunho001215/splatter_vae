@@ -1,9 +1,9 @@
 """Robot-PC side of real-world policy deployment (Directive I, 2026-11-10; docs/robot_pc.md). CPU only, no torch.
 
-- ``safety``: execution-mode guard (manual mode needs CLI flag + typed confirmation + config armed; EXECUTION_PERMITTED
-  False in this revision);
+- ``safety``: execution-mode guard (directive J: ``infer.py`` without --dry-run + the operator's ENTER + a catalog entry
+  marked ``execution_eligible``; the authorization object is issued only by ``authorize_execution``);
 - ``sinks``: controller-integration interface: ``MockSink`` (replay), ``DryRunSink`` (logs, never sends),
-  ``LiveSink`` (refuses without authorization; refused in this revision even with it);
+  ``LiveSink`` (refuses without an ExecutionAuthorization);
 - ``validation`` / ``poses``: robot-side action validation (finite, contract range, per-step lead, workspace, gripper,
   binding to the observation's measured pose, expiry);
 - ``executor``: the local high-rate loop (rate-limited tracking of the bound absolute goal, hold on expiry);

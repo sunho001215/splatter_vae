@@ -100,6 +100,22 @@ def test_list_shows_task_method_seed_eligibility(monkeypatch, capsys, tmp_path):
     assert "e2e_cnn-drawer-open" not in rows and "1 legacy alias ids not shown" in out[-1]
 
 
+def test_list_names_the_failed_criterion_decision_and_warning_of_restricted_eligible_policies(monkeypatch, capsys,
+                                                                                               tmp_path):
+    from ops.robot_pc import cli
+
+    info = {**GRANTED, "task": "drawer-open", "usage_reasons": ["e1 note", "WARNING: not validated"]}
+    offered = {"dynamo-drawer-open-s0": {"info": info, "input_spec": {"views": 1, "modalities": ["rgb"],
+                                                                      "trained_camera_orders": ALL3}}}
+    monkeypatch.setattr(cli, "welcome", lambda cfg, args: {"policies": offered})
+    monkeypatch.setattr(cli, "load_config", lambda args: C.load(root=tmp_path))
+    assert _infer().main(["--list"]) == 0
+    out = capsys.readouterr().out
+    assert "dynamo-drawer-open-s0: FAILED ['e1_layernorm_spread']; decision 2026-11-12 (checkpoint abababababab)" in out
+    assert "requires client ['restricted-execution-notice/1']" in out and "    WARNING: not validated" in out
+    assert "NOT a validated-performance claim" in out
+
+
 def test_run_folders_are_named_numbered_and_never_reused(tmp_path):
     from ops.robot_pc.recorder import SessionRecorder
 
@@ -278,13 +294,24 @@ def warmup_launcher(monkeypatch, tmp_path):
     monkeypatch.setattr(controller, "ControllerLink", Link)
     monkeypatch.setattr(executor, "HighRateExecutor", lambda *a, **kw: SimpleNamespace(counts={}))
     monkeypatch.setattr(C, "limits", lambda *a: object())
+    # selected (WELCOME at selection) / bound (SPEC of the session) / current (WELCOME again at START) catalog labels;
+    # bound and current default to the selection
+    state = {"selected": {"execution_eligible": True, "checkpoint_sha256": "ab" * 32}}
+
+    def labels(stage):
+        return state[stage] if stage in state else state["selected"]
+
     monkeypatch.setattr(cli, "choose_policy", lambda *a:
                         ("p", "t", {"views": 1, "modalities": ["rgb"], "trained_camera_orders": [["a"]]},
-                         {"execution_eligible": True}))
+                         dict(state["selected"])))
+    monkeypatch.setattr(cli, "welcome", lambda *a: {"policies": {} if labels("current") is None else
+                                                    {"p": {"info": dict(labels("current"))}}})
     monkeypatch.setattr(cli, "rig_document", lambda *a: None)
     monkeypatch.setattr(selection, "depth_corrections", lambda *a, **kw: {})
     monkeypatch.setattr(selection, "session_choices", lambda *a, **kw: {})
-    monkeypatch.setattr(cli, "connect", lambda *a: SimpleNamespace(close=lambda: order.append("client close")))
+    monkeypatch.setattr(cli, "connect", lambda *a: SimpleNamespace(
+        close=lambda: order.append("client close"),
+        spec_info=None if labels("bound") is None else dict(labels("bound"))))
     monkeypatch.setattr(cameras, "LiveCameras", Cameras)
     monkeypatch.setattr(recorder, "SessionRecorder", Recorder)
     monkeypatch.setattr(camera_warmup, "wait_until_stable", wait)
@@ -297,7 +324,56 @@ def warmup_launcher(monkeypatch, tmp_path):
         return run.main(["--policy", "p", *args], operator_input=operator)
 
     return SimpleNamespace(launch=launch, order=order, events=events, configs=configs, cfg=cfg,
-                           results=results, scenario=scenario, messages=messages)
+                           results=results, scenario=scenario, messages=messages, state=state)
+
+
+GRANTED = {"status": "restricted", "condition": "dynamo", "task": "t", "seed": 0, "run": "r-fql-dynamo-t-s0",
+           "checkpoint_sha256": "ab" * 32, "usage": "execution", "execution_eligible": True,
+           "reasons": ["e1 LayerNorm-spread FAIL: LN unit std 0.355 < 0.5"],
+           "usage_reasons": ["WARNING: offline findings"], "requires_client": ["restricted-execution-notice/1"],
+           "criteria": {"e1_layernorm_spread": {"pass": False}},
+           "execution_decision": {"decided_by": "user", "at": "2026-11-12", "text": "DynaMo must support actual "
+                                  "execution", "scope": {"condition": "dynamo", "fql_setting": "legacy"},
+                                  "acknowledged_failures": ["e1_layernorm_spread"], "checkpoint_sha256": "ab" * 32}}
+REVOKED = {"usage": "dry_run_replay_only", "execution_eligible": False, "execution_decision": None}
+
+
+@pytest.mark.parametrize("stage,change,prompted", [
+    ("bound", REVOKED, False),                          # grant revoked between selection and HELLO
+    ("bound", {"checkpoint_sha256": "cd" * 32}, False),  # re-staged weights bound
+    ("bound", None, False),                             # a SPEC without info (old server): cannot confirm
+    ("current", REVOKED, True),                         # revoked between binding and START
+    ("current", {"checkpoint_sha256": "cd" * 32}, True),
+    ("current", {"usage_reasons": ["changed"]}, False),  # label-only change: proceeds (identity + grant equal)
+    ("current", None, True)])                           # no longer offered at START
+def test_execution_refuses_when_the_grant_changes_between_selection_binding_and_start(warmup_launcher, stage, change,
+                                                                                      prompted):
+    """Codex review of 1847fdd (P0): execution is authorized on the BOUND policy's current labels (SPEC) and
+    re-checked against a fresh WELCOME after the operator's ENTER, never on the selection snapshot alone."""
+    f = warmup_launcher
+    f.state["selected"] = dict(GRANTED)
+    f.state[stage] = None if change is None else {**GRANTED, **change}
+    ok = stage == "current" and change == {"usage_reasons": ["changed"]}
+    assert f.launch() == (0 if ok else 3)
+    assert ("prompt" in f.order) is (prompted or ok)
+    assert ("engage" in f.order) is ok and ("link" in f.order) is ok
+    if not ok:
+        assert any(str(m).startswith("REFUSED: ") and ("binding" in str(m) or "START re-check" in str(m))
+                   for m in f.messages)
+    if stage == "bound" and change is not None:
+        assert "record" not in f.order  # refused before the recorder starts
+
+
+def test_dry_run_records_the_bound_labels_and_the_selection(warmup_launcher):
+    f = warmup_launcher
+    f.state["selected"] = dict(GRANTED)
+    f.state["bound"] = {**GRANTED, **REVOKED}  # a dry run proceeds on changed labels, recording both
+    assert f.launch(["--dry-run"]) == 0
+    cfg = f.configs[0]
+    assert cfg["catalog_info"]["execution_eligible"] is False and cfg["catalog_info_selected"]["execution_eligible"]
+    assert any("differ from the selection" in str(m) for m in f.messages)
+    f.state["bound"] = {**GRANTED, "checkpoint_sha256": "cd" * 32}  # other weights: refused even for a dry run
+    assert f.launch(["--dry-run"]) == 3
 
 
 @pytest.mark.parametrize("granted", [True, False])
@@ -308,13 +384,9 @@ def test_restricted_policy_executes_only_with_the_catalog_grant_and_prints_the_f
     from ops.robot_pc import cli
 
     f = warmup_launcher
-    grant = {"decided_by": "user", "at": "2026-11-12", "text": "DynaMo must support actual execution",
-             "acknowledged_failures": ["e1_layernorm_spread"], "checkpoint_sha256": "ab" * 32}
-    info = {"status": "restricted", "reasons": ["e1 LayerNorm-spread FAIL: LN unit std 0.355 < 0.5"],
-            "usage_reasons": ["WARNING: offline findings"], "execution_eligible": granted,
-            "execution_decision": grant if granted else None}
-    monkeypatch.setattr(cli, "choose_policy", lambda *a:
-                        ("p", "t", {"views": 1, "modalities": ["rgb"], "trained_camera_orders": [["a"]]}, info))
+    info = {**GRANTED, "execution_eligible": granted, "execution_decision": GRANTED["execution_decision"]
+            if granted else None}
+    f.state["selected"] = info
     assert f.launch() == (0 if granted else 3)
     text = "\n".join(str(m) for m in f.messages)
     assert "RESTRICTED policy (criterion FAILED, not waived): e1 LayerNorm-spread FAIL" in text

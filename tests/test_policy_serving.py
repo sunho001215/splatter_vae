@@ -1396,21 +1396,58 @@ def test_label_refresh_keeps_the_resident_model_and_execution_eligibility_fails_
                                    "execution_eligible": True, "execution_decision": decision}})
         assert srv.reload_catalog() is None  # refused by the validator: the current (eligible deployable) table stays
         assert welcome(srv)["policies"]["r1"]["info"]["status"] == "deployable"
-        # user decision 2026-11-12 (DynaMo): a restricted entry executes only with a grant that acknowledges its FAILED
-        # criterion and is bound to its checkpoint; the failure stays published and the model stays resident
-        grant = {**decision, "acknowledged_failures": ["e1_layernorm_spread"], "checkpoint_sha256": e["sha256"]}
-        granted = {**restricted, "usage": "execution", "execution_eligible": True, "execution_decision": grant}
-        write_catalog(cat, {"r1": {**granted, "execution_decision": {**grant, "checkpoint_sha256": "0" * 64}}})
-        assert srv.reload_catalog() is None  # a grant for other weights is refused
-        write_catalog(cat, {"r1": granted})
+
+
+def test_restricted_grant_is_scoped_bound_published_and_needs_the_client_capability(staged, tmp_path):
+    """User decision 2026-11-12 (DynaMo): a restricted entry executes only under a scoped grant that acknowledges its
+    FAILED criterion and is bound to its checkpoint; the failure stays published, the model stays resident across the
+    label change, and the server binds the granted entry only for a client declaring the notice capability (an older
+    client is refused at HELLO; Codex review of 1847fdd)."""
+    from ops.policy_serving.config import RESTRICTED_EXECUTION_CAPABILITY
+
+    root, fx = staged
+    pol, e = fx["r1"]
+    pid = "dynamo-fixture-task-s0"
+    restricted = {**e, "condition": "dynamo", "run": "rwtest-20261112-fql-dynamo-fixture-task-s0", "seed": 0,
+                  "status": "restricted", "reasons": ["e1 LayerNorm-spread FAIL (fixture label)"],
+                  "usage": "dry_run_replay_only", "execution_eligible": False, "usage_reasons": ["decision"],
+                  "criteria": {"e1_layernorm_spread": {"pass": False, "value": 0.35, "threshold": ">= 0.5"}}}
+    grant = {"decided_by": "user", "at": "2026-11-12", "text": "fixture DynaMo decision",
+             "scope": {"condition": "dynamo", "fql_setting": "legacy"},
+             "acknowledged_failures": ["e1_layernorm_spread"], "checkpoint_sha256": e["sha256"]}
+    granted = {**restricted, "usage": "execution", "execution_eligible": True, "execution_decision": grant}
+    cat = write_catalog(tmp_path / "catalog.json", {pid: restricted})
+    with serve_catalog(root, cat) as srv:
+        assert welcome(srv)["policies"][pid]["info"]["requires_client"] == []
+        c, _ = client_for(srv, pid, pol)  # not granted: any client binds (dry run / replay)
+        assert c.spec_info["execution_eligible"] is False and c.spec_info["status"] == "restricted"
+        c.close()
+        sp = srv.policies[pid]
+        for bad in ({**granted, "execution_decision": {**grant, "checkpoint_sha256": "0" * 64}},  # other weights
+                    {**granted, "sha256": None, "execution_decision": {k: v for k, v in grant.items()
+                                                                       if k != "checkpoint_sha256"}},
+                    {**granted, "execution_decision": {k: v for k, v in grant.items() if k != "scope"}},
+                    {**granted, "condition": "reviwo", "run": "rwtest-20261112-fql-reviwo-fixture-task-s0"},
+                    {**granted, "run": "rwnq-20261112-fql-dynamo-fixture-task-s0"},
+                    {**granted, "status": "quarantined"}):
+            write_catalog(cat, {pid: bad})
+            assert srv.reload_catalog() is None  # refused by the validator: the current table stays
+            assert welcome(srv)["policies"][pid]["info"]["execution_eligible"] is False
+        write_catalog(cat, {pid: granted})
         summary = srv.reload_catalog()
-        assert summary["changed"] == [] and srv.policies["r1"] is sp
-        info = welcome(srv)["policies"]["r1"]["info"]
+        assert summary["changed"] == [] and srv.policies[pid] is sp  # label refresh, model stays resident
+        info = welcome(srv)["policies"][pid]["info"]
         assert info["status"] == "restricted" and info["criteria"]["e1_layernorm_spread"]["pass"] is False
         assert info["execution_eligible"] is True and info["execution_decision"] == grant
-        published = srv._current_info(srv.policies["r1"])  # what SPEC publishes
+        assert info["requires_client"] == [RESTRICTED_EXECUTION_CAPABILITY]
+        refused = raw_hello(srv, pid, choices_of(pol))  # an older client's HELLO: no capabilities declared
+        assert refused.type == P.ERROR and "requires client capabilities" in refused.header["detail"]
+        c, _ = client_for(srv, pid, pol)  # this client declares the capability it implements
+        published = c.spec_info  # what SPEC publishes: the CURRENT labels of the bound policy
         assert published["status"] == "restricted" and published["execution_eligible"] is True
         assert published["execution_decision"]["acknowledged_failures"] == ["e1_layernorm_spread"]
+        assert published["checkpoint_sha256"] == e["sha256"]
+        c.close()
 
 
 def _blocking_loads(monkeypatch, gate: threading.Event, started: threading.Event):
@@ -1577,3 +1614,39 @@ def test_withdrawal_during_session_binding_is_refused(staged, tmp_path, monkeypa
         with pytest.raises(ServingError, match="withdrawn while this session was being bound"):
             client_for(srv, "r1b", pol)
         assert not sp.sessions and srv.sessions == {} and sp.policy.live_sessions == ()
+
+
+def test_client_declares_capabilities_only_when_required_and_refuses_unknown_requirements():
+    """Mixed versions (Codex review of 1847fdd, P1): a HELLO to a server without requirements (e.g. f19de4d) is
+    unchanged; a requirement this client does not implement is refused before anything is sent."""
+    from ops.policy_serving.client import CAPABILITIES, ServingError
+    from ops.policy_serving.config import RESTRICTED_EXECUTION_CAPABILITY
+
+    assert RESTRICTED_EXECUTION_CAPABILITY in CAPABILITIES
+    sent = []
+
+    class Wire:
+        def send(self, data):
+            sent.append(data)
+            raise ConnectionError("stop after HELLO")  # only the HELLO header matters here
+
+    def hello_header(requires):
+        c = PolicyClient("127.0.0.1", 1, policy_id="p", choices={})
+        c.welcome = {"policies": {"p": {"input_spec": {}, "info": {"requires_client": requires}}},
+                     "auth_required": False}
+        c.wire = Wire()
+        sent.clear()
+        with pytest.raises(ConnectionError):
+            c._hello(None)
+        return P.decode(sent[0]).header
+
+    assert "capabilities" not in hello_header([])
+    assert hello_header([RESTRICTED_EXECUTION_CAPABILITY])["capabilities"] == [RESTRICTED_EXECUTION_CAPABILITY]
+    c = PolicyClient("127.0.0.1", 1, policy_id="p", choices={})
+    c.welcome = {"policies": {"p": {"input_spec": {}, "info": {"requires_client": ["unknown/9"]}}},
+                 "auth_required": False}
+    c.wire = Wire()
+    sent.clear()
+    with pytest.raises(ServingError, match="does not implement"):
+        c._hello(None)
+    assert sent == []

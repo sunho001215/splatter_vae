@@ -337,7 +337,7 @@ def test_usage_restrictions_eligibility_and_validator_rules():
         validate_catalog(cat(status="restricted", reasons=[]))
     with pytest.raises(ValueError, match="never execution-eligible"):
         validate_catalog(cat(status="quarantined", reasons=["x"]))
-    with pytest.raises(ValueError, match="FAILED criterion"):  # restricted: only with an acknowledging grant
+    with pytest.raises(ValueError, match="own id"):  # restricted: only a scoped grant under the entry's own id
         validate_catalog(cat(status="restricted", reasons=["x"]))
     for decision in (None, {}, {"decided_by": "coordinator", "at": "t", "text": "x"},
                      {"decided_by": "user", "at": "t", "text": " "}):
@@ -361,9 +361,8 @@ LN_FAIL = {"pass": False, "value": 0.355, "threshold": ">= 0.5"}
 
 def _restricted_dynamo_row(condition="dynamo", seed=0, run=None):
     """A restricted row as the inventory classifies DynaMo: every criterion passes except e1's LN-spread gate."""
-    row = {**_row(status="restricted", seed=seed), "condition": condition}
-    if run:
-        row["run"] = run
+    row = {**_row(status="restricted", seed=seed), "condition": condition,
+           "run": run or f"r-fql-{condition}-t-s{seed}"}  # identity consistent with the run id (staging checks it)
     row["checks"] = {"a": C.check(True, kind="epochs", budget=40, done=40),
                      "b": C.check(True, steps=1_000_000, budget=1_000_000, checkpoint_step=1_000_000),
                      "e1": C.check(False, offset_pass=True, ln_pass=False, offset_to_signal=2.48, ln_unit_std_raw=0.355),
@@ -384,6 +383,7 @@ def test_restricted_dynamo_is_execution_eligible_by_the_acknowledging_user_decis
     d = e["execution_decision"]
     assert d["decided_by"] == "user" and d["acknowledged_failures"] == ["e1_layernorm_spread"]
     assert d["checkpoint_sha256"] == row["policy"]["sha256"] and "DynaMo must support actual execution" in d["text"]
+    assert d["scope"] == {"condition": "dynamo", "fql_setting": "legacy"}
     assert e["usage_reasons"][0] == C.LN_SPREAD_DECISION
     assert e["usage_reasons"][1] == S.RESTRICTED_EXECUTION_WARNINGS["dynamo"]
     assert any("LayerNorm-spread" in r for r in e["reasons"])  # the failure itself is never removed
@@ -413,8 +413,8 @@ def test_restricted_grant_needs_every_failed_criterion_acknowledged_and_the_chec
 
     def cat(**over):
         e = {**good, **over}
-        return {"schema": "s4d-policy-catalog/1", "policies": {"p": {k: v for k, v in e.items() if v is not None}},
-                "aliases": {}}
+        return {"schema": "s4d-policy-catalog/1",
+                "policies": {"dynamo-t-s0": {k: v for k, v in e.items() if v is not None}}, "aliases": {}}
 
     validate_catalog(cat())
     d = good["execution_decision"]
@@ -424,7 +424,12 @@ def test_restricted_grant_needs_every_failed_criterion_acknowledged_and_the_chec
                        ({**d, "checkpoint_sha256": "d" * 64}, "checkpoint_sha256"),
                        ({**d, "decided_by": "coordinator"}, "execution_decision"),
                        ({**d, "text": " "}, "execution_decision"),
-                       (None, "acknowledged_failures")):
+                       ({k: v for k, v in d.items() if k != "scope"}, "scope"),
+                       ({**d, "scope": {"condition": "reviwo", "fql_setting": "legacy"}}, "scope"),
+                       ({**d, "scope": {"condition": "dynamo", "fql_setting": "a10nq"}}, "scope"),
+                       ({**d, "checkpoint_sha256": None}, "checkpoint_sha256"),
+                       ({**d, "checkpoint_sha256": "C" * 64}, "checkpoint_sha256"),
+                       (None, "user decision")):
         with pytest.raises(ValueError, match=match):
             validate_catalog(cat(execution_decision=bad))
     with pytest.raises(ValueError, match="acknowledged_failures"):  # a second failed criterion is not covered
@@ -434,6 +439,82 @@ def test_restricted_grant_needs_every_failed_criterion_acknowledged_and_the_chec
     with pytest.raises(ValueError, match="never execution-eligible"):  # quarantined: never, decision or not
         validate_catalog(cat(status="quarantined"))
     validate_catalog(cat(usage="dry_run_replay_only", execution_eligible=False, execution_decision=None))
+
+
+def test_execution_eligibility_requires_valid_checkpoint_hashes_on_both_sides():
+    """Codex review of 1847fdd (P0): ``sha256: null`` + an omitted decision hash compared equal; every eligible entry
+    (deployable too) now names a valid sha256, and a restricted grant is bound to the same valid hash."""
+    good = S.catalog_entry(_restricted_dynamo_row())
+    dep = S.catalog_entry(_row())
+    for pid, e in (("dynamo-t-s0", {**good, "sha256": None,
+                                    "execution_decision": {k: v for k, v in good["execution_decision"].items()
+                                                           if k != "checkpoint_sha256"}}),
+                   ("dynamo-t-s0", {**good, "sha256": "", "execution_decision": {**good["execution_decision"],
+                                                                                 "checkpoint_sha256": ""}}),
+                   ("dynamo-t-s0", {**dep, "sha256": None}), ("dynamo-t-s0", {**dep, "sha256": "x"})):
+        with pytest.raises(ValueError, match="sha256"):
+            validate_catalog({"schema": "s4d-policy-catalog/1", "policies": {pid: e}, "aliases": {}})
+    assert S.usage_of("restricted", "dynamo", checkpoint_sha256="", failed_criteria={"e1_layernorm_spread"}
+                      )["execution_eligible"] is False
+    assert S.usage_of("restricted", "dynamo", checkpoint_sha256="xyz", failed_criteria={"e1_layernorm_spread"}
+                      )["execution_eligible"] is False
+
+
+def _granted_like(condition, run, pid, flags=()):
+    """A restricted entry carrying a well-formed DynaMo-type grant, relabelled to another identity."""
+    good = S.catalog_entry(_restricted_dynamo_row())
+    e = {**good, "condition": condition, "run": run, "flags": list(flags)}
+    return {"schema": "s4d-policy-catalog/1", "policies": {pid: e}, "aliases": {}}
+
+
+@pytest.mark.parametrize("condition,run,pid,flags,match", [
+    ("reviwo", "r-fql-reviwo-t-s0", "reviwo-t-s0", (), "no user decision"),
+    ("sincro", "r-fql-sincro-t-s0", "sincro-t-s0", (), "no user decision"),
+    ("mvp3d_single", "r-fql-mvp3d_single-t-s0", "mvp3d_single-t-s0", (), "no user decision"),
+    ("mvp3d_multiview", "r-fql-mvp3d_multiview-t-s0", "mvp3d_multiview-t-s0", (), "no user decision"),
+    ("dynamo", "rwnq-20261111-fql-dynamo-t-s0", "dynamo-t-s0-a10nq", ("fql_setting_a10nq",), "no user decision"),
+    ("dynamo", "rwa100-20261111-fql-dynamo-t-s0", "dynamo-t-s0-a100", ("fql_setting_a100",), "no user decision"),
+    ("dynamo", "rwnq-20261111-fql-dynamo-t-s0", "dynamo-t-s0", (), "inconsistent FQL setting"),
+    ("dynamo", "r-fql-dynamo-t-s0", "dynamo-t-s0-a10nq", (), "inconsistent FQL setting"),
+    ("dynamo", "r-fql-dynamo-t-s0", "dynamo-t-s0", ("fql_setting_a100",), "inconsistent FQL setting"),
+    ("dynamo", "r-fql-dynamo-u-s0", "dynamo-t-s0", (), "run id"),
+    ("dynamo", "r-fql-reviwo-t-s0", "dynamo-t-s0", (), "run id"),
+    ("dynamo", "r-fql-dynamo-t-s0", "dynamo-t-s1", (), "own id"),
+    ("dynamo", "fixture-r1", "dynamo-t-s0", (), "run id")])
+def test_the_validator_enforces_the_restricted_grant_scope_from_entry_identity(condition, run, pid, flags, match):
+    """Codex review of 1847fdd (P0): a DynaMo-type grant copied onto another condition, a new FQL setting or an
+    inconsistent identity is refused by the VALIDATOR (its own allowlist), whatever staging or a hand edit wrote."""
+    with pytest.raises(ValueError, match=match):
+        validate_catalog(_granted_like(condition, run, pid, flags))
+    validate_catalog(_granted_like("dynamo", "r-fql-dynamo-t-s0", "dynamo-t-s0"))  # the in-scope entry itself
+
+
+def test_catalog_entry_derives_the_setting_from_the_run_id_and_refuses_inconsistent_rows():
+    """Codex review of 1847fdd (P0): a cached inventory row with an rwnq/rwa100 run but a missing fql_setting label
+    must not receive the legacy DynaMo grant."""
+    for run in ("rwnq-20261111-fql-dynamo-t-s0", "rwa100-20261111-fql-dynamo-t-s0"):
+        row = _restricted_dynamo_row(run=run)
+        row.pop("fql_setting", None)
+        with pytest.raises(ValueError, match="differ from its run id"):
+            S.catalog_entry(row)
+        row["fql_setting"] = S.fql_setting(run)
+        e = S.catalog_entry(row)
+        assert e["execution_eligible"] is False and f"fql_setting_{row['fql_setting']}" in e["flags"]
+    for over in ({"condition": "reviwo"}, {"task": "u"}, {"seed": 1}, {"fql_setting": "a10nq"}):
+        with pytest.raises(ValueError, match="differ from its run id"):
+            S.catalog_entry({**_restricted_dynamo_row(), **over})
+    assert S.restricted_grant("restricted", "dynamo", "a10nq", "c" * 64, {"e1_layernorm_spread"}) is None
+    assert S.restricted_grant("restricted", "dynamo", None, "c" * 64, {"e1_layernorm_spread"})["scope"] == \
+        {"condition": "dynamo", "fql_setting": "legacy"}
+
+
+def test_validator_fql_setting_prefixes_equal_the_staging_rule():
+    from ops.policy_serving import config as CFG
+
+    assert CFG.FQL_SETTING_PREFIXES == {k: v[0] for k, v in S.FQL_SETTINGS.items()}
+    assert {c for c, _ in CFG.RESTRICTED_EXECUTION_SCOPES} <= set(S.RESTRICTED_EXECUTION_DECISIONS)
+    for cond, d in S.RESTRICTED_EXECUTION_DECISIONS.items():
+        assert (cond, d["scope"]["fql_setting"]) in CFG.RESTRICTED_EXECUTION_SCOPES and d["scope"]["condition"] == cond
 
 
 def test_completion_must_be_the_evaluated_checkpoint():

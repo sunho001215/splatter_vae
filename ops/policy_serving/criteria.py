@@ -377,7 +377,9 @@ def classify(condition: str, checks: dict, *, quarantine: str | None = None) -> 
     """POL-CRITERIA.md classes (amendment A2, user decision 2026-11-10). ``checks``: a, b, c, d, e1, e2, f (each a
     ``check`` dict; a/e1 may be absent where the condition has none). ``quarantine``: an explicit decision (reason).
     ``restricted``: every criterion passes EXCEPT the e1 LayerNorm-spread gate (offset gate and e2 pass): the
-    criterion stays FAILED and the policy is available for dry run / replay only, never for execution."""
+    criterion stays FAILED and the policy is available for dry run / replay only, unless a scoped user execution
+    decision acknowledges the failure (config.RESTRICTED_EXECUTION_SCOPES: DynaMo legacy setting, user 2026-11-12);
+    the class and the FAILED criterion are unchanged by such a grant."""
     reasons, failed = [], []  # ours: a trained FQL condition since FQLNQ 2026-11-11, the same criteria as every other
     for k in ("a", "b"):
         if k in checks and not checks[k]["pass"]:

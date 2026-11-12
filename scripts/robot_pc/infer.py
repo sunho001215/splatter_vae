@@ -215,6 +215,13 @@ def main(argv=None, *, operator_input=input) -> int:
                                             identity_depth=args.identity_depth)
         client = cli.connect(cfg, args, pid, choices, "robot-pc-infer")
         opened.append(client.close)
+        selected = info
+        # the BOUND policy's current labels (SPEC), never only the earlier WELCOME snapshot (Codex review of 1847fdd)
+        info = confirm_policy(selected, getattr(client, "spec_info", None), execute=args.execute, stage="binding")
+        if any(info.get(k) != selected.get(k) for k in (*POLICY_LABELS, "usage_reasons", "reasons", "criteria")):
+            say("catalog labels at binding (SPEC) differ from the selection (WELCOME); current labels:")
+            for line in restriction_notes(info):
+                say(line)
         cameras.bind(K)
         recorder = None
         if not args.no_record:
@@ -227,10 +234,11 @@ def main(argv=None, *, operator_input=input) -> int:
                           "mode": "execute" if args.execute else "dry_run", "duration_s": args.duration_s,
                           "steps": args.steps, "cameras": [{"name": _name(names, c), "serial": c} for c in cams],
                           "camera_names_file": str(C.path(cfg, (cfg.get("cameras") or {}).get("names_file"))),
-                          "camera_names": names, "catalog_info": info, "input_spec": spec, "route": args.route,
+                          "camera_names": names, "catalog_info": info, "catalog_info_selected": selected,
+                          "input_spec": spec, "route": args.route,
                           "gripper_origin": getattr(gripper, "origin", None),
                           "gripper": {"speed": getattr(gripper, "speed", None), "force": getattr(gripper, "force", None)},
-                          "config": cfg, "bundle": str(root / "BUNDLE.json"), "argv": list(argv or sys.argv[1:])}
+                          "config": cfg, "bundle": str(running_bundle(root)), "argv": list(argv or sys.argv[1:])}
             prefix = f"{task}/{method}/seed{seed if seed is not None else 'x'}/{cam_label}"
             recorder = SessionRecorder(root, meta=experiment, run_prefix=prefix,
                                        camera_names={c: _name(names, c) for c in cams},
@@ -275,6 +283,11 @@ def main(argv=None, *, operator_input=input) -> int:
             blockers = state_blockers(list(reader.samples), time.monotonic_ns())
             if blockers:
                 raise ExecutionRefused("robot state is not healthy at START: " + "; ".join(blockers))
+            # a grant revoked / a checkpoint re-staged since the selection refuses here, before any motion
+            info = confirm_policy(info, current_catalog_info(cfg, args, pid), execute=True, stage="START re-check")
+            if recorder is not None:
+                recorder.event(time.monotonic_ns(), "start_recheck " + json.dumps(
+                    {k: info.get(k) for k in ("checkpoint_sha256", "status", "usage", "execution_eligible")}))
             auth = authorize_execution(cli_execute=True, operator_start=True, policy_info=info)
             if auth.hardware_test is not None:
                 raise ExecutionRefused("policy execution requires hardware_test is None")
@@ -420,6 +433,57 @@ def restriction_notes(info: dict) -> list:
     return lines
 
 
+POLICY_IDENTITY = ("checkpoint_sha256", "condition", "task", "seed", "run", "actor")
+POLICY_LABELS = ("status", "usage", "execution_eligible", "execution_decision")
+
+
+def confirm_policy(selected: dict, current, *, execute: bool, stage: str) -> dict:
+    """The CURRENT catalog labels of the selected policy (the SPEC of the bound session; the server's WELCOME again at
+    START), checked against the selection: the same weights and identity (``POLICY_IDENTITY``); for execution a
+    published checkpoint sha256, unchanged eligibility labels (``POLICY_LABELS``: a grant revoked or changed since the
+    selection refuses - run again to see the current notes) and ``execution_eligible`` true. Returns the current info;
+    raises ExecutionRefused otherwise (fail closed: missing info refuses execution)."""
+    from ops.policy_serving.config import valid_sha256
+    from ops.robot_pc.safety import ExecutionRefused, execution_eligible
+
+    if not isinstance(current, dict) or not current:
+        if execute:
+            raise ExecutionRefused(f"{stage}: the server published no catalog info for the policy; cannot confirm "
+                                   "the selected policy")
+        return dict(selected)
+    diff = {k: [selected.get(k), current.get(k)] for k in POLICY_IDENTITY if selected.get(k) != current.get(k)}
+    if diff:
+        raise ExecutionRefused(f"{stage}: the policy differs from the one selected: {diff}")
+    if execute:
+        if not valid_sha256(current.get("checkpoint_sha256")):
+            raise ExecutionRefused(f"{stage}: the policy's checkpoint sha256 is not published")
+        changed = sorted(k for k in POLICY_LABELS if selected.get(k) != current.get(k))
+        if changed:
+            raise ExecutionRefused(f"{stage}: the catalog labels {changed} changed since the selection; run again")
+        if not execution_eligible(current):
+            raise ExecutionRefused(f"{stage}: the catalog does not mark this policy execution_eligible")
+    return dict(current)
+
+
+def current_catalog_info(cfg: dict, args, pid: str):
+    """The policy's labels in a fresh WELCOME (no session is opened); None when the server does not offer it."""
+    from ops.robot_pc.safety import ExecutionRefused
+
+    try:
+        offered = cli.welcome(cfg, args).get("policies") or {}
+    except Exception as exc:  # noqa: BLE001 - an unreachable server refuses the start (fail closed)
+        raise ExecutionRefused(f"START re-check: no WELCOME from the policy server ({type(exc).__name__}: {exc})") \
+            from None
+    return (offered.get(pid) or {}).get("info")
+
+
+def running_bundle(root: Path) -> Path:
+    """BUNDLE.json of the release this code runs from (``releases/<name>/src`` -> ``releases/<name>/BUNDLE.json``;
+    a release run side by side records its own bundle), else the workspace's."""
+    own = Path(__file__).resolve().parents[2].parent / "BUNDLE.json"
+    return own if own.is_file() else root / "BUNDLE.json"
+
+
 def list_policies(cfg: dict, args) -> int:
     from ops.robot_pc.safety import execution_eligible
 
@@ -445,8 +509,18 @@ def list_policies(cfg: dict, args) -> int:
                      and (p.get("info") or {}).get("status") == "restricted"
                      and execution_eligible(p.get("info") or {}))
     if flagged:
-        print(f"restricted but eligible (a criterion FAILED, not waived; execution by user decision, see the warning "
-              f"printed at start): {', '.join(flagged)}")
+        print("\nrestricted but eligible (a criterion FAILED, not waived; executable by user decision; NOT a "
+              "validated-performance claim):")
+        for pid in flagged:
+            info = offered[pid].get("info") or {}
+            failed = sorted(k for k, v in (info.get("criteria") or {}).items() if isinstance(v, dict)
+                            and v.get("pass") is False)
+            d = info.get("execution_decision") or {}
+            print(f"  {pid}: FAILED {failed}; decision {d.get('at')} (checkpoint "
+                  f"{str(d.get('checkpoint_sha256'))[:12]}); requires client {info.get('requires_client')}")
+            for r in info.get("usage_reasons", []):
+                if r.startswith("WARNING"):
+                    print(f"    {r}")
     return 0
 
 

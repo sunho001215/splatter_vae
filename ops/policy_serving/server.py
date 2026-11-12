@@ -59,7 +59,7 @@ if __package__ in (None, ""):  # ``python ops/policy_serving/server.py``: make t
 import numpy as np  # noqa: E402
 
 from ops.policy_serving import protocol as P  # noqa: E402
-from ops.policy_serving.config import SERVABLE_STATUSES  # noqa: E402
+from ops.policy_serving.config import RESTRICTED_EXECUTION_CAPABILITY, SERVABLE_STATUSES, valid_sha256  # noqa: E402
 
 LOG = logging.getLogger("ops.policy_serving.server")
 HELLO_CHOICES = frozenset({"camera_id", "native_hw", "calibration", "native_depth_correction"})
@@ -153,8 +153,17 @@ class CatalogEntry:
                "execution_eligible": e.get("execution_eligible") is True, "actor": e.get("actor", "onestep"),
                "execution_decision": e.get("execution_decision") if e.get("execution_eligible") is True else None,
                "usage_reasons": list(e.get("usage_reasons", [])), "criteria": e.get("criteria", {}),
-               "reasons": list(self.reasons)}
+               "reasons": list(self.reasons), "requires_client": self.requires_client()}
         return out
+
+    def requires_client(self) -> list:
+        """Client capabilities a HELLO must declare to bind this entry: a restricted entry with an execution grant
+        (a criterion FAILED, executable by user decision) needs a client that shows the failure and the decision
+        before START (``RESTRICTED_EXECUTION_CAPABILITY``); an older client is refused at HELLO instead of executing it
+        without the notice."""
+        e = self.entry
+        return [RESTRICTED_EXECUTION_CAPABILITY] if self.status == "restricted" and \
+            e.get("execution_eligible") is True else []
 
 
 @dataclass(eq=False)
@@ -1038,6 +1047,13 @@ class PolicyServer:
         with self.lock:
             entry = self.entries.get(pid)
             unavailable = f"policy {pid} left the catalog" if entry is None else self._refusal(entry)
+        declared = h.get("capabilities")
+        declared = set(declared) if isinstance(declared, list) and all(isinstance(x, str) for x in declared) else set()
+        lacking = [] if entry is None else [c for c in entry.requires_client() if c not in declared]
+        if unavailable is None and lacking:
+            unavailable = (f"policy {pid} requires client capabilities {lacking} (a restricted policy executable by "
+                           "user decision: update the robot-PC client, which shows its failed criterion and the "
+                           "decision before START)")
         if unavailable is not None:
             conn.send(self._error(None, None, "bad_request", unavailable))
             return True
@@ -1461,6 +1477,8 @@ def load_policy(entry: dict, *, root, device: str, allow_fixture: bool = False):
     from s4d.rwlearn.deploy import DeployPolicy
 
     ckpt = resolve(root, entry["checkpoint"])
+    if entry.get("execution_eligible") is True and not valid_sha256(entry.get("sha256")):
+        raise ValueError(f"{ckpt}: an execution-eligible entry is served only against its checkpoint sha256")
     digest = sha256_file(ckpt)
     if entry.get("sha256") and entry["sha256"] != digest:
         raise ValueError(f"{ckpt}: sha256 {digest} != configured {entry['sha256']}")

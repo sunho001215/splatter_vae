@@ -837,7 +837,7 @@ def test_bundle_is_reproducible_and_lists_every_file(tmp_path, monkeypatch):
         req = t.extractfile(f"s4d-robot-pc-{head[:7]}/wheels/requirements.txt").read().decode()
     assert set(manifest["files"]) | {"BUNDLE.json"} == files and "setup.sh" in files
     assert "numpy==1.26.4 --hash=sha256:" in req and "pip" not in req
-    assert manifest["pins"]["numpy"] == "numpy==1.26.4" and manifest["safety"].startswith("dry run")
+    assert manifest["pins"]["numpy"] == "numpy==1.26.4" and manifest["safety"].startswith("execution only via infer.py")
     validation.write_text(json.dumps({"pass": False, "header": {}, "episodes": []}))
     with pytest.raises(SystemExit, match="did not pass"):
         mod.build(SimpleNamespace(**vars(args), out_dir=tmp_path / "o3"))
@@ -2171,7 +2171,9 @@ def test_launcher_cancellation_checkpoints_and_resource_order(checkpoint, monkey
     monkeypatch.setattr(G, "GripperWorker", Grip)
     spec = {"views": 2 if checkpoint == "multiview" else 1, "modalities": ["rgb"],
             "trained_camera_orders": [["cam_a", "cam_b"]] if checkpoint == "multiview" else [["cam_a"]]}
-    monkeypatch.setattr(cli, "choose_policy", lambda *a: ("p", "t", spec, {"execution_eligible": True}))
+    info = {"execution_eligible": True, "checkpoint_sha256": "ab" * 32}  # SPEC + START re-check: the same labels
+    monkeypatch.setattr(cli, "choose_policy", lambda *a: ("p", "t", spec, dict(info)))
+    monkeypatch.setattr(cli, "welcome", lambda *a: {"policies": {"p": {"info": dict(info)}}})
     monkeypatch.setattr(selection, "session_cameras", lambda *a: ["cam_a", "cam_b"] if spec["views"] > 1 else ["cam_a"])
     monkeypatch.setattr(cli, "rig_document", lambda *a: None)
     monkeypatch.setattr(selection, "depth_corrections", lambda *a, **kw: None)
@@ -2179,7 +2181,8 @@ def test_launcher_cancellation_checkpoints_and_resource_order(checkpoint, monkey
     monkeypatch.setattr(camera_mod, "LiveCameras", Cameras)
     monkeypatch.setattr(camera_warmup, "wait_until_stable", lambda *a, **kw:
                         {"status": "stable", "waited_s": 1.5, "cameras": {}})
-    monkeypatch.setattr(cli, "connect", lambda *a: SimpleNamespace(close=lambda: order.append("client close")))
+    monkeypatch.setattr(cli, "connect", lambda *a: SimpleNamespace(close=lambda: order.append("client close"),
+                                                                    spec_info=dict(info)))
     monkeypatch.setattr(recorder_mod, "SessionRecorder", Recorder)
     OriginalExecutor = executor.HighRateExecutor
 
