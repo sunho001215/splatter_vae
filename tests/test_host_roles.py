@@ -22,7 +22,8 @@ REPO = Path(__file__).resolve().parents[1]
 ROLES = roles_mod.load_roles()
 # Keep regression coverage for the retained exclusive-role replacement/retry/drain machinery using a synthetic policy.
 EXCLUSIVE_ROLES = copy.deepcopy(ROLES)
-EXCLUSIVE_ROLES["hosts"]["remote"]["admit"].remove("metaworld")
+if "metaworld" in EXCLUSIVE_ROLES["hosts"]["remote"]["admit"]:  # shipped without it since 2026-11-12
+    EXCLUSIVE_ROLES["hosts"]["remote"]["admit"].remove("metaworld")
 EXCLUSIVE_ROLES["hosts"]["remote"]["unknown"] = "allow"
 LOCAL_GPU = jobs.APPROVED_HOST_GPUS["local"][0]
 REMOTE_GPU = jobs.APPROVED_HOST_GPUS["remote"][0]
@@ -68,7 +69,8 @@ def test_shipped_role_declaration():
     assert hosts["local"]["unknown"] == "allow"
     assert ROLES["version"] == 2 and "scripts" not in hosts["local"]
     assert set(ROLES["data_locality"]["remote_resident"]) == set(roles_mod.CLASSES) - {"metaworld", "verification"}
-    assert set(hosts["remote"]["admit"]) == {"metaworld", "realworld_preprocess", "droid_preprocess", "realworld_pretrain",
+    # user 2026-11-12: the Meta-World development data was removed from the remote; Meta-World rows run locally
+    assert set(hosts["remote"]["admit"]) == {"realworld_preprocess", "droid_preprocess", "realworld_pretrain",
                                              "droid_pretrain", "realworld_fql", "verification"}
     assert hosts["remote"]["unknown"] == "allow" and hosts["remote"]["drain_evaluators"] is True
     assert "drain_evaluators" not in hosts["local"]
@@ -148,7 +150,8 @@ def test_exports_without_their_producer_in_context_are_unclassified():
 
 # ---------------------------------------------------------------------------------------------------- admission
 @pytest.mark.parametrize("job,local,remote", [
-    (DRM, True, True), (PRETRAIN, True, True), (EXPORT, True, True), (SNERL, True, True),
+    # 2026-11-12 (user): no Meta-World development data on the remote -> Meta-World rows run locally only
+    (DRM, True, False), (PRETRAIN, True, False), (EXPORT, True, False), (SNERL, True, False),
     (DROID_PRETRAIN, False, True), (DROID_PRE, False, True), (RW_PRE, False, True), (RW_FQL, False, True),
     (VIEWER, False, False), (PLAIN, True, True), (RW_FQL_TASK, False, False),
     ({**DRM, "role": "realworld_pretrain"}, False, False),
@@ -809,9 +812,9 @@ def test_pool_mover_respects_roles_ownership_and_pauses(tmp_path, monkeypatch):
     monkeypatch.setattr(roles_mod, "OWNERSHIP_DIR", tmp_path / "ownership")
     roles_mod.write_ownership({"job_id": "droid-pre-b", "state": "placed", "owner_host": "local"})
     moved = pool.move([PRETRAIN["id"], "droid-pre-a", "droid-pre-b"], "remote", "test", blocking=True)
-    assert moved == [PRETRAIN["id"], "droid-pre-a"]
+    assert moved == ["droid-pre-a"]  # Meta-World rows are not a remote role since 2026-11-12
     hosts = {j["id"]: j.get("host", "local") for j in jobs.load_queue(queue)["jobs"]}
-    assert hosts == {PRETRAIN["id"]: "remote", "droid-pre-a": "remote", "droid-pre-b": "local"}
+    assert hosts == {PRETRAIN["id"]: "local", "droid-pre-a": "remote", "droid-pre-b": "local"}
 
 
 # ---------------------------------------------------------------------------------------------------- drain exception
@@ -870,8 +873,20 @@ def test_a_switch_interrupted_between_ownership_records_holds_the_whole_unit(tmp
     assert roles_mod.ownership_refusal(DRM_EVAL["id"], "local", roles_mod.read_ownership(paths.ownership)) is None
 
 
+def test_never_launched_remote_metaworld_rows_are_replaced_to_local(tmp_path):
+    """2026-11-12 (user): the Meta-World development data were removed from the remote; Meta-World rows queued for the
+    remote that never launched are replaced to local by the existing exclusive-role machinery."""
+    rows = [remote_row(DRM), remote_row(DRM_EVAL), remote_row(PRETRAIN)]  # a trainer moves with its evaluator
+    queue, registry = sandbox(tmp_path, rows)
+    result = roles_mod.replace_to_local(lambda _: False, queue_path=queue, registry_path=registry,
+                                        manifest=tmp_path / 'pool.json', ownership_dir=tmp_path / 'ownership',
+                                        admission_lock=tmp_path / 'admission.lock', root=tmp_path)
+    assert sorted(result['moved']) == sorted([DRM['id'], DRM_EVAL['id'], PRETRAIN['id']])
+    assert all(roles_mod.role_host(j, ROLES, {r['id']: r for r in rows}) == 'local' for j in rows)
+
+
 def test_shared_classes_never_trigger_generic_replacement(tmp_path):
-    rows = [remote_row(DRM), remote_row(DRM_EVAL), remote_row(PRETRAIN), remote_row(EXPORT)]
+    rows = [remote_row(DROID_PRETRAIN), remote_row(DROID_EXPORT)]  # classes both hosts admit
     queue, registry = sandbox(tmp_path, rows)
     before = queue.read_bytes()
     result = roles_mod.replace_to_local(lambda _: False, queue_path=queue, registry_path=registry,
@@ -968,6 +983,10 @@ def test_migration_begin_accepts_any_admitting_destination(tmp_path, source, des
     jobs.record({'event': 'exited', 'id': 'move', 'host': source, 'attempt': 1, 'code': 143}, registry)
     paths = migration.Paths(root=tmp_path, queue=queue, registry=registry, ownership=tmp_path / 'ownership',
                             admission_lock=tmp_path / 'admission.lock')
+    if domain == 'metaworld' and destination == 'remote':  # 2026-11-12 (user): no Meta-World data on the remote
+        with pytest.raises(migration.MigrationError, match='does not admit'):
+            migration.begin('move', destination, 'unified pool', paths)
+        return
     records = migration.begin('move', destination, 'unified pool', paths)
     assert records[0]['to_host'] == destination and records[0]['state'] == 'migrating'
     if destination == 'remote':

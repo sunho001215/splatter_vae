@@ -18,6 +18,7 @@ ROOT = Path('/home/ws/ws/splatter4d')
 sys.path.insert(0, str(ROOT))
 from ops.resources.gpu_guard import APPROVED_HOST_GPUS  # noqa: E402
 from ops.jobs.remote_backend import acceptance_manifest  # noqa: E402
+from ops.containers import suite_partition  # noqa: E402
 from ops.jobs import scheduler as jobs  # noqa: E402
 
 IMAGE = 'sha256:c3ffea7f7c114dd12755f9d537f760a6d5b31c96c923233185b775e0324799b7'
@@ -48,6 +49,15 @@ def write(name, payload):
 
 
 suite = verified(f'verify-native-{short}', 'tests.json')
+if suite.get('partition') == suite_partition.REMOTE:
+    # user 2026-11-12: the remote suite deselected the metaworld_data tests; the release chain ran exactly those on
+    # the local host (local-metaworld/tests.json + its recorded checksum); only their combination is the full suite
+    local_path = out / 'local-metaworld' / 'tests.json'
+    recorded = json.loads((out / 'local-metaworld' / 'record.json').read_text())
+    assert recorded['commit'] == commit and recorded['tests_json_sha256'] == hashlib.sha256(local_path.read_bytes()).hexdigest()
+    local = json.loads(local_path.read_text())
+    assert local.get('expected_commit') == commit, 'local partition ran another commit'
+    suite = suite_partition.combine(suite, local)
 manifest = {'commit': commit, 'image_digest': IMAGE,
             'full_suite': write('tests.json', {'commit': commit, 'image_digest': IMAGE, 'report': suite,
                                                'job': f'verify-native-{short}'})}

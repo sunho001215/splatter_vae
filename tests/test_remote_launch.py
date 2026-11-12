@@ -329,19 +329,21 @@ def test_metaworld_command_is_byte_identical_to_before_realworld_mounts(gpu_back
 
 
 @pytest.mark.parametrize("gpu_backend,script,original_sha256", [
-    # Full commands captured from 447be17 before sharing the real-world mount rule with reconciliation.
-    ("cdi", "train.py", "3c71fb0d84db7bffe6dbbf2ea25b1b375c8d178cfbcb2e3330fdb9777c1e949e"),
-    ("cdi", "train_reviwo.py", "6c8b725b8cabfc55fa5a6785c37606be4af8c0b49378ba0b35923322928e51ac"),
-    ("cdi", "train_dynamo.py", "fb8ca7327e5f5ab8ca45eb68b145adb007b0e49a552b7d35627d9ab98753fde7"),
-    ("cdi", "realworld_fql_dataset.py", "1251451ece0d79ce46fdbdc60b0fed3cec540d4fde45d15f85dc6883e15f82ac"),
-    ("cdi", "train_realworld_fql.py", "46b6eb73c0047cac86c4f23e36d25b1ea19a2d7e5f2063a202374e550ea6d9f8"),
-    ("cdi", "realworld_preprocess.py", "685b029a307ef5b9d516322d3bf01f1798b54cf865942b84f946b19636883891"),
-    ("legacy", "train.py", "ed7238db84c45359c0d6926f3e6a3fa05dc7a11cd8f644a64e98c9739c13328f"),
-    ("legacy", "train_reviwo.py", "9f4f7b318aa2af088126b64c5e873f83be09ea9b66746e335e3873799fc7b98b"),
-    ("legacy", "train_dynamo.py", "46b87a32db95ec97161bb7593afdc59a9af0d4b155994881301ee2d5fd9b1830"),
-    ("legacy", "realworld_fql_dataset.py", "642085cae0365067d601acf32c76d5bb3ba13f682da37860d3f7f651c4aa522a"),
-    ("legacy", "train_realworld_fql.py", "cdc2a3cd622ef26b8bbd1b150153b66c97919c0f0ae08d98f79d0dff08f734cb"),
-    ("legacy", "realworld_preprocess.py", "60f79f3ae2a0cb73622ffca37b27bf36e04d268e3204abce9177a15c2e7c670a"),
+    # Full commands captured from 447be17 before sharing the real-world mount rule with reconciliation; re-pinned
+    # 2026-11-12 (user) when real-world launches stopped checking, checksum-verifying and mounting the Meta-World
+    # development data (test_metaworld_data_is_required_only_by_metaworld_jobs pins that difference).
+    ("cdi", "train.py", "4cb17a27d4ecebf798bbabaeb7c358ed28a1ce2d98491f5179d6b768976ca65e"),
+    ("cdi", "train_reviwo.py", "a9028e4d61c938a3eff238bde4cfb4aabbe11008f6ed23bceb6ab82b2a172b7b"),
+    ("cdi", "train_dynamo.py", "62e70f959de669b71819d21fea50db2d532d7f2d6235eff6f698fa8e8f42f9b3"),
+    ("cdi", "realworld_fql_dataset.py", "ece1419c68594a0f3222c13ab2025ef7f99d1a912f286bc47f536c32dd7b846e"),
+    ("cdi", "train_realworld_fql.py", "8d43c5e7083c1a11040780ad78c9acabb21e69348b0f7ef270e7f3bbe4c0c10a"),
+    ("cdi", "realworld_preprocess.py", "cd294299d8615295dd49114ae2d669d9dc67856be344ccf94ca1f3e78c1e81b5"),
+    ("legacy", "train.py", "b40e8fbcbf4afdabf62e6e39cf9716b33477623d2c08f60f1b7bbf142ffe3e62"),
+    ("legacy", "train_reviwo.py", "810e8922fef072287083c5d16ff2fa5d4c2380e71d10da4d99d9c1491777fd77"),
+    ("legacy", "train_dynamo.py", "555dd9eeb3192d5669cd358f34939cea5742ec93c3dbf93cfce7f3cc7d957fac"),
+    ("legacy", "realworld_fql_dataset.py", "6ef3d6b8ec25c3a6f98284eb72bb09d2bf6db219d4d8b6a83eefdcac1c114798"),
+    ("legacy", "train_realworld_fql.py", "9c32ad0cd3871c849da058f7ee0b392c35987485aac4b0a222b7bd9c86ef71d0"),
+    ("legacy", "realworld_preprocess.py", "a50355dec4546bb38330a04fa6f446cd4cb74d13408758c9e617e212a75b5994"),
 ])
 def test_realworld_command_is_byte_identical_before_mount_refactor(gpu_backend, script, original_sha256):
     spec = job_spec()
@@ -377,7 +379,32 @@ def test_realworld_roles_mount_input_roots_readonly_at_identical_paths(script, e
         assert mounts.count(f"type=bind,src={path},dst={path},readonly") == 1
         assert f"bind|{path}|{path}|false" in command  # existing-attempt inspection enforces read-only, too
         assert "bounded " + shlex.quote(path) in command
-    assert len(mounts) == 11
+    # 2026-11-12 (user): real-world jobs no longer mount, check or checksum the Meta-World development data
+    assert len(mounts) == 10 and not any("/data/metaworld/splatter4d_v1" in mount for mount in mounts)
+    assert "metaworld/splatter4d_v1" not in command.split("existing() {")[0] + command.split("bounded \"$runtime/launch\"")[-1]
+
+
+def test_metaworld_data_is_required_only_by_metaworld_jobs():
+    """User 2026-11-12: the data were removed from the remote; only a Meta-World job checks, checksum-verifies and
+    mounts them (a real-world job and a typed verification row do not)."""
+    data_files = [(REMOTE_ROOT + "/data/metaworld/splatter4d_v1/hammer.hdf5", "d" * 64)]
+
+    def build(spec):
+        return build_remote_command(spec, DATA_ID, "e" * 40, "f" * 64, {"tests.json": "1" * 64}, data_files)
+    meta = job_spec()
+    meta["args"] += ["--config", "configs/metaworld/tasks/hammer.yaml"]
+    real = job_spec()
+    real["args"] += ["--config", "configs/realworld/baselines/reviwo/drawer-open.yaml"]
+    real["role"] = "realworld_pretrain"
+    meta_command, real_command = build(meta), build(real)
+    target = "dst=/home/ws/data/metaworld/splatter4d_v1"
+    assert target in meta_command and "test -d " + shlex.quote(REMOTE_ROOT + "/data/metaworld/splatter4d_v1") in meta_command
+    assert "sha256sum -- " + shlex.quote(data_files[0][0]) in meta_command
+    assert target not in real_command and "sha256sum -- " + shlex.quote(data_files[0][0]) not in real_command
+    assert "test -d " + shlex.quote(REMOTE_ROOT + "/data/metaworld/splatter4d_v1") not in real_command
+    with pytest.raises(ValueError):  # a Meta-World job still requires checksum-verified data files
+        build_remote_command(meta, DATA_ID, "e" * 40, "f" * 64, {"tests.json": "1" * 64}, [])
+    build_remote_command(real, DATA_ID, "e" * 40, "f" * 64, {"tests.json": "1" * 64}, [])  # not required
 
 
 @pytest.mark.parametrize("role,script,args", [
@@ -469,6 +496,7 @@ def test_generated_shell_quotes_arguments_without_evaluation():
         "legacy_request", "wrong_nvv", "missing_request", "extra_capabilities", "extra_options",
         "privileged", "writable_root", "pid_namespace", "writable_code", "writable_data", "missing_mount",
     )],
+    ("cdi", "without_metaworld", False, 8 * 2**30),
 ])
 @pytest.mark.parametrize("realworld", [False, True])
 def test_existing_attempt_is_returned_without_second_launch_or_foreign_changes(
@@ -494,8 +522,10 @@ def test_existing_attempt_is_returned_without_second_launch_or_foreign_changes(
         mounts[0] = (mounts[0][0], mounts[0][1], True)
     if mutation == "writable_data":
         mounts[-1] = (mounts[-1][0], mounts[-1][1], True)
-    if mutation == "missing_mount":
-        mounts.pop()
+    if mutation == "missing_mount":  # a required mount (the release proof) is missing
+        mounts.pop(6)
+    if mutation == "without_metaworld":  # 2026-11-12: a non-Meta-World job may lack the Meta-World data mount
+        mounts.pop(7)
     mount_listing = "\n".join(f"bind|{source}|{target}|{str(writable).lower()}" for source, target, writable in mounts)
     qualified_id = "nvidia.com/gpu=" + spec["gpu"]
     request = {"Driver": "cdi", "Count": 0, "DeviceIDs": [qualified_id], "Capabilities": [], "Options": {}}
@@ -558,7 +588,7 @@ def test_existing_attempt_is_returned_without_second_launch_or_foreign_changes(
                                    [(REMOTE_ROOT + "/data/hammer.hdf5", "d" * 64)])
     result = subprocess.run(["bash", "-c", command], capture_output=True, text=True,
                             env={**os.environ, "PATH": str(tmp_path) + os.pathsep + os.environ["PATH"]})
-    if mutation is not None or foreign_label or shm_size != SHM_SIZE_BYTES:
+    if (mutation not in (None, "without_metaworld")) or foreign_label or shm_size != SHM_SIZE_BYTES:
         assert result.returncode != 0 and not result.stdout
     else:
         assert result.returncode == 0, result.stderr

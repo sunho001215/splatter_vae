@@ -16,6 +16,7 @@ from ops.jobs.host_roles import job_class
 from ops.jobs.retired import retired_reason
 from ops.jobs.remote_backend import (COTENANT_GPU_MARGIN_GB, COTENANT_LABELS, COTENANT_ROLES, OWNERSHIP_LABELS,
                                      commit_source_sha256)
+from ops.containers import suite_partition
 from ops.containers.verification import validate_verification, verification_artifacts, verification_output
 from ops.containers.mounts import REALWORLD_READ_ROOTS, realworld_mounts
 
@@ -213,6 +214,11 @@ def evidence_artifacts(spec: dict, repository: Path) -> tuple[list[tuple[Path, s
     if (suite.get("host") != "remote" or any(counts.get(kind, 1) for kind in ("failed", "error", "skipped"))
             or not isinstance(suite.get("source_sha256"), dict) or not suite["source_sha256"]):
         raise ValueError("Full native suite contains skipped or failing tests")
+    if suite.get("partition", "all") != "all":  # user 2026-11-12: a partitioned suite is complete only when combined
+        try:
+            suite_partition.check_combined(suite)
+        except ValueError as exc:
+            raise ValueError(f"Full native suite partitions are inconsistent ({exc})") from None
     for uuid in APPROVED_HOST_GPUS["remote"]:
         report = payloads[f"isolation-{uuid}.json"]
         if (report.get("passed") is not True or report.get("host") != "remote"
@@ -292,11 +298,17 @@ def build_remote_command(spec: dict, data_identity: str, origin_commit: str, pro
     cache = f"{runtime}/cache"
     acceptance = f"{runtime}/acceptance/{commit}-{image[7:]}"
     data = f"{root}/data/metaworld/splatter4d_v1"
+    # user 2026-11-12: the Meta-World development data was removed from the remote. Only a Meta-World job (its class
+    # domain, ops/jobs/host_roles.job_class) needs, checks, checksum-verifies and mounts it; verification jobs (the
+    # remote native suite deselects the tests that read it; they run in the release chain's local partition) and
+    # real-world / DROID jobs do not.
+    needs_metaworld = job_class(spec).domain == "metaworld"
     mounts = [(code, CONTAINER_REPO, True), (f"{root}/runs", f"{CONTAINER_REPO}/runs", False),
               (f"{root}/outputs", f"{CONTAINER_REPO}/outputs", False),
               (cache, f"{CONTAINER_REPO}/.cache", False), (runtime, runtime, False),
-              (acceptance, acceptance, True), (proof, proof, True),
-              (data, "/home/ws/data/metaworld/splatter4d_v1", True)]
+              (acceptance, acceptance, True), (proof, proof, True)]
+    if needs_metaworld:
+        mounts.append((data, "/home/ws/data/metaworld/splatter4d_v1", True))
     mounts += realworld_mounts(spec)
     docker = ["docker", "run", "-d", "--name", name, "--read-only", "--pid=host", "--user", "1000:1000",
               "--oom-score-adj", str(spec["oom_score_adj"]),
@@ -389,7 +401,14 @@ def build_remote_command(spec: dict, data_identity: str, origin_commit: str, pro
                                       for source, target, readonly in mounts))
     mount_template = '{{range .Mounts}}{{printf "%s|%s|%s|%t\\n" .Type .Source .Destination .RW}}{{end}}'
     lines.append('  actual_mounts="$(docker inspect --format ' + q(mount_template) + ' "$container" | sort)" || exit 1')
-    lines.append('  test "$actual_mounts" = ' + q(expected_mounts) + ' || exit 1')
+    if needs_metaworld:
+        lines.append('  test "$actual_mounts" = ' + q(expected_mounts) + ' || exit 1')
+    else:  # a container created before 2026-11-12 also carries the read-only Meta-World data mount (as reconciliation)
+        legacy_mounts = "\n".join(sorted(f"bind|{source}|{target}|{'false' if readonly else 'true'}"
+                                         for source, target, readonly in
+                                         mounts + [(data, "/home/ws/data/metaworld/splatter4d_v1", True)]))
+        lines.append('  { test "$actual_mounts" = ' + q(expected_mounts) + ' || test "$actual_mounts" = '
+                     + q(legacy_mounts) + '; } || exit 1')
     lines += ['  test "$(docker inspect --format \'{{.Image}}\' "$container")" = "$image" || exit 1',
               '  test "$(docker inspect --format \'{{.HostConfig.Privileged}}\' "$container")" = false || exit 1',
               '  test "$(docker inspect --format \'{{.HostConfig.ReadonlyRootfs}}\' "$container")" = true || exit 1',
@@ -415,9 +434,10 @@ def build_remote_command(spec: dict, data_identity: str, origin_commit: str, pro
               'if existing; then exit 0; fi', 'bounded "$runtime/launch"; mkdir -p -- "$runtime/launch"',
               'bounded "$runtime/launch/admission.lock"; exec 9>"$runtime/launch/admission.lock"; flock -x 9',
               'if existing; then exit 0; fi']
-    for path in (code, proof, data, acceptance, *(source for source, _, _ in mounts)):
+    for path in (code, proof, *([data] if needs_metaworld else []), acceptance, *(source for source, _, _ in mounts)):
         lines.append("bounded " + q(path))
-    lines += ['test -d "$code/.git"; test -d ' + q(data), 'test "$(git -C "$code" rev-parse HEAD)" = "$commit"',
+    lines += ['test -d "$code/.git"' + ("; test -d " + q(data) if needs_metaworld else ""),
+              'test "$(git -C "$code" rev-parse HEAD)" = "$commit"',
               'test -z "$(git -C "$code" status --porcelain --untracked-files=all)"',
               'test "$(git -C "$code" rev-parse ' + q(origin_ref) + ')" = ' + q(origin_commit),
               'git -C "$code" merge-base --is-ancestor "$commit" ' + q(origin_commit),
@@ -432,9 +452,9 @@ def build_remote_command(spec: dict, data_identity: str, origin_commit: str, pro
             raise ValueError("Invalid acceptance checksum")
         lines.append("bounded " + q(f"{acceptance}/{artifact}"))
         lines.append('test "$(sha256sum -- ' + q(f"{acceptance}/{artifact}") + " | cut -d' ' -f1)\" = " + q(digest))
-    if not data_files:
+    if needs_metaworld and not data_files:
         raise ValueError("Dataset files must be checksum-verified before launch")
-    for path, digest in data_files:
+    for path, digest in (data_files if needs_metaworld else []):
         _bound_path(path)
         if not path.startswith(root + "/data/") or not HEX64.fullmatch(digest):
             raise ValueError("Invalid data checksum")

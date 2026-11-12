@@ -23,6 +23,7 @@ from pathlib import Path
 ROOT = Path('/home/ws/ws/splatter4d')
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / 'scripts'))
+from ops.containers import suite_partition  # noqa: E402
 from ops.jobs import scheduler as jobs  # noqa: E402
 from _bootstrap import source_fingerprints  # noqa: E402
 
@@ -35,6 +36,20 @@ path = ROOT / 'runs' / job_id / 'evidence' / 'tests.json'
 digest = hashlib.sha256(path.read_bytes()).hexdigest()
 assert digest == state['sync']['files']['evidence/tests.json']
 report = json.loads(path.read_text())
+combined_from = None
+if report.get('partition') == suite_partition.REMOTE:
+    # user 2026-11-12: the remote suite ran every test but the metaworld_data ones; adopt the release's combined
+    # report (assemble_remote_acceptance.py: this job's report + the local metaworld_data partition of the same sources)
+    assert job_id.startswith('verify-native-'), job_id
+    accepted = ROOT / 'runs/remote/acceptance' / job_id.removeprefix('verify-native-') / 'tests.json'
+    record = json.loads(accepted.read_text())
+    combined = record['report']
+    suite_partition.check_combined(combined)
+    assert combined['partitions'][suite_partition.REMOTE] == report, 'combined report embeds another remote report'
+    assert record.get('commit') == state['commit'] and record.get('image_digest') == state['image_digest']
+    combined_from = {'acceptance_tests_json': str(accepted.relative_to(ROOT)),
+                     'sha256': hashlib.sha256(accepted.read_bytes()).hexdigest()}
+    report = combined
 counts = report.get('counts', {})
 assert report.get('full_suite_passed') is True and report.get('exit_code') == 0 and counts.get('passed', 0) > 0
 assert not any(counts.get(k, 1) for k in ('failed', 'error', 'skipped')), counts
@@ -45,6 +60,7 @@ if report.get('source_sha256') != here:
 evidence = {**report, 'adopted_evidence': {
     'host': 'remote', 'job': job_id, 'commit': state['commit'], 'image_digest': state['image_digest'],
     'report': str(path.relative_to(ROOT)), 'report_sha256': digest, 'gpu': state.get('gpu'),
+    'combined_with_local_partition': combined_from,
     'adopted_at': time.strftime('%Y-%m-%dT%H:%M:%S%z'), 'local_runs': local,
     'policy': 'user instruction 2026-10-23: remote RAM for the remaining validation; the full native suite of the exact '
               'sources on the remote host is accepted as the launch-gate evidence when the local host lacks the suite '

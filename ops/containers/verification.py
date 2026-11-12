@@ -11,6 +11,7 @@ import traceback
 from collections.abc import Mapping
 from pathlib import Path, PurePosixPath
 
+from ops.containers import suite_partition
 from ops.resources.gpu_guard import APPROVED_HOST_GPUS, LOCAL_MIG_PARENTS
 
 ROOT = "/home/compu/kaist/sunho"
@@ -88,6 +89,21 @@ def validate_report(purpose: str, report: dict, source: dict, commit: str, image
     if not isinstance(report, dict) or not source or report.get("host") != "remote":
         raise ValueError("Verification requires an actual remote report")
     if purpose == "native_suite":
+        # user 2026-11-12: a remote PARTITION report (every test but the metaworld_data ones, which the release
+        # chain runs on the local host) or a COMBINED report of both partitions (ops/containers/suite_partition.py)
+        if report.get("partition") in (suite_partition.REMOTE, suite_partition.COMBINED):
+            try:
+                if report["partition"] == suite_partition.REMOTE:
+                    suite_partition.check_partition(report, suite_partition.REMOTE)
+                else:
+                    suite_partition.check_combined(report)
+            except ValueError as exc:
+                raise ValueError(f"Verification full suite is incomplete, failing or stale ({exc})") from None
+            if (report.get("source_sha256") != source
+                    or report.get("expected_commit", report.get("commit")) != commit
+                    or report.get("expected_image_digest", report.get("image_digest")) != image):
+                raise ValueError("Verification full suite is incomplete, failing or stale")
+            return
         counts = report.get("counts", {})
         if (report.get("full_suite_passed") is not True or type(report.get("exit_code")) is not int
                 or report["exit_code"] != 0 or not isinstance(counts, dict)

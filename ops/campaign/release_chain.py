@@ -17,7 +17,10 @@ Release turnaround (user 2026-11-12; every gate step above is unchanged):
 - timing: the wall time of every stage is logged and written to runs/setup/release-timing/<short>.json.
 """
 import fcntl
+import hashlib
 import json
+import os
+import shutil
 import subprocess
 import sys
 import threading
@@ -36,6 +39,10 @@ from ops.resources.gpu_guard import APPROVED_HOST_GPUS  # noqa: E402
 
 PY = str(ROOT / '.venv/bin/python')
 POLL_SECONDS = 10
+# user 2026-11-12: the remote has no Meta-World development data; the metaworld_data tests run here, on the local test
+# MIG slice, from the clean checkout of the release commit, concurrently with the remote native suite
+LOCAL_TEST_GPU = 'MIG-8da55219-bd6b-5260-8be1-3b2a76ac733c'
+LOCAL_PARTITION_TIMEOUT = 3600
 HEARTBEAT_SECONDS = 60  # reservation renewal by a background thread (independent of syncs, ticks and lock waits)
 # the chain's supported duration: past it the chain stops renewing and fails (the reservation then lapses within
 # EXPIRY_SECONDS, well before release_reservation.MAX_LIFETIME_SECONDS); the verification can simply be re-run
@@ -68,6 +75,8 @@ class Release:
         # --sync-repo: a worktree checked out at <commit> (clean), when the main checkout is behind the release commit
         self.sync_repo = Path(argv[argv.index('--sync-repo') + 1]) if '--sync-repo' in argv else ROOT
         self.skip_sync = '--skip-sync' in argv
+        self.local_gpu = argv[argv.index('--local-gpu') + 1] if '--local-gpu' in argv else LOCAL_TEST_GPU
+        self.local_proc = None
         self.gpus = list(APPROVED_HOST_GPUS['remote'])
         self.stage = 'native'
         self.native = None
@@ -196,6 +205,46 @@ class Release:
             log(f'native GPU choice fell back to the first GPU ({type(exc).__name__})')
         self.native_gpu = self.gpus[0]
 
+    def start_local_partition(self):
+        """Run the metaworld_data tests of the release commit on this host (background)."""
+        head = subprocess.run(['git', '-C', str(self.sync_repo), 'rev-parse', 'HEAD'], capture_output=True, text=True,
+                              check=True).stdout.strip()
+        if head != self.commit:
+            raise SystemExit(f'--sync-repo {self.sync_repo} is at {head[:7]}, not the release commit {self.commit[:7]}')
+        self.local_out = self.sync_repo / 'runs' / f'release-local-{self.short}'
+        if self.local_out.exists():
+            shutil.rmtree(self.local_out)
+        self.local_out.mkdir(parents=True)
+        env = {**os.environ, 'CUDA_VISIBLE_DEVICES': self.local_gpu, 'S4D_EXPECTED_COMMIT': self.commit,
+               'PYTHONDONTWRITEBYTECODE': '1', 'OMP_NUM_THREADS': '8'}
+        env.pop('S4D_TEST_EVIDENCE_DIR', None)
+        self.local_log = open(self.local_out.parent / f'release-local-{self.short}.log', 'w')
+        self.local_started = time.time()
+        self.local_proc = subprocess.Popen(
+            [PY, '-I', str(self.sync_repo / 'scripts/run_tests.py'), '--partition', 'metaworld_data',
+             '--output-dir', str(self.local_out)], cwd=self.sync_repo, env=env, stdout=self.local_log,
+            stderr=subprocess.STDOUT)
+        log(f'local metaworld_data partition started (pid {self.local_proc.pid}, {self.local_gpu})')
+
+    def finish_local_partition(self):
+        code = self.local_proc.wait(timeout=LOCAL_PARTITION_TIMEOUT)
+        self.local_log.close()
+        self.timing['stages']['local_partition'] = round(time.time() - self.local_started, 1)
+        report_path = self.local_out / 'tests.json'
+        if code != 0 or not report_path.is_file():
+            raise SystemExit(f'local metaworld_data partition failed (exit {code}); see {self.local_log.name}')
+        dest = ROOT / 'runs/remote/acceptance' / self.short / 'local-metaworld'
+        dest.mkdir(parents=True, exist_ok=True)
+        for name in ('tests.json', 'tests.log', 'tests.junit.xml'):
+            if (self.local_out / name).is_file():
+                shutil.copy2(self.local_out / name, dest / name)
+        digest = hashlib.sha256((dest / 'tests.json').read_bytes()).hexdigest()
+        (dest / 'record.json').write_text(json.dumps({
+            'commit': self.commit, 'tests_json_sha256': digest, 'checkout': str(self.sync_repo), 'host': 'local',
+            'gpu': self.local_gpu, 'exit_code': code}, indent=1) + '\n')
+        report = json.loads((dest / 'tests.json').read_text())
+        log('local partition ' + json.dumps({k: report.get(k) for k in ('partition', 'counts', 'partition_passed')}))
+
     def main(self):
         try:
             if self.native_gpu is None:
@@ -219,6 +268,7 @@ class Release:
                            'cpu_threads': int(job.get('cpu_threads', 8)), 'disk_gb': float(job.get('disk_gb', 1))}
             self.publish('native')  # the prepared job's exact resources
             self.mark('prepare_native', start)
+            self.start_local_partition()
             start = time.time()
             self.drive(qpath, [f'verify-native-{self.short}'])
             self.mark('native', start)
@@ -235,6 +285,7 @@ class Release:
             self.drive(qpath, [f'verify-isolation-{i}-{self.short}' for i in range(len(self.gpus))])
             self.mark('isolation', start)
             start = time.time()
+            self.finish_local_partition()
             log(run([PY, '-I', str(ROOT / 'runs/setup/tools/assemble_remote_acceptance.py'), self.commit,
                      *self.image_args]))
             self.mark('acceptance', start)
@@ -243,6 +294,8 @@ class Release:
             self.write_timing('failed')
             raise
         finally:
+            if self.local_proc is not None and self.local_proc.poll() is None:
+                self.local_proc.terminate()
             self.clear()
 
 

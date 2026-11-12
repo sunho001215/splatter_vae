@@ -517,7 +517,6 @@ def validate_container(item: dict, run_id: str, state: dict) -> None:
         runtime: (runtime, True),
         acceptance: (acceptance, False),
         proof: (proof, False),
-        "/home/ws/data/metaworld/splatter4d_v1": (f"{ROOT}/data/metaworld/splatter4d_v1", False),
     }
     try:
         expected_mounts.update({target: (source, not readonly)
@@ -525,6 +524,12 @@ def validate_container(item: dict, run_id: str, state: dict) -> None:
     except ValueError as exc:
         raise RemoteJobError("Remote container mount role mismatch") from exc
     mounts = item.get("Mounts", [])
+    # user 2026-11-12: the Meta-World development data (read-only) is mounted only for Meta-World jobs; containers of
+    # other jobs launched before that change still carry it, and remain valid with exactly that read-only mount
+    metaworld_target = "/home/ws/data/metaworld/splatter4d_v1"
+    if (job_class(state).domain == "metaworld"
+            or any(isinstance(mount, dict) and mount.get("Destination") == metaworld_target for mount in mounts)):
+        expected_mounts[metaworld_target] = (f"{ROOT}/data/metaworld/splatter4d_v1", False)
     if (len(mounts) != len(expected_mounts)
             or {mount.get("Destination") for mount in mounts} != set(expected_mounts)):
         raise RemoteJobError(f"Remote container mount mapping mismatch for {run_id}")

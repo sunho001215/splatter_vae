@@ -526,6 +526,7 @@ def test_drm_end_to_end_with_the_frozen_snerl_encoder(tmp_path):
     assert agent.act(policy_inputs(agent, observation(2)), np.zeros((2, 4)), 5000, True).shape == (2, 4)
 
 
+@pytest.mark.metaworld_data  # reads hammer.hdf5 + its split (release gate: local partition, user 2026-11-12)
 def test_heldout_semantic_ground_truth_is_native_stored_state_replay():
     from s4d.data import METAWORLD_ROOT
     from scripts.render_snerl import replay_classes

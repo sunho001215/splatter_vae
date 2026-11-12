@@ -583,7 +583,8 @@ def test_remote_ram_and_fifteen_percent_disk_floor(tmp_path, available, free, la
 
 
 def test_remote_admits_all_unified_pool_classes_and_unknown_without_domain(tmp_path):
-    """The unified pool admits Meta-World, known remote classes and domain-free diagnostics remotely.
+    """The unified pool admits known remote classes and domain-free diagnostics remotely; since 2026-11-12 (user:
+    the Meta-World development data were removed from the remote) Meta-World rows run locally only.
     Unknown activity with domain evidence still fails closed.
     """
     meta = job("drm", script="scripts/train_rl.py", args=["--task", "hammer", "--run-dir", "runs/drm"])
@@ -596,7 +597,8 @@ def test_remote_admits_all_unified_pool_classes_and_unknown_without_domain(tmp_p
                          limits={REMOTE: {"max_jobs": 4, "max_mem_gb": 40}})
     backend = FakeBackend(tmp_path / "runs")
     messages = tick(tmp_path, queued, backend)
-    assert [payload["id"] for payload in backend.launches] == ["drm", "plain", "realworld"]
+    assert [payload["id"] for payload in backend.launches] == ["plain", "realworld"]
+    assert any(m.startswith("drm: not admitted on remote") for m in messages)
     assert any(m.startswith("droid-pre: not admitted on remote: job class unknown (configuration evidence; no droid "
                             "activity") for m in messages)  # a DROID row whose activity the script name does not say
 
@@ -608,7 +610,8 @@ def test_started_remote_metaworld_run_retries_in_place_only_by_explicit_exceptio
 
     # Exercise the retained exception contract under a synthetic exclusive-role policy.
     roles = host_roles.load_roles()
-    roles["hosts"]["remote"]["admit"].remove("metaworld")
+    if "metaworld" in roles["hosts"]["remote"]["admit"]:  # shipped without it since 2026-11-12
+        roles["hosts"]["remote"]["admit"].remove("metaworld")
     monkeypatch.setattr(host_roles, "load_roles", lambda: roles)
     monkeypatch.setattr(host_roles, "EXCEPTIONS_PATH", tmp_path / "role-exceptions.json")
     meta = job("r", script="scripts/train_rl.py", args=["--task", "hammer", "--run-dir", "runs/r"], max_restarts=2)
@@ -636,7 +639,8 @@ def test_drain_exception_admits_the_evaluator_of_a_meta_world_trainer_running_on
     from ops.jobs import host_roles
 
     roles = host_roles.load_roles()
-    roles["hosts"]["remote"]["admit"].remove("metaworld")
+    if "metaworld" in roles["hosts"]["remote"]["admit"]:  # shipped without it since 2026-11-12
+        roles["hosts"]["remote"]["admit"].remove("metaworld")
     monkeypatch.setattr(host_roles, "load_roles", lambda: roles)
     trainer = job("t", script="scripts/train_rl.py", args=["--task", "hammer", "--run-dir", "runs/t"])
     evaluator = job("t-eval", script="scripts/eval_rl.py", args=["--run-dir", "runs/t", "--train-job", "t",
