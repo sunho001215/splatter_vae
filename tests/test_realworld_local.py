@@ -1461,3 +1461,23 @@ def test_dataset_builder_raw_root_mapping_verifies_every_file(tmp_path):
     with pytest.raises(SystemExit, match="without symlinks"):
         script.mapped_raw_recordings(store, ["episode_000001"],
                                      f"/home/compu/kaist/sunho/data/real_world={tmp_path}/root-link")
+
+
+def test_e2e_dataset_waits_for_closeouts_of_its_ordering_dependencies(mirrored, monkeypatch, tmp_path):
+    """Codex review: the e2e dataset reads no baseline file, but both baselines must have passed closeout."""
+    f = mirrored
+    monkeypatch.setattr(rw, "LOCAL_RAW_ROOT", tmp_path)
+    finished = tmp_path / "finished"
+    e2e = {**dataset_row(f, "e2e_cnn", export=False), "deps": ["dyn-pre", "rev-pre"]}
+    for dep in ("dyn-pre", "rev-pre"):
+        dependency(f, dep, "encoder.pt")  # local, done (exit 0) - no closeout yet
+    with pytest.raises(rw.LocalInputError, match="without a closeout record: dyn-pre"):
+        localize(f, e2e, finished_dir=finished)
+    rw.closeout("dyn-pre", f.state, {"id": "dyn-pre", "required_results": ["encoder.pt"]}, finished, runs=f.runs)
+    with pytest.raises(rw.LocalInputError, match="without a closeout record: rev-pre"):
+        localize(f, e2e, finished_dir=finished)
+    rw.closeout("rev-pre", f.state, {"id": "rev-pre", "required_results": ["encoder.pt"]}, finished, runs=f.runs)
+    assert localize(f, e2e, finished_dir=finished)[1]["dependency_inputs"] == {}
+    (finished / "rev-pre.json").write_text('{"job_id": "rev-pre", "files": {}}')
+    with pytest.raises(rw.LocalInputError, match="invalid closeout record"):
+        localize(f, e2e, finished_dir=finished)

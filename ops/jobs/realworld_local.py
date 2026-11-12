@@ -655,6 +655,18 @@ def _baseline_fields(job: dict, root: Path, remote_prefix: str) -> None:
             todo += node
 
 
+def _closeout(dep: str, finished_dir: Path) -> dict:
+    """The dependency's immutable closeout record (``closeout``: required results present, nonempty, hashed)."""
+    try:
+        closed = json.loads((Path(finished_dir) / f"{dep}.json").read_bytes())
+    except (OSError, ValueError) as exc:
+        raise LocalInputError(f"local dependency without a closeout record: {dep}") from exc
+    if (not isinstance(closed, dict) or closed.get("job_id") != dep or not isinstance(closed.get("files"), dict)
+            or not closed["files"]):
+        raise LocalInputError(f"invalid closeout record of local dependency {dep}")
+    return closed
+
+
 def _plain_descriptor(path: Path) -> None:
     """The new resolvers read only ``kind`` + ``paths`` of a compact descriptor (no overlays / extra sources)."""
     spec = yaml.safe_load(path.read_bytes())
@@ -697,12 +709,7 @@ def _inputs(job: dict, state: dict, mirror: Path, manifest: Path, runs: Path,
                 _regular(path)
                 dependencies[name] = _hash(path)
                 if job.get("script") in CLOSEOUT_CONSUMERS:
-                    record = Path(finished_dir) / f"{dep}.json"
-                    try:
-                        closed = json.loads(record.read_bytes())
-                    except (OSError, ValueError) as exc:
-                        raise LocalInputError(f"local dependency without a closeout record: {dep}") from exc
-                    if closed.get("job_id") != dep or (closed.get("files") or {}).get(relative) != dependencies[name]:
+                    if _closeout(dep, finished_dir)["files"].get(relative) != dependencies[name]:
                         raise LocalInputError(f"local dependency differs from its closeout record: {name}")
             continue
         if current.get("host") != "remote" or current.get("status") != "done":
@@ -719,6 +726,13 @@ def _inputs(job: dict, state: dict, mirror: Path, manifest: Path, runs: Path,
                 or (remote_files is not None and remote_files.get(relative) != digest)):
             raise LocalInputError(f"dependency dataset sha256 mismatch or unverified backup: {name}")
         dependencies[name] = digest
+    if job.get("script") in CLOSEOUT_CONSUMERS:
+        # every LOCAL dependency, also an ordering-only one (e2e datasets wait for both baselines without reading
+        # their files), must have passed its closeout before a dependent starts (Codex review)
+        for dep in job.get("deps", []):
+            current = state.get(dep, {})
+            if current.get("host") == "local" and current.get("status") == "done":
+                _closeout(dep, finished_dir)
     effective = []
     for arg in job.get("args", []):
         value = _value(arg)
