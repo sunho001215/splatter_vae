@@ -65,8 +65,10 @@ def test_failing_stale_or_mismatched_partitions_never_combine(which, changes):
 def test_coverage_must_be_exact():
     with pytest.raises(ValueError):  # the local partition ran a test the remote also ran
         sp.combine(remote(), part(sp.LOCAL, LOCAL_IDS + ["tests/test_x.py::t0"], "local"))
-    with pytest.raises(ValueError):  # a test ran nowhere
-        sp.combine(part(sp.REMOTE, ALL[:4], "remote"), local())
+    with pytest.raises(ValueError):  # a test the remote deselected ran nowhere
+        sp.combine(remote(), part(sp.LOCAL, [], "local", counts={"passed": 1, "error": 0, "failed": 0, "skipped": 0}))
+    with pytest.raises(ValueError):  # the local partition ran a different test than the remote deselected
+        sp.combine(remote(), part(sp.LOCAL, ["tests/test_x.py::t4"], "local"))
     with pytest.raises(ValueError):  # duplicates
         duplicated = remote()
         duplicated["selected"] = duplicated["selected"] + duplicated["selected"][:1]
@@ -142,3 +144,13 @@ def test_adoption_provenance_is_the_only_extra_field_a_combined_report_may_carry
     assert scheduler.tested_source(path) == SOURCE
     with pytest.raises(ValueError):
         sp.check_combined({**adopted, "unexpected": 1})
+
+
+def test_host_dependent_collections_combine_against_the_remote_reference():
+    """Bootstrap 2026-11-12: the local host collects extra host-dependent variants (zstd); the remote's collection is the
+    reference and the local partition must run exactly its deselected tests."""
+    local_extra = local(deselected=[n for n in ALL if n not in LOCAL_IDS] + ["tests/test_dl.py::t[zstd]"],
+                        collected_total=len(ALL) + 1)
+    combined = sp.combine(remote(), local_extra)
+    assert combined["collected_total"] == len(ALL) and combined["counts"]["passed"] == len(ALL)
+    sp.check_combined(combined)

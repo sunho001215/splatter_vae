@@ -8,8 +8,11 @@ collection (``collected_total``) and ``partition_passed``; ``full_suite_passed``
 ``combine`` turns a passing remote partition and a passing local metaworld_data partition of the SAME sources into the
 complete-suite report the gate consumers expect (``full_suite_passed`` true, summed counts, both parts embedded), and
 only when: both partitions passed with no failure, error or skip; the local partition ran exactly the nodeids the
-remote one deselected and nothing else; the two are disjoint and together equal the complete collection; both report
-the same source fingerprints (before = after, unchanged) and expected commit. Anything else raises ValueError.
+remote one deselected and nothing else, so the two are disjoint and together equal the remote's complete collection;
+both report the same source fingerprints (before = after, unchanged) and expected commit. Anything else raises
+ValueError. The reference collection is the REMOTE host's, as for the unpartitioned gate: collection is host-dependent
+by design (e.g. tests/test_dataset_downloads.py adds [zstd] variants where zstd exists, tests/test_mujoco_guard.py
+parametrizes over the host's GPUs), so the local host's own complete collection may differ.
 """
 
 from __future__ import annotations
@@ -56,9 +59,8 @@ def combine(remote: dict, local: dict) -> dict:
         raise ValueError("the partitions ran different sources")
     if remote.get("expected_commit") is None or remote.get("expected_commit") != local.get("expected_commit"):
         raise ValueError("the partitions ran different commits")
-    if (set(local["selected"]) != set(remote["deselected"]) or set(remote["selected"]) != set(local["deselected"])
-            or remote["collected_total"] != local["collected_total"]):
-        raise ValueError("the partitions do not cover the complete collection exactly once")
+    if set(local["selected"]) != set(remote["deselected"]):
+        raise ValueError("the local partition did not run exactly the remote partition's deselected tests")
     counts = {kind: remote["counts"][kind] + local["counts"][kind] for kind in KINDS}
     return {**{k: v for k, v in remote.items() if k not in ("selected", "deselected")},
             "partition": COMBINED, "full_suite_passed": True, "partition_passed": True, "counts": counts,
