@@ -107,7 +107,7 @@ def load_queue(path: Path = QUEUE) -> dict:
             if not math.isfinite(value) or value < 0 or (key == "disk_floor_fraction" and value > 1):
                 raise ValueError(f"invalid {name} resource limit {key}")
         budget = host.get("cpu_thread_budget")
-        if budget is not None and (type(budget) is not int or not 1 <= budget <= 1024):
+        if "cpu_thread_budget" in host and (type(budget) is not int or not 1 <= budget <= 1024):
             # read by placement, the in-lock guard and rwprep (ops/containers/rwprep_capacity.remote_host_policy)
             raise ValueError(f"invalid {name} resource limit cpu_thread_budget")
     for job in queue.get("jobs", []):

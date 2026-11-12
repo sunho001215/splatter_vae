@@ -29,13 +29,18 @@ def remote_host_policy(queue_path: Path = QUEUE) -> dict:
     (experiments/queue.yaml hosts.remote) the scheduler and its in-lock guard use, so rwprep and the scheduler admit
     against one budget (2026-11-12: a hard-coded 320 here could diverge from the scheduler's configured budget).
     Fails closed on an unreadable or invalid value."""
-    queue = yaml.safe_load(Path(queue_path).read_text()) or {}
-    host = (queue.get("hosts") or {}).get("remote") or {}
+    queue = yaml.safe_load(Path(queue_path).read_text())
+    hosts = queue.get("hosts") if isinstance(queue, dict) else None
+    host = hosts.get("remote") if isinstance(hosts, dict) else None
+    if not isinstance(host, dict):
+        raise ValueError("invalid remote host configuration (hosts.remote must be a mapping)")
     budget = host.get("cpu_thread_budget", DEFAULT_CPU_THREAD_BUDGET)
     reserve = host.get("host_ram_reserve_gb", DEFAULT_HOST_RAM_RESERVE_GIB)
     if type(budget) is not int or not 1 <= budget <= 1024:
         raise ValueError("invalid remote cpu_thread_budget")
-    if type(reserve) not in (int, float) or not math.isfinite(reserve) or reserve < 0:
+    # the same floor as ops/containers/launch.validate_spec (host RAM reserve >= 120 GiB)
+    if (type(reserve) not in (int, float) or isinstance(reserve, bool) or not math.isfinite(reserve)
+            or reserve < DEFAULT_HOST_RAM_RESERVE_GIB):
         raise ValueError("invalid remote host_ram_reserve_gb")
     return {"cpu_thread_budget": budget, "reserve_bytes": math.ceil(reserve * 2**30)}
 

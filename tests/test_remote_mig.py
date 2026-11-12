@@ -1154,11 +1154,19 @@ def test_rwprep_cpu_budget_and_ram_reserve_follow_the_scheduler_queue(monkeypatc
     queue.write_text(yaml.safe_dump({'hosts': {'remote': {'host_ram_reserve_gb': 120}}, 'jobs': []}))
     data = adapter.guard_payload(job, queue)['input']
     assert data['cpu_thread_budget'] == 320 and data['reserve_bytes'] == 120 * 2**30
-    queue.write_text(yaml.safe_dump({'hosts': {'remote': {'cpu_thread_budget': 352, 'host_ram_reserve_gb': 100}},
+    queue.write_text(yaml.safe_dump({'hosts': {'remote': {'cpu_thread_budget': 352, 'host_ram_reserve_gb': 130}},
                                      'jobs': []}))
     data = adapter.guard_payload(job, queue)['input']
-    assert data['cpu_thread_budget'] == 352 and data['reserve_bytes'] == 100 * 2**30
-    for bad in (0, 2000, 352.0, '352', True):
+    assert data['cpu_thread_budget'] == 352 and data['reserve_bytes'] == 130 * 2**30
+    for bad_reserve in (100, None, True):  # below launch.py's 120 GiB floor, or not a number
+        queue.write_text(yaml.safe_dump({'hosts': {'remote': {'host_ram_reserve_gb': bad_reserve}}, 'jobs': []}))
+        with pytest.raises(ValueError, match='host_ram_reserve_gb'):
+            adapter.guard_payload(job, queue)
+    for malformed in ('', 'hosts: null\n', 'hosts: {remote: null}\n', 'hosts: {remote: []}\n', 'hosts: {remote: false}\n'):
+        queue.write_text(malformed)
+        with pytest.raises(ValueError, match='hosts.remote must be a mapping'):
+            adapter.guard_payload(job, queue)
+    for bad in (0, 2000, 352.0, '352', True, None):
         queue.write_text(yaml.safe_dump({'hosts': {'remote': {'cpu_thread_budget': bad}}, 'jobs': []}))
         with pytest.raises(ValueError, match='cpu_thread_budget'):
             adapter.guard_payload(job, queue)
