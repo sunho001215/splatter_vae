@@ -686,7 +686,8 @@ def _rv_launch_spec(purpose="native_suite"):
             "gpu": gpu, "gpu_backend": "cdi", "script": script,
             "args": canonical_arguments(purpose, job_id, 1, gpu),
             "verification_purpose": purpose, "campaign_eligible": False, "verification_timeout_seconds": timeout,
-            "ram_gb": ram, "mem_gb": memory, "disk_gb": 1, "disk_floor_gb": 0, "disk_floor_fraction": 0.15,
+            "ram_gb": ram, "mem_gb": memory, "cpu_threads": 32 if purpose == "native_suite" else 8,
+            "disk_gb": 1, "disk_floor_gb": 0, "disk_floor_fraction": 0.15,
             "host_ram_reserve_gb": 120, "host_ram_ramp_minutes": 10, "max_mem_gb": 90, "max_jobs": 20,
             "required_results": ["evidence/" + name for name in reports],
             "labels": {**container_labels(job_id, 1, commit, image),
@@ -702,7 +703,7 @@ def _rv_launch_spec(purpose="native_suite"):
     {"campaign_eligible": 0}, {"script": "scripts/train.py"}, {"host": "local"},
     {"args": []}, {"required_results": ["exit.json"]}, {"verification_timeout_seconds": 0},
     {"verification_timeout_seconds": True}, {"verification_timeout_seconds": 7201},
-    {"ram_gb": 1024}, {"mem_gb": 90}, {"disk_gb": 17}, {"cpu_threads": 9},
+    {"ram_gb": 1024}, {"mem_gb": 90}, {"disk_gb": 17}, {"cpu_threads": 33},
 ])
 def test_verification_launch_spec_is_a_fixed_bounded_allowlist(purpose, mutation):
     from ops.containers.launch import validate_spec
@@ -766,7 +767,7 @@ def test_verification_command_binds_output_limits_and_child_environment(purpose)
     assert entry_verification(environment, spec["script"], spec["args"])["verification_purpose"] == purpose
     assert argv[argv.index("--memory") + 1] == str(spec["ram_gb"] * 2**30)
     assert argv[argv.index("--memory-swap") + 1] == str(spec["ram_gb"] * 2**30)
-    assert argv[argv.index("--cpus") + 1] == "8"
+    assert argv[argv.index("--cpus") + 1] == str(spec["cpu_threads"])
     assert environment["S4D_TEST_EVIDENCE_DIR"].endswith(f"/{spec['id']}/a1/evidence")
     assert f"s4d.verification_purpose={purpose}" in argv and "s4d.campaign_eligible=false" in argv
     assert argv[-len(spec["args"]):] == spec["args"]
@@ -829,6 +830,7 @@ def test_ordinary_campaign_docker_flags_environment_and_arguments_are_preserved(
         spec.pop(key)
     for key in ("s4d.verification_purpose", "s4d.campaign_eligible"):
         spec["labels"].pop(key)
+    spec["cpu_threads"] = 8
     spec["id"] = "campaign-job"
     spec["container"] = f"s4d-campaign-job-a{spec['attempt']}"
     spec["labels"]["s4d.run_id"] = spec["id"]
@@ -1064,3 +1066,18 @@ def test_aliased_native_depth_launch_mounts_match_reconciliation(tmp_path, scrip
                            "DeviceIDs": ["nvidia.com/gpu=" + gpu], "Capabilities": [], "Options": {}}],
                            "Privileged": False, "ReadonlyRootfs": True, "PidMode": "host", "ShmSize": SHM_SIZE_BYTES}}
     validate_container(item, queued["id"], {**spec, "attempts": 1, "script": queued["script"]})
+
+
+@pytest.mark.parametrize("purpose,threads,accepted", [
+    ("native_suite", 32, True), ("native_suite", 33, False),
+    ("gpu_isolation", 8, True), ("gpu_isolation", 9, False),
+])
+def test_verification_cpu_budget_is_specific_to_purpose(purpose, threads, accepted):
+    from ops.containers.launch import validate_spec
+
+    spec = {**_rv_launch_spec(purpose), "cpu_threads": threads}
+    if accepted:
+        assert validate_spec(spec)["cpu_threads"] == threads
+    else:
+        with pytest.raises(ValueError):
+            validate_spec(spec)

@@ -360,7 +360,9 @@ def test_entry_rejects_bad_identity_before_cuda_import(release):
     env["S4D_IMAGE_DIGEST"] = "mutable-tag"
     result = subprocess.run(
         [sys.executable, "-I", str(REPO / "scripts/remote/entry.py"), "--script", "scripts/train.py"],
-        env={**os.environ, **env},
+        # This fixture models a campaign entry, independently of the verification
+        # environment of the suite process running it.
+        env={**{k: v for k, v in os.environ.items() if not k.startswith("S4D_VERIFICATION_")}, **env},
         capture_output=True,
         text=True,
         timeout=30,

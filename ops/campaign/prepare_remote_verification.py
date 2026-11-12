@@ -56,7 +56,7 @@ jobs_out = []
 if suite_path is None:
     jobs_out.append({'id': f'verify-native-{short}', 'host': 'remote', 'gpu': gpus[0], 'script': POLICIES['native_suite'][0],
                      'args': [], 'verification_purpose': 'native_suite', 'campaign_eligible': False,
-                     'ram_gb': 32, 'mem_gb': 12, 'disk_gb': 1, 'priority': 0,
+                     'ram_gb': 96, 'mem_gb': 32, 'cpu_threads': 32, 'disk_gb': 1, 'priority': 0,
                      'required_results': ['evidence/' + n for n in POLICIES['native_suite'][4]]})
 else:
     suite = json.loads(suite_path.read_text())

@@ -17,7 +17,7 @@ ROOT = "/home/compu/kaist/sunho"
 GIB = 2**30
 # Script, maximum seconds, fixed RAM/GPU GiB, required original reports.
 POLICIES = {
-    "native_suite": ("scripts/run_tests.py", 7200, 32, 12, ("tests.json", "tests.log", "tests.junit.xml")),
+    "native_suite": ("scripts/run_tests.py", 7200, 96, 32, ("tests.json", "tests.log", "tests.junit.xml")),
     "gpu_isolation": ("scripts/check_gpu_isolation.py", 1200, 8, 4, ("gpu_isolation.json",)),
 }
 HEX64 = re.compile(r"[0-9a-f]{64}\Z")
@@ -53,7 +53,7 @@ def verification_resources(value: Mapping, purpose: str) -> int:
             raise ValueError(f"Verification requires exactly {fixed} GiB {key}")
     disk, threads = value.get("disk_gb"), value.get("cpu_threads", 8)
     if (type(disk) not in (int, float) or not math.isfinite(disk) or not 0 < disk <= 16
-            or type(threads) is not int or not 1 <= threads <= 8):
+            or type(threads) is not int or not 1 <= threads <= (32 if purpose == "native_suite" else 8)):
         raise ValueError("Verification disk/CPU reservations exceed their bounds")
     return timeout
 

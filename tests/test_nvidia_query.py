@@ -267,7 +267,8 @@ def test_stale_identity_clears_without_signalling_recorded_pid(tmp_path, monkeyp
     json.dumps({"pid": 1, "start_ticks": -1, "boot_id": str(uuid.uuid4())}),
     json.dumps({"pid": 1, "start_ticks": True, "boot_id": str(uuid.uuid4())}),
     json.dumps({"pid": 1, "start_ticks": 1, "boot_id": "invalid"}),
-])
+], ids=["broken-json", "array", "null", "empty", "bool-pid", "negative-pid",
+        "negative-ticks", "bool-ticks", "invalid-boot"])
 def test_malformed_state_fails_unavailable_without_spawn_or_signal(tmp_path, monkeypatch, state_text):
     query = load_query()
     path = tmp_path / query.STATE_NAME

@@ -1141,7 +1141,7 @@ def _rv_setup(tmp_path, monkeypatch):
             "limits": {gpu: {"max_jobs": 20, "max_mem_gb": 90}}}
     job = {"id": "verify-suite", "host": "remote", "gpu": gpu, "script": POLICIES["native_suite"][0],
            "args": [], "verification_purpose": "native_suite", "campaign_eligible": False,
-           "ram_gb": 32, "mem_gb": 12, "disk_gb": 1,
+           "ram_gb": 96, "mem_gb": 32, "disk_gb": 1,
            "required_results": ["evidence/" + name for name in POLICIES["native_suite"][4]]}
     script = tmp_path / job["script"]
     script.parent.mkdir(exist_ok=True)
@@ -1163,7 +1163,7 @@ def _rv_inspect(spec, identity):
            "S4D_EXPECTED_COMMIT": spec["commit"], "S4D_IMAGE_DIGEST": spec["image_digest"],
            "S4D_DATA_ID": identity, "S4D_TEST_EVIDENCE_DIR": spec["args"][1],
            "S4D_VERIFICATION_PURPOSE": "native_suite", "S4D_VERIFICATION_TIMEOUT_SECONDS": "7200",
-           "S4D_VERIFICATION_RAM_BYTES": str(32 * 2**30), "S4D_VERIFICATION_GPU_BYTES": str(12 * 2**30),
+           "S4D_VERIFICATION_RAM_BYTES": str(96 * 2**30), "S4D_VERIFICATION_GPU_BYTES": str(32 * 2**30),
            "S4D_VERIFICATION_DISK_BYTES": str(2**30), "S4D_VERIFICATION_CPU_THREADS": "8",
            "S4D_VERIFICATION_ACCEPTANCE_DIR": acceptance, "S4D_VERIFICATION_DATA_SHA256": spec["evidence"]["data"]["sha256"]}
     mounts = [(repo, f"{ROOT}/releases/{spec['commit']}/code", False),
@@ -1171,15 +1171,15 @@ def _rv_inspect(spec, identity):
               (repo + "/.cache", runtime + "/cache", True), (runtime, runtime, True),
               (acceptance, acceptance, False), (proof, proof, False),
               ("/home/ws/data/metaworld/splatter4d_v1", ROOT + "/data/metaworld/splatter4d_v1", False)]
-    labels = {**spec["labels"], "s4d.ram_bytes": str(32 * 2**30),
-              "s4d.mem_bytes": str(12 * 2**30), "s4d.disk_bytes": str(2**30), "s4d.gpu": spec["gpu"]}
+    labels = {**spec["labels"], "s4d.ram_bytes": str(96 * 2**30),
+              "s4d.mem_bytes": str(32 * 2**30), "s4d.disk_bytes": str(2**30), "s4d.gpu": spec["gpu"]}
     return {"Name": "/" + spec["container"], "Id": "f" * 64, "Image": spec["image_digest"], "pids": {123},
             "State": {"Status": "running", "ExitCode": 0},
             "Config": {"Labels": labels, "Env": [f"{key}={value}" for key, value in env.items()],
                        "Entrypoint": ["python"],
                        "Cmd": ["-I", repo + "/scripts/remote/entry.py", "--script", spec["script"], "--", *spec["args"]]},
             "HostConfig": {"Privileged": False, "ReadonlyRootfs": True, "PidMode": "host", "ShmSize": 8 * 2**30,
-                           "Memory": 32 * 2**30, "MemorySwap": 32 * 2**30, "NanoCpus": 8 * 10**9,
+                           "Memory": 96 * 2**30, "MemorySwap": 96 * 2**30, "NanoCpus": 8 * 10**9,
                            "Devices": [], "DeviceRequests": [{"Driver": "cdi", "Count": 0,
                                "DeviceIDs": ["nvidia.com/gpu=" + spec["gpu"]], "Capabilities": [], "Options": {}}]},
             "Mounts": [{"Destination": target, "Source": source, "RW": rw, "Type": "bind"}
@@ -1242,7 +1242,7 @@ def test_scheduler_bootstrap_does_not_share_campaign_readiness(tmp_path, monkeyp
                         subprocess.CompletedProcess(command, 0, host["commit"] + "\trefs/heads/main\n", ""))
     launches = []
     monkeypatch.setattr(backend, "snapshot", lambda: remote_jobs.RemoteSnapshot(
-        {gpu: [] for gpu in APPROVED_HOST_GPUS["remote"]}, 200, 1000 * 2**30, 800 * 2**30, {}))
+        {gpu: [] for gpu in APPROVED_HOST_GPUS["remote"]}, 300, 1000 * 2**30, 800 * 2**30, {}))
     monkeypatch.setattr(backend, "launch", lambda path: launches.append(
         json.loads(path.read_text())) or {"container_id": "f" * 64})
     campaign = {"id": "campaign", "host": "remote", "script": "scripts/worker.py", "gpu": job["gpu"],
@@ -1250,7 +1250,7 @@ def test_scheduler_bootstrap_does_not_share_campaign_readiness(tmp_path, monkeyp
     queue = tmp_path / "queue.yaml"
     queue.write_text(yaml.safe_dump({"hosts": {"remote": {**host, "enabled": True}}, "jobs": [campaign, job]}))
     scheduler.tick(queue, tmp_path / "registry.jsonl", tmp_path / "runs",
-                   usage={gpu: [] for gpu in APPROVED_HOST_GPUS["local"]}, available_gb=200,
+                   usage={gpu: [] for gpu in APPROVED_HOST_GPUS["local"]}, available_gb=300,
                    disk_bytes=(1000 * 2**30, 800 * 2**30), remote_backend=backend)
     assert [item["id"] for item in launches] == ["verify-suite"]
     current = scheduler.read_registry(tmp_path / "registry.jsonl")["verify-suite"]

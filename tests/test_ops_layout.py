@@ -224,6 +224,13 @@ def test_importable_tool_paths_are_the_same_module_objects(name):
             f"    old = importlib.import_module({name!r})\n"
             f"    assert old is new and sys.modules[{name!r}] is new, old\n"
             "print(new.__file__)\n")
+    if TOOL_MODULES[name].startswith("ops.campaign."):
+        # Check entry-point forwarding without executing a campaign command, even at import.
+        path = str(REPO / (TOOL_MODULES[name].replace(".", "/") + ".py"))
+        code = ("import sys, types\n"
+                f"sentinel = types.ModuleType({TOOL_MODULES[name]!r})\n"
+                f"sentinel.__file__ = {path!r}\n"
+                f"sys.modules[{TOOL_MODULES[name]!r}] = sentinel\n") + code
     result = run_python(code)
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == str(REPO / (TOOL_MODULES[name].replace(".", "/") + ".py"))

@@ -927,7 +927,7 @@ def test_only_hold_next_to_dispatch_queue_holds_it(tmp_path, monkeypatch):
     held_queue = verification / 'queue.yaml'
     typed = {'id': 'verify-suite', 'host': 'remote', 'script': 'scripts/run_tests.py', 'args': [],
              'verification_purpose': 'native_suite', 'campaign_eligible': False, 'gpu': REMOTE_GPU,
-             'ram_gb': 32, 'mem_gb': 12, 'disk_gb': 1,
+             'ram_gb': 96, 'mem_gb': 32, 'disk_gb': 1,
              'required_results': ['evidence/tests.json', 'evidence/tests.log', 'evidence/tests.junit.xml']}
     held_queue.write_text(yaml.safe_dump({'hosts': {**spec['hosts'], 'remote': {
         'enabled': True, 'limits': {REMOTE_GPU: {'max_jobs': 1, 'max_mem_gb': 90}}}}, 'jobs': [*spec['jobs'], typed]}))
