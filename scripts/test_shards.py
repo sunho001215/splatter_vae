@@ -78,6 +78,7 @@ FILE_CLASSES = {
     "tests/test_realworld_calibration_rig.py": "cpu",
     "tests/test_realworld_cli.py": "cpu",
     "tests/test_realworld_contract_workers.py": "cpu",
+    "tests/test_realworld_te_memory.py": "cpu",  # fake CUDA allocator (TE worker cache release / cap), 2026-11-13
     "tests/test_realworld_fs_stage.py": "cpu",
     "tests/test_realworld_ir_stereo.py": "cpu",
     "tests/test_realworld_layout.py": "cpu",
