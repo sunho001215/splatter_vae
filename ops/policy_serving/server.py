@@ -137,6 +137,7 @@ class CatalogEntry:
     source: str = "config"  # config | catalog | preloaded
     spec_checked: bool = False  # spec == the one described from the checkpoint files (not only catalog-supplied)
     setting_checked: bool = False  # the checkpoint's stored agent config is the FQL setting of the entry's identity
+    setting_key: str = ""  # the label inputs setting_checked was established for (identity excludes labels)
 
     def identity(self) -> str:
         """What the loaded object depends on: the staged artefacts and whether the entry may be served at all. Labels
@@ -433,7 +434,9 @@ class PolicyServer:
             old = previous.get(pid)
             if old is not None and old.source == source and old.identity() == entry.identity():
                 entry.spec = old.spec  # same artefacts: keep the described spec; labels come from the new entry
-                entry.spec_checked, entry.setting_checked = old.spec_checked, old.setting_checked
+                entry.spec_checked = old.spec_checked
+                if old.setting_key == setting_key(entry.entry):  # labels the setting / contract check depends on
+                    entry.setting_checked, entry.setting_key = old.setting_checked, old.setting_key
                 if old.status == "error":
                     entry.status, entry.reasons = old.status, old.reasons
             elif entry.spec is None:
@@ -463,7 +466,7 @@ class PolicyServer:
                 # identity (checkpoint agent.config; Codex review of 7518c4f)
                 why = checkpoint_setting_refusal(pid, entry.entry, self.checkpoint_root)
                 if why is None:
-                    entry.setting_checked = True
+                    entry.setting_checked, entry.setting_key = True, setting_key(entry.entry)
                 else:
                     LOG.error("policy %s: %s; not offered", pid, why)
                     entry.status, entry.reasons = "error", (why,)
@@ -1480,6 +1483,13 @@ def describe_entry(entry: dict, root=None) -> dict:
     contract = entry.get("training_contract") or entry.get("dataset")
     training = read_training_contract(meta, None if contract is None else str(resolve(root, contract)))
     return spec_json(InputSpec.from_meta(meta, training))
+
+
+def setting_key(entry: dict) -> str:
+    """The catalog labels ``checkpoint_setting_refusal`` depends on beyond the identity (run, flags, condition, the
+    deployment-validation record): a change of any of them re-runs the check on reload (Codex review)."""
+    return json.dumps([entry.get(k) for k in ("run", "flags", "condition", "deploy_validation")], sort_keys=True,
+                      default=str)
 
 
 def checkpoint_setting_refusal(pid, entry: dict, root=None) -> str | None:

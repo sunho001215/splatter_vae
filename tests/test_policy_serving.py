@@ -1538,6 +1538,13 @@ def test_a_legacy_trained_checkpoint_under_a_new_setting_identity_is_never_adver
     with serve_catalog(root, cat) as srv:
         assert welcome(srv)["policies"][pid]["info"]["execution_eligible"] is True
     stale = {**granted, "deploy_validation": {**granted["deploy_validation"], "training_contract_sha256": "b" * 64}}
+    cat = write_catalog(tmp_path / "catalog4.json", {pid: granted})  # label refresh of a resident, checked entry
+    with serve_catalog(root, cat) as srv:
+        assert welcome(srv)["policies"][pid]["info"]["execution_eligible"] is True
+        write_catalog(cat, {pid: stale})  # same artefacts (identity), other validation contract: re-checked
+        assert srv.reload_catalog() is not None
+        w = welcome(srv)
+        assert pid not in w["policies"] and "another training contract" in str(w["unavailable"][pid]["reasons"])
     cat = write_catalog(tmp_path / "catalog3.json", {pid: stale})  # validated against another training contract
     with serve_catalog(root, cat) as srv:
         w = welcome(srv)
