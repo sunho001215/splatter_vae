@@ -1,9 +1,11 @@
 """TrackEverything worker CUDA memory policy (agent TEMEM, 2026-11-12): cached blocks are released after every request
-(also a failed one), an optional allocator cap, and the policy/peaks recorded in the response. CPU-only: a fake torch."""
+(also a failed one, after its traceback was dropped), the allocator cap (required on MIG), and the policy/peaks recorded
+in the response. CPU-only: a fake torch."""
 
 from __future__ import annotations
 
 import sys
+import weakref
 from types import SimpleNamespace
 
 import numpy as np
@@ -15,20 +17,21 @@ GIB = 2**30
 
 
 class FakeCuda:
-    def __init__(self, total=24 * GIB):
-        self.total = total
+    def __init__(self, total=24 * GIB, name="NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition"):
+        self.total, self.name = total, name
         self.events = []
         self.allocated, self.reserved = 2 * GIB, 9 * GIB
+        self.watch = None  # weakref of a request object that must be dead when the cache is released
 
     def get_device_properties(self, index):
         assert index == 0
-        return SimpleNamespace(total_memory=self.total)
+        return SimpleNamespace(total_memory=self.total, name=self.name)
 
     def set_per_process_memory_fraction(self, fraction, device):
         self.events.append(("fraction", fraction, device))
 
     def empty_cache(self):
-        self.events.append("empty_cache")
+        self.events.append("empty_cache" if self.watch is None or self.watch() is None else "empty_cache_while_alive")
         self.reserved = self.allocated
 
     def reset_peak_memory_stats(self):
@@ -56,6 +59,7 @@ def fake_torch(monkeypatch):
     fake = SimpleNamespace(cuda=cuda, manual_seed=lambda seed: None, __version__="2.8.0")
     monkeypatch.setattr(te, "_MEMORY", {})
     monkeypatch.setitem(sys.modules, "torch", fake)
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "GPU-00000000-0000-0000-0000-000000000000")  # a whole GPU
     return fake
 
 
@@ -73,7 +77,8 @@ def test_policy_without_cap_only_releases(fake_torch, monkeypatch):
     monkeypatch.setenv("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
     policy = te.memory_policy(fake_torch)
     assert policy == {"release_cached_after_request": True, "cuda_memory_cap_gib": None, "memory_fraction": None,
-                      "device_total_memory": 24 * GIB, "pytorch_cuda_alloc_conf": "expandable_segments:True"}
+                      "device_total_memory": 24 * GIB, "mig_instance": False,
+                      "pytorch_cuda_alloc_conf": "expandable_segments:True"}
     assert fake_torch.cuda.events == []  # no allocator cap
 
 
@@ -120,17 +125,54 @@ def test_handle_releases_cache_and_records_policy_and_peaks(fake_torch, monkeypa
     assert "allocated_after_release" not in te._MEMORY  # per-request values never leak into the cached policy
 
 
-def test_failed_request_still_releases_cache(fake_torch, monkeypatch):
+class RequestTensor:  # stands in for a CUDA tensor that only the failing frame references
+    pass
+
+
+def test_failed_request_releases_cache_after_its_tensors_are_dead(fake_torch, monkeypatch):
     monkeypatch.delenv(te.CUDA_MEMORY_CAP_ENV, raising=False)
     monkeypatch.setattr(te, "_model", lambda repo, ckpt, device: ("tracker", {}))
 
     def oom(*args, **kwargs):
-        raise RuntimeError("CUDA out of memory")
+        activations = RequestTensor()
+        fake_torch.cuda.watch = weakref.ref(activations)
+        raise RuntimeError("CUDA out of memory (fake)")
 
     monkeypatch.setattr(te, "infer_queries", oom)
-    with pytest.raises(RuntimeError, match="out of memory"):
+    with pytest.raises(te.RequestFailed, match=r"RuntimeError: CUDA out of memory \(fake\)") as err:
         te.handle(*_request())
-    assert fake_torch.cuda.events[-1] == "empty_cache"
+    assert "in oom" in str(err.value)  # the original traceback travels as text
+    assert fake_torch.cuda.events[-1] == "empty_cache"  # not "empty_cache_while_alive"
+    assert err.value.__context__ is None and err.value.__cause__ is None  # no chained exception keeps frames alive
+
+
+def test_model_load_failure_also_releases_cache(fake_torch, monkeypatch):
+    monkeypatch.delenv(te.CUDA_MEMORY_CAP_ENV, raising=False)
+
+    def load(repo, ckpt, device):
+        partial = RequestTensor()
+        fake_torch.cuda.watch = weakref.ref(partial)
+        raise RuntimeError("CUDA out of memory while loading (fake)")
+
+    monkeypatch.setattr(te, "_model", load)
+    with pytest.raises(te.RequestFailed, match="while loading"):
+        te.handle(*_request())
+    assert fake_torch.cuda.events == ["empty_cache"]  # nothing else ran; nothing kept alive
+
+
+@pytest.mark.parametrize("visible,name", [("MIG-0257ebe5-58b1-5a24-8564-bd96af094cbf", "NVIDIA RTX PRO 6000"),
+                                          ("0", "NVIDIA RTX PRO 6000 Blackwell MIG 1g.24gb")])
+def test_cap_is_required_on_a_mig_instance(fake_torch, monkeypatch, visible, name):
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", visible)
+    fake_torch.cuda.name = name
+    monkeypatch.delenv(te.CUDA_MEMORY_CAP_ENV, raising=False)
+    with pytest.raises(ValueError, match="required on a MIG instance"):
+        te.memory_policy(fake_torch)
+    assert te._MEMORY == {}
+    monkeypatch.setenv(te.CUDA_MEMORY_CAP_ENV, "8")
+    policy = te.memory_policy(fake_torch)
+    assert policy["mig_instance"] is True and policy["cuda_memory_cap_gib"] == 8.0
+    assert fake_torch.cuda.events == [("fraction", pytest.approx(8 / 24), 0)]
 
 
 def test_runtime_flags_record_allocator_configuration(monkeypatch, tmp_path):
