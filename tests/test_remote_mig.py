@@ -1026,6 +1026,7 @@ def test_release_reservation_accepts_all_16_mig_slots_and_charges_exclusively(mo
     spec.loader.exec_module(verification)
     assert verification.POLICIES['native_suite'][3] == 12
     gpus = [i['uuid'] for i in inv.validate_allowlist(allowlist())]
+    monkeypatch.setattr(scheduler, 'APPROVED_HOST_GPUS', {**gpu_guard.APPROVED_HOST_GPUS, 'remote': tuple(gpus)})
     native = dict(mem_gb=verification.POLICIES['native_suite'][3], load=1, ram_gb=96, cpu_threads=32, disk_gb=1)
     isolation = dict(mem_gb=4, load=0, ram_gb=8, cpu_threads=8, disk_gb=1)
     for stage in ('native', 'isolation'):
