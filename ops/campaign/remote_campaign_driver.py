@@ -17,7 +17,7 @@ from ops.jobs.footprints import exclusive, ram_gb  # noqa: E402
 from ops.jobs import host_roles  # noqa: E402
 from ops.jobs import release_reservation  # noqa: E402
 from ops.jobs import scheduler as jobs  # noqa: E402
-from ops.jobs.remote_backend import COTENANT_GPU_MARGIN_GB, RemoteBackend, cotenant_charges  # noqa: E402
+from ops.jobs.remote_backend import COTENANT_GPU_MARGIN_GB, RemoteBackend, cotenant_charges, owned_cpu_threads  # noqa: E402
 from ops.remote.access import RemoteClient  # noqa: E402
 from ops.resources.gpu_guard import APPROVED_HOST_GPUS, REMOTE_MIG_ACTIVE, REMOTE_MIG_INSTANCES  # noqa: E402
 from ops.resources.mig_inventory import INSTANCE_LOAD_LIMIT, device_capacity_gib  # noqa: E402
@@ -718,8 +718,10 @@ if RELEASE_HOLD:
 reviwo = sum(1 for i in active if i.startswith('s4-reviwo-'))
 chosen, total, taken = [], reserved, set()
 CPU_BUDGET = float(queue['hosts']['remote'].get('cpu_thread_budget', jobs.REMOTE_CPU_THREAD_BUDGET))
-cpu_used = sum(jobs.reservation(s, by_id.get(i, {}), 'cpu_threads') or 8 for i, s in active.items())
-cpu_used += (COTENANT or {}).get('cpus', 0) or 0
+# 2026-11-12: guard-accounted co-tenant charges already count every live owned container's quota (managed rows too);
+# owned_cpu_threads adds only reserving rows without a live container (no double count of the 40 running rows)
+cpu_used = owned_cpu_threads(COTENANT, [(s.get('container'), jobs.reservation(s, by_id.get(i, {}), 'cpu_threads') or 8)
+                                        for i, s in active.items()])
 if RELEASE_HOLD:
     cpu_used += release_reservation.charges(RELEASE_HOLD)['cpu_threads']
 if COTENANT is not None and COTENANT.get('cpus', 0) is None:

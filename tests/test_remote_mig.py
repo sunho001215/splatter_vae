@@ -1383,3 +1383,23 @@ def test_snapshot_uses_guard_identity_mode_and_process_memory_requirements():
         (listing, query.replace(': 100 MiB', ': N/A')),
     ]:
         assert not remote.mig_usage(bad_listing.splitlines(), bad_query.splitlines(), devices)[2]
+
+
+def test_owned_cpu_threads_never_double_counts_guard_accounted_live_containers():
+    """2026-11-12: guard-accounted charges['cpus'] already includes every live owned container (managed rows too).
+    The remote driver once added its own reservation sum on top (40 x 8 + 328 > 352): nothing was ever admitted."""
+    from ops.jobs.remote_backend import owned_cpu_threads
+    rows = [(f's4d-job{i}-a1', 8) for i in range(40)]
+    guard = {'guard_accounted': True, 'cpus': 328.0, 'live_names': {name for name, _ in rows} | {'s4d-rwx-temem-m1'}}
+    assert owned_cpu_threads(guard, rows) == 328.0
+    # a reserving row whose container is not live yet is charged once, by its reservation
+    assert owned_cpu_threads(guard, rows + [('s4d-new-a1', 8)]) == 336.0
+    # legacy charges count co-tenants only: every reserving row is added
+    assert owned_cpu_threads({'cpus': 4.0}, rows) == 324.0
+    assert owned_cpu_threads(None, rows) == 320.0
+
+
+def test_remote_driver_uses_owned_cpu_threads():
+    driver = (REPO / "ops/campaign/remote_campaign_driver.py").read_text()
+    assert "cpu_used = owned_cpu_threads(COTENANT" in driver
+    assert "cpu_used += (COTENANT or {}).get('cpus', 0) or 0" not in driver

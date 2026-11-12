@@ -298,9 +298,23 @@ def cotenant_charges(snapshot: RemoteSnapshot, own=()) -> dict:
         ram_pending, cpus = totals['pending_ram'], totals['cpu_used'] / 1e9
         return {'gpus': gpus, 'ram_declared_bytes': ram_declared, 'ram_pending_bytes': ram_pending,
                 'unbounded': [], 'cpus': cpus, 'reserved_disk_bytes': totals['reserved_disk'],
-                'guard_accounted': True}
+                'guard_accounted': True,
+                'live_names': {item['Name'].removeprefix('/') for item, _, _ in snapshot.admission_records}}
     return {"gpus": gpus, "ram_declared_bytes": ram_declared, "ram_pending_bytes": ram_pending, "unbounded": unbounded,
             "cpus": cpus}
+
+
+def owned_cpu_threads(charges: dict | None, reserving: list) -> float:
+    """CPU quota threads held by our remote work, as the in-lock guard counts them. ``reserving`` lists the registry's
+    reserving remote rows as (container name, cpu threads). With guard-accounted charges (``cotenant_charges`` on a
+    MIG snapshot, 2026-11-12) ``charges['cpus']`` already contains the enforced quota of EVERY live owned container,
+    managed rows included, so only reserving rows whose container is not live yet are added (as the scheduler's
+    _charge_cotenants does). Legacy charges count co-tenants only: every reserving row is added. None/error: 0 extra."""
+    rows = list(reserving)
+    if charges and charges.get('guard_accounted'):
+        live = set(charges.get('live_names') or ())
+        return float(charges['cpus']) + sum(threads for container, threads in rows if container not in live)
+    return sum(threads for _, threads in rows) + float((charges or {}).get('cpus', 0) or 0)
 
 
 _INSPECT_IDENTITY = ('{{.Id}}|{{.State.Status}}|{{.State.ExitCode}}|{{index .Config.Labels "s4d.managed"}}|'
