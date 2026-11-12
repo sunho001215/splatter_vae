@@ -657,3 +657,91 @@ def test_release1_default_is_unchanged(tmp_path):
     _, fixed, _ = _fake_results(rdir, sam_fail=())
     doc = publish(_publish_args(tmp_path / "c", rdir, fixed, _frozen(rdir, fixed), tmp_path / "c" / "rig.json"))
     assert doc["gate_version"] == GATE_VERSION and "criteria" not in doc and not doc["name"].endswith("-c2")
+
+
+# --------------------------------------------------------------------------------- integration (real recomputation)
+def _plan_matches(path, ep, rows, rng, meta, n=120):
+    """A match file whose rows follow ``rows`` (time, pa, pb, frame_a, frame_b, dt) with static, inlier, depth-valid
+    synthetic correspondences (enough for per-episode and held-out evaluation)."""
+    cols = {k: [] for k in ("pair", "time", "frame_a", "frame_b", "dt_ns", "uv_a", "uv_b", "overlap", "cycle_px",
+                            "dyn_dist_a", "dyn_dist_b", "fs_a", "fs_b", "sd_a", "sd_b", "fs_range_a", "fs_range_b",
+                            "magsac_inlier")}
+    for k, pa, pb, ia, ib, dt in rows:
+        uv = rng.uniform([20, 20], [620, 460], (n, 2)).astype(np.float32)
+        cols["pair"].append(np.full(n, pa * 10 + pb, np.int16))
+        cols["time"].append(np.full(n, k, np.int16))
+        cols["frame_a"].append(np.full(n, ia, np.int32))
+        cols["frame_b"].append(np.full(n, ib, np.int32))
+        cols["dt_ns"].append(np.full(n, dt, np.int64))
+        cols["uv_a"].append(uv)
+        cols["uv_b"].append((uv + rng.normal(0, 0.3, (n, 2))).astype(np.float32))
+        cols["overlap"].append(np.full(n, 0.9, np.float32))
+        cols["cycle_px"].append(np.full(n, 0.2, np.float32))
+        for key in ("dyn_dist_a", "dyn_dist_b"):
+            cols[key].append(np.full(n, 50.0, np.float32))
+        for key in ("fs_a", "fs_b", "sd_a", "sd_b"):
+            cols[key].append(np.full(n, 1.0, np.float32))
+        for key in ("fs_range_a", "fs_range_b"):
+            cols[key].append(np.full(n, 0.001, np.float32))
+        cols["magsac_inlier"].append(np.ones(n, bool))
+    arr = {k: np.concatenate(v) if v else np.zeros(0) for k, v in cols.items()}
+    np.savez(path, meta=json.dumps({"episode_id": ep, "cameras": list(CAMS), "times": 6, **meta}), **arr)
+
+
+def test_static_eval_integration_recomputes_from_sources_and_catches_cache_and_source_mutations(tmp_path, monkeypatch):
+    """No mocked recomputation: real match files (release/1 + pairwise supplement, frames from the timestamps), real
+    corr meta K; only the evidence-frame loader (the held-out K source) is stubbed."""
+    from types import SimpleNamespace
+
+    from s4d.realworld.calib import criteria as C
+    from s4d.realworld.calib.dw import frames as F
+
+    w = _worker()
+    rng = np.random.default_rng(5)
+    root, m1, m2, corr, ev = (tmp_path / d for d in ("view", "m1", "m2", "corr", "ev"))
+    for d in (root, m1, m2, corr, ev):
+        d.mkdir()
+    eps = [f"t-{k:06d}" for k in range(1, 6)]
+    offsets = [(0, 12.0, 31.0), (0, -28.0, 30.0), (0, 5.0, 15.0), (0, 25.0, -10.0), (0, 8.0, 27.0)]
+    for e, off in zip(eps, offsets):
+        st = _stamps(off)
+        _timestamped_episode(root, e, st)
+        ref = w.plan_pairs(st, list(CAMS), 6, "reference", 20.0)
+        fr = {str(k): v for k, v in ref["frames_used"].items()}
+        _plan_matches(m1 / f"{e}.npz", e, ref["pairs"], rng, {"max_dt_ms": 20.0, "frames": fr})
+        sup = w.supplement_plan(st, list(CAMS), 6, {"cameras": list(CAMS), "times": 6, "max_dt_ms": 20.0, "frames": fr})
+        _plan_matches(m2 / f"{e}.npz", e, sup["pairs"], rng, {
+            "pairing": "pairwise", "max_dt_ms": None, "max_dt_ns": sup["max_dt_ns"], "frames": fr,
+            "pair_frames": [list(r) for r in sup["pairs"]],
+            "supplement_of": {"path": str(m1 / f"{e}.npz"), "sha256": C._sha256(m1 / f"{e}.npz")}})
+    fit, held = eps[:3], eps[3:]
+    np.savez(corr / f"{fit[0]}.npz", meta=json.dumps({"K": {c: _K().tolist() for c in CAMS}}))
+    np.savez(ev / f"{held[0]}.npz", x=np.zeros(1))
+    monkeypatch.setattr(F, "load_frames", lambda paths, cams, **kw: [SimpleNamespace(cam=c, K=_K()) for c in cams])
+    T = {}
+    for i, c in enumerate(CAMS):
+        M = np.eye(4)
+        M[0, 3] = 0.05 * i
+        T[c] = M.tolist()
+    full = {"fit_episodes": fit, "heldout_episodes": held,
+            "state": {"T_cam_base": T, "alpha": {c: 0.0 for c in CAMS}, "tau_s": {c: 0.0 for c in CAMS}}}
+    fp = tmp_path / "full.json"
+    fp.write_text(json.dumps(full))
+    pre = C.static_eval(fp, corr, ev, [m1], root)  # the solve's own (release/1) evaluation, stored in full.json
+    full["per_episode_extext"] = pre["per_episode_extext"]
+    full["heldout_sam"] = {"extext_sam_static": pre["heldout_extext_sam_static"]}
+    fp.write_text(json.dumps(full))
+    se = C.static_eval(fp, corr, ev, [m1, m2], root)
+    assert se["frames_validated"] and C.check_reproduction(se, full) == []
+    assert all(len(v) == 3 for v in se["per_episode_extext"].values())  # every pair, every episode
+    C.check_static_eval(json.loads(json.dumps(se)), fp)  # real recomputation: equal
+    for _key, mutate in (("per_episode_extext", lambda s: s["per_episode_extext"][eps[1]][PAIRS[0]].update(median_px=0.01)),
+                        ("dt", lambda s: [r.update(abs_dt_ms=8.0) for r in s["dt"]["rows"]]),
+                        ("code", lambda s: s["code"].update({"criteria.py": "0" * 64}))):
+        bad = json.loads(json.dumps(se))
+        mutate(bad)
+        with pytest.raises(SystemExit, match="recomputation"):
+            C.check_static_eval(bad, fp)
+    _plan_matches(m2 / f"{eps[2]}.npz", eps[2], [], rng, {"pairing": "pairwise"})  # a source file changed afterwards
+    with pytest.raises(SystemExit, match="sources not verified"):
+        C.check_static_eval(json.loads(json.dumps(se)), fp)
