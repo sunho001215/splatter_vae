@@ -1483,7 +1483,8 @@ def describe_entry(entry: dict, root=None) -> dict:
 
 
 def checkpoint_setting_refusal(pid, entry: dict, root=None) -> str | None:
-    """Why an entry's checkpoint did not train with the FQL setting of the entry's identity (None: it did)."""
+    """Why an entry's checkpoint did not train with the FQL setting of the entry's identity, or why its deployment
+    validation does not cover the served training contract (None: fine)."""
     import torch
 
     from ops.policy_serving.config import agent_setting_matches, entry_fql_setting, resolve
@@ -1497,6 +1498,15 @@ def checkpoint_setting_refusal(pid, entry: dict, root=None) -> str | None:
     if not agent_setting_matches(setting, cfg):
         got = {k: (cfg or {}).get(k) for k in ("alpha", "normalize_q_loss")}
         return f"checkpoint agent.config {got} is not the {setting} FQL setting of the entry"
+    v = entry.get("deploy_validation")
+    if isinstance(v, dict):  # the validation must be of THIS served training contract (deploy-contract sidecar)
+        contract = entry.get("training_contract")
+        try:
+            digest = sha256_file(resolve(root, contract)) if contract else None
+        except OSError as exc:
+            return f"training contract cannot be read: {exc}"
+        if digest is None or digest != v.get("training_contract_sha256"):
+            return "the deployment validation is of another training contract than the served one"
     return None
 
 

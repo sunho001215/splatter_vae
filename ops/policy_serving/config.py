@@ -234,6 +234,9 @@ def _check_restricted_grant(source, pid, entry: dict, decision) -> None:
 
 def _check_deploy_validation(source, pid, entry: dict) -> None:
     v = entry.get("deploy_validation")
+    if entry.get("actor", "onestep") != "onestep":
+        raise ValueError(f"{source}: policy {pid}: a deployment validation covers the one-step policy only (actor "
+                         f"{entry.get('actor')!r})")
     checks = v.get("checks") if isinstance(v, dict) else None
     if not isinstance(checks, dict) or v.get("pass") is not True or v.get("checkpoint_sha256") != entry.get("sha256") \
             or v.get("run") != entry.get("run") or not valid_sha256(v.get("training_contract_sha256")) \

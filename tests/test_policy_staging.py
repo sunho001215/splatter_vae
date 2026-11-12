@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+from pathlib import Path
 
 import h5py
 import numpy as np
@@ -389,6 +390,9 @@ def test_validator_allows_only_e2e_legacy_and_validated_new_setting_entries():
                 {**nq, "deploy_validation": {**nq["deploy_validation"], "training_contract_sha256": None}}):
         with pytest.raises(ValueError, match="deploy_validation"):
             validate_catalog(_cat("reviwo-t-s0-a10nq", bad))
+    with pytest.raises(ValueError, match="one-step policy only"):  # a one-step validation never covers a BC flow
+        validate_catalog(_cat("reviwo-t-s0-a10nq+bcflow", {**nq, "actor": "bc_flow",
+                                                          "flags": ["fql_setting_a10nq", "experimental_bc_flow"]}))
     with pytest.raises(ValueError, match="non-eligible"):  # a record never decorates a non-eligible entry
         validate_catalog(_cat("reviwo-t-s0-a10nq", {**nq, "execution_eligible": False, "usage": "dry_run_replay_only",
                                                     "execution_decision": None}))
@@ -625,7 +629,14 @@ def test_relabel_applies_the_current_rules_to_an_existing_catalog(tmp_path):
            "training_contract_sha256": "a" * 64, "input_spec_sha256": input_spec_digest(nq["input_spec"]),
            "checks": {k: {"pass": True} for k in S.VALIDATION_CHECKS}}
     (tmp_path / f"{nq['run']}.json").write_text(json.dumps(rec))
-    new = S.relabel_catalog(json.loads(json.dumps(old)), tmp_path)
+    sc = tmp_path / "sc"
+    sc.mkdir()
+    (sc / Path(nq["training_contract"]).name).write_text("{}")
+    rec["training_contract_sha256"] = S.sha256_file(sc / Path(nq["training_contract"]).name)
+    (tmp_path / f"{nq['run']}.json").write_text(json.dumps(rec))
+    assert S.relabel_catalog(json.loads(json.dumps(old)), tmp_path)["policies"]["sincro-t-s0-a10nq"][
+        "execution_eligible"] is False  # without the current contract copy: not eligible
+    new = S.relabel_catalog(json.loads(json.dumps(old)), tmp_path, sc)
     validate_catalog(json.loads(json.dumps(new)))
     p = new["policies"]
     assert p["e2e_cnn-t-s0"]["execution_eligible"] is True and p["reviwo-t-s0"]["execution_eligible"] is False
@@ -636,7 +647,10 @@ def test_relabel_applies_the_current_rules_to_an_existing_catalog(tmp_path):
         assert {k: v for k, v in p[pid].items() if k not in S.USAGE_KEYS + ("reasons",)} == \
             {k: v for k, v in old["policies"][pid].items() if k not in S.USAGE_KEYS + ("reasons",)}
     assert new["aliases"] == old["aliases"] and new["criteria_sha256"] == old["criteria_sha256"]
-    assert S.relabel_catalog(json.loads(json.dumps(new)), tmp_path)["policies"] == p  # idempotent
+    assert S.relabel_catalog(json.loads(json.dumps(new)), tmp_path, sc)["policies"] == p  # idempotent
+    (sc / Path(nq["training_contract"]).name).write_text('{"changed": 1}')  # another contract: the record is stale
+    assert S.relabel_catalog(json.loads(json.dumps(new)), tmp_path, sc)["policies"]["sincro-t-s0-a10nq"][
+        "execution_eligible"] is False
 
 
 def test_local_completions_are_completed_runs_for_staging():

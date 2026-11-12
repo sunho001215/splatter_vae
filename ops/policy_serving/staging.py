@@ -1141,7 +1141,7 @@ def cmd_stage(a, *, hook: bool = False) -> int:
 USAGE_KEYS = ("usage", "execution_eligible", "execution_decision", "usage_reasons", "deploy_validation")
 
 
-def relabel_entry(pid: str, entry: dict, validation_dir: Path | None) -> dict:
+def relabel_entry(pid: str, entry: dict, validation_dir: Path | None, sidecar_dir: Path | None = None) -> dict:
     """An existing one-step catalog entry with its usage re-derived under the CURRENT rules (status, criteria,
     artefacts, reasons unchanged except the restricted-class decision line, which follows criteria.LN_SPREAD_DECISION);
     a10nq entries take their deployment-validation record from ``validation_dir``. Entries that are not deployable /
@@ -1150,11 +1150,12 @@ def relabel_entry(pid: str, entry: dict, validation_dir: Path | None) -> dict:
         return dict(entry)
     setting = fql_setting(str(entry.get("run") or ""))
     failed = {k for k, v in (entry.get("criteria") or {}).items() if isinstance(v, dict) and v.get("pass") is False}
-    validation = validation_record(validation_dir, entry["run"], entry["sha256"],
-                                   input_spec=entry.get("input_spec")) if setting == "a10nq" else None
-    if validation is not None and (entry.get("deploy_validation") or {}).get("training_contract_sha256") not in \
-            (None, validation["training_contract_sha256"]):
-        validation = None  # a record for another training contract than the one this entry was validated with
+    sidecar = None if sidecar_dir is None else Path(sidecar_dir) / Path(str(entry.get("training_contract"))).name
+    contract_sha = sha256_file(sidecar) if sidecar is not None and sidecar.is_file() else None
+    # an a10nq entry is relabelled eligible only against the CURRENT staged contract (local sidecar copy) and spec
+    validation = validation_record(validation_dir, entry["run"], entry["sha256"], input_spec=entry.get("input_spec"),
+                                   training_contract_sha256=contract_sha) \
+        if setting == "a10nq" and contract_sha is not None else None
     u = usage_of(entry["status"], entry.get("condition"), setting, checkpoint_sha256=entry.get("sha256"),
                  failed_criteria=failed, validation=validation)
     if entry["status"] == "restricted" and u["execution_eligible"] and \
@@ -1168,10 +1169,11 @@ def relabel_entry(pid: str, entry: dict, validation_dir: Path | None) -> dict:
     return out
 
 
-def relabel_catalog(catalog: dict, validation_dir: Path | None) -> dict:
+def relabel_catalog(catalog: dict, validation_dir: Path | None, sidecar_dir: Path | None = None) -> dict:
     """The catalog with every one-step entry relabelled (``relabel_entry``) and the bc_flow variants re-derived from
     their bases; aliases, criteria hash and artefacts unchanged."""
-    entries = {pid: relabel_entry(pid, e, validation_dir) for pid, e in (catalog.get("policies") or {}).items()}
+    entries = {pid: relabel_entry(pid, e, validation_dir, sidecar_dir)
+               for pid, e in (catalog.get("policies") or {}).items()}
     entries = sync_bcflow_variants(entries)
     aliases = {k: v for k, v in (catalog.get("aliases") or {}).items() if v in entries}
     return build_catalog(entries, aliases=aliases, criteria_sha256=catalog.get("criteria_sha256"))
@@ -1193,7 +1195,7 @@ def cmd_relabel(a) -> int:
 
     if a.from_json:
         old = json.loads(a.from_json.read_text())
-        new = relabel_catalog(old, a.validation_dir)
+        new = relabel_catalog(old, a.validation_dir, a.sidecar_dir)
         validate_catalog(json.loads(json.dumps(new)))
         if a.out_json:
             a.out_json.write_text(json.dumps(new, indent=1) + "\n")
@@ -1206,7 +1208,7 @@ def cmd_relabel(a) -> int:
     with open(a.lock_file, "a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         old = read_host_catalog(host)
-        new = relabel_catalog(old, a.validation_dir)
+        new = relabel_catalog(old, a.validation_dir, a.sidecar_dir)
         changed = diff(old, new)
         if changed or not catalog_copies_agree(host):
             write_host_catalog(host, new, execute=a.execute, log=log)

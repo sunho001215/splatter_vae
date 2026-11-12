@@ -1406,7 +1406,10 @@ def _dynamo_grant_entries(root, fx):
     pol, e = fx["d1"]
     spec = describe_entry(e, root)
     assert spec["condition"] == "dynamo"
+    sidecar = root / "d1" / "deploy_contract.json"  # fixtures carry their contract in the checkpoint meta; the file
+    sidecar.write_text('{"fixture": true}\n')     # binds the deployment validation to the served contract
     restricted = {**e, "condition": "dynamo", "run": "rwnq-20261112-fql-dynamo-fixture-task-s0", "seed": 0,
+                  "training_contract": "d1/deploy_contract.json",
                   "flags": ["fixture", "fql_setting_a10nq"], "input_spec": spec, "status": "restricted",
                   "reasons": ["e1 LayerNorm-spread FAIL (fixture label)"],
                   "usage": "dry_run_replay_only", "execution_eligible": False, "usage_reasons": ["decision"],
@@ -1417,7 +1420,7 @@ def _dynamo_grant_entries(root, fx):
     from ops.policy_serving.config import input_spec_digest
 
     validation = {"run": restricted["run"], "checkpoint_sha256": e["sha256"], "pass": True, "at": "fixture",
-                  "record": "fixture.json", "training_contract_sha256": "a" * 64,
+                  "record": "fixture.json", "training_contract_sha256": sha256_file(sidecar),
                   "input_spec_sha256": input_spec_digest(spec),
                   "checks": {k: {"pass": True} for k in ("l2_offline", "server_network", "robotpc_client")}}
     granted = {**restricted, "usage": "execution", "execution_eligible": True, "execution_decision": grant,
@@ -1534,6 +1537,11 @@ def test_a_legacy_trained_checkpoint_under_a_new_setting_identity_is_never_adver
     cat = write_catalog(tmp_path / "catalog2.json", {pid: granted})  # the a10nq-trained checkpoint: offered
     with serve_catalog(root, cat) as srv:
         assert welcome(srv)["policies"][pid]["info"]["execution_eligible"] is True
+    stale = {**granted, "deploy_validation": {**granted["deploy_validation"], "training_contract_sha256": "b" * 64}}
+    cat = write_catalog(tmp_path / "catalog3.json", {pid: stale})  # validated against another training contract
+    with serve_catalog(root, cat) as srv:
+        w = welcome(srv)
+        assert pid not in w["policies"] and "another training contract" in str(w["unavailable"][pid]["reasons"])
 
 
 def test_a_condition_label_that_differs_from_the_checkpoint_is_never_offered_or_granted(staged, tmp_path):
