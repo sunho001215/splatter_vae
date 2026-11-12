@@ -22,6 +22,7 @@ REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
 from ops.containers.verification import validate_report, validate_verification, verification_resources  # noqa: E402
 from ops.jobs import host_roles, realworld_local  # noqa: E402
+from ops.jobs import release_reservation  # noqa: E402
 from ops.jobs.arguments import option as _option  # noqa: E402
 from ops.jobs.remote_backend import (  # noqa: E402
     COTENANT_GPU_MARGIN_GB,
@@ -511,6 +512,10 @@ def _check_exit_records(run_id: str, state: dict, purpose: str | None, payloads:
 
 WEIGHTS_ONLY_GLOBALS = re.compile(r"collections\.OrderedDict|torch\._utils\._rebuild_tensor_v2|torch\.[A-Za-z0-9]+Storage")
 REMOTE_RECHECK_SECONDS = 300  # a failed in-place verification of the same attempt is retried at most this often
+# CPU threads of our remote containers, checked only while a release is pending (release_reservation): 384 cores are
+# shared with other users; a container without cpu_threads runs with ops/containers/launch.py DEFAULT_CPU_THREADS (8).
+REMOTE_CPU_THREAD_BUDGET = 320
+DEFAULT_REMOTE_CPU_THREADS = 8
 STORAGE_NAMES = {"float32": "FloatStorage", "float64": "DoubleStorage", "float16": "HalfStorage",
                  "bfloat16": "BFloat16Storage", "int64": "LongStorage", "int32": "IntStorage", "bool": "BoolStorage",
                  "uint8": "ByteStorage"}
@@ -672,13 +677,18 @@ def _verify_backup(run_id: str, state: dict, backup: dict, runs: Path) -> None:
 
 
 def _reconcile_remote(backend, snapshot, state: dict, registry: Path, runs: Path,
-                      messages: list[str]) -> tuple[set[int], bool]:
+                      messages: list[str], scope: set[str] | None = None) -> tuple[set[int], bool]:
     owned = set()
     reachable = True
     for job_id, current in state.items():
         if current.get("host", "local") != "remote" or current["status"] not in ACTIVE:
             continue
         item = snapshot.containers.get(current["container"])
+        if scope is not None and job_id not in scope:
+            # out of scope (release chain tick): only the processes of a running container are counted as owned
+            if item is not None and item.get("State", {}).get("Status") in {"running", "restarting", "paused"}:
+                owned.update(item.get("pids", set()))
+            continue
         if item is None and _retired_after_verification(current):
             # 2026-10-28: removed by the cleanup once verified in place, before the local backup: not unknown; the job
             # completes from the bulk worker's backup as before
@@ -952,14 +962,21 @@ def _charge_cotenants(resources: dict, state: dict, jobs: dict, messages: list[s
 
 
 def tick(queue_path: Path = QUEUE, registry: Path = REGISTRY, runs: Path = RUNS, usage=None,
-         available_gb: float | None = None, disk_bytes: tuple[int, int] | None = None, remote_backend=None) -> list[str]:
+         available_gb: float | None = None, disk_bytes: tuple[int, int] | None = None, remote_backend=None,
+         scope: set[str] | None = None, reservation_path: Path | None = None) -> list[str]:
+    """One scheduler pass under the registry lock. ``scope`` (the release chain, 2026-11-12): only these job ids are
+    reconciled (exit observation, verification, result sync) and no completed containers are cleaned up; every other
+    remote job only contributes its running containers' processes to the owned set (foreign-process detection is
+    unchanged) and is left to the daemon and drivers. Admission is unaffected (it reads the full registry)."""
     registry.parent.mkdir(parents=True, exist_ok=True)
     with open(registry.with_suffix(".lock"), "w") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
-        return _tick(queue_path, registry, runs, usage, available_gb, disk_bytes, remote_backend)
+        return _tick(queue_path, registry, runs, usage, available_gb, disk_bytes, remote_backend, scope,
+                     reservation_path)
 
 
-def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, disk_bytes, remote_backend) -> list[str]:
+def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, disk_bytes, remote_backend,
+          scope: set[str] | None = None, reservation_path: Path | None = None) -> list[str]:
     queue = load_queue(queue_path)
     jobs = {job["id"]: job for job in queue.get("jobs", [])}
     state, messages = read_registry(registry), []
@@ -1005,8 +1022,10 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
             remote_backend = remote_backend or RemoteBackend(REPO, runs)
             snapshot = remote_backend.snapshot()
             _host_reachability(registry, True)
-            owned, reachable = _reconcile_remote(remote_backend, snapshot, read_registry(registry), registry, runs, messages)
-            if reachable and remote_host is not None and remote_host.get("cleanup_completed_containers", True) is True:
+            owned, reachable = _reconcile_remote(remote_backend, snapshot, read_registry(registry), registry, runs, messages,
+                                                 scope)
+            if (reachable and scope is None and remote_host is not None
+                    and remote_host.get("cleanup_completed_containers", True) is True):
                 reachable = _cleanup_completed_containers(remote_backend, snapshot, read_registry(registry), registry,
                                                           messages)
             if reachable and snapshot.resources_ready:
@@ -1077,29 +1096,74 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
             messages.append(f"foreign processes on {host_name}/{uuid}; not launching there")
     campaign_evidence, remote_ready_checked, identity = None, False, None
     verification_evidence = {}
+    # Release verification priority (user 2026-11-12; ops/jobs/release_reservation.py): while a release is pending,
+    # every other remote admission is charged its reserved GPU slots / memory, host RAM, disk and CPU threads; its own
+    # verification jobs are admitted against the reservation. Running jobs are never touched. Unreadable: fail closed.
+    release_invalid = False
+    try:
+        release_hold = release_reservation.load(reservation_path or release_reservation.PATH)
+    except ValueError as exc:
+        release_hold, release_invalid = None, True
+        if "remote" in resources:
+            messages.append(f"release reservation unusable ({str(exc)[:160]}); no remote jobs admitted")
+    release_charge = release_reservation.charges(release_hold)
+    for job_id in (release_hold or {}).get("jobs", []):  # a reserved job already executing is counted as running
+        current = state.get(job_id, {})
+        if current.get("host") == "remote" and current.get("status") in RESERVING:
+            charge = release_charge["gpus"].get(current.get("gpu"))
+            if charge is not None:
+                charge["mem_gb"] = max(0.0, charge["mem_gb"] - reservation(current, jobs.get(job_id, {}), "mem_gb"))
+            for key in ("ram_gb", "disk_gb", "cpu_threads"):
+                release_charge[key] = max(0, release_charge[key] - reservation(current, jobs.get(job_id, {}), key))
+    phantom = [{"host": "remote", "gpu": uuid, "mem_gb": charge["mem_gb"], "pid": None}
+               for uuid, charge in release_charge["gpus"].items()]
     for job in eligible(list(jobs.values()), state):
         host_name = job.get("host", "local")
         host, resource = queue["hosts"][host_name], resources.get(host_name)
         if resource is None or host.get("enabled", host_name == "local") is not True or host.get("hold", False):
             continue
+        if host_name == "remote" and release_invalid:
+            continue
+        release_job = host_name == "remote" and release_reservation.covers(release_hold, job)
+        held_back = host_name == "remote" and bool(release_hold) and not release_job
         refused = host_roles.refusal(job, host_name, roles, ownership, jobs, state.get(job["id"]), exceptions,
                                      state.get(job["id"].removesuffix("-eval")) if job["id"].endswith("-eval") else None)
         if refused is not None:
             messages.append(f"{job['id']}: not admitted on {host_name}: {refused}")
             continue
-        gpu = choose_gpu(job, host.get("limits", {}), running, resource["foreign"], resource.get("cotenant"))
+        gpu = choose_gpu(job, host.get("limits", {}), running + (phantom if held_back else []), resource["foreign"],
+                         resource.get("cotenant"))
         if gpu is None:
+            if held_back and choose_gpu(job, host.get("limits", {}), running, resource["foreign"],
+                                        resource.get("cotenant")) is not None:
+                messages.append(f"{job['id']}: waiting for GPU capacity reserved for release {release_hold['short']}")
             continue
         need, reserve = float(job.get("ram_gb", 0)), float(host.get("host_ram_reserve_gb", 0))
-        if resource["available"] - need < reserve:
-            messages.append(f"{job['id']}: waiting for host RAM ({resource['available']:.0f} GB available, "
-                            f"needs {need:.0f} + {reserve:.0f}) on {host_name}")
+        available = resource["available"] - (release_charge["ram_gb"] if held_back else 0.0)
+        if available - need < reserve:
+            messages.append(f"{job['id']}: waiting for host RAM ({available:.0f} GB available"
+                            + (f" after {release_charge['ram_gb']:.0f} GB reserved for release {release_hold['short']}"
+                               if held_back else "") + f", needs {need:.0f} + {reserve:.0f}) on {host_name}")
             continue
+        if held_back:
+            budget = float(host.get("cpu_thread_budget", REMOTE_CPU_THREAD_BUDGET))
+            used = sum(reservation(current, jobs.get(job_id, {}), "cpu_threads") or DEFAULT_REMOTE_CPU_THREADS
+                       for job_id, current in state.items()
+                       if current.get("host") == "remote" and current["status"] in RESERVING)
+            threads = float(job.get("cpu_threads", DEFAULT_REMOTE_CPU_THREADS))
+            if used + threads + release_charge["cpu_threads"] > budget:
+                messages.append(f"{job['id']}: waiting for CPU threads ({used:.0f} used + {threads:.0f} + "
+                                f"{release_charge['cpu_threads']} reserved for release {release_hold['short']} > "
+                                f"{budget:.0f}) on {host_name}")
+                continue
         floor = max(float(host.get("disk_floor_gb", 0)) * GIB,
                     resource["disk_total"] * (max(0.15, float(host.get("disk_floor_fraction", 0.15)))
                                               if host_name == "remote" else float(host.get("disk_floor_fraction", 0))))
+        if release_job:  # a dedicated slice of the floor, usable only by the pending release's verification jobs
+            floor = max(0.0, floor - release_reservation.RELEASE_DISK_SLICE_GB * GIB)
         disk_need = float(job.get("disk_gb", 0)) * GIB
-        if resource["disk_free"] - disk_need < floor:
+        disk_free = resource["disk_free"] - (release_charge["disk_gb"] * GIB if held_back else 0.0)
+        if disk_free - disk_need < floor:
             messages.append(f"{job['id']}: waiting for {host_name} disk floor/reservation")
             if host_name == "remote":
                 record({"event": "host_disk_low", "id": HOST_EVENT_ID, "host": host_name,

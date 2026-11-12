@@ -10,6 +10,7 @@ import pytest
 import yaml
 
 from ops.containers.mounts import REALWORLD_READ_ROOTS
+from ops.jobs import release_reservation
 from ops.jobs import remote_backend as remote
 from ops.remote import artifact_check as remote_artifact_check
 from ops.resources.gpu_guard import APPROVED_HOST_GPUS
@@ -2314,7 +2315,8 @@ def test_remote_driver_charges_cotenants_before_any_placement(tmp_path):
                  "gpu_load": {g: 0.5 if g == REMOTE else 0.0 for g in gpus},
                  "gpu_mem": {g: 5.0 if g == REMOTE else 0.0 for g in gpus}, "reserved": 6 * GIB, "messages": [],
                  "RemoteBackend": Backend, "cotenant_charges": remote.cotenant_charges, "json": json,
-                 "COTENANT_GPU_MARGIN_GB": remote.COTENANT_GPU_MARGIN_GB, "subprocess": subprocess}
+                 "COTENANT_GPU_MARGIN_GB": remote.COTENANT_GPU_MARGIN_GB, "subprocess": subprocess,
+                 "release_reservation": release_reservation}  # no reservation (tests/conftest.py isolates its path)
         exec(block, names)
         return names
 

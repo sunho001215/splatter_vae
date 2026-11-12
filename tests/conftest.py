@@ -22,6 +22,23 @@ def pytest_configure(config):
     config.option.basetemp = str(validate_runtime_path(Path(temp)))
 
 
+@pytest.fixture(scope="session")
+def _release_reservation_dir(tmp_path_factory):
+    return tmp_path_factory.mktemp("release")
+
+
+@pytest.fixture(autouse=True)
+def _isolated_release_reservation(_release_reservation_dir, monkeypatch):
+    """Tests never see a real pending release's reservation (runs/setup/release-reservation.json, written by the
+    release chain while the suite of that very release may run on the same checkout); a test that writes one uses
+    its own path."""
+    from ops.jobs import release_reservation
+
+    path = _release_reservation_dir / "release-reservation.json"
+    path.unlink(missing_ok=True)
+    monkeypatch.setattr(release_reservation, "PATH", path)
+
+
 @pytest.fixture
 def batch():
     """A small, fully valid training batch with independently translated cameras."""

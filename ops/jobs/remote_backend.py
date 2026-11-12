@@ -30,6 +30,7 @@ from ops.containers.verification import (
 
 GIB = 2**30
 RUN_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]*\Z")
+CONTAINER_NAME = re.compile(r"s4d-[A-Za-z0-9][A-Za-z0-9_.-]*\Z")  # our containers (launch.py names)
 COMMIT = re.compile(r"[0-9a-f]{40}\Z")
 DIGEST = re.compile(r"sha256:[0-9a-f]{64}\Z")
 SHA256 = re.compile(r"[0-9a-f]{64}\Z")
@@ -862,6 +863,21 @@ class RemoteBackend:
                 or any(not SHA256.fullmatch(value) for value in result["files"].values())):
             raise RemoteJobError("Remote result synchronization returned no checksum evidence")
         return result
+
+    def container_states(self, names: list[str]) -> dict[str, str]:
+        """{container name: Docker status} of our containers, by one read-only ``docker inspect`` over SSH (the release
+        chain's completion poll, 2026-11-12: no snapshot, no registry lock). A name Docker does not know is absent."""
+        if not names or any(not isinstance(name, str) or not CONTAINER_NAME.fullmatch(name) for name in names):
+            raise ValueError("Unsafe container name")
+        command = ("docker inspect --format '{{.Name}} {{.State.Status}}' "
+                   + " ".join(shlex.quote(name) for name in names) + " 2>/dev/null || true")
+        response = self.client.checked_ssh(command, wait=False, idempotent=True, timeout=60)
+        states = {}
+        for line in response.stdout.splitlines():
+            parts = line.strip().split()
+            if len(parts) == 2 and parts[0].lstrip("/") in names:
+                states[parts[0].lstrip("/")] = parts[1]
+        return states
 
     def verify_remote_artifacts(self, run_id: str, names: list[str]) -> dict:
         """Inspect a finished run in place on the remote host, read-only: ops/remote/artifact_check.py (standard library

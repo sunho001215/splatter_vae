@@ -14,6 +14,7 @@ import yaml
 REPO = Path('/home/ws/ws/splatter4d')
 sys.path.insert(0, str(REPO))
 from ops.jobs import host_roles  # noqa: E402
+from ops.jobs import release_reservation  # noqa: E402
 from ops.jobs import scheduler as jobs  # noqa: E402
 from ops.jobs.remote_backend import COTENANT_GPU_MARGIN_GB, RemoteBackend, cotenant_charges  # noqa: E402
 from ops.remote.access import RemoteClient  # noqa: E402
@@ -668,6 +669,25 @@ else:
         messages.append('COTENANT ' + json.dumps({g[4:8]: {k: round(charge[k], 1) for k in ('jobs', 'load', 'mem_gb',
                                                                                             'free_gb')}
                                                   for g, charge in sorted(COTENANT['gpus'].items())}))
+# Release verification priority (user 2026-11-12; ops/jobs/release_reservation.py): the pending release's reserved load
+# units, GPU memory and RAM are charged before any candidate is placed or any pool move (verification jobs are not queue
+# rows, so nothing else charges them here). Running jobs are never touched. An unusable reservation file: no remote
+# admission or pool move this pass (fail closed, as for co-tenant evidence).
+try:
+    RELEASE_HOLD = release_reservation.load()
+except ValueError as exc:
+    RELEASE_HOLD = None
+    messages.append(f'RELEASE_RESERVATION unusable ({str(exc)[:160]}); no remote admission or pool move this pass')
+    candidates, COTENANT = [], None
+if RELEASE_HOLD:
+    _release = release_reservation.charges(RELEASE_HOLD)
+    for g, charge in _release['gpus'].items():
+        if g in gpu_load:
+            gpu_load[g] += charge['load']
+            gpu_mem[g] += charge['mem_gb']
+    reserved += int(_release['ram_gb'] * 2**30)
+    messages.append(f"RELEASE_RESERVED {RELEASE_HOLD['short']} ({RELEASE_HOLD['stage']}) "
+                    + json.dumps({g[4:8]: c for g, c in _release['gpus'].items()}) + f" ram {_release['ram_gb']:.0f} GB")
 reviwo = sum(1 for i in active if i.startswith('s4-reviwo-'))
 chosen, total, taken = [], reserved, set()
 
