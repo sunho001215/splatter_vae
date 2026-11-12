@@ -151,9 +151,10 @@ class LatestFrames:
         self.half_ns = float(period_s) * 1e9 / 2
         self.wait_ns = int(self.half_ns if wait_s is None else float(wait_s) * 1e9)
         self.latest: dict = dict.fromkeys(cams)  # camera -> newest (frame id, capture ns)
-        # the last frames per camera (~4 s at 15 Hz: longer than the loops' 2 s idle timeout, so a reference
-        # frame's last eligible partner is never evicted while the session runs)
-        self._recent = {c: collections.deque(maxlen=64) for c in cams}
+        # end-frame candidates per camera: the client's retained frames (``frame_capacity``), each of which reaches
+        # the server with the step or is already held there, so the chosen end frame can always be assembled
+        self.retain = max(1, int(getattr(client, "frame_capacity", 1) or 1))
+        self._recent = {c: collections.deque(maxlen=self.retain) for c in cams}
         self._ref_seen_ns = 0
         self._stepped = None  # reference frame id of the last step
         self.state_lead_ns = int(state_lead_ns)  # recorded replay: robot rows reach the host before the frames
@@ -173,9 +174,10 @@ class LatestFrames:
         self._recent[camera_id].append(self.latest[camera_id])
 
     def _member(self, cam: str, t_ref: int) -> tuple:
-        """The camera's newest frame captured no later than half a period after the reference; when it has none
-        (every buffered frame is from a later instant: the reference camera delivers that late), its newest frame,
-        counted ``sync_cap_fallback`` (the step's record shows the offset)."""
+        """Among the camera's retained frames (``retain``: still assemblable by the server), the newest captured no
+        later than half a period after the reference; when there is none (every retained frame is from a later
+        instant: the reference camera delivers that late), its newest frame, counted ``sync_cap_fallback`` (the
+        step's record shows the offset)."""
         fit = [f for f in self._recent[cam] if f[1] <= t_ref + self.half_ns]
         if fit:
             return fit[-1]

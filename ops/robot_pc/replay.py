@@ -147,22 +147,27 @@ def run(client, loop, cameras, state, clock: ReplayClock, *, cams: list, start: 
     def take(end_ids, t_obs, ref_id, disp):
         emit(end_ids, t_obs, ref_id, surface_disp_m=disp)
 
-    def service_deadline(until_rec_ns: int) -> None:
-        """Latest-frame rule: a step whose partner wait runs out before the next release is taken AT its deadline
-        (as the live loop does), on the frames released so far."""
+    def due(rel_ns: int) -> bool:  # realtime: that release time has already passed on the wall clock
+        return clock.pace == "realtime" and time.monotonic_ns() >= int(rel_ns) + clock.offset_ns
+
+    def service_deadline(next_rel_ns: int | None) -> None:
+        """Latest-frame rule: a step whose partner wait runs out STRICTLY before the next release is taken at its
+        deadline (as the live loop does), on the frames released so far. A frame released at the deadline, or
+        already due after a late wake-up, is drained first (the live loop drains every due frame before deciding)."""
         dl = latest.deadline_ns() if latest is not None else None
-        if dl is None or dl > int(until_rec_ns) + clock.offset_ns:
+        if dl is None or (next_rel_ns is not None and dl >= int(next_rel_ns) + clock.offset_ns):
             return
         clock.release(dl - clock.offset_ns)  # realtime: wait until the deadline; max: the frame clock moves there
-        if behind(None):
-            return  # a newer reference frame is already due: it supersedes this one
+        if (next_rel_ns is not None and due(next_rel_ns)) or behind(None):
+            return  # overslept into the next release / a newer reference frame is due: drain it first
         s = latest.newest_step(clock.now())
         if s is not None:
             emit(*s[:3], sync=s[3])
 
     end_of_recording = count is None or start + count >= len(cameras.timestamps_ns(cams[0]))
-    for t_rel, _, cam, idx, t_cap in events:
+    for i, (t_rel, _, cam, idx, t_cap) in enumerate(events):
         service_deadline(t_rel)
+        nxt = events[i + 1][0] if i + 1 < len(events) else None
         n = cameras.native(cam, idx)
         clock.release(t_rel)
         t = t_cap + clock.offset_ns  # capture time on this host's clock (= release time without injection)
@@ -191,6 +196,8 @@ def run(client, loop, cameras, state, clock: ReplayClock, *, cams: list, start: 
             latest.add_frame(cam, int(n["seq"]), t, clock.now())
             if behind(idx):
                 continue  # a newer reference frame is already due: it supersedes this one (sync_superseded)
+            if nxt is not None and (nxt == t_rel or due(nxt)):
+                continue  # drain every frame released at the same time / already due before deciding (live drain)
             s = latest.newest_step(clock.now())
             if s is not None:
                 emit(*s[:3], sync=s[3])
@@ -200,7 +207,7 @@ def run(client, loop, cameras, state, clock: ReplayClock, *, cams: list, start: 
         feed.feed(t + FRAME_ARRIVAL_NS)  # robot rows / gripper samples reach the host before the frame
         step_sets(client, live_m5.poll(), cams, take, newest_only=clock.pace == "realtime", counts=loop.counts)
     if latest is not None and end_of_recording:  # the recording ends: the newest reference frame steps on what was
-        service_deadline(2**62)  # released, at its deadline if it waits for a partner (a live stream has no end:
+        service_deadline(None)  # released, at its deadline if it waits for a partner (a live stream has no end:
         s = latest.newest_step(clock.now(), flush=True)  # no flush mid-recording)
         if s is not None:
             emit(*s[:3], sync=s[3])

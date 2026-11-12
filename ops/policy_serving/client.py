@@ -193,6 +193,12 @@ class PolicyClient:
     def cameras(self) -> list:
         return list(self.spec["camera_ids"])
 
+    @property
+    def frame_capacity(self) -> int:
+        """Frames kept per camera (the trained span or ``frame_buffer``): each reaches the server (sent with the next
+        step, or already held there), so any of the newest ``frame_capacity`` frames can end a history."""
+        return int(self._capacity)
+
     def connect(self) -> dict:
         """Open the connection and a NEW session (also after a takeover); returns the bound InputSpec JSON."""
         self.taken_over = None

@@ -849,7 +849,7 @@ def test_latest_frames_rule_waits_bounded_and_counts_warnings():
     reference frame supersedes an unstepped one; M5 (informational) is declared to the server when final."""
     P = PERIOD_NS
     declared, counts = [], collections.Counter()
-    client = SimpleNamespace(add_sync_set=lambda ids, d: declared.append((dict(ids), d)))
+    client = SimpleNamespace(add_sync_set=lambda ids, d: declared.append((dict(ids), d)), frame_capacity=3)
     cams = ["a", "b", "c"]
     lf = syncsets.LatestFrames(client, None, None, cams, period_s=1 / 15, counts=counts)
     T = 10**12
@@ -892,6 +892,18 @@ def test_latest_frames_rule_waits_bounded_and_counts_warnings():
     cap.add_frame("a", 1, T, now_ns=T + 4 * P)
     end_ids, _, _, rec = cap.newest_step(T + 4 * P)
     assert end_ids == {"a": 1, "b": 8, "c": 8} and rec["mismatch"] and counts["sync_cap_fallback"] == 2
+    # candidates are only the client's retained frames (frame_capacity): a reference 17 frames late gets the
+    # partners' NEWEST frame (assemblable), never an evicted older one
+    late = syncsets.LatestFrames(client, None, None, cams, period_s=1 / 15, counts=counts)
+    for k in range(17):
+        for c in "bc":
+            late.add_frame(c, k, T + k * P, now_ns=T + k * P + 65_000_000)
+    late.add_frame("a", 0, T, now_ns=T + 17 * P)
+    end_ids, _, _, rec = late.newest_step(T + 17 * P)
+    assert late.retain == 3 and end_ids == {"a": 0, "b": 16, "c": 16} and counts["sync_cap_fallback"] == 4
+    one = syncsets.LatestFrames(SimpleNamespace(add_sync_set=lambda *a: None), None, None, cams, period_s=1 / 15,
+                                counts=collections.Counter())
+    assert one.retain == 1  # a client without frame_capacity: only the newest frame is a candidate
 
     class M5:  # informational M5: final states -> displacement declared with the step
         sets = SimpleNamespace(cameras=cams)
@@ -922,6 +934,60 @@ def test_latest_frames_rule_waits_bounded_and_counts_warnings():
     assert m5.counts == {"sets": 3, "over_bound": 2, "within_bound": 1}
     with pytest.raises(ValueError, match="training order"):
         syncsets.LatestFrames(client, m5, state, cams[::-1], period_s=1 / 15, counts=counts2)
+
+
+class _FakeTime:
+    """Deterministic time for replay.run: monotonic_ns frozen except through sleep; ``oversleep(d)`` adds to a sleep."""
+
+    def __init__(self, oversleep=lambda d: 0.0):
+        self.now, self.oversleep = 10**15, oversleep
+
+    def monotonic_ns(self):
+        return self.now
+
+    def sleep(self, d):
+        self.now += int(round((d + self.oversleep(d)) * 1e9))
+
+
+def _sync_replay(monkeypatch, pace, inject, fake_time, n=8):
+    """replay.run (latest rule) on two fake free-running cameras with equal phases; returns rows and counts."""
+    monkeypatch.setattr(replay, "time", fake_time)
+    t0 = 10**12
+    times = {c: np.array([t0 + k * PERIOD_NS for k in range(n)], np.int64) for c in ("a", "b")}
+    cameras = SimpleNamespace(timestamps_ns=lambda c: times[c], K_native=lambda c: None,
+                              native=lambda c, i: {"seq": int(i), "rgb": None, "acquire_ms": 0.0, "alignment": "x"})
+    client = SimpleNamespace(spec={"modalities": ["rgb"], "frame_period_s": 1 / 15}, choices={}, frame_capacity=3,
+                             add_frame_native=lambda *a, **k: None, add_sync_set=lambda *a: None)
+    counts = collections.Counter()
+    lp = SimpleNamespace(counts=counts, step=lambda end_ids, t, ref, **k: {"end_ids": dict(end_ids), "status": "ok",
+                                                                            "observation_time_ns": t})
+
+    def no_state(t):
+        raise robot_state.StateUnavailable("fake")
+
+    clock = replay.ReplayClock(t0, pace)
+    rows = replay.run(client, lp, cameras, SimpleNamespace(bound_state=no_state), clock, cams=["a", "b"],
+                      inject=inject)
+    return rows, counts
+
+
+def test_replay_latest_rule_drains_due_frames_before_a_deadline_step(monkeypatch):
+    """Codex round 2: a partner released EXACTLY at the wait deadline (max pace, deterministic frame clock) and a
+    partner already due after a late wake-up from the deadline sleep (realtime) are drained before the step, as the
+    live loop (draining every due frame each iteration) does: no stale partner, no expired wait."""
+    wait_ms = int(PERIOD_NS / 2) / 1e6
+    rows, counts = _sync_replay(monkeypatch, "max", {"delay_ms": {"b": wait_ms}}, _FakeTime())
+    assert len(rows) == 8 and all(r["end_ids"]["a"] == r["end_ids"]["b"] for r in rows), [r["end_ids"] for r in rows]
+    assert counts["sync_mismatch"] == 0 and counts["sync_partner_wait_expired"] == 0
+    # realtime: b delivered 50 ms late; the 33.3 ms deadline sleep oversleeps by 25 ms (wakes after b's release)
+    late_wake = _FakeTime(oversleep=lambda d: 0.025 if abs(d - PERIOD_NS / 2e9) < 1e-3 else 0.0)
+    rows, counts = _sync_replay(monkeypatch, "realtime", {"delay_ms": {"b": 50.0}}, late_wake)
+    assert len(rows) >= 7 and all(r["end_ids"]["a"] == r["end_ids"]["b"] for r in rows), [r["end_ids"] for r in rows]
+    assert counts["sync_mismatch"] == 0
+    # control: the same delay without the late wake-up steps at the deadline on b's previous frame
+    rows, counts = _sync_replay(monkeypatch, "realtime", {"delay_ms": {"b": 50.0}}, _FakeTime())
+    assert counts["sync_partner_wait_expired"] >= 7 and counts["sync_mismatch"] >= 7
+    assert all(r["end_ids"]["b"] == r["end_ids"]["a"] - 1 for r in rows[1:-1]), [r["end_ids"] for r in rows]
 
 
 def test_replay_episode_composition_and_cli_with_a_config(policies, recording, tmp_path, spies):

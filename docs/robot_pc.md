@@ -495,9 +495,11 @@ the action-age bound (`max_action_age_ms`, measured from the newest end frame) a
   contributes its newest frame captured no later than half a frame period after the reference frame (a frame of the
   next instant is never mixed in). A camera whose newest frame is more than half a period older than the reference is
   waited for at most half a period (`sync_partner_wait_expired`), then its newest (stale) frame is used. No step is
-  taken before every camera has delivered a frame. A camera with no frame at or before the cap (the reference camera
-  itself delivers that late) contributes its newest frame (`sync_cap_fallback`). Recorded replay takes a waiting step
-  at its deadline when no frame is released before it, as the live loop (1 ms polling) does.
+  taken before every camera has delivered a frame. Candidates are the camera's frames the client still retains
+  (`PolicyClient.frame_capacity`: each reaches the server, so the end frame is always assemblable); a camera with no
+  retained frame at or before the cap (the reference camera itself delivers that late) contributes its newest frame
+  (`sync_cap_fallback`). Recorded replay takes a waiting step at its deadline only when no frame is released at or
+  before it and drains every due frame first (realtime late wake-ups too), as the live loop (1 ms polling) does.
 * **Sync record** (row key `sync`, in the session H5 `policy/row_json` and the rows JSONL): per-camera frame ids and
   capture times, each frame's age at the step (`age_ms`, robot-PC monotonic clock) and relative to the observation
   time (`age_rel_ms`), pairwise offsets (`offsets_ms`, `a|b` = t_a - t_b), the largest offset from the reference camera
