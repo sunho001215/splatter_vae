@@ -623,8 +623,9 @@ def check_static_eval(se: dict, full_path, verify_sources: bool = True) -> None:
     (strict schema: episodes and held-out episodes equal the solve's; one input entry list per episode with path +
     sha256 per file, release/1 first, pairwise supplements after; K sources and code identity with sha256), or that
     does not reproduce release/1 (recomputed here from the embedded measurements, never a cached flag), or whose input
-    / K-source files are missing, changed or not bound to their release/1 file (``rehash_static_eval_inputs``;
-    ``verify_sources`` is switched off only by unit tests of the schema)."""
+    / K-source files are missing, changed or not bound to their release/1 file (``rehash_static_eval_inputs``), or
+    whose measurements, dt table, manifest or code identity differ from a recomputation from those verified sources
+    with this code (``recompute_static_eval``). Publication and ``verdict`` therefore run where the evidence is."""
     if se.get("format") != "s4d-calib-static-eval/2" or se.get("frames_validated") is not True:
         raise SystemExit("not a timestamp-validated s4d-calib-static-eval/2 evaluation")
     if not _ref_ok(se.get("full")) or se["full"]["sha256"] != _sha256(full_path):
@@ -655,6 +656,24 @@ def check_static_eval(se: dict, full_path, verify_sources: bool = True) -> None:
         if src:
             raise SystemExit(f"static evaluation sources not verified ({len(src)} problems, e.g. {src[:3]}); run "
                              "where the evidence is (remote) or with a complete mirror")
+        diff = [k for k, a, b in ((k, se.get(k), v) for k, v in recompute_static_eval(se, full_path).items())
+                if json.dumps(a, sort_keys=True) != json.dumps(b, sort_keys=True)]
+        if diff:
+            raise SystemExit(f"static evaluation differs from its recomputation from the verified sources in {diff}")
+
+
+RECOMPUTED_FIELDS = ("episodes", "heldout_episodes", "K_nominal", "K_sources", "per_frame_pair", "per_episode_extext",
+                     "heldout_extext_sam_static", "release1_reproduction", "dt", "inputs", "frames_validated", "code")
+
+
+def recompute_static_eval(se: dict, full_path) -> dict:
+    """The static evaluation recomputed from the sources it names (the solve's corr / evidence directories, the match
+    directories, the episodes' task root) with THIS code: every measurement, the dt table (derived from the files),
+    the input manifest and the code identity must equal the stored ones (``check_static_eval``). Deterministic."""
+    ks = se.get("K_sources") or {}
+    new = static_eval(full_path, Path(ks["per_episode"]["path"]).parent, Path(ks["heldout"]["path"]).parent,
+                      list(se["match_dirs"]), se["task_root"], per_frame_pair=int(se["per_frame_pair"]))
+    return {k: new.get(k) for k in RECOMPUTED_FIELDS}
 
 
 def rehash_static_eval_inputs(se: dict) -> list:

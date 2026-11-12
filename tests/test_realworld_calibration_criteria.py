@@ -523,7 +523,25 @@ def _realistic_poses(rdir):
             p.write_text(json.dumps(d))
 
 
-def test_publisher_criteria_v2_keeps_release1_and_documents_both(tmp_path):
+@pytest.fixture
+def recompute_as_stored(monkeypatch):
+    """The fixtures' static evaluations have no real sources: the recomputation returns the stored fields (its own
+    checks - real recomputation from match files - are in test_match_inputs_* / test_static_per_episode_*);
+    ``mismatch`` lets a test make the recomputation disagree."""
+    from s4d.realworld.calib import criteria as C
+
+    state = {"mismatch": None}
+
+    def fake(se, full_path):
+        out = {k: json.loads(json.dumps(se.get(k))) for k in C.RECOMPUTED_FIELDS}
+        if state["mismatch"]:
+            out.update(state["mismatch"])
+        return out
+    monkeypatch.setattr(C, "recompute_static_eval", fake)
+    return state
+
+
+def test_publisher_criteria_v2_keeps_release1_and_documents_both(tmp_path, recompute_as_stored):
     from s4d.realworld.calib.criteria import GATE_VERSION_V2, V2
     from s4d.realworld.calib.loma.publish import GATE_VERSION, publish
     from s4d.realworld.calib.rig import rig_camera_status
@@ -573,6 +591,16 @@ def test_publisher_criteria_v2_keeps_release1_and_documents_both(tmp_path):
         b.static_eval, b.out = str(tmp_path / "a" / f"{name}.json"), str(tmp_path / "a" / f"rig-{name}.json")
         with pytest.raises(SystemExit, match=msg):
             publish(b)
+    # a stored evaluation that differs from its recomputation from the verified sources (e.g. dt rows relabelled
+    # 30 -> 8 ms, cached measurements, code identity): refused
+    (tmp_path / "a" / "se-rc.json").write_text(json.dumps(se))
+    b.static_eval = str(tmp_path / "a" / "se-rc.json")
+    for k, v in (("dt", {"rows": []}), ("per_episode_extext", {}), ("code", {"criteria.py": "0" * 64})):
+        recompute_as_stored["mismatch"] = {k: v}
+        b.out = str(tmp_path / "a" / f"rig-rc-{k}.json")
+        with pytest.raises(SystemExit, match="recomputation"):
+            publish(b)
+    recompute_as_stored["mismatch"] = None
     # impossible G4 distances or missing support -> held by G4
     for name, mut in (("g4neg", {"line_median_px": -1.0, "transfer_ab_median_px": -1.0, "transfer_ba_median_px": -1.0}),):
         bad = json.loads(json.dumps(se))
@@ -595,7 +623,7 @@ def test_publisher_criteria_v2_keeps_release1_and_documents_both(tmp_path):
     assert all(doc["cameras"][c]["held_by"] == ["G5b"] for c in CAMS)
 
 
-def test_publisher_criteria_v2_keeps_the_release1_g5a_exception_rule_with_decision_support(tmp_path):
+def test_publisher_criteria_v2_keeps_the_release1_g5a_exception_rule_with_decision_support(tmp_path, recompute_as_stored):
     from s4d.realworld.calib.loma.publish import publish
     from s4d.realworld.calib.rig import rig_camera_status
 
