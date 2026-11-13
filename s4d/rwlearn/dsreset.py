@@ -195,3 +195,139 @@ def write_bundle(out, manifests, prep):
         else:
             plan.append(row)
     (out / 'prep-plan.json').write_text(json.dumps(plan, indent=2) + '\n')
+
+
+def learning_inputs(manifest, ingest, store):
+    """Bind an immutable variant to ordinary per-episode ingest/QA evidence.
+
+    This is an explicitly scoped gate view, not an edit of the live ingest manifest.
+    The exact raw hashes and selected label set replace the old 100-only count;
+    every validation, QA family and calibration check is still gate.evaluate's.
+    """
+    from s4d.rwlearn import gate
+    from s4d.rwlearn.identity import store_identities
+    validate_manifest(manifest)
+    task = manifest['task']
+    rows = manifest['episodes']
+    if task not in TASKS or manifest['variant'] not in ('S', 'SF') or not rows:
+        raise ValueError('not a paired dataset manifest')
+    if len({r['id'] for r in rows}) != len(rows) or len({r['sha256'] for r in rows}) != len(rows):
+        raise ValueError('duplicate manifest episode/content')
+    report = manifest_gate(manifest, ingest)
+    mapping = {}
+    identities = store_identities(store)
+    for r in rows:
+        matches = [ep for ep, rec in identities.items() if rec['task'] == task
+                   and rec.get('raw_sha256') == r['sha256']]
+        if len(matches) != 1:
+            raise ValueError(f"{r['id']}: store needs exactly one matching raw sha256")
+        mapping[r['id']] = matches[0]
+    if set(mapping.values()) != set(store.episodes()):
+        raise ValueError('store must contain exactly the variant manifest episodes')
+    report = gate.bind_store_episodes(report, {task: store.episodes()}, identities)
+    split = {s: [mapping[r['id']] for r in rows if r['split'] == s] for s in ('train', 'validation')}
+    if not split['train'] or not split['validation']:
+        raise ValueError('both train and validation episodes required')
+    outcomes = {mapping[r['id']]: r['label'] == 'success' for r in rows}
+    report['dataset_manifest_sha256'] = hashlib.sha256(json.dumps(manifest, sort_keys=True).encode()).hexdigest()
+    return {'gate_report.json': report, 'split_seed0.json': split, 'outcomes.json': outcomes,
+            'manifest.json': manifest}
+
+
+def validate_manifest(m):
+    """Validate a saved manifest without trusting its cached split/outcome maps."""
+    from s4d.rwlearn.identity import recording_label
+    if m.get('schema') != 'dsreset-episodes/v1' or m.get('task') not in TASKS or m.get('variant') not in ('S','SF'):
+        raise ValueError('not a dsreset episode manifest')
+    rows = m.get('episodes', [])
+    if not rows or len({r['id'] for r in rows}) != len(rows) or len({r['sha256'] for r in rows}) != len(rows):
+        raise ValueError('missing/duplicate episode identities')
+    for r in rows:
+        path = Path(r['path'])
+        if (r['task'] != m['task'] or r['label'] not in LABELS or recording_label(r['path']) != r['label']
+                or 'discarded' in path.parts or not EPISODE.fullmatch(path.name)
+                or not path.is_absolute() or path.name != r['filename']
+                or r['id'] != f"{m['task']}-{r['label']}-{path.stem}" or not re.fullmatch('[0-9a-f]{64}',r['sha256'])
+                or r['split'] not in ('train','validation') or (m['variant']=='S' and r['label']!='success')):
+            raise ValueError(f"invalid directory label/identity/split: {r['id']}")
+    want = {s:[r['id'] for r in rows if r['split']==s] for s in ('train','validation')}
+    outcomes = {r['id']:r['label']=='success' for r in rows}
+    if m.get('split') != want or m.get('outcomes') != outcomes:
+        raise ValueError('cached split/outcome map differs from episode records')
+    if not all(want.values()):
+        raise ValueError('both train and validation episodes required')
+    return m
+
+
+def manifest_gate(manifest, ingest):
+    """Evaluate the established QA rules on the exact immutable variant membership."""
+    from s4d.rwlearn import gate
+    validate_manifest(manifest)
+    task, rows = manifest['task'], manifest['episodes']
+    selected = {}
+    for r in rows:
+        candidates = [e for e in ingest['episodes'].values()
+                      if e.get('task') == task and e.get('sha256') == r['sha256']]
+        if len(candidates) != 1:
+            raise ValueError(f"{r['id']}: require exactly one live ingest record for raw hash")
+        e = copy.deepcopy(candidates[0])
+        e['filename'] = r['path']
+        e['source'] = {**e.get('source', {}), 'path': r['path']}
+        e['episode_label'] = r['label']
+        selected[r['id']] = e
+    view = {'schema': gate.SCHEMA, 'schema_version': gate.SCHEMA_VERSION,
+            'episodes': selected, 'counts': {task: {'target': len(rows), 'complete': True}}}
+    report = gate.evaluate(view, [task], target=len(rows), amendments={})
+    if not report['passed']:
+        raise ValueError(f"{task}/{manifest['variant']}: QA gate failed: {report['tasks'][task]['problems']}")
+    return report
+
+
+def available_preprocessing(task, roots, *, inspect=inspect_raw):
+    """Provisional prep inventory while verified transfers arrive; never a training split.
+
+    Only complete filenames are opened. Invalid raw QA is reported per episode so
+    one rejected recording does not prevent phase-A prep of other complete files.
+    Final manifests still require exact counts, transfer markers and all raw QA.
+    """
+    if task not in TASKS or set(roots) != set(LABELS):
+        raise ValueError('task/label roots must be explicit')
+    rows, rejected = [], []
+    for label in LABELS:
+        root = Path(roots[label])
+        if root.is_symlink() or 'discarded' in root.parts:
+            raise ValueError('unsafe raw root')
+        if not root.exists():
+            continue
+        for path in sorted(root.iterdir()):
+            if not EPISODE.fullmatch(path.name):
+                continue
+            try:
+                before = path.stat()
+                qa = inspect(path)
+                digest = sha256(path)
+                after = path.stat()
+                if (before.st_size, before.st_mtime_ns, before.st_ctime_ns) != (
+                        after.st_size, after.st_mtime_ns, after.st_ctime_ns):
+                    raise ValueError('changed while inspecting/hashing')
+                rows.append(dict(id=f'{task}-{label}-{path.stem}',task=task,label=label,filename=path.name,
+                                 path=str(path.resolve()),sha256=digest,qa=qa))
+            except (ValueError, OSError) as exc:
+                rejected.append(dict(path=str(path),label=label,reason=str(exc)))
+    return {'SF':{'task':task,'episodes':rows}}, rejected
+
+
+def reuse_from_ingest(manifest, ingest):
+    """Discover existing success outputs by exact raw hash; downstream full QA remains required."""
+    reuse = {}
+    for row in manifest['episodes']:
+        if row['label'] != 'success':
+            continue
+        matches = [e for e in ingest['episodes'].values()
+                   if e.get('task') == manifest['task'] and e.get('sha256') == row['sha256']]
+        if len(matches) != 1:
+            continue
+        stage = matches[0].get('preprocessing',{}).get('stages',{}).get('train_data',{})
+        if stage.get('status') == 'done' and stage.get('input_sha256') == row['sha256'] and stage.get('outputs'):
+            reuse[row['id']] = {'raw_sha256':row['sha256'],'train_data':stage['outputs']}
+    return reuse

@@ -1,0 +1,110 @@
+# Phase A may run before the NEW drawer-v2 rig is accepted. Geometry fails closed.
+output_root: /home/ws/ws/realworld-20261104/processed/ep1-standard
+baselines:
+- snerl
+- mvp3d
+- sincro
+- reviwo
+- dynamo
+adapter:
+  name: panda_teleop_h5
+  config:
+    episodes: {}
+    include_ir: true
+    robot:
+      urdf_path: /home/ws/ws/validation-20261031/panda_assets/panda_robotiq_2f85_droid_iso50.urdf
+      gripper_model: robotiq_2f_85
+      gripper_joint: robotiq_85_left_knuckle_joint
+      base_frame: panda_link0
+      flange_frame: panda_link8
+      joint_names:
+      - panda_joint1
+      - panda_joint2
+      - panda_joint3
+      - panda_joint4
+      - panda_joint5
+      - panda_joint6
+      - panda_joint7
+      arm_note: Franka Emika Panda (user-confirmed 2026-11-05; the file records only
+        panda_link0/panda_link8 frames); Panda meshes and joint limits; same kinematic
+        chain as FR3; DROID Robotiq mount without wrist camera; mount offset nominal
+        (Robotiq drawings), not measured
+workers:
+  foundation_stereo:
+    python: /opt/envs/foundation_stereo/bin/python
+    repo_dir: /opt/upstream/FoundationStereo
+    expected_commit: 6e8806816b533e4d13ddbb95ffa907b797060a62
+    checkpoint: /ram/weights/foundation_stereo/23-51-11/model_best_bp2.pth
+  trackeverything:
+    python: /opt/envs/trackeverything/bin/python
+    repo_dir: /opt/upstream/trackeverything
+    expected_commit: dfb29b505cf2ea954f8697fb612c2429668dd3a0
+    checkpoint: /ram/weights/trackeverything/model.pth
+  sam3:
+    python: /opt/envs/sam3/bin/python
+    repo_dir: /opt/upstream/sam3
+    expected_commit: f1647e8d0c1d280991f4d1b7d974c2704537fe66
+    checkpoint: /ram/weights/sam3/sam3.pt
+  dino_snerl:
+    python: /opt/envs/s4d/bin/python
+    expected_commit: 7c446df5b9f45747937fb0d72314eb9f7b66930a
+  s4d_kernels:
+    python: /opt/envs/s4d/bin/python
+stages:
+  sensor_depth:
+    chunk: 32
+    min_depth_m: 0.1
+    max_depth_m: 6.0
+    splat: 2
+  foundation_stereo_depth:
+    chunk: 8
+    valid_iters: 32
+    hiera: 0
+    min_disparity: 0.5
+    min_depth_m: 0.1
+    max_depth_m: 6.0
+    splat: 2
+  calibrate:
+    evidence: rgbd
+    depth_stage: foundation_stereo_depth
+    robot_mask_stage: sam3_masks
+    every: 2
+    max_frames: 200
+    landmark_links: []
+    overlays: 4
+    rig_calibration: /home/compu/kaist/sunho/realworld/rig/UNACCEPTED-drawer-open-v2.json
+  track_everything:
+    depth_stage: foundation_stereo_depth
+    window: 16
+    step: 8
+    grid_stride: 16
+    model_hw:
+    - 384
+    - 512
+    num_iters: 3
+  track_motion:
+    min_segment_samples: 5
+    max_depth_hole_frames: 2
+    max_gap_factor: 1.5
+    max_speed_m_s: 1.5
+    reference_robot_distance_m: 0.15
+    reference_quantile_move: 0.995
+    reference_quantile_static: 0.9
+    min_move_px: 1.5
+    min_move_m: 0.005
+    min_support: 2
+  train_data:
+    task: drawer-open-v2
+    depth_stage: foundation_stereo_depth
+    max_sync_ns: 20000000
+    gripper_points: 32
+  sam3_masks:
+    prompts:
+      robot arm: robot
+      end effector: robot
+      transparent drawer: object
+      handle: object
+      white box: fixture
+    mode: segment_video
+    chunk: 179
+    score_threshold: 0.5

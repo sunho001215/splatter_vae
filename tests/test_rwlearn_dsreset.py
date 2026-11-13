@@ -81,3 +81,125 @@ def test_wrong_task_calibration_refused(tmp_path):
         'rig_calibration': '/rig/drawer-open-v1.json'}, 'train_data': {}}}
     with pytest.raises(ValueError, match='rig path'):
         prep_bundle(m, template, tmp_path / 'processed')
+
+
+def test_outcome_labels_preserve_success_arrays_and_bootstrap_failure(tmp_path):
+    import copy
+    import h5py
+    import numpy as np
+    from s4d.rwlearn import actions as A, fql_data as FD
+    from s4d.rwlearn.store import MemoryStore
+    from tests.test_rwlearn_fql_pipeline import store_on_fixture, FIXTURE
+    base = store_on_fixture(n=8, hw=8)
+    template = next(iter(base._eps.values()))
+    eps = {}
+    for label in ('success', 'failure'):
+        raw = A.raw_from_arrays(np.load(FIXTURE))
+        for c in raw.cameras.values():
+            c['t'], c['segment'] = c['t'][:8], c['segment'][:8]
+        raw.gripper_command = np.clip(raw.gripper_command + (.01 if label == 'failure' else 0), 0, 1)
+        path = tmp_path / f'{label}.npz'
+        np.savez(path, **A.raw_to_arrays(raw))
+        eps[label] = copy.deepcopy(template)
+        eps[label]['raw'] = str(path)
+    store = MemoryStore(eps, (8, 8))
+    success_only = MemoryStore({'success': eps['success']}, (8, 8))
+    old, new, sf = [tmp_path / f'{s}.h5' for s in ('old', 'new', 'sf')]
+    FD.build_fql_dataset(success_only, 'e2e_cnn', None, old, episodes=['success'], assume_final_success=True)
+    FD.build_fql_dataset(success_only, 'e2e_cnn', None, new, episodes=['success'], outcomes={'success': True})
+    FD.build_fql_dataset(store, 'e2e_cnn', None, sf, episodes=['success', 'failure'],
+                         outcomes={'success': True, 'failure': False})
+    with h5py.File(old) as a, h5py.File(new) as b, h5py.File(sf) as f:
+        for cam in a['episodes/success']:
+            for key in a[f'episodes/success/{cam}']:
+                # Explicit S labels preserve every existing training tensor bit for bit.
+                np.testing.assert_array_equal(a[f'episodes/success/{cam}/{key}'][:],
+                                              b[f'episodes/success/{cam}/{key}'][:])
+            g, h = f[f'episodes/success/{cam}'], f[f'episodes/failure/{cam}']
+            for data, successful in ((g, True), (h, False)):
+                ok = data['transition_ok'][:]
+                final = np.flatnonzero(ok)[-1]
+                assert final == 6 and not ok[-1]
+                assert data['mask'][final] == (0 if successful else 1)
+                assert data['reward'][final] == (0 if successful else -1)
+                assert data['terminal'][final]  # legacy chain boundary, not an absorbing mask
+                assert bool(data['success'][:].any()) == successful
+                assert data['reward'][:][ok][:-1].tolist() == [-1.] * (ok.sum()-1)
+
+
+def test_tiny_cpu_fql_prefers_success_actions_at_matched_states():
+    import torch
+    from s4d.rwlearn.fql import FQLAgent
+    old_threads = torch.get_num_threads()
+    torch.set_num_threads(1)
+    try:
+        agent = FQLAgent.create(0, 2, 1, {'actor_hidden_dims': (16, 16), 'value_hidden_dims': (16, 16),
+                                         'batch_size': 32, 'alpha': 10., 'normalize_q_loss': True})
+        # Two 2-transition trajectories: same states, different actions/outcomes.
+        states = torch.tensor([[0., 0.], [0., 1.], [0., 0.], [0., 1.]])
+        actions = torch.tensor([[.7], [.7], [-.7], [-.7]])
+        batch = {'observations': states.repeat(8, 1), 'actions': actions.repeat(8, 1),
+                 'next_observations': torch.tensor([[0., 1.], [0., 2.], [0., 1.], [0., 2.]]).repeat(8, 1),
+                 'rewards': torch.tensor([-1., 0., -1., -1.]).repeat(8),
+                 'masks': torch.tensor([1., 0., 1., 1.]).repeat(8)}
+        for _ in range(500):
+            agent.update(batch)
+        with torch.no_grad():
+            q = agent.critic(states, actions).mean(0)
+        assert torch.all(q[:2] > q[2:] + .02), q
+    finally:
+        torch.set_num_threads(old_threads)
+
+
+def test_provisional_prep_is_not_a_training_manifest(tmp_path):
+    from s4d.rwlearn.dsreset import available_preprocessing, validate_manifest
+    roots = fixture_roots(tmp_path)
+    Path(str(roots['failure'])+'.VERIFIED').unlink()
+    def qa(path):
+        if path.name == 'episode_000001.h5':
+            raise ValueError('nonmonotonic camera')
+        return {}
+    m, rejected = available_preprocessing('drawer-open-v2', roots, inspect=qa)
+    assert len(m['SF']['episodes']) == 18 and len(rejected) == 2
+    assert not any('partial' in row['path'] or 'discarded' in row['path'] for row in m['SF']['episodes'])
+    with pytest.raises(ValueError, match='manifest'):
+        validate_manifest(m['SF'])
+
+
+def test_label_aware_raw_identity_supports_overlapping_counters():
+    from s4d.rwlearn.identity import match_recordings, raw_identity
+    a = raw_identity('covering','/raw/covering/episode_000001.h5','a'*64)
+    b = raw_identity('covering','/raw/covering-failure/episode_000001.h5','b'*64)
+    expected = {'s':a,'f':b}
+    assert match_recordings(expected,{'success-copy':a,'failure-copy':b}) == {'success-copy':'s','failure-copy':'f'}
+    with pytest.raises(RuntimeError,match='duplicate'):
+        match_recordings({'s':a,'again':a},{'s':a})
+    with pytest.raises(RuntimeError,match='sha256 differs'):
+        match_recordings(expected,{'s':dict(a,raw_sha256='c'*64),'f':b})
+
+
+def test_manifest_gate_keeps_calibration_and_family_checks(tmp_path):
+    import copy
+    from s4d.rwlearn.dsreset import manifest_gate, validate_manifest
+    from tests.test_rwlearn_gate import entry
+    m = paired_manifests('covering', fixture_roots(tmp_path), inspect=lambda p: {})['SF']
+    ingest = {'episodes':{r['id']:entry('covering',int(r['filename'][8:14]),sha=r['sha256'],validated=True)
+                          for r in m['episodes']}}
+    report = manifest_gate(m,ingest)
+    assert report['tasks']['covering']['target'] == 20
+    assert report['calibration_hold']['covering']['passed']
+    tampered = copy.deepcopy(m)
+    tampered['episodes'][0]['split'] = 'validation' if tampered['episodes'][0]['split']=='train' else 'train'
+    with pytest.raises(ValueError,match='cached split'):
+        validate_manifest(tampered)
+    tampered = copy.deepcopy(m)
+    tampered['episodes'][0]['label'] = 'failure'
+    with pytest.raises(ValueError,match='directory label'):
+        validate_manifest(tampered)
+    # Family failure must remain a hard block for the corresponding consumer.
+    first = next(iter(ingest['episodes'].values()))
+    first['preprocessing']['stages']['qa']['metrics']['families']['geometry']['passed'] = False
+    report = manifest_gate(m,ingest)
+    from s4d.rwlearn import gate
+    assert not gate.task_passed(report,'covering','ours')
+    assert gate.task_passed(report,'covering','dynamo')
