@@ -380,7 +380,8 @@ def evaluate(manifest: dict, tasks, *, required_stages=REQUIRED_STAGES, target: 
                 continue
             idx = e.get("episode_index")
             index_identity = (e.get("episode_label", "success"), idx)
-            if not isinstance(idx, int) or index_identity in indices:
+            if (e.get("episode_label", "success") not in ("success", "failure")
+                    or not isinstance(idx, int) or index_identity in indices):
                 problems.append(f"{key}: missing or duplicate episode index {idx!r}")
                 continue
             indices.add(index_identity)

@@ -60,10 +60,15 @@ RESOLVERS = {
     "scripts/train.py": {"inputs": ("--set",), "outputs": OUTPUT_OPTIONS, "config": "pretrain"},
     "scripts/export_encoder.py": {"inputs": ("--run", "--checkpoint"), "outputs": ("--out",), "config": None},
 }
+DSRESET_CHECK = "scripts/realworld_dsreset_check.py"
+DSRESET_ARTIFACT = "scripts/realworld_dsreset_artifact.py"
+RESOLVERS[DSRESET_CHECK] = {"inputs": ("--manifest", "--split", "--outcomes", "--gate-report", "--store"),
+                            "outputs": ("--out",), "config": None}
+RESOLVERS[DSRESET_ARTIFACT] = {"inputs": ("--source",), "outputs": ("--out",), "config": None}
 OURS_CONTINUATION = "scripts/train_ours_continuation.py"
 OURS_EVAL = "scripts/evaluate_ours_length.py"
 OURS_OPTIONS = ("--name", "--output-root", "--set", "--source-checkpoint", "--source-sha256",
-                "--baseline-config", "--baseline-sha256", "--start-step", "--stop-step")
+                "--baseline-config", "--baseline-sha256", "--start-step", "--stop-step", "--continuation-config")
 OURS_EVAL_OPTIONS = ("--name", "--output-root", "--set", "--config", "--checkpoint")
 for _script in (OURS_CONTINUATION, OURS_EVAL):
     RESOLVERS[_script] = {"inputs": ("--set", "--checkpoint", "--source-checkpoint"),
@@ -106,7 +111,7 @@ BASELINE_INPUT_FIELDS = (("dataset", "hdf5_path"), ("data_interface", "split_man
                          ("data_interface", "gate_report"))
 # consumers whose LOCAL run dependencies must carry a matching closeout record (realworld_local.py closeout: required
 # results present, nonempty, hashed) - the scheduler marks a local exit-0 run done without that check (Codex review)
-CLOSEOUT_CONSUMERS = ("scripts/realworld_fql_dataset.py", "scripts/train_realworld_fql.py", "scripts/train_mvp3d.py",
+CLOSEOUT_CONSUMERS = (DSRESET_CHECK, DSRESET_ARTIFACT, "scripts/realworld_fql_dataset.py", "scripts/train_realworld_fql.py", "scripts/train_mvp3d.py",
                       OURS_CONTINUATION, OURS_EVAL)
 REMOTE_LOCK = REPO / "runs/setup/remote-driver.lock"
 
@@ -198,6 +203,7 @@ def _arguments(job: dict):
             for flag in ("--source-checkpoint", "--baseline-config", "--baseline-sha256", "--start-step", "--stop-step"):
                 parser.add_argument(flag, required=True)
             parser.add_argument("--source-sha256")
+            parser.add_argument("--continuation-config", default="configs/realworld/ours_ext/continuation.yaml")
         else:
             parser.add_argument("--config", nargs="+", required=True)
             parser.add_argument("--checkpoint", required=True)
@@ -216,6 +222,14 @@ def _arguments(job: dict):
         parser.add_argument("--no-wandb", action="store_true")
         if "--resume" in BASELINE_OPTIONS[script]:
             parser.add_argument("--resume", choices=list(RESUME_CHOICES[script]))
+    elif script == DSRESET_CHECK:
+        parser.add_argument("--stage", choices=("prep", "calib", "qa"), required=True)
+        for flag in ("manifest", "split", "outcomes", "gate-report", "store", "out"):
+            parser.add_argument("--" + flag, required=True)
+    elif script == DSRESET_ARTIFACT:
+        parser.add_argument("--source", required=True)
+        parser.add_argument("--kind", choices=("encoder", "policy"), required=True)
+        parser.add_argument("--out", required=True)
     elif script == FQL_DATASET:
         parser.add_argument("command", choices=["build"])
         for option in ("--store", "--condition", "--out"):
@@ -276,11 +290,29 @@ def _arguments(job: dict):
                 or parts[2] != "checkpoints" or not re.fullmatch(r"step_\d{7}\.pt", parts[3])):
             raise LocalInputError("Ours checkpoint must name a step checkpoint of a declared dependency")
         configs = [known.baseline_config] if script == OURS_CONTINUATION else known.config
-        if configs != ["configs/realworld/ours_ext/baseline200k.yaml"]:
+        dsreset = (script == OURS_CONTINUATION and job.get("id", "").startswith("rwv2-20261113-pre400k-ours-")
+                   and configs == [f"configs/realworld/dsreset/ours/{job.get('realworld_target')}-"
+                                   f"{'SF' if job['id'].endswith('-SF') else 'S'}.yaml"]
+                   and known.continuation_config == "configs/realworld/dsreset/continuation.yaml"
+                   and known.start_step == "200000" and known.stop_step == "400000")
+        if not dsreset and (configs != ["configs/realworld/ours_ext/baseline200k.yaml"] or
+                            (script == OURS_CONTINUATION and
+                             known.continuation_config != "configs/realworld/ours_ext/continuation.yaml")):
             raise LocalInputError("Ours length jobs require the pinned baseline200k science snapshot")
         allowed = {"data.store", "data.split_manifest", "data.gate_report", "model.anchor_stats"}
         if ({item.partition("=")[0] for item in known.set} != allowed or len(known.set) != len(allowed)):
             raise LocalInputError("Ours length inputs need exactly the four verified input path overrides")
+    if script == DSRESET_CHECK:
+        for flag in ("manifest", "split", "outcomes", "gate_report", "store"):
+            if _mapped(getattr(known, flag)) is None:
+                raise LocalInputError("dsreset readiness inputs must name mirrored remote files")
+        if PurePosixPath(known.store).name != "store.yaml":
+            raise LocalInputError("dsreset readiness needs a plain compact store.yaml")
+    if script == DSRESET_ARTIFACT:
+        parts = PurePosixPath(_rel(known.source)).parts
+        expected = "encoder.pt" if known.kind == "encoder" else "policy.pt"
+        if len(parts) != 3 or parts[0] != "runs" or parts[1] not in job.get("deps", []) or parts[2] != expected:
+            raise LocalInputError("dsreset artifact source must be an export/policy of a declared dependency")
     if script == FQL_DATASET:
         if known.condition not in LOCAL_DATASET_CONDITIONS:
             raise LocalInputError(f"local dataset construction supports {LOCAL_DATASET_CONDITIONS} only")
@@ -343,6 +375,8 @@ def needed_inputs(job: dict, *, remote_prefix: str = REMOTE_PREFIX) -> dict:
             if parts[1] not in job.get("deps", []):
                 raise LocalInputError(f"run output {value} is not an output of a declared dependency")
             dependencies.add((parts[1], _rel("/".join(parts[2:]) or ".")))
+    if job["script"] == DSRESET_ARTIFACT and known.kind == "policy":
+        dependencies.add((PurePosixPath(known.source).parts[1], "metrics.jsonl"))
     if job["script"] == NATIVE_DEPTH:  # load_rig reads the document's reference arrays beside it
         mirror.add(_rel(str(PurePosixPath(_mapped(known.rig, remote_prefix)).with_suffix(".reference.npz"))))
     if job["script"] == "scripts/export_encoder.py":
