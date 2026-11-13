@@ -66,6 +66,7 @@ FILE_CLASSES = {
     "tests/test_occlusion.py": "gpu",
     "tests/test_ops_helpers.py": "cpu",
     "tests/test_ops_layout.py": "cpu",
+    "tests/test_sync_wandb_canonical_guard.py": "cpu",  # W&B canonical guard, pure fakes, 2026-11-13
     "tests/test_policy_serving.py": "serial",  # Loopback policy sockets, session expiry and latency assertions.
     "tests/test_policy_staging.py": "serial",  # Serving threads and bounded shutdown/latency assertions.
     "tests/test_policy_staging_fql_settings.py": "cpu",
