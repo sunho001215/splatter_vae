@@ -1388,6 +1388,7 @@ def test_local_dataset_construction_maps_inputs_dependency_and_raw_root(mirrored
     ("out_name", "runs/<own id>/dataset.h5"), ("condition", "supports"),
     ("store_local", "mirrored compact store.yaml"), ("no_outcomes", "--outcomes must name a mirrored remote input"),
     ("descriptor_extra", "plain compact store.yaml"),
+    ("native_mirrored_store", "runs/<declared dependency>/store-native.yaml"),
 ])
 def test_local_dataset_construction_fails_closed(mirrored, monkeypatch, tmp_path, edit, reason):
     f = mirrored
@@ -1410,11 +1411,13 @@ def test_local_dataset_construction_fails_closed(mirrored, monkeypatch, tmp_path
     elif edit == "out_name":
         args[args.index("--out") + 1] = "runs/data-row/other.h5"
     elif edit == "condition":
-        args[args.index("--condition") + 1] = "mvp3d_single"
+        args[args.index("--condition") + 1] = "ours"  # mvp3d_* / sincro / snerl are local since 2026-11-13
     elif edit == "descriptor_extra":
         args[args.index("--store") + 1] = PREFIX + "/" + STORE
     elif edit == "store_local":
         args[args.index("--store") + 1] = "runs/x/store.yaml"
+    elif edit == "native_mirrored_store":  # a 3D-MVP dataset reads the native descriptor of its native dependency
+        args[args.index("--condition") + 1] = "mvp3d_single"
     else:
         i = args.index("--outcomes")
         del args[i:i + 2]
@@ -1481,3 +1484,217 @@ def test_e2e_dataset_waits_for_closeouts_of_its_ordering_dependencies(mirrored, 
     (finished / "rev-pre.json").write_text('{"job_id": "rev-pre", "files": {}}')
     with pytest.raises(rw.LocalInputError, match="invalid closeout record"):
         localize(f, e2e, finished_dir=finished)
+
+
+# ---- geometry family (pick-and-place, coordinator 2026-11-13): SinCro / SNeRL / 3D-MVP pretraining, the native-depth
+# stage with the sha-verified raw mapping, the native descriptor's overlay inventory, fqldata sincro / snerl / mvp3d_*
+RIG = "configs/cal/rig/rig.json"
+RIG_REF = "configs/cal/rig/rig.reference.npz"
+
+
+def geometry_rows(f):
+    plain_store(f)
+    for b in ("sincro", "snerl", "mvp3d"):
+        config = f.root / f"configs/realworld/baselines/{b}/task.yaml"
+        config.parent.mkdir(parents=True, exist_ok=True)
+        config.write_text("dataset: {hdf5_path: " + PREFIX + "/learning_inputs/old/store.yaml, batch_size: 4}\n"
+                          "data_interface: {source: realworld, split_manifest: " + PREFIX + "/old/split.json, "
+                          "gate_report: " + PREFIX + "/old/gate.json}\ntrain: {seed: 0}\n")
+    tail = ["data_interface.split_manifest=" + PREFIX + "/" + SPLIT, "data_interface.gate_report=" + PREFIX + "/" + GATE]
+    plain = ["--set", "dataset.hdf5_path=" + PREFIX + "/" + PLAIN, *tail]
+
+    def pre(name, b, extra=(), sets=plain, deps=()):
+        return row(name, role="realworld_pretrain", script=f"scripts/train_{b}.py", deps=list(deps), args=[
+            "--config", f"configs/realworld/baselines/{b}/task.yaml", "--name", name, "--output-root", "runs",
+            *extra, *sets])
+    return {"sincro": pre("sin-pre", "sincro"), "snerl": pre("sne-pre", "snerl", ("--resume", "auto")),
+            "mvp3d": pre("mvp-pre", "mvp3d", ("--resume", "auto"),
+                         ["--set", "dataset.hdf5_path=runs/nd/store-native.yaml", *tail], deps=("nd",))}
+
+
+def native_row(f):
+    plain_store(f)
+    for name, payload in ((RIG, b'{"format": "rig"}\n'), (RIG_REF, b"reference arrays")):
+        if not (f.mirror / name).exists():
+            (f.remote / name).parent.mkdir(parents=True, exist_ok=True)
+            (f.remote / name).write_bytes(payload)
+            rw.fetch([name], f.client, mirror=f.mirror)
+    return row("nd", role="realworld_fql", script=rw.NATIVE_DEPTH, deps=[], required_results=["store-native.yaml"],
+               args=["build", "--store", PREFIX + "/" + PLAIN, "--rig", PREFIX + "/" + RIG, "--out-dir",
+                     "runs/nd/overlays", "--out-store", "runs/nd/store-native.yaml", "--workers", "16"])
+
+
+def native_outputs(f, *, count=1, episode=None):
+    """What the builder publishes locally: overlays under runs/nd/overlays, a descriptor naming the mirror episodes."""
+    folder = f.runs / "nd/overlays"
+    folder.mkdir(parents=True, exist_ok=True)
+    overlays = []
+    for i in range(count):
+        path = (folder / f"{i:024x}.h5").resolve()
+        path.write_bytes(b"overlay %d" % i)
+        overlays.append(str(path))
+    spec = {"kind": "compact", "paths": [episode or str(f.mirror / EPISODE)] * count, "depth_source": "native_realsense",
+            "depth_overlays": overlays, "rig_document_sha256": "d" * 64}
+    (f.runs / "nd/store-native.yaml").write_text(yaml.safe_dump(spec, sort_keys=False))
+    f.state["nd"] = {"host": "local", "status": "done"}
+    return spec
+
+
+def test_geometry_pretraining_resolvers_map_inputs_and_resume_semantics(mirrored):
+    f = mirrored
+    rows = geometry_rows(f)
+    for b in ("sincro", "snerl"):
+        job = rows[b]
+        assert rw.applies(job, ROLES) and host_roles.role_hosts(job, ROLES) == ("local", "remote")
+        effective, record = localize(f, job)
+        assert effective == [a.replace(PREFIX, str(f.mirror)) for a in job["args"]]
+        assert rw.needed_inputs(job) == {"mirror": sorted([PLAIN, SPLIT, GATE]), "dependency_files": []}
+    rows["snerl"]["args"][rows["snerl"]["args"].index("auto")] = "never"  # train_snerl.py: auto | never
+    localize(f, rows["snerl"])
+    for job, extra, reason in ((rows["sincro"], ["--resume", "auto"], "unsupported local input options"),
+                               (rows["snerl"], ["--export-init-only"], "unsupported local input options")):
+        with pytest.raises(rw.LocalInputError, match=reason):
+            localize(f, {**job, "args": job["args"] + extra})
+    bad = copy.deepcopy(rows["snerl"])
+    bad["args"][bad["args"].index("never")] = "always"
+    with pytest.raises(rw.LocalInputError, match="invalid local resolver"):
+        localize(f, bad)
+    assert rw.RESUME_CHOICES["scripts/train_dynamo.py"] == ("auto",)  # the image family's dynamo is unchanged
+
+
+def test_native_depth_stage_resolver_maps_store_rig_reference_and_raw_root(mirrored, monkeypatch, tmp_path):
+    f = mirrored
+    raw_root = tmp_path / "raw-originals"
+    raw_root.mkdir()
+    monkeypatch.setattr(rw, "LOCAL_RAW_ROOT", raw_root)
+    job = native_row(f)
+    assert rw.applies(job, ROLES)
+    assert rw.needed_inputs(job) == {"mirror": sorted([PLAIN, RIG, RIG_REF]), "dependency_files": []}
+    effective, record = localize(f, job)
+    assert effective == [a.replace(PREFIX, str(f.mirror)) for a in job["args"]] + [
+        "--raw-root", f"{rw.REMOTE_RAW_ROOT}={raw_root}"]
+    assert record["raw_map"] == {"from": rw.REMOTE_RAW_ROOT, "to": str(raw_root)}
+    assert set(record["inputs"]) == {PREFIX + "/" + PLAIN, PREFIX + "/" + RIG}
+
+
+@pytest.mark.parametrize("edit,reason", [
+    ("episodes", "unsupported local input options|invalid local resolver"),
+    ("raw_root", "unsupported local input options|invalid local resolver"),
+    ("out_dir", "runs/<own id>/overlays"), ("out_store", "runs/<own id>/store-native.yaml"),
+    ("store", "mirrored compact store.yaml"), ("rig", "mirrored rig document"), ("workers", "1..64"),
+    ("descriptor_extra", "plain compact store.yaml"),
+])
+def test_native_depth_stage_resolver_fails_closed(mirrored, monkeypatch, tmp_path, edit, reason):
+    f = mirrored
+    monkeypatch.setattr(rw, "LOCAL_RAW_ROOT", tmp_path)
+    job = native_row(f)
+    args = job["args"]
+    if edit == "episodes":
+        args += ["--episodes", "task/episode"]
+    elif edit == "raw_root":
+        args += ["--raw-root", "/a=/b"]
+    elif edit == "out_dir":
+        args[args.index("--out-dir") + 1] = "runs/nd/elsewhere"
+    elif edit == "out_store":
+        args[args.index("--out-store") + 1] = "runs/nd/store.yaml"
+    elif edit == "store":
+        args[args.index("--store") + 1] = "runs/x/store.yaml"
+    elif edit == "rig":
+        args[args.index("--rig") + 1] = PREFIX + "/" + RIG_REF
+    elif edit == "workers":
+        args[args.index("--workers") + 1] = "0"
+    else:
+        args[args.index("--store") + 1] = PREFIX + "/" + STORE
+    with pytest.raises(rw.LocalInputError, match=reason):
+        localize(f, job)
+
+
+def test_native_closeout_records_every_overlay(mirrored, tmp_path):
+    f = mirrored
+    job = native_row(f)
+    spec = native_outputs(f, count=2)
+    finished = tmp_path / "finished"
+    record = rw.closeout("nd", f.state, job, finished, runs=f.runs)
+    assert set(record["files"]) == {"store-native.yaml"} | {f"overlays/{Path(p).name}" for p in spec["depth_overlays"]}
+    with pytest.raises(rw.LocalInputError, match="required result"):
+        rw.closeout("nd2", {"nd2": {"host": "local", "status": "done"}}, {**job, "id": "nd2", "required_results": []},
+                    finished, runs=f.runs)
+
+
+def test_mvp3d_pretraining_and_datasets_verify_the_native_descriptor(mirrored, monkeypatch, tmp_path):
+    f = mirrored
+    monkeypatch.setattr(rw, "LOCAL_RAW_ROOT", tmp_path)
+    finished = tmp_path / "finished"
+    pre = geometry_rows(f)["mvp3d"]
+    with pytest.raises(rw.LocalInputError, match="dependency must be done"):
+        localize(f, pre, finished_dir=finished)
+    spec = native_outputs(f)
+    with pytest.raises(rw.LocalInputError, match="without a closeout record"):
+        localize(f, pre, finished_dir=finished)
+    rw.closeout("nd", f.state, native_row(f), finished, runs=f.runs)
+    effective, record = localize(f, pre, finished_dir=finished)
+    overlay = Path(spec["depth_overlays"][0])
+    assert set(record["dependency_inputs"]) == {"runs/nd/store-native.yaml", f"runs/nd/overlays/{overlay.name}"}
+    assert {EPISODE + "/episode.h5", EPISODE + "/_COMPLETE.json"} <= set(record["input_closure"])
+    for condition in ("mvp3d_single", "mvp3d_multiview"):
+        data = {**dataset_row(f, condition), "deps": ["mvp-pre", "nd"]}
+        data["args"][data["args"].index("--store") + 1] = "runs/nd/store-native.yaml"
+        data["args"][data["args"].index("--export") + 1] = "runs/mvp-pre/encoder.pt"
+        dependency(f, "mvp-pre", "encoder.pt")
+        rw.closeout("mvp-pre", f.state, {"id": "mvp-pre", "required_results": ["encoder.pt"]}, finished, runs=f.runs)
+        assert f"runs/nd/overlays/{overlay.name}" in localize(f, data, finished_dir=finished)[1]["dependency_inputs"]
+        undeclared = {**data, "deps": ["mvp-pre"]}
+        with pytest.raises(rw.LocalInputError, match="declared dependency"):
+            localize(f, undeclared, finished_dir=finished)
+    overlay.write_bytes(b"tampered")
+    with pytest.raises(rw.LocalInputError, match="overlay differs from its closeout record"):
+        localize(f, pre, finished_dir=finished)
+
+
+@pytest.mark.parametrize("edit,reason", [
+    ("remote_producer", "LOCAL native depth producer"), ("extra_key", "plain native descriptor"),
+    ("not_native", "plain native descriptor"), ("episode_outside", "outside the verified mirror"),
+    ("overlay_outside", "outside runs/nd/overlays"), ("plain_store_path", "runs/<declared dependency>/store-native"),
+])
+def test_native_descriptor_consumers_fail_closed(mirrored, monkeypatch, tmp_path, edit, reason):
+    f = mirrored
+    monkeypatch.setattr(rw, "LOCAL_RAW_ROOT", tmp_path)
+    finished = tmp_path / "finished"
+    pre = geometry_rows(f)["mvp3d"]
+    spec = native_outputs(f, episode=str(tmp_path / "elsewhere") if edit == "episode_outside" else None)
+    if edit == "extra_key":
+        spec["notes"] = "x"
+    elif edit == "not_native":
+        spec["depth_source"] = "foundation_stereo"
+    elif edit == "overlay_outside":
+        other = (tmp_path / "other.h5").resolve()
+        other.write_bytes(b"x")
+        spec["depth_overlays"] = [str(other)]
+    if edit in ("extra_key", "not_native", "overlay_outside"):
+        (f.runs / "nd/store-native.yaml").write_text(yaml.safe_dump(spec, sort_keys=False))
+        f.state["nd"]["status"] = "done"
+        digest = sha((f.runs / "nd/store-native.yaml").read_bytes())
+        finished.mkdir(parents=True, exist_ok=True)
+        (finished / "nd.json").write_text(json.dumps({"job_id": "nd", "files": {"store-native.yaml": digest}}))
+    else:
+        rw.closeout("nd", f.state, native_row(f), finished, runs=f.runs)
+    if edit == "remote_producer":
+        f.state["nd"] = {"host": "remote", "status": "done", "sync": {"files": {}}, "remote_verified": {"files": {}}}
+    elif edit == "plain_store_path":
+        pre["args"][pre["args"].index("dataset.hdf5_path=runs/nd/store-native.yaml")] = "dataset.hdf5_path=runs/nd/s.yaml"
+    with pytest.raises(rw.LocalInputError, match=reason):
+        localize(f, pre, finished_dir=finished)
+
+
+def test_geometry_dataset_conditions_sincro_and_snerl(mirrored, monkeypatch, tmp_path):
+    f = mirrored
+    monkeypatch.setattr(rw, "LOCAL_RAW_ROOT", tmp_path)
+    finished = tmp_path / "finished"
+    dependency(f, "dyn-pre", "encoder.pt")
+    rw.closeout("dyn-pre", f.state, {"id": "dyn-pre", "required_results": ["encoder.pt"]}, finished, runs=f.runs)
+    for condition in ("sincro", "snerl"):
+        effective, record = localize(f, dataset_row(f, condition), finished_dir=finished)
+        assert effective[-2:] == ["--raw-root", f"{rw.REMOTE_RAW_ROOT}={tmp_path}"]
+        assert record["dependency_inputs"] == {"runs/dyn-pre/encoder.pt": sha(b"verified output")}
+    assert set(rw.LOCAL_DATASET_CONDITIONS) <= set(__import__("s4d.rwlearn.observation",
+                                                              fromlist=["CONDITIONS"]).CONDITIONS)

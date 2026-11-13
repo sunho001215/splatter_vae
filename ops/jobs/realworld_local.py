@@ -62,7 +62,15 @@ RESOLVERS = {
 # Baseline pretraining trainers (scripts/train_<b>.py, s4d.config.load_config of ONE --config + --set): their full option
 # spellings (argparse defaults allow abbreviations; local launches require these exact spellings, as for the FQL trainer)
 BASELINE_OPTIONS = {"scripts/train_dynamo.py": ("--config", "--name", "--output-root", "--set", "--resume", "--no-wandb"),
-                    "scripts/train_reviwo.py": ("--config", "--name", "--output-root", "--set", "--no-wandb")}
+                    "scripts/train_reviwo.py": ("--config", "--name", "--output-root", "--set", "--no-wandb"),
+                    # pick-and-place GEOMETRY family (coordinator 2026-11-13): SinCro / SNeRL / 3D-MVP pretraining.
+                    # SNeRL's --export-init-only is not a training spelling and stays refused.
+                    "scripts/train_sincro.py": ("--config", "--name", "--output-root", "--set", "--no-wandb"),
+                    "scripts/train_snerl.py": ("--config", "--name", "--output-root", "--set", "--resume", "--no-wandb"),
+                    "scripts/train_mvp3d.py": ("--config", "--name", "--output-root", "--set", "--resume", "--no-wandb")}
+# each trainer's own --resume choices (train_dynamo.py: auto; train_snerl.py / train_mvp3d.py: auto | never)
+RESUME_CHOICES = {"scripts/train_dynamo.py": ("auto",), "scripts/train_snerl.py": ("auto", "never"),
+                  "scripts/train_mvp3d.py": ("auto", "never")}
 for _script in BASELINE_OPTIONS:
     RESOLVERS[_script] = {"inputs": ("--set",), "outputs": OUTPUT_OPTIONS, "config": "baseline"}
 FQL_DATASET = "scripts/realworld_fql_dataset.py"
@@ -72,15 +80,24 @@ RESOLVERS[FQL_DATASET] = {"inputs": ("--store", "--gate-report", "--outcomes", "
 # ingestion verified (realworld-ops/ingest/manifest.json); the builder checks each file's sha256 before reading it.
 REMOTE_RAW_ROOT = "/home/compu/kaist/sunho/data/real_world"
 LOCAL_RAW_ROOT = Path("/home/ws/data/real_world")
-# the image family's dataset conditions (pick-and-place, 2026-11-13); other conditions read further store fields (e.g.
-# native depth overlays) that this resolver does not inventory (Codex review)
-LOCAL_DATASET_CONDITIONS = ("dynamo", "reviwo", "e2e_cnn")
+# the dataset conditions built locally: the image family (pick-and-place, 2026-11-13) and the geometry family
+# (coordinator 2026-11-13). sincro / snerl read the plain compact store (RGB; snerl also the episodes' recorded w2c);
+# mvp3d_* read the native-depth descriptor of a LOCAL realworld_native_depth dependency, whose overlays are verified
+# against that dependency's closeout record (NATIVE_STORE_CONDITIONS).
+LOCAL_DATASET_CONDITIONS = ("dynamo", "reviwo", "e2e_cnn", "sincro", "snerl", "mvp3d_single", "mvp3d_multiview")
+NATIVE_STORE_CONDITIONS = ("mvp3d_single", "mvp3d_multiview")
+# CPU-only native RealSense depth overlays for the 3D-MVP chain: reads the compact store, the rig document (+ its
+# reference arrays, load_rig) and the RAW recordings (local read-only originals through --raw-root, sha256-verified)
+NATIVE_DEPTH = "scripts/realworld_native_depth.py"
+RESOLVERS[NATIVE_DEPTH] = {"inputs": ("--store", "--rig"), "outputs": ("--out-dir", "--out-store"), "config": None}
+NATIVE_STORE_NAME = "store-native.yaml"
+NATIVE_STORE_KEYS = {"kind", "paths", "depth_source", "depth_overlays", "rig_document_sha256"}
 # the consumed configuration fields of the baseline trainers that name inputs: each must be a mirrored remote path
 BASELINE_INPUT_FIELDS = (("dataset", "hdf5_path"), ("data_interface", "split_manifest"),
                          ("data_interface", "gate_report"))
 # consumers whose LOCAL run dependencies must carry a matching closeout record (realworld_local.py closeout: required
 # results present, nonempty, hashed) - the scheduler marks a local exit-0 run done without that check (Codex review)
-CLOSEOUT_CONSUMERS = ("scripts/realworld_fql_dataset.py", "scripts/train_realworld_fql.py")
+CLOSEOUT_CONSUMERS = ("scripts/realworld_fql_dataset.py", "scripts/train_realworld_fql.py", "scripts/train_mvp3d.py")
 REMOTE_LOCK = REPO / "runs/setup/remote-driver.lock"
 
 
@@ -144,7 +161,7 @@ def has_resolver(job: dict) -> bool:
         return any(a.startswith("configs/realworld/") or a == "data.regime=realworld" for a in args)
     if script in BASELINE_OPTIONS:
         return any(a.startswith("configs/realworld/baselines/") for a in args)
-    if script == FQL_DATASET:
+    if script in (FQL_DATASET, NATIVE_DEPTH):
         return args[:1] == ["build"]
     return True
 
@@ -177,7 +194,7 @@ def _arguments(job: dict):
         parser.add_argument("--output-root", required=True)
         parser.add_argument("--no-wandb", action="store_true")
         if "--resume" in BASELINE_OPTIONS[script]:
-            parser.add_argument("--resume", choices=["auto"])
+            parser.add_argument("--resume", choices=list(RESUME_CHOICES[script]))
     elif script == FQL_DATASET:
         parser.add_argument("command", choices=["build"])
         for option in ("--store", "--condition", "--out"):
@@ -186,6 +203,12 @@ def _arguments(job: dict):
             parser.add_argument(option)
         # --smoke / --episodes / --assume-final-success / --raw-root are refused (unknown here): a full local build
         # uses every store episode with recorded outcomes, and the raw mapping is added only by localization
+    elif script == NATIVE_DEPTH:
+        parser.add_argument("command", choices=["build"])
+        for option in ("--store", "--rig", "--out-dir", "--out-store"):
+            parser.add_argument(option, required=True)
+        parser.add_argument("--workers", type=int)
+        # --episodes (a staged subset) and --raw-root (added only by localization) are refused (unknown here)
     elif script == "scripts/compute_workspace_stats.py":
         parser.add_argument("--regime", choices=["realworld"], required=True)
         parser.add_argument("--path", required=True)
@@ -210,6 +233,17 @@ def _arguments(job: dict):
         if known.name != job["id"] or known.output_root != "runs" or not any(
                 a == "--output-root" or a.startswith("--output-root=") for a in job.get("args", [])):
             raise LocalInputError("local training outputs must be --output-root runs --name <own id>")
+    elif script == NATIVE_DEPTH:
+        if (_rel(known.out_dir) != f"runs/{job['id']}/overlays"
+                or _rel(known.out_store) != f"runs/{job['id']}/{NATIVE_STORE_NAME}"):
+            raise LocalInputError(f"local native depth outputs must be runs/<own id>/overlays and "
+                                  f"runs/<own id>/{NATIVE_STORE_NAME}")
+        if _mapped(known.store) is None or PurePosixPath(known.store).name != "store.yaml":
+            raise LocalInputError("local native depth --store must name a mirrored compact store.yaml")
+        if _mapped(known.rig) is None or not known.rig.endswith(".json"):
+            raise LocalInputError("local native depth --rig must name a mirrored rig document (.json)")
+        if known.workers is not None and not 1 <= known.workers <= 64:
+            raise LocalInputError("local native depth --workers must be 1..64")
     else:
         output = _rel(known.out)
         if not output.startswith(f"runs/{job['id']}/"):
@@ -219,7 +253,9 @@ def _arguments(job: dict):
             raise LocalInputError(f"local dataset construction supports {LOCAL_DATASET_CONDITIONS} only")
         if _rel(known.out) != f"runs/{job['id']}/dataset.h5":
             raise LocalInputError("local dataset --out must be runs/<own id>/dataset.h5")
-        if _mapped(known.store) is None or PurePosixPath(known.store).name != "store.yaml":
+        if known.condition in NATIVE_STORE_CONDITIONS:
+            _native_store_arg(known.store, job, f"local {known.condition} dataset --store")
+        elif _mapped(known.store) is None or PurePosixPath(known.store).name != "store.yaml":
             raise LocalInputError("local dataset --store must name a mirrored compact store.yaml")
         for option, value in (("--gate-report", known.gate_report), ("--outcomes", known.outcomes)):
             if value is None or _mapped(value) is None:
@@ -240,6 +276,15 @@ def _arguments(job: dict):
         if known.checkpoint and not _rel(known.checkpoint).startswith(known.run + "/"):
             raise LocalInputError("export checkpoint must belong to its --run dependency")
     return known
+
+
+def _native_store_arg(value, job: dict, what: str) -> str:
+    """A native-depth descriptor input: exactly runs/<declared dependency>/store-native.yaml (its producer and overlays
+    are verified in ``_native_store``). Returns the dependency id."""
+    parts = PurePosixPath(_rel(value)).parts if isinstance(value, str) and value.startswith("runs/") else ()
+    if len(parts) != 3 or parts[0] != "runs" or parts[1] not in job.get("deps", []) or parts[2] != NATIVE_STORE_NAME:
+        raise LocalInputError(f"{what} must be runs/<declared dependency>/{NATIVE_STORE_NAME}, not {value!r}")
+    return parts[1]
 
 
 def needed_inputs(job: dict, *, remote_prefix: str = REMOTE_PREFIX) -> dict:
@@ -265,6 +310,8 @@ def needed_inputs(job: dict, *, remote_prefix: str = REMOTE_PREFIX) -> dict:
             if parts[1] not in job.get("deps", []):
                 raise LocalInputError(f"run output {value} is not an output of a declared dependency")
             dependencies.add((parts[1], _rel("/".join(parts[2:]) or ".")))
+    if job["script"] == NATIVE_DEPTH:  # load_rig reads the document's reference arrays beside it
+        mirror.add(_rel(str(PurePosixPath(_mapped(known.rig, remote_prefix)).with_suffix(".reference.npz"))))
     if job["script"] == "scripts/export_encoder.py":
         dep = PurePosixPath(known.run).parts[1]
         dependencies.add((dep, "config.yaml"))
@@ -636,11 +683,17 @@ def _baseline_fields(job: dict, root: Path, remote_prefix: str) -> None:
         cfg = load_config([root / known.config], known.set)
     except (argparse.ArgumentError, SystemExit, OSError, ValueError, TypeError, AttributeError, yaml.YAMLError) as exc:
         raise LocalInputError(f"cannot resolve the trainer configuration: {exc}") from exc
+    native = job.get("script") == "scripts/train_mvp3d.py" and str(
+        (cfg.get("dataset") or {}).get("hdf5_path")).startswith("runs/")
     for section, key in BASELINE_INPUT_FIELDS:
         value = (cfg.get(section) or {}).get(key)
+        if native and (section, key) == ("dataset", "hdf5_path"):
+            # 3D-MVP trains on the native-depth descriptor of its LOCAL realworld_native_depth dependency
+            _native_store_arg(value, job, "dataset.hdf5_path")
+            continue
         if not isinstance(value, str) or _mapped(value, remote_prefix) is None:
             raise LocalInputError(f"{section}.{key} must name a mirrored remote input, not {value!r}")
-    if PurePosixPath(cfg["dataset"]["hdf5_path"]).name != "store.yaml":
+    if not native and PurePosixPath(cfg["dataset"]["hdf5_path"]).name != "store.yaml":
         raise LocalInputError("dataset.hdf5_path must name a mirrored compact store.yaml")
     todo = [cfg]
     while todo:
@@ -674,6 +727,45 @@ def _plain_descriptor(path: Path) -> None:
         raise LocalInputError("local baseline / dataset rows need a plain compact store.yaml (kind + paths only)")
 
 
+def _native_store(dep: str, path: Path, runs: Path, mirror: Path, files: dict, closure: set,
+                  finished_dir: Path) -> dict:
+    """Verify a LOCAL native-depth descriptor (scripts/realworld_native_depth.py output, already matched to its
+    dependency's closeout record): exactly the builder's keys, every compact episode a verified mirror input, and every
+    overlay a regular file in runs/<dep>/overlays/ whose sha256 equals the closeout record's. Returns the overlays as
+    dependency inputs {runs/<dep>/overlays/<name>: sha256}."""
+    try:
+        spec = yaml.safe_load(path.read_bytes())
+    except yaml.YAMLError as exc:
+        raise LocalInputError(f"invalid native depth descriptor: runs/{dep}/{NATIVE_STORE_NAME}") from exc
+    paths, overlays = (spec or {}).get("paths"), (spec or {}).get("depth_overlays")
+    if (not isinstance(spec, dict) or set(spec) != NATIVE_STORE_KEYS or spec["kind"] != "compact"
+            or spec["depth_source"] != "native_realsense" or not isinstance(paths, list) or not paths
+            or not isinstance(overlays, list) or len(overlays) != len(paths)
+            or not all(isinstance(x, str) for x in paths + overlays)):
+        raise LocalInputError(f"native depth descriptor of {dep} is not the builder's plain native descriptor")
+    root = str(Path(mirror)) + "/"
+    for episode in paths:
+        if not episode.startswith(root):
+            raise LocalInputError(f"native depth episode outside the verified mirror: {episode}")
+        relative = _rel(episode[len(root):])
+        for name in ("episode.h5", "_COMPLETE.json"):
+            _check(f"{relative}/{name}", files, Path(mirror), closure)
+    recorded = _closeout(dep, finished_dir)["files"]
+    folder = (Path(runs) / dep / "overlays").resolve()
+    out = {}
+    for overlay in overlays:
+        candidate = Path(overlay)
+        if (not candidate.is_absolute() or candidate.parent != folder
+                or not re.fullmatch(r"[0-9a-f]{24}\.h5", candidate.name)):
+            raise LocalInputError(f"native depth overlay outside runs/{dep}/overlays: {overlay}")
+        _regular(candidate)
+        digest = _hash(candidate)
+        if recorded.get(f"overlays/{candidate.name}") != digest:
+            raise LocalInputError(f"native depth overlay differs from its closeout record: {candidate.name}")
+        out[f"runs/{dep}/overlays/{candidate.name}"] = digest
+    return out
+
+
 def _inputs(job: dict, state: dict, mirror: Path, manifest: Path, runs: Path,
             remote_prefix: str = REMOTE_PREFIX, root: Path = REPO, finished_dir: Path = FINISHED_DIR
             ) -> tuple[list, dict]:
@@ -694,7 +786,7 @@ def _inputs(job: dict, state: dict, mirror: Path, manifest: Path, runs: Path,
         relative = _mapped(value, remote_prefix)
         if relative is not None:
             inputs[value] = _check(relative, files, mirror, closure, remote_prefix=remote_prefix)
-            if (job.get("script") in BASELINE_OPTIONS or job.get("script") == FQL_DATASET) \
+            if (job.get("script") in BASELINE_OPTIONS or job.get("script") in (FQL_DATASET, NATIVE_DEPTH)) \
                     and PurePosixPath(relative).name == "store.yaml":
                 _plain_descriptor(mirror / relative)
     for dep, relative in needed["dependency_files"]:
@@ -711,9 +803,13 @@ def _inputs(job: dict, state: dict, mirror: Path, manifest: Path, runs: Path,
                 if job.get("script") in CLOSEOUT_CONSUMERS:
                     if _closeout(dep, finished_dir)["files"].get(relative) != dependencies[name]:
                         raise LocalInputError(f"local dependency differs from its closeout record: {name}")
+                if relative == NATIVE_STORE_NAME:
+                    dependencies.update(_native_store(dep, path, runs, mirror, files, closure, finished_dir))
             continue
         if current.get("host") != "remote" or current.get("status") != "done":
             raise LocalInputError(f"dependency must be done on its recorded host: {name}")
+        if relative == NATIVE_STORE_NAME:  # a remote descriptor names remote episode and overlay paths
+            raise LocalInputError(f"local 3D-MVP rows need a LOCAL native depth producer: {name}")
         if job.get("script") == FQL_DATASET:
             raise LocalInputError(f"local dataset construction needs a LOCAL encoder producer: {name}")
         if relative == ".":
@@ -740,7 +836,7 @@ def _inputs(job: dict, state: dict, mirror: Path, manifest: Path, runs: Path,
         effective.append(str(arg)[:len(str(arg)) - len(value)] + str(mirror) + value[len(remote_prefix):]
                          if relative is not None else arg)
     raw_map = None
-    if job.get("script") == FQL_DATASET:
+    if job.get("script") in (FQL_DATASET, NATIVE_DEPTH):
         # actions come from the raw recordings: the local read-only originals, sha256-verified by the builder against
         # each episode's recorded raw identity before use (scripts/realworld_fql_dataset.py --raw-root)
         if not LOCAL_RAW_ROOT.is_dir() or any(p.is_symlink() for p in (LOCAL_RAW_ROOT, *LOCAL_RAW_ROOT.parents)):
@@ -1072,6 +1168,22 @@ def closeout(job_id: str, state: dict, job: dict, finished_dir: Path = FINISHED_
         files[name] = _hash(path)
     if not files:
         raise LocalInputError("no required results")
+    if job.get("script") == NATIVE_DEPTH:  # every overlay the descriptor names is part of the immutable evidence
+        if NATIVE_STORE_NAME not in files:
+            raise LocalInputError(f"native depth closeout needs {NATIVE_STORE_NAME} as a required result")
+        spec = yaml.safe_load((runs / job_id / NATIVE_STORE_NAME).read_bytes()) or {}
+        folder = (runs / job_id / "overlays").resolve()
+        overlays = spec.get("depth_overlays") if isinstance(spec, dict) else None
+        if not isinstance(overlays, list) or not overlays:
+            raise LocalInputError("native depth descriptor names no overlays")
+        for overlay in overlays:
+            candidate = Path(str(overlay))
+            if candidate.parent != folder or not re.fullmatch(r"[0-9a-f]{24}\.h5", candidate.name):
+                raise LocalInputError(f"native depth overlay outside runs/{job_id}/overlays: {overlay}")
+            _regular(candidate)
+            if candidate.stat().st_size == 0:
+                raise LocalInputError(f"empty native depth overlay: {candidate.name}")
+            files[f"overlays/{candidate.name}"] = _hash(candidate)
     record = {"job_id": job_id, "files": files, "inputs": current.get("inputs"), "commit": current.get("commit"),
               "gpu": current.get("gpu"), "attempt": current.get("attempt")}
     path = Path(finished_dir) / f"{job_id}.json"

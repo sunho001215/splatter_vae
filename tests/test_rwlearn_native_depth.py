@@ -485,3 +485,104 @@ def test_native_depth_script_passes_the_scheduler_gpu_guard_check():
     from ops.jobs.scheduler import check_guarded
 
     assert check_guarded("scripts/realworld_native_depth.py").name == "realworld_native_depth.py"
+
+
+# ---- raw-root-mapped build (local placement of the 3D-MVP chain, agent PNP 2026-11-13; s4d/rwlearn/native_depth_mapped)
+def _overlay_arrays(out_store):
+    native = open_store(out_store)
+    try:
+        out = {}
+        for ep, path in native.depth_overlays.items():
+            with h5py.File(path) as f:
+                attrs = {k: v for k, v in f.attrs.items() if k != "raw_recording"}
+                corr = json.loads(attrs.pop("native_depth_correction"))
+                for c in corr.values():  # the evidence names the rig document's own path (separate fixture roots)
+                    c["evidence"].pop("document", None)
+                attrs["native_depth_correction"] = corr
+                out[ep] = (attrs, {c: f[f"cameras/{c}/depth"][:] for c in f["cameras"]})
+        return out
+    finally:
+        native.close()
+
+
+def _moved_raw(fixture, tmp_path):
+    """Copy the recordings to a separate local root and remove them from the recorded location."""
+    local = tmp_path / "local-raw"
+    for raw in sorted((fixture.root / "drawer-open").glob("*.h5")):
+        target = local / "drawer-open" / raw.name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(raw, target)
+        raw.rename(raw.with_suffix(".moved"))
+    return local
+
+
+def test_mapped_build_equals_the_unmapped_build(tmp_path):
+    from s4d.rwlearn import native_depth as ND
+    from s4d.rwlearn.native_depth_mapped import build_native_depth_mapped
+
+    environment = dict(os.environ)
+    reference = make_store(tmp_path / "ref", count=2)
+    build(reference, workers=2)
+    fixture = make_store(tmp_path / "store", count=2)
+    local = _moved_raw(fixture, tmp_path)
+    with pytest.raises((OSError, ValueError)):  # the recorded raw paths are gone: the unmapped build cannot read them
+        build(fixture)
+    shutil.rmtree(fixture.overlays, ignore_errors=True)
+    result = build_native_depth_mapped(fixture.locator, fixture.rig, fixture.overlays, fixture.out,
+                                       raw_root=f"{fixture.root}={local}", workers=2)
+    assert result == {"built": 2, "skipped": 0, "descriptor_written": True, "out_store": str(fixture.out)}
+    got, want = _overlay_arrays(fixture.out), _overlay_arrays(reference.out)
+    assert got.keys() == want.keys()
+    for ep in got:
+        assert got[ep][0] == want[ep][0]  # identical identity attrs (raw_sha256, rig, corrections, counts)
+        for cam in want[ep][1]:
+            assert np.array_equal(got[ep][1][cam], want[ep][1][cam])
+    assert ND.CompactStore is TS.CompactStore and ND._build_episode.__module__ == "s4d.rwlearn.native_depth"
+    assert dict(os.environ) == environment  # the mapping is installed only for the build
+    # resume through the mapping verifies (and skips) the published overlays
+    assert build_native_depth_mapped(fixture.locator, fixture.rig, fixture.overlays, fixture.out,
+                                     raw_root=f"{fixture.root}={local}")["skipped"] == 2
+
+
+@pytest.mark.parametrize("case", ["sha", "symlink", "outside", "relative", "root_link", "missing"])
+def test_mapped_build_refuses_unverified_raw(tmp_path, case):
+    from s4d.rwlearn import native_depth as ND
+    from s4d.rwlearn.native_depth_mapped import build_native_depth_mapped
+
+    fixture = make_store(tmp_path / "store")
+    local = _moved_raw(fixture, tmp_path)
+    raw, = (local / "drawer-open").glob("*.h5")
+    mapping = f"{fixture.root}={local}"
+    if case == "sha":
+        with h5py.File(raw, "a") as f:
+            f.attrs["tampered"] = 1
+    elif case == "symlink":
+        copy = tmp_path / "copy.h5"
+        raw.rename(copy)
+        raw.symlink_to(copy)
+    elif case == "outside":
+        mapping = f"/elsewhere={local}"
+    elif case == "relative":
+        mapping = f"{fixture.root}=relative/root"
+    elif case == "root_link":
+        (tmp_path / "root-link").symlink_to(local)
+        mapping = f"{fixture.root}={tmp_path / 'root-link'}"
+    else:
+        raw.unlink()
+    with pytest.raises(ValueError):
+        build_native_depth_mapped(fixture.locator, fixture.rig, fixture.overlays, fixture.out, raw_root=mapping)
+    assert not fixture.out.exists()
+    assert ND.CompactStore is TS.CompactStore and "S4D_NATIVE_DEPTH_RAW_ROOT" not in os.environ
+
+
+def test_native_depth_cli_build_with_raw_root(tmp_path):
+    fixture = make_store(tmp_path / "store")
+    local = _moved_raw(fixture, tmp_path)
+    script = Path(__file__).resolve().parents[1] / "scripts/realworld_native_depth.py"
+    result = subprocess.run([sys.executable, "-I", str(script), "build", "--store", str(fixture.locator),
+                             "--rig", str(fixture.rig), "--out-dir", str(fixture.overlays),
+                             "--out-store", str(fixture.out), "--workers", "2",
+                             "--raw-root", f"{fixture.root}={local}"], capture_output=True, text=True, timeout=120)
+    assert result.returncode == 0, result.stdout + result.stderr
+    payload = "\n".join(line for line in result.stdout.splitlines() if not line.startswith("[gpu_guard]"))
+    assert json.loads(payload) == {"built": 1, "skipped": 0, "descriptor_written": True, "out_store": str(fixture.out)}

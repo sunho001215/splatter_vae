@@ -23,9 +23,19 @@ def main():
         b.add_argument(f"--{flag}", required=True)
     b.add_argument("--workers", type=int, default=1)
     b.add_argument("--episodes", nargs="+", help="task/episode_id keys; descriptor published once all overlays verify")
+    b.add_argument("--raw-root", metavar="RECORDED_ROOT=LOCAL_ROOT",
+                   help="read each raw recording from a sha256-verified local copy (local placement; "
+                        "s4d/rwlearn/native_depth_mapped.py)")
     args = ap.parse_args()
-    print(json.dumps(build_native_depth(args.store, args.rig, args.out_dir, args.out_store,
-                                        workers=args.workers, episodes=args.episodes), indent=2))
+    if args.raw_root:
+        from s4d.rwlearn.native_depth_mapped import build_native_depth_mapped
+
+        result = build_native_depth_mapped(args.store, args.rig, args.out_dir, args.out_store, raw_root=args.raw_root,
+                                           workers=args.workers, episodes=args.episodes)
+    else:
+        result = build_native_depth(args.store, args.rig, args.out_dir, args.out_store,
+                                    workers=args.workers, episodes=args.episodes)
+    print(json.dumps(result, indent=2))
 
 
 if __name__ == "__main__":
