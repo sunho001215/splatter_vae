@@ -11,6 +11,9 @@ from collections import Counter
 from pathlib import Path
 
 FILE_CLASSES = {
+    "tests/test_ours_continuation.py": "cpu",
+    "tests/test_ours_ext_registration.py": "cpu",
+    "tests/test_ours_length_eval.py": "cpu",
     "tests/test_launch_hold.py": "cpu",
     "tests/test_mig_validation.py": "cpu",
     "tests/test_remote_mig.py": "cpu",

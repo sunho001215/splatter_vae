@@ -77,6 +77,7 @@ def _output_path(value: str | None) -> str:
 
 def validate_output_arguments(script: str, arguments: list[str], job_id: str) -> None:
     if script in (
+        "scripts/train_ours_continuation.py", "scripts/evaluate_ours_length.py",
         "scripts/train.py", "scripts/train_sincro.py", "scripts/train_reviwo.py",
         "scripts/train_snerl.py", "scripts/train_dynamo.py", "scripts/train_mvp3d.py",
     ):

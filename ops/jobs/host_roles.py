@@ -63,7 +63,7 @@ METAWORLD_SCRIPTS = frozenset({
     "collect_metaworld.py", "check_metaworld.py", "split_metaworld.py", "check_metaworld_equivalence.py",
     "verify_metaworld_tasks.py", "render_heldout_sets.py", "screen_tasks.py", "render_snerl.py",
 })
-PRETRAIN_SCRIPTS = frozenset({"train.py", "export_encoder.py", "train_snerl.py", "train_dynamo.py", "train_mvp3d.py",
+PRETRAIN_SCRIPTS = frozenset({"train_ours_continuation.py", "evaluate_ours_length.py", "train.py", "export_encoder.py", "train_snerl.py", "train_dynamo.py", "train_mvp3d.py",
                               "train_sincro.py", "train_reviwo.py"})
 PREPROCESS_WORDS = frozenset({
     "preprocess", "preprocessing", "preproc", "ingest", "ingestion", "calib", "calibrate", "calibration", "stereo",

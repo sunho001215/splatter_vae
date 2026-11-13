@@ -857,16 +857,8 @@ def build_optimizer(model: nn.Module, cfg: dict):
         if key in groups
     ]
     opt = torch.optim.AdamW(param_groups, lr=lr, betas=(0.9, 0.95), fused=True)
-    total, warmup = int(get(cfg, "train.steps", 200000)), int(get(cfg, "train.warmup_steps", 10000))
-    min_ratio = float(get(cfg, "train.min_lr", 1e-5)) / lr
-
-    def lr_lambda(step: int) -> float:
-        if step < warmup:
-            return (step + 1) / warmup
-        progress = min(1.0, (step - warmup) / max(1, total - warmup))
-        return min_ratio + (1 - min_ratio) * 0.5 * (1 + math.cos(math.pi * progress))
-
-    return opt, torch.optim.lr_scheduler.LambdaLR(opt, lr_lambda)
+    from s4d.train.schedule import lr_function
+    return opt, torch.optim.lr_scheduler.LambdaLR(opt, lr_function(cfg))
 
 
 def seed_everything(seed: int) -> None:
@@ -978,9 +970,10 @@ def train(
     wrapped = DistributedDataParallel(model, device_ids=[ctx.local_rank]) if ctx.world_size > 1 else model
     loader = make_train_loader(train_dataset, cfg, ctx, seed)
     batches = infinite(loader, start_step=step)
-    total_steps = int(get(cfg, "train.steps", 200000))
-    stop = get(cfg, "train.stop_step", None)  # screens: the LR schedule of train.steps, stopped early
-    end_step = min(total_steps, int(stop)) if stop else total_steps
+    from s4d.train.schedule import training_end
+    end_step = training_end(cfg)
+    if step > end_step:
+        raise ValueError("resume checkpoint is past this job endpoint")
     log_every, eval_every = int(get(cfg, "train.log_every", 50)), int(get(cfg, "train.eval_every", 5000))
     save_every, clip = int(get(cfg, "train.save_every", 10000)), float(get(cfg, "train.grad_clip", 1.0))
     ckpt_dir = run_dir / "checkpoints"
@@ -988,12 +981,21 @@ def train(
     def run_evaluation():
         py_state, np_state = random.getstate(), np.random.get_state()
         try:
-            with torch.random.fork_rng(devices=[ctx.local_rank]):
+            if get(cfg, "train.lr_schedule") == "cosine_restarts" and evaluate_fn is not None:
+                # Probe windows depend on the global evaluation step, not process launch count.
+                for loader in getattr(evaluate_fn, "probe_loaders", {}).values():
+                    if loader.generator is not None:
+                        loader.generator.manual_seed(int(get(cfg, "eval.probe_seed", 0)) + step)
+            with torch.random.fork_rng(devices=[ctx.local_rank] if device.type == "cuda" else []):
                 ddp.rank_zero_call((lambda: evaluate_fn(model, step)) if evaluate_fn is not None else None)
         finally:
             random.setstate(py_state)
             np.random.set_state(np_state)
 
+    if resume and step == end_step:
+        # A checkpoint is saved before evaluation. An endpoint retry must finish evaluation before reporting success.
+        run_evaluation()
+        return
     if step == 0 and bool(get(cfg, "train.eval_at_start", True)):
         run_evaluation()
     model.train()

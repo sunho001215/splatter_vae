@@ -59,6 +59,14 @@ RESOLVERS = {
     "scripts/train.py": {"inputs": ("--set",), "outputs": OUTPUT_OPTIONS, "config": "pretrain"},
     "scripts/export_encoder.py": {"inputs": ("--run", "--checkpoint"), "outputs": ("--out",), "config": None},
 }
+OURS_CONTINUATION = "scripts/train_ours_continuation.py"
+OURS_EVAL = "scripts/evaluate_ours_length.py"
+OURS_OPTIONS = ("--name", "--output-root", "--set", "--source-checkpoint", "--source-sha256",
+                "--baseline-config", "--baseline-sha256", "--start-step", "--stop-step")
+OURS_EVAL_OPTIONS = ("--name", "--output-root", "--set", "--config", "--checkpoint")
+for _script in (OURS_CONTINUATION, OURS_EVAL):
+    RESOLVERS[_script] = {"inputs": ("--set", "--checkpoint", "--source-checkpoint"),
+                          "outputs": OUTPUT_OPTIONS, "config": "ours_length"}
 # Baseline pretraining trainers (scripts/train_<b>.py, s4d.config.load_config of ONE --config + --set): their full option
 # spellings (argparse defaults allow abbreviations; local launches require these exact spellings, as for the FQL trainer)
 BASELINE_OPTIONS = {"scripts/train_dynamo.py": ("--config", "--name", "--output-root", "--set", "--resume", "--no-wandb"),
@@ -84,7 +92,7 @@ LOCAL_RAW_ROOT = Path("/home/ws/data/real_world")
 # (coordinator 2026-11-13). sincro / snerl read the plain compact store (RGB; snerl also the episodes' recorded w2c);
 # mvp3d_* read the native-depth descriptor of a LOCAL realworld_native_depth dependency, whose overlays are verified
 # against that dependency's closeout record (NATIVE_STORE_CONDITIONS).
-LOCAL_DATASET_CONDITIONS = ("dynamo", "reviwo", "e2e_cnn", "sincro", "snerl", "mvp3d_single", "mvp3d_multiview")
+LOCAL_DATASET_CONDITIONS = ("ours", "dynamo", "reviwo", "e2e_cnn", "sincro", "snerl", "mvp3d_single", "mvp3d_multiview")
 NATIVE_STORE_CONDITIONS = ("mvp3d_single", "mvp3d_multiview")
 # CPU-only native RealSense depth overlays for the 3D-MVP chain: reads the compact store, the rig document (+ its
 # reference arrays, load_rig) and the RAW recordings (local read-only originals through --raw-root, sha256-verified)
@@ -97,7 +105,8 @@ BASELINE_INPUT_FIELDS = (("dataset", "hdf5_path"), ("data_interface", "split_man
                          ("data_interface", "gate_report"))
 # consumers whose LOCAL run dependencies must carry a matching closeout record (realworld_local.py closeout: required
 # results present, nonempty, hashed) - the scheduler marks a local exit-0 run done without that check (Codex review)
-CLOSEOUT_CONSUMERS = ("scripts/realworld_fql_dataset.py", "scripts/train_realworld_fql.py", "scripts/train_mvp3d.py")
+CLOSEOUT_CONSUMERS = ("scripts/realworld_fql_dataset.py", "scripts/train_realworld_fql.py", "scripts/train_mvp3d.py",
+                      OURS_CONTINUATION, OURS_EVAL)
 REMOTE_LOCK = REPO / "runs/setup/remote-driver.lock"
 
 
@@ -180,7 +189,18 @@ def _arguments(job: dict):
     if not has_resolver(job):
         raise LocalInputError(f"data locality: inputs live on the remote; no local input resolver for {script}")
     parser = argparse.ArgumentParser(add_help=False, allow_abbrev=False, exit_on_error=False)
-    if script == "scripts/train.py":
+    if script in (OURS_CONTINUATION, OURS_EVAL):
+        parser.add_argument("--name", required=True)
+        parser.add_argument("--output-root", required=True)
+        parser.add_argument("--set", nargs="*", default=[])
+        if script == OURS_CONTINUATION:
+            for flag in ("--source-checkpoint", "--baseline-config", "--baseline-sha256", "--start-step", "--stop-step"):
+                parser.add_argument(flag, required=True)
+            parser.add_argument("--source-sha256")
+        else:
+            parser.add_argument("--config", nargs="+", required=True)
+            parser.add_argument("--checkpoint", required=True)
+    elif script == "scripts/train.py":
         parser.add_argument("--config", nargs="+", required=True)
         parser.add_argument("--set", nargs="*", default=[])
         parser.add_argument("--name", required=True)
@@ -227,7 +247,7 @@ def _arguments(job: dict):
             raise LocalInputError(f"unsupported local input options: {other[:3]}")
     except (argparse.ArgumentError, SystemExit) as exc:
         raise LocalInputError(f"invalid local resolver arguments: {exc}") from exc
-    if script == "scripts/train.py" or script in BASELINE_OPTIONS:
+    if script in ("scripts/train.py", OURS_CONTINUATION, OURS_EVAL) or script in BASELINE_OPTIONS:
         # the trainers' default output-root is outside runs (train_<b>.py: runs/pretrain): require the explicit
         # portable output location
         if known.name != job["id"] or known.output_root != "runs" or not any(
@@ -248,6 +268,18 @@ def _arguments(job: dict):
         output = _rel(known.out)
         if not output.startswith(f"runs/{job['id']}/"):
             raise LocalInputError("local output must be runs/<own id>/<file>")
+    if script in (OURS_CONTINUATION, OURS_EVAL):
+        checkpoint = known.source_checkpoint if script == OURS_CONTINUATION else known.checkpoint
+        parts = PurePosixPath(_rel(checkpoint)).parts
+        if (len(parts) != 4 or parts[0] != "runs" or parts[1] not in job.get("deps", [])
+                or parts[2] != "checkpoints" or not re.fullmatch(r"step_\d{7}\.pt", parts[3])):
+            raise LocalInputError("Ours checkpoint must name a step checkpoint of a declared dependency")
+        configs = [known.baseline_config] if script == OURS_CONTINUATION else known.config
+        if configs != ["configs/realworld/ours_ext/baseline200k.yaml"]:
+            raise LocalInputError("Ours length jobs require the pinned baseline200k science snapshot")
+        allowed = {"data.store", "data.split_manifest", "data.gate_report", "model.anchor_stats"}
+        if ({item.partition("=")[0] for item in known.set} != allowed or len(known.set) != len(allowed)):
+            raise LocalInputError("Ours length inputs need exactly the four verified input path overrides")
     if script == FQL_DATASET:
         if known.condition not in LOCAL_DATASET_CONDITIONS:
             raise LocalInputError(f"local dataset construction supports {LOCAL_DATASET_CONDITIONS} only")
@@ -629,24 +661,31 @@ def _resolved_paths(job: dict, root: Path, remote_prefix: str = REMOTE_PREFIX, *
     if resolver.get("config") is None:
         return set()
     args = [str(a) for a in job.get("args", [])]
-    options = (BASELINE_OPTIONS[job["script"]] if resolver["config"] == "baseline"
-               else TRAINER_OPTIONS + (("--resume",) if resolver["config"] == "pretrain" else ()))
+    options = (OURS_OPTIONS if job.get("script") == OURS_CONTINUATION else
+               OURS_EVAL_OPTIONS if job.get("script") == OURS_EVAL else
+               BASELINE_OPTIONS[job["script"]] if resolver["config"] == "baseline" else
+               TRAINER_OPTIONS + (("--resume",) if resolver["config"] == "pretrain" else ()))
+    if job.get("script") == OURS_CONTINUATION:
+        # The immutable overlay changes only schedule keys; all consumed data paths come from the baseline + --set.
+        args = ["--config" if a == "--baseline-config" else a for a in args]
+        options = (*options, "--config")
     odd = [a for a in args if a.startswith("--") and a.split("=", 1)[0] not in options]
     if odd:
         raise LocalInputError(f"options other than the trainer's full spellings are not supported locally: {odd[:3]}")
     if "--config" not in args and not any(a.startswith("--config=") for a in args):
         return set()
     parser = argparse.ArgumentParser(add_help=False, allow_abbrev=False, exit_on_error=False)
-    parser.add_argument("--config", **({"nargs": "+"} if resolver["config"] == "pretrain" else {}), required=True)
+    parser.add_argument("--config", required=True,
+                        **({"nargs": "+"} if resolver["config"] in ("pretrain", "ours_length") else {}))
     parser.add_argument("--set", nargs="*", default=[])
     try:
         known, _ = parser.parse_known_args(args)
         configs = known.config if isinstance(known.config, list) else [known.config]
-        if resolver["config"] == "pretrain" and any(
+        if resolver["config"] in ("pretrain", "ours_length") and any(
                 Path(c).is_absolute() or ".." in Path(c).parts or not c.startswith("configs/") for c in configs):
             raise LocalInputError("local train.py configurations must be repository files under configs/")
         cfg = load_config([Path(c) if Path(c).is_absolute() else root / c for c in configs], known.set)
-        if resolver["config"] == "pretrain" and cfg.get("data", {}).get("regime") != "realworld":
+        if resolver["config"] in ("pretrain", "ours_length") and cfg.get("data", {}).get("regime") != "realworld":
             raise LocalInputError("local train.py resolver requires data.regime realworld")
         if resolver["config"] == "baseline" and (
                 any(Path(c).is_absolute() or ".." in Path(c).parts or not c.startswith("configs/realworld/baselines/")
@@ -1203,6 +1242,12 @@ def closeout(job_id: str, state: dict, job: dict, finished_dir: Path = FINISHED_
         files[name] = _hash(path)
     if not files:
         raise LocalInputError("no required results")
+    if job.get("script") == OURS_CONTINUATION:
+        from ops.jobs.continuation import continuation_endpoint
+        try:
+            continuation_endpoint(job["args"], json.loads((runs / job_id / "completion.json").read_bytes()))
+        except (OSError, ValueError) as exc:
+            raise LocalInputError(str(exc)) from exc
     if job.get("script") == NATIVE_DEPTH:  # every overlay the descriptor names is part of the immutable evidence
         if NATIVE_STORE_NAME not in files:
             raise LocalInputError(f"native depth closeout needs {NATIVE_STORE_NAME} as a required result")

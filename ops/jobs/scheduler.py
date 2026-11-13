@@ -413,6 +413,9 @@ def choose_gpu(job: dict, limits: dict, running: list[dict], foreign: set[str],
     for uuid in candidates:
         if uuid not in APPROVED_HOST_GPUS[host]:
             raise ValueError(f"job {job['id']} requests non-authorized GPU {uuid} on {host}")
+        from ops.jobs.continuation import profile_matches
+        if not profile_matches(job, uuid, set(MIG_DEVICES) | set(REMOTE_MIG_DEVICES)):
+            continue
         if uuid in foreign or uuid not in limits:
             continue
         here = [item for item in running if item.get("host", "local") == host and item["gpu"] == uuid]
@@ -740,22 +743,18 @@ def _verify_remote_exit(run_id: str, state: dict, report: dict, registry_state: 
                                               for name in ("exit.json", "provenance.json")}, digests)
     script, args, checks = Path(state.get("script", "")).name, state.get("args", []), {}
     if script == "train.py":
-        target, completion = _override(args, "train.steps="), record_of("completion.json")
-        if target is None:  # no override (e.g. the real-world rows of 2026-11-11): the configuration file's budget, as
-            # resolved by the run into its identity-checked provenance.json numeric_config (checksum and digest above)
-            numeric = record_of("provenance.json").get("numeric_config")
-            train = numeric.get("train") if isinstance(numeric, dict) else None
-            configured = train.get("steps") if isinstance(train, dict) else None
-            # completion.json records train.steps even when train.stop_step ends the loop earlier (s4d/train/loop.py
-            # end_step), so a fallback budget is accepted only for a run with no early stop (Codex review 2026-11-12)
-            # As the loop reads it: a falsy stop_step is no early stop, else training ends at int(stop_step)
-            stop = train.get("stop_step") if isinstance(train, dict) else None
-            full = not stop or ((type(stop) is int or (type(stop) is float and math.isfinite(stop)))
-                                and type(configured) is int and int(stop) >= configured)
-            target = configured if type(configured) is int and configured > 0 and full else None
+        from ops.jobs.continuation import resolved_pretraining_endpoint
+        completion = record_of("completion.json")
+        target = resolved_pretraining_endpoint(args, record_of("provenance.json").get("numeric_config"))
         if target is None or completion.get("status") != "completed" or completion.get("steps") != int(target):
             raise RemoteJobError("Remote pretraining did not complete its configured budget")
         checks["steps"] = int(target)
+    elif script == "train_ours_continuation.py":
+        from ops.jobs.continuation import continuation_endpoint
+        try:
+            checks["steps"] = continuation_endpoint(args, record_of("completion.json"))
+        except ValueError as exc:
+            raise RemoteJobError(str(exc)) from exc
     elif script in RL_TRAINERS:  # DrM and the downstream algorithms (2026-10-28) write the same final.json
         target, final = _override(args, "train.num_train_steps="), record_of("final.json")
         if target is None or final.get("completed") is not True or final.get("steps") != int(target):
@@ -768,7 +767,7 @@ def _verify_remote_exit(run_id: str, state: dict, report: dict, registry_state: 
             named = re.search(r"step_(\d+)\.pt$", name)
             expected = int(named.group(1)) if named else checks.get("steps")
             if (archive.get("zip_ok") is not True or archive.get("encoder_storage_problems")
-                    or (script == "train.py" and not archive.get("encoder"))
+                    or (script in ("train.py", "train_ours_continuation.py") and not archive.get("encoder"))
                     or (expected is not None and archive.get("step") != expected)):
                 raise RemoteJobError(f"Remote checkpoint {name} failed its integrity / step check")
             checks.setdefault("checkpoints", {})[name] = {

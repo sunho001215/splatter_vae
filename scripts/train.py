@@ -20,12 +20,12 @@ GPU_MAPPING = guard_gpus()
 
 import torch  # noqa: E402
 
+from ops.jobs.run_identity import record_run_identity  # noqa: E402
+from ops.resources.gpu_guard import validate_runtime_path  # noqa: E402
 from s4d.config import dump_config, get, load_config  # noqa: E402
 from s4d.diag.local_log import RunLogger  # noqa: E402
 from s4d.diag.wandb_log import init_wandb  # noqa: E402
-from ops.resources.gpu_guard import validate_runtime_path  # noqa: E402
 from s4d.model.render import require_prebuilt_renderer  # noqa: E402
-from ops.jobs.run_identity import record_run_identity  # noqa: E402
 from s4d.train import ddp  # noqa: E402
 from s4d.train.evaluate import Evaluator  # noqa: E402
 from s4d.train.loop import train  # noqa: E402
@@ -223,6 +223,9 @@ def main() -> None:
         logger.text(f"GPU mapping: {json.dumps(GPU_MAPPING)}; world size {ctx.world_size}")
         logger.text(f"torch {torch.__version__}; config {args.config} overrides {args.set}")
     try:
+        if ctx.is_main:
+            (run_dir / "completion.json").unlink(missing_ok=True)
+            (run_dir / "failure.json").unlink(missing_ok=True)
         require_prebuilt_renderer()
         train_ds, val_loaders, probe_loaders, n_train_cams = build_data(cfg)
         evaluator_cls = Evaluator
@@ -231,9 +234,12 @@ def main() -> None:
 
             evaluator_cls = PerFrameEvaluator
         evaluator = evaluator_cls(cfg, val_loaders, probe_loaders, logger, ctx.device, n_train_cams) if ctx.is_main else None
+        from s4d.train.schedule import training_end
         train(cfg, run_dir, train_ds, ctx, logger, evaluator, resume=resume)
         if ctx.is_main:
-            (run_dir / "completion.json").write_text(json.dumps({"status": "completed", "steps": get(cfg, "train.steps")}))
+            (run_dir / "completion.json").write_text(json.dumps({
+                "status": "completed", "steps": training_end(cfg), "schedule_steps": get(cfg, "train.steps")
+            }))
     except BaseException as exc:
         if ctx.is_main:
             (run_dir / "failure.json").write_text(json.dumps({"error": repr(exc)}))
