@@ -36,6 +36,11 @@ def retired_rows():
 @pytest.mark.parametrize("previous", ["pending", "crashed", "reset"])
 @pytest.mark.parametrize("scoped", [False, True])
 def test_retired_rows_never_launch_after_recovery_or_reset(tmp_path, monkeypatch, previous, scoped):
+    # Synthetic controls must not inherit coordinator pauses from the live campaign.
+    from ops.jobs import admission_pause
+    pause_file = tmp_path / "pauses.json"
+    pause_file.write_text('{"pauses": []}')
+    monkeypatch.setattr(admission_pause, "FILE", pause_file)
     gpu = scheduler.APPROVED_HOST_GPUS["local"][0]
     retired = retired_rows()
     controls = [

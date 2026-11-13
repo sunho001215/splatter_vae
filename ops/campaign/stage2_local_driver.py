@@ -311,18 +311,12 @@ middle_pretrain_pending = any(status(j['id']) == jobs.PENDING for j in stage2
                               if j.get('stage2_admission_rank') == 'middle' and j['script'] == 'scripts/train.py')
 
 
+from ops.campaign.local_readiness import LocalReadiness  # noqa: E402
+_owner_ready = LocalReadiness(queue, state, ROOT, now=stamp)
+
+
 def admissible(job):
-    script = job['script']
-    middle = job.get('stage2_admission_rank') == 'middle'
-    if middle and script in MIDDLE_WORK and original_rl_pending:
-        return False  # user 2026-10-15: crop pretrains/RL only after every original Stage 2 RL job is admitted
-    if script == 'scripts/train.py' and not middle and job.get('priority', 5) != 0 and middle_pretrain_pending:
-        return False  # ... and the pretrain-only variants only after the crop pretrains
-    if script == 'scripts/evaluate.py':
-        return (ROOT / 'runs' / job['id'] / 'config.yaml').is_file()
-    if script in ('scripts/train_rl.py', 'scripts/eval_rl.py') and job['deps'][0] in by_id:
-        return proof_of(job['deps'][0]).exists()  # ablation encoders only after export verification
-    return True
+    return _owner_ready.stage2_admissible(job)
 
 
 def footprint(job):
@@ -348,7 +342,7 @@ def key(job):
     return job.get('priority', 5), rank(job), not companion, seed, order.index(job['id'])
 
 
-eligible_view = {i: {**s, 'status': status(i)} for i, s in state.items()}
+eligible_view = _owner_ready.eligible_state()
 plain_extra = [{k: v for k, v in j.items() if k != '_registration'} for j in extra]
 candidates = sorted((j for j in jobs.eligible(stage2 + plain_extra, eligible_view)
                      if j.get('host', 'local') == 'local' and admissible(j)), key=key)
@@ -360,9 +354,10 @@ from ops.jobs import host_roles  # noqa: E402
 _roles, _ownership, _context = host_roles.load_roles(), host_roles.read_ownership(), {j['id']: j for j in queue['jobs']}
 candidates = [j for j in candidates if host_roles.refusal(j, 'local', _roles, _ownership, _context) is None]
 # A ready higher-priority row served by another local driver must get capacity first.
-_own = {j['id'] for j in candidates}
+_own = {j['id'] for j in stage2 + plain_extra}
 _other_ready = [j for j in jobs.eligible(queue['jobs'], eligible_view)
                 if j['id'] not in _own and j.get('host', 'local') == 'local' and not paused(j['id'])
+                and _owner_ready(j)
                 and host_roles.refusal(j, 'local', _roles, _ownership, _context) is None]
 # Planned local shutdown (user, 2026-10-15): while this file exists, admit only the listed jobs and nothing after
 # its cutoff, so no local job is started that cannot finish before the stop; closeouts continue unchanged.

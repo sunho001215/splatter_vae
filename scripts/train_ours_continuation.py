@@ -51,7 +51,8 @@ def main():
     from ops.resources.gpu_guard import validate_runtime_path
 
     # Use actual CPU parameters to check every AdamW group/id/shape before staging or accepting a resume.
-    from s4d.train.loop import build_model, build_optimizer
+    from s4d.train.loop import build_model
+    from s4d.train.schedule import build_optimizer
 
     validation_model = build_model(cfg)
     validation_optimizer, _ = build_optimizer(validation_model, cfg)
@@ -89,9 +90,16 @@ def main():
     ]
     import train
 
+    from s4d.train.continuation import train as continuation_train
+
+    for name in ("completion.json", "failure.json", "continuation.json"):
+        (run / name).unlink(missing_ok=True)
+    legacy_train = train.train
+    train.train = continuation_train  # this continuation process only; scripts/train.py stays byte-identical
     try:
         train.main()
     finally:
+        train.train = legacy_train
         if file_sha(a.source_checkpoint) != digest or file_sha(copied) != digest:
             raise ValueError("source/copy checksum changed during continuation")
 

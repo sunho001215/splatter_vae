@@ -67,3 +67,13 @@ def training_end(cfg):
     total = int(get(cfg, "train.steps", 200000))
     stop = get(cfg, "train.stop_step")
     return min(total, int(stop)) if stop else total
+
+
+def build_optimizer(model, cfg, *, legacy_build=None):
+    """Reuse unchanged AdamW groups, substituting only the continuation schedule."""
+    import torch
+
+    if legacy_build is None:
+        from s4d.train.loop import build_optimizer as legacy_build
+    optimizer, _ = legacy_build(model, cfg)
+    return optimizer, torch.optim.lr_scheduler.LambdaLR(optimizer, lr_function(cfg))

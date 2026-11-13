@@ -77,7 +77,7 @@ def build_rows(current, release, checkpoint_sha, baseline_sha, cfg):
             args += ['--source-sha256', checkpoint_sha]
         args += ['--set', *input_overrides(cfg)]
         derive(OLD, pre, 'scripts/train_ours_continuation.py', args, [source, STATS], pre_priority,
-               ['completion.json', 'metrics.jsonl', 'resume_source.json', f'checkpoints/step_{end:07d}.pt'])
+               ['completion.json', 'continuation.json', 'metrics.jsonl', 'resume_source.json', f'checkpoints/step_{end:07d}.pt'])
         derive('rwcal-20261111-ours-drawer-open-export', export, args=[
             '--run', f'runs/{pre}', '--checkpoint', f'runs/{pre}/checkpoints/step_{end:07d}.pt',
             '--out', f'runs/{export}/encoder.pt'], deps=[pre], results=['encoder.pt'])

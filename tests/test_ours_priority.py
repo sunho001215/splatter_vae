@@ -296,13 +296,14 @@ def test_baseline_driver_passes_cpu_disk_and_other_drivers_reservations_to_fair_
     from ops.jobs import fair_share
     ns = dict(host_roles=SimpleNamespace(job_class=lambda *a: SimpleNamespace(domain='realworld'),
                                          refusal=lambda *a: None,remote_resident=lambda *a: False),
-              by_queue=by_id,by_id=by_id,footprint=lambda r:r['ram_gb']*2**30,
+              by_queue=by_id,by_id={low['id']: low},footprint=lambda r:r['ram_gb']*2**30,
               active_footprint=lambda i,c:c['ram_gb']*2**30,pss={},FROZEN=set(),state={'running':active},
               candidates=[low],trained_by=lambda j:j['id'],status=lambda _: 'pending',jobs=jobs,view={},
               queue=dict(jobs=list(by_id.values()),hosts={'local':dict(cpu_thread_budget=10,
                          limits={g:dict(max_jobs=3,max_mem_gb=10) for g in ('mig0','mig1')})}),
-              paused=lambda _: False,_roles={},_ownership={},_context=by_id,ROOT=ROOT,os=os,
+              paused=lambda _: False,_owner_ready=lambda _: True,_roles={},_ownership={},_context=by_id,ROOT=ROOT,os=os,
               CAP=20*2**30,total=2**30,messages=[],fair_share=fair_share)
+    ns["_owner_ready"].eligible_state = lambda: {}
     start = next(i for i,n in enumerate(source.body) if isinstance(n,ast.FunctionDef) and n.name == 'family')
     end = next(i for i,n in enumerate(source.body) if isinstance(n,ast.Assign)
                and any(isinstance(t,ast.Name) and t.id == 'admitted' for t in n.targets))

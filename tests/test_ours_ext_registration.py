@@ -125,12 +125,13 @@ def test_pure_mig_profile_and_completion_predicates():
     assert profile_matches({}, "GPU-physical", set())
     with pytest.raises(ValueError):
         profile_matches({"gpu_profile": "7g.192gb"}, "MIG-one", {"MIG-one"})
-    completion = dict(status="completed", steps=300000, schedule_steps=400000)
-    assert continuation_endpoint(["--stop-step", "300000"], completion) == 300000
+    completion = dict(status="completed", steps=400000)
+    metadata = dict(status="completed", stop_step=300000, schedule_steps=400000)
+    assert continuation_endpoint(["--stop-step", "300000"], completion, metadata) == 300000
     with pytest.raises(ValueError):
-        continuation_endpoint(["--stop-step", "300000"], dict(completion, steps=400000))
+        continuation_endpoint(["--stop-step", "300000"], dict(completion, steps=300000), metadata)
     with pytest.raises(ValueError):
-        continuation_endpoint(["--stop-step", "400000"], completion)
+        continuation_endpoint(["--stop-step", "400000"], completion, metadata)
 
 
 def test_container_output_paths_for_new_jobs():
@@ -160,3 +161,23 @@ def test_explicit_step_overrides_do_not_hide_early_stop():
     assert resolved_pretraining_endpoint(["train.steps=10"], {"train": {"steps": 5, "stop_step": 3}}) == 3
     assert resolved_pretraining_endpoint([], {"train": {"steps": 200000}}) == 200000
     assert resolved_pretraining_endpoint(["train.steps=10"], {}) == 10
+
+
+@pytest.mark.parametrize('metadata', [None, dict(status='completed', stop_step=400000, schedule_steps=400000),
+                                     dict(status='completed', stop_step=300000, schedule_steps=400000)])
+def test_local_closeout_requires_separate_verified_continuation_metadata(tmp_path, metadata):
+    row = dict(id='continuation', script=rw.OURS_CONTINUATION, args=['--stop-step', '300000'],
+               required_results=['completion.json', 'continuation.json'])
+    run = tmp_path / 'runs' / row['id']
+    run.mkdir(parents=True)
+    (run / 'completion.json').write_text(json.dumps(dict(status='completed', steps=400000)))
+    if metadata:
+        (run / 'continuation.json').write_text(json.dumps(metadata))
+    state = {row['id']: dict(status='done', host='local')}
+    if not metadata or metadata['stop_step'] != 300000:
+        with pytest.raises(rw.LocalInputError):
+            rw.closeout(row['id'], state, row, tmp_path / 'finished', runs=tmp_path / 'runs')
+        assert not (tmp_path / 'finished').exists()
+    else:
+        record = rw.closeout(row['id'], state, row, tmp_path / 'finished', runs=tmp_path / 'runs')
+        assert set(record['files']) == {'completion.json', 'continuation.json'}

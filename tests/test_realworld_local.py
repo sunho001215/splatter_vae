@@ -648,7 +648,7 @@ def test_local_driver_source_and_local_rows():
 
 
 def test_active_pause_names_match_existing_paused_behavior(monkeypatch):
-    monkeypatch.setattr(admission_pause, "_ACTIVE", [
+    monkeypatch.setattr(admission_pause, "snapshot", lambda: [
         {"name": "exact", "ids": ["trainer"]}, {"name": "prefix", "prefixes": ["held-"]},
         {"name": "both", "ids": ["trainer-eval"], "prefixes": ["trainer"]}])
     for job_id in ("trainer", "trainer-eval", "held-job", "held-job-eval", "free", "free-eval"):
@@ -722,7 +722,6 @@ def test_apply_rereads_pauses_added_since_plan(mirrored, monkeypatch):
     assert planning(f, [job])[0]["decision"] == "local"
     pause_file = f.root / "pauses.json"
     monkeypatch.setattr(admission_pause, "FILE", pause_file)
-    monkeypatch.setattr(admission_pause, "_ACTIVE", [])
     pause_file.write_text(json.dumps({"pauses": [{"name": "new-hold", "active": True, "ids": ["fql"]}]}))
     assert admission_pause.active_pauses("fql", fresh=True) == ["new-hold"]
     result = apply_placement(f, ["fql"], paused_fn=None)
@@ -1835,3 +1834,20 @@ def test_local_planner_not_ready_high_row_reserves_nothing(mirrored,monkeypatch,
         monkeypatch.setattr(rw,'placement_scope',scope)
     decisions = planning(f,[head,row('low',priority=2,mem_gb=1)],**kwargs)
     assert decisions[0]['decision'] != 'local' and decisions[1]['decision'] == 'local'
+
+
+@pytest.mark.parametrize('resource', ['ram_free_bytes', 'cpu_free_threads', 'disk_free_bytes'])
+def test_allowed_pause_placement_charges_capacity_and_multiple_rows(mirrored, resource):
+    f = mirrored
+    rows = [row('first', args=[], deps=[]), row('second', args=[], deps=[])]
+    for job in rows:
+        job.update(ram_gb=2, cpu_threads=2, disk_gb=2)
+    free = dict(ram_total_bytes=20 * 2**30, ram_free_bytes=20 * 2**30,
+                cpu_free_threads=20, disk_free_bytes=20 * 2**30)
+    free[resource] = 2 if resource == 'cpu_free_threads' else 2 * 2**30
+    held = planning(f, rows, paused_fn=lambda _: ['allowed'], allow_pauses=['allowed'], capacity=free)
+    ordinary = planning(f, rows, capacity=free)
+    assert [r['decision'] for r in held] == [r['decision'] for r in ordinary] == ['local', 'waits']
+    free[resource] = 0
+    assert planning(f, rows, paused_fn=lambda _: ['allowed'], allow_pauses=['allowed'],
+                    capacity=free)[0]['decision'] == 'waits'

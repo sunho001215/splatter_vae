@@ -652,7 +652,9 @@ def remote_check_names(state: dict) -> list[str]:
     """Files inspected in place: the required results, the exit / provenance records, and the completion record the
     script's budget check needs (pretraining completion.json, RL final.json)."""
     script = Path(state.get("script", "")).name
-    mandatory = {"train.py": {"completion.json"}, **{name: {"final.json"} for name in RL_TRAINERS}}.get(script, set())
+    mandatory = {"train.py": {"completion.json"},
+                 "train_ours_continuation.py": {"completion.json", "continuation.json"},
+                 **{name: {"final.json"} for name in RL_TRAINERS}}.get(script, set())
     return sorted(set(state["required_results"]) | {"exit.json", "provenance.json"} | mandatory)
 
 
@@ -744,16 +746,26 @@ def _verify_remote_exit(run_id: str, state: dict, report: dict, registry_state: 
                                               for name in ("exit.json", "provenance.json")}, digests)
     script, args, checks = Path(state.get("script", "")).name, state.get("args", []), {}
     if script == "train.py":
-        from ops.jobs.continuation import resolved_pretraining_endpoint
-        completion = record_of("completion.json")
-        target = resolved_pretraining_endpoint(args, record_of("provenance.json").get("numeric_config"))
+        target, completion = _override(args, "train.steps="), record_of("completion.json")
+        if target is None:  # no override (e.g. the real-world rows of 2026-11-11): the configuration file's budget, as
+            # resolved by the run into its identity-checked provenance.json numeric_config (checksum and digest above)
+            numeric = record_of("provenance.json").get("numeric_config")
+            train = numeric.get("train") if isinstance(numeric, dict) else None
+            configured = train.get("steps") if isinstance(train, dict) else None
+            # completion.json records train.steps even when train.stop_step ends the loop earlier (s4d/train/loop.py
+            # end_step), so a fallback budget is accepted only for a run with no early stop (Codex review 2026-11-12)
+            # As the loop reads it: a falsy stop_step is no early stop, else training ends at int(stop_step)
+            stop = train.get("stop_step") if isinstance(train, dict) else None
+            full = not stop or ((type(stop) is int or (type(stop) is float and math.isfinite(stop)))
+                                and type(configured) is int and int(stop) >= configured)
+            target = configured if type(configured) is int and configured > 0 and full else None
         if target is None or completion.get("status") != "completed" or completion.get("steps") != int(target):
             raise RemoteJobError("Remote pretraining did not complete its configured budget")
         checks["steps"] = int(target)
     elif script == "train_ours_continuation.py":
         from ops.jobs.continuation import continuation_endpoint
         try:
-            checks["steps"] = continuation_endpoint(args, record_of("completion.json"))
+            checks["steps"] = continuation_endpoint(args, record_of("completion.json"), record_of("continuation.json"))
         except ValueError as exc:
             raise RemoteJobError(str(exc)) from exc
     elif script in RL_TRAINERS:  # DrM and the downstream algorithms (2026-10-28) write the same final.json
@@ -1403,7 +1415,10 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
         policies[name] = PriorityReservations(host.get('limits', {}), budgets, slots, remaining,
             request=lambda r: dict(ram_gb=ram_gb(r), cpu_threads=thread_limit(r.get('cpu_threads', 8)),
                                    disk_gb=float(r.get('disk_gb', 0))), messages=messages)
-    from ops.jobs.admission_pause import paused
+    from ops.jobs.admission_pause import paused, snapshot
+    pause_evidence = snapshot()  # refreshed once on every daemon tick, before any reservation
+    from ops.campaign.local_readiness import LocalReadiness
+    owner_ready = LocalReadiness(queue, state, REPO)
     ready_rows = eligible(list(jobs.values()), state)
     ready_ids = {j['id'] for j in ready_rows}
     for row in jobs.values():
@@ -1415,7 +1430,10 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
         if resource is None or host.get("enabled", host_name == "local") is not True or host.get("hold", False):
             continue
         policy = policies[host_name]
-        if paused(job['id']):
+        if host_name == 'local' and owner_ready.owns(job) and not owner_ready(job):
+            policy.log(job, 'not ready under owning driver gates')
+            continue
+        if paused(job['id'], pauses=pause_evidence):
             policy.log(job, 'paused')
             continue
         if host_name == "remote" and release_invalid:

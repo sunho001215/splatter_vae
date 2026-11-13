@@ -140,7 +140,7 @@ messages = []
 
 def status(job_id):
     current = state.get(job_id, {})
-    if current.get('status') == 'crashed' and current['failures'] <= int(by_id[job_id].get('max_restarts', 1)):
+    if current.get('status') == 'crashed' and current['failures'] <= int(by_queue.get(job_id, {}).get('max_restarts', 1)):
         return jobs.PENDING
     return current.get('status', jobs.PENDING)
 
@@ -180,6 +180,9 @@ def footprint(job):
     return local_footprint(job, globals().get('by_queue', {}))
 
 
+from ops.campaign.local_readiness import LocalReadiness  # noqa: E402
+_owner_ready = LocalReadiness(queue, state, ROOT, now=stamp)
+
 # Baselines rank below the registered Stage 2 work (user 2026-10-13): yield while any local Stage 2 job is waiting
 # (pending with its dependencies done, or crashed but restartable).
 from ops.jobs.admission_pause import paused as _paused_now  # noqa: E402
@@ -190,10 +193,11 @@ for job in queue['jobs']:
         continue
     current = state.get(job['id'], {})
     restartable = current.get('status') == 'crashed' and current['failures'] <= int(job.get('max_restarts', 1))
-    if _paused_now(job['id']):  # an intentionally paused Stage 2 row cannot start, so it never forces a yield
+    # Paused or inadmissible Stage 2 work cannot start and never forces a yield.
+    if _paused_now(job['id']) or not _owner_ready(job):
         continue
-    if restartable or (current.get('status', jobs.PENDING) == jobs.PENDING
-                       and all(state.get(d, {}).get('status') == jobs.DONE for d in job.get('deps', []))):
+    if ((restartable or current.get('status', jobs.PENDING) == jobs.PENDING)
+            and all(state.get(d, {}).get('status') == jobs.DONE for d in job.get('deps', []))):
         stage2_waiting.append(job['id'])
 deps = {d for j in registered for d in j.get('deps', [])}
 view = {i: ({**s, 'status': status(i)} if i in by_id else s) for i, s in state.items() if i in by_id or i in deps}
@@ -297,9 +301,9 @@ fair_candidates = [{'id': j['id'], 'priority': j.get('priority', 5), 'family': f
                     'trainer_ready': status(trained_by(j)) in jobs.ACTIVE | {jobs.DONE}}
                    for j in candidates]
 # Other drivers' ready rows claim only their own capacity. Mirror/refusal gates apply before reservation.
-external = [j for j in jobs.eligible(queue['jobs'], {**state, **view})
-            if j.get('host', 'local') == 'local' and j['id'] not in {r['id'] for r in candidates}
-            and not paused(j['id']) and j['id'].removesuffix('-eval') not in FROZEN
+external = [j for j in jobs.eligible(queue['jobs'], _owner_ready.eligible_state())
+            if j.get('host', 'local') == 'local' and j['id'] not in by_id
+            and not paused(j['id']) and _owner_ready(j)
             and host_roles.refusal(j, 'local', _roles, _ownership, _context) is None]
 for j in external:
     fair_candidates.append({**j, 'family': family(j), 'ram_bytes': footprint(j), 'reserve_only': True,

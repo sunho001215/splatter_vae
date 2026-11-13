@@ -1090,7 +1090,9 @@ def plan(queue: dict, state: dict, roles: dict, *, paused_fn, allow_pauses=(), p
     mirror, manifest, runs = Path(mirror), Path(manifest or Path(mirror) / "MANIFEST.json"), Path(runs or root / "runs")
     by_id, decisions = {j["id"]: j for j in queue["jobs"]}, []
     from ops.jobs.priority import PriorityReservations
+    from ops.campaign.local_readiness import LocalReadiness
 
+    owner_ready = LocalReadiness(queue, state, root)
     capacity = capacity or {}
     host = queue.get("hosts", {}).get("local", {})
     slots = _running_slots(queue, state)
@@ -1135,7 +1137,7 @@ def plan(queue: dict, state: dict, roles: dict, *, paused_fn, allow_pauses=(), p
                 if local.get("priority", 5) > current_priority:
                     continue
                 pending_local.remove(local)
-                ready = (not _pause_names(paused_fn, local["id"])
+                ready = (not _pause_names(paused_fn, local["id"]) and owner_ready(local)
                          and all(state.get(d, {}).get("status") == "done" for d in local.get("deps", []))
                          and host_roles.refusal(local, "local", roles, ownership or {}, by_id,
                                                 state.get(local["id"])) is None)
@@ -1173,13 +1175,13 @@ def plan(queue: dict, state: dict, roles: dict, *, paused_fn, allow_pauses=(), p
                     scope = placement_scope(job, root=root)
                 except (OSError, ValueError, subprocess.SubprocessError) as exc:
                     decision, reason = "stay_remote", str(exc)
-            if decision == "local" and policy == "fit" and not _pause_names(paused_fn, job_id):
+            if decision == "local" and policy == "fit":
                 destination = host_roles.destination_row(job, "local", "")
                 if not admit(destination):
                     decision, reason = "waits", "local capacity"
                     if not priority_reservations.feasible(destination):
                         reason = "infeasible on empty local host"
-                    priority_reservations.reserve(destination, ready=not _pause_names(paused_fn, job_id))
+                    priority_reservations.reserve(destination)
         item = {"id": job_id, "decision": decision, "reason": reason, "mem_gb": float(job.get("mem_gb", 0)),
                 "ram_gb": float(job.get("ram_gb", 0)), "needs_mirror_bytes": needs}
         if scope is not None:
@@ -1280,7 +1282,8 @@ def closeout(job_id: str, state: dict, job: dict, finished_dir: Path = FINISHED_
     if job.get("script") == OURS_CONTINUATION:
         from ops.jobs.continuation import continuation_endpoint
         try:
-            continuation_endpoint(job["args"], json.loads((runs / job_id / "completion.json").read_bytes()))
+            continuation_endpoint(job["args"], json.loads((runs / job_id / "completion.json").read_bytes()),
+                                  json.loads((runs / job_id / "continuation.json").read_bytes()))
         except (OSError, ValueError) as exc:
             raise LocalInputError(str(exc)) from exc
     if job.get("script") == NATIVE_DEPTH:  # every overlay the descriptor names is part of the immutable evidence
@@ -1317,8 +1320,8 @@ def closeout(job_id: str, state: dict, job: dict, finished_dir: Path = FINISHED_
     return record
 
 
-def _capacity(queue: dict, state: dict) -> dict:
-    """Training capacity leaves the fixed policy-staging reserve inside 150 GB."""
+def _capacity(queue: dict, state: dict, *, detailed: bool = False) -> dict:
+    """Legacy RAM capacity by default; ``detailed=True`` adds planning CPU/disk budgets."""
     from ops.jobs.footprints import local_footprint
     from ops.resources import memory_budget as mb
     pss = mb.session_nonfile_pss()
@@ -1330,6 +1333,9 @@ def _capacity(queue: dict, state: dict) -> dict:
         job = by_id.get(i)
         footprint = local_footprint(job, by_id) if job else int(float(s.get("ram_gb", 0)) * 2**30)
         growth += max(0, footprint - pss.get(int(s.get("pid") or -1), 0))
+    legacy = {"ram_free_bytes": max(0, mb.TRAINING_CEILING - mb.snapshot()["budget_usage"] - growth)}
+    if not detailed:
+        return legacy
     host = queue.get("hosts", {}).get("local", {})
     cpu_budget = float(host.get("cpu_thread_budget", os.cpu_count() or 1))
     active = [(s, by_id.get(i, {})) for i, s in state.items()
@@ -1337,7 +1343,7 @@ def _capacity(queue: dict, state: dict) -> dict:
     disk = shutil.disk_usage(REPO)
     floor = max(float(host.get("disk_floor_gb", 0)) * 2**30,
                 disk.total * float(host.get("disk_floor_fraction", 0)))
-    return {"ram_free_bytes": max(0, mb.TRAINING_CEILING - mb.snapshot()["budget_usage"] - growth),
+    return {**legacy,
             "ram_total_bytes": mb.TRAINING_CEILING,
             "cpu_free_threads": cpu_budget-sum(max(float(s.get("cpu_threads", 8)), float(j.get("cpu_threads", 8)))
                                                for s, j in active),
@@ -1405,7 +1411,8 @@ def main() -> None:
             if missing:
                 inventory = remote_plan(sorted(missing), _fetch_client())
         decisions = plan(queue, state, roles, paused_fn=active_pauses, allow_pauses=args.allow_pause,
-                         policy=args.policy, capacity=_capacity(queue, state), ownership=owned, remote_plan=inventory)
+                         policy=args.policy, capacity=_capacity(queue, state, detailed=True),
+                         ownership=owned, remote_plan=inventory)
         if args.command == "plan":
             result = decisions
         else:

@@ -8,7 +8,7 @@ def profile_matches(job, uuid, known_mig):
     return profile is None or uuid in known_mig
 
 
-def continuation_endpoint(args, completion):
+def continuation_endpoint(args, completion, metadata):
     try:
         if args.count("--stop-step") != 1:
             raise ValueError("one --stop-step required")
@@ -18,8 +18,10 @@ def continuation_endpoint(args, completion):
     if (
         step not in (300000, 400000)
         or completion.get("status") != "completed"
-        or completion.get("steps") != step
-        or completion.get("schedule_steps") != 400000
+        or completion != {"status": "completed", "steps": 400000}
+        or metadata.get("status") != "completed"
+        or metadata.get("stop_step") != step
+        or metadata.get("schedule_steps") != 400000
     ):
         raise ValueError("Ours continuation did not complete its job endpoint")
     return step
