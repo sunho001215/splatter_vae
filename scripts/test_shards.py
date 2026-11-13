@@ -126,6 +126,7 @@ FILE_CLASSES = {
     "tests/test_robot_pc_warmup.py": "serial",  # Warmup deadlines and controller transport lifecycle.
     "tests/test_run_identity.py": "cpu",
     "tests/test_rwlearn_actions.py": "cpu",
+    "tests/test_rwlearn_dsreset.py": "cpu",
     "tests/test_rwlearn_bcflow.py": "serial",  # Policy server loopback sessions and timed inference overload.
     "tests/test_rwlearn_deploy.py": "cpu",
     "tests/test_rwlearn_fql.py": "cpu",
