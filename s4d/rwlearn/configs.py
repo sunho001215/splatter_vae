@@ -33,8 +33,15 @@ MVP3D_BOUNDS = [-0.15, -0.7, 0.15, 1.05, 0.6, 1.0]  # >= 99 % of robot/object/fi
 # SNeRL 2/6-unit window 67.6 % of valid depth, SinCro 0.1/2.5 m 98.3 % (as the measured tasks).
 COVERING_LOOKAT = [0.322, -0.031, 0.346]
 COVERING_POSE_SCALE = 3.74
+# pick-and-place, measured 2026-11-13 on its full calibration-validated geometry store (97 episodes,
+# learning_inputs/calv2-4368f22/pick-and-place/store.yaml, scene-stats with released 5ea3dd1 code; agent CALSYNC,
+# rwx/results/scene/pick-and-place-scene-stats.json sha 71095e5c): optical-axis lookat [0.322, -0.0304, 0.346] m, median
+# camera distance 1.0695 m (0.9965-1.1080) -> pose_scale 4 / 1.0695 = 3.74; MVP3D_BOUNDS hold (robot 99.61 %, object
+# 99.98 %, fixture 100 % inside); SNeRL 2/6-unit window 66.4 % of valid depth, SinCro 0.1/2.5 m 98.4 %.
+PICK_AND_PLACE_LOOKAT = [0.322, -0.030, 0.346]
+PICK_AND_PLACE_POSE_SCALE = 3.74
 
-# Per-target scene geometry. drawer-open / mug-hanging map to exactly the values above. TODO(pick-and-place):
+# Per-target scene geometry. drawer-open / mug-hanging map to exactly the values above. A new task starts at
 # None = NOT MEASURED. Raw flange poses fit inside MVP3D_BOUNDS, but they cannot establish the
 # validated camera poses (lookat, pose_scale) or the object/fixture depth extent (bounds). Measure each new task on its
 # calibration-validated processed store (``scripts/realworld_learning.py scene-stats --store <store.yaml>`` =
@@ -45,7 +52,7 @@ SCENE_PARAMETERS = {
     "drawer-open": {"lookat": SNERL_LOOKAT, "pose_scale": SNERL_POSE_SCALE, "bounds": MVP3D_BOUNDS},
     "mug-hanging": {"lookat": SNERL_LOOKAT, "pose_scale": SNERL_POSE_SCALE, "bounds": MVP3D_BOUNDS},
     "covering": {"lookat": COVERING_LOOKAT, "pose_scale": COVERING_POSE_SCALE, "bounds": MVP3D_BOUNDS},
-    "pick-and-place": {"lookat": None, "pose_scale": None, "bounds": None},
+    "pick-and-place": {"lookat": PICK_AND_PLACE_LOOKAT, "pose_scale": PICK_AND_PLACE_POSE_SCALE, "bounds": MVP3D_BOUNDS},
 }
 SCENE_KEYS = {"snerl": ("lookat", "pose_scale"), "mvp3d": ("bounds",)}  # the baselines that read scene geometry
 POSE_SCALE_NOTE = ("cameras 4 official units from the origin, as official / Meta-World (median distance 1.055 m); "
@@ -53,7 +60,11 @@ POSE_SCALE_NOTE = ("cameras 4 official units from the origin, as official / Meta
                    "depth of the centre-cropped views; the rest is distant room background)")
 POSE_SCALE_NOTES = {"covering": "cameras 4 official units from the origin, as official / Meta-World (median distance "
                                 "1.070 m, covering store); official near/far 2/6 -> 0.53-1.60 m camera depth (67.6 % of "
-                                "all valid depth of the centre-cropped views; the rest is distant room background)"}
+                                "all valid depth of the centre-cropped views; the rest is distant room background)",
+                    "pick-and-place": "cameras 4 official units from the origin, as official / Meta-World (median "
+                                      "distance 1.0695 m, pick-and-place store); official near/far 2/6 -> 0.53-1.60 m "
+                                      "camera depth (66.4 % of all valid depth of the centre-cropped views; the rest is "
+                                      "distant room background)"}
 PENDING_SCENE = ("NOT MEASURED for this task (TODO): measure with store.scene_statistics on its validated processed "
                  "episodes (docs/realworld_baselines.md); null on purpose, the planner refuses this baseline until "
                  "then")

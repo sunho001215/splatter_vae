@@ -47,7 +47,7 @@ VAL_STRIDES = [1, 3]  # Meta-World [2, 6] = 1 and 3 RL steps
 ORBIT_DISTANCE_M = 1.055
 # Targets whose rig was measured on their own store (covering 2026-11-12, scene-stats on the 98-episode validated
 # store: median camera distance 1.070 m, configs.COVERING_POSE_SCALE = 4 / 1.070); the other targets use the value above.
-ORBIT_DISTANCES_M = {"covering": 1.070}
+ORBIT_DISTANCES_M = {"covering": 1.070, "pick-and-place": 1.0695}  # pick-and-place: scene-stats 2026-11-13, 97 episodes
 
 
 def sim_original() -> dict:

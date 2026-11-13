@@ -18,8 +18,8 @@
 #   data.max_tracks = None: every stored moving track of the window's query chunk (no subsampling)
 #   model.anchor_stats = None: per-task real-world workspace statistics, computed by the plan's stats row with the Meta-World procedure (scripts/compute_workspace_stats.py --regime realworld over the TRAINING episodes) and set by the row; null refuses to start (s4d/train/loop.py anchor_statistics_path)
 #   aug.synth_camera_rig = training_cameras: the two synthetic views are jittered around the sample's OWN calibrated cameras with the Meta-World offsets (augment.jitter_training_cameras); the default rig is the Meta-World camera rig in the Meta-World world frame and is refused outside Meta-World (augment.synth_camera_rig)
-#   eval.orbit_center = None: diagnostic orbit video only: the rig's measured optical-axis intersection in the robot base frame (SCENE_PARAMETERS; null = not measured for this target, the orbit video is skipped)
-#   eval.orbit_distance = None: diagnostic orbit video only: the measured median camera distance
+#   eval.orbit_center = [0.322, -0.03, 0.346]: diagnostic orbit video only: the rig's measured optical-axis intersection in the robot base frame (SCENE_PARAMETERS; null = not measured for this target, the orbit video is skipped)
+#   eval.orbit_distance = 1.0695: diagnostic orbit video only: the measured median camera distance
 #   wandb.project = splatter4d-realworld: real-world runs are logged apart from the Meta-World project
 # Plan rows only through the registrar (full-data gate, stats row, calibration release).
 data:
@@ -119,8 +119,11 @@ eval:
   max_batches: 8
   probe_every: 10000
   probe_batches: 24
-  orbit_center: null
-  orbit_distance: null
+  orbit_center:
+  - 0.322
+  - -0.03
+  - 0.346
+  orbit_distance: 1.0695
   orbit_elevation: -45.0
 wandb:
   enabled: true

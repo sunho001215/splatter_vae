@@ -371,14 +371,16 @@ def test_new_task_registry_and_scene_measurement_hooks():
     assert C.SCENE_PARAMETERS["covering"] == {"lookat": C.COVERING_LOOKAT, "pose_scale": C.COVERING_POSE_SCALE,
                                               "bounds": C.MVP3D_BOUNDS}
     assert all(not C.pending_scene_parameters(b, "covering") for b in C.BASELINES)
-    for task in ("pick-and-place",):  # not measured yet: null in the configs, never a guessed number
-        assert C.pending_scene_parameters("snerl", task) == ["lookat", "pose_scale"]
-        assert C.pending_scene_parameters("mvp3d", task) == ["bounds"]
-        assert all(not C.pending_scene_parameters(b, task) for b in ("sincro", "reviwo", "dynamo"))
+    # pick-and-place: measured 2026-11-13 on its full calibration-validated geometry store (scene-stats, 97 episodes)
+    assert C.SCENE_PARAMETERS["pick-and-place"] == {"lookat": C.PICK_AND_PLACE_LOOKAT,
+                                                    "pose_scale": C.PICK_AND_PLACE_POSE_SCALE, "bounds": C.MVP3D_BOUNDS}
+    for task in ("pick-and-place",):
+        assert all(not C.pending_scene_parameters(b, task) for b in C.BASELINES)
         snerl, mvp = C.derive("snerl", task)[0], C.derive("mvp3d", task)[0]
-        assert snerl["data_interface"]["lookat"] is None and snerl["data_interface"]["pose_scale"] is None
-        assert mvp["render"]["bounds"] is None
-        assert [why for k, v, why in C.overrides("snerl", task) if v is None] == [C.PENDING_SCENE] * 2
+        assert snerl["data_interface"]["lookat"] == C.PICK_AND_PLACE_LOOKAT
+        assert snerl["data_interface"]["pose_scale"] == C.PICK_AND_PLACE_POSE_SCALE
+        assert mvp["render"]["bounds"] == C.MVP3D_BOUNDS
+        assert not [why for k, v, why in C.overrides("snerl", task) if v is None]
         for b in ("sincro", "reviwo", "dynamo"):  # scene-independent configs equal the existing tasks' up to the target
             assert C.render(b, task) == C.render(b, "drawer-open").replace("drawer-open.yaml", "@").replace(
                 "drawer-open", task).replace("@", "drawer-open.yaml")
