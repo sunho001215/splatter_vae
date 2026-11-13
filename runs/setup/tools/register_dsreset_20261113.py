@@ -92,7 +92,10 @@ def prepare(repo, config, config_path, ingest_path, release, *, preview=False):
     inputs = {str(config_path):sha256(config_path)}
     if not preview:
         inputs[str(ingest_path)] = sha256(ingest_path)
-    rows = []
+    before = (repo/'experiments/queue.yaml').read_bytes()
+    registry = (repo/'experiments/registry.jsonl').read_bytes()
+    current = {r['id']:r for r in R.queue_document(before)['jobs']}
+    rows, reused = [], []
     from s4d.rwlearn.configs import pending_scene_parameters
     for task, task_cfg in config['tasks'].items():
         directory = task_cfg['inputs'].rstrip('/')
@@ -118,13 +121,36 @@ def prepare(repo, config, config_path, ingest_path, release, *, preview=False):
             for method in methods:
                 b = 'mvp3d' if method.startswith('mvp3d') else method
                 R.require(not pending_scene_parameters(b,task),f'{task}/{b}: measure scene parameters and release first')
-        rows += build_rows(task,directory,release,stage_rows=default_stages(task,directory),rig=task_cfg['rig'],methods=methods,
+        task_rows = build_rows(task,directory,release,stage_rows=default_stages(task,directory),rig=task_cfg['rig'],methods=methods,
                            native_bounds=task_cfg.get('native_bounds'))
+        if task_cfg.get('reuse_ours_S'):
+            from ops.jobs.dsreset_reuse import aliases,prove_reuse,reuse_rows
+            R.require('ours' in methods,'reuse_ours_S requires ours')
+            if not preview:
+                pre=current[row_id('pre400k','ours',task,'S')]
+                cfgargs=pre['args']
+                base=SOURCE/cfgargs[cfgargs.index('--baseline-config')+1]
+                inputs[str(base)]=sha256(base)
+                old_directory=task_cfg['reuse_ours_S_inputs_copy']
+                names=('gate_report.json','split_seed0.json','outcomes.json','store.yaml')
+                blobs={n:(Path(old_directory)/n).read_bytes() for n in names}
+                inputs.update({str(Path(old_directory)/n):R.sha(b) for n,b in blobs.items()})
+                new=Path(task_cfg['inputs_copy'])/'S'
+                proof=prove_reuse(task,json.loads((new/'manifest.json').read_text()),
+                      json.loads(blobs['gate_report.json']),json.loads(blobs['split_seed0.json']),
+                      json.loads(blobs['outcomes.json']),yaml.safe_load(blobs['store.yaml']),
+                      yaml.safe_load((new/'store.yaml').read_text()),task_rows,current,SOURCE,
+                      new_gate=json.loads((new/'gate_report.json').read_text()))
+                reused.append(proof)
+            else:
+                reused.append({'task':task,'variant':'S','method':'ours','aliases':aliases(task),'unchecked_preview':True})
+            task_rows=reuse_rows(task_rows,task,current)
+        rows += task_rows
     R.require(len({r['id'] for r in rows})==len(rows),'duplicate row IDs')
     # Validate every argv against the same resolver used at placement; no hidden inputs.
     from ops.jobs.realworld_local import needed_inputs
     from ops.jobs.host_roles import load_roles, refusal
-    by_id = {r['id']:r for r in rows}
+    by_id = {**current, **{r['id']:r for r in rows}}
     for row in rows:
         needed_inputs(row)
         R.require(refusal(row,'local',load_roles(),{},by_id) is None,'row is not eligible for local placement')
@@ -133,11 +159,9 @@ def prepare(repo, config, config_path, ingest_path, release, *, preview=False):
         for a in row['args']:
             if a.startswith('configs/') and a.endswith('.yaml'):
                 inputs[str(SOURCE/a)] = sha256(SOURCE/a)
-    before = (repo/'experiments/queue.yaml').read_bytes()
-    registry = (repo/'experiments/registry.jsonl').read_bytes()
     known = {r['id'] for r in R.queue_document(before)['jobs']} | R.registry_ids(registry)
-    R.require(not known.intersection(by_id),'row IDs already registered')
-    R.require(all(not (repo/'runs'/rid).exists() for rid in by_id),'run output already exists')
+    R.require(not known.intersection(r['id'] for r in rows),'row IDs already registered')
+    R.require(all(not (repo/'runs'/rid).exists() for rid in (r['id'] for r in rows)),'run output already exists')
     candidate = R.queue_candidate(before,rows)
     return {'schema':'dsreset-registration/v1','registered':False,'status':'preview' if preview else 'dry-run',
             'repo':str(repo.resolve()),'release':release,'rows':rows,'rows_sha256':R.json_sha(rows),
@@ -145,8 +169,8 @@ def prepare(repo, config, config_path, ingest_path, release, *, preview=False):
             'queue_sha256_before':R.sha(before),'queue_sha256_after':R.sha(candidate),
             'registry_sha256':R.sha(registry),'required_pause':PAUSE,
             'prep_policy':'reuse established dispatcher outputs; queue prep/calib/qa rows are read-only readiness audits',
-            'reuse_existing_S':False,
-            'reuse_reason':'new deterministic paired split/protocol; old S rows are not silently aliased'}
+            'reuse_existing_S':reused,
+            'reuse_reason':'existing chains require exact raw/split/store and science proof; otherwise new S rows'}
 
 
 def execute(repo, record):

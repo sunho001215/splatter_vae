@@ -245,6 +245,8 @@ def test_existing_task_amendment_preserves_hash_bound_exclusion_and_paired_split
                         for r in m['SF']['episodes']}}
     ex=m['SF']['excluded'][0]
     ingest['episodes'][ex['id']]=entry('covering',1,sha=ex['sha256'],status='invalid')
+    ingest['episodes'][ex['id']]['sha256']=None
+    ingest['episodes'][ex['id']]['filename']=ex['path']
     assert manifest_gate(m['SF'],ingest)['passed']
     ingest['episodes'][ex['id']]['validation']['status']='valid'
     with pytest.raises(ValueError,match='remain invalid'):
@@ -274,3 +276,16 @@ def test_existing_verified_success_needs_no_new_pull_marker(tmp_path):
     Path(str(roots['failure'])+'.VERIFIED').unlink()
     with pytest.raises(ValueError,match='verification marker'):
         paired_manifests('covering',roots,verified_success=verified,inspect=lambda p:{})
+
+
+def test_success_split_preserves_the_established_per_task_protocol(tmp_path):
+    from s4d.rwlearn.store import split_episodes
+    m=paired_manifests('covering',fixture_roots(tmp_path),inspect=lambda p:{})['S']
+    class Store:
+        rows={r['id']:r for r in m['episodes']}
+        def episodes(self):return list(self.rows)
+        def task(self,ep):return 'covering'
+        def raw_recording(self,ep):return self.rows[ep]['path']
+        def raw_sha256(self,ep):return self.rows[ep]['sha256']
+    old=split_episodes(Store(),seed=0)
+    assert all(sorted(m['split'][s])==old[s] for s in ('train','validation'))

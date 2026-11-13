@@ -322,8 +322,16 @@ def manifest_gate(manifest, ingest):
     task, rows = manifest['task'], manifest['episodes']
     selected = {}
     for r in manifest.get('excluded',[]):
-        matches = [e for e in ingest['episodes'].values()
-                   if e.get('task')==task and e.get('sha256')==r['sha256']]
+        from s4d.rwlearn.identity import recording_label
+        # ING rejects invalid recordings before hashing/transferring them. The
+        # accepted amendment + rehashed manifest supplies their content identity;
+        # retain the ordinary gate's requirement that this exact source stays invalid.
+        matches = []
+        for key,e in ingest['episodes'].items():
+            path=e.get('source',{}).get('path') or e.get('filename') or key
+            if (e.get('task')==task and Path(path).name==r['filename']
+                    and recording_label(path)=='success' and e.get('sha256') in (None,r['sha256'])):
+                matches.append(e)
         if len(matches)!=1 or matches[0].get('validation',{}).get('status')!='invalid':
             raise ValueError('excluded task-amendment episode must remain invalid in live ingest')
     for r in rows:

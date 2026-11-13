@@ -158,3 +158,50 @@ def test_ours_exports_only_final_single_cycle_400k():
         assert lr(202500)*cfg['train']['lr']==pytest.approx(2.5e-4)
         assert lr(400000)*cfg['train']['lr']==pytest.approx(1e-5)
         assert cfg['data']['task']==task
+
+
+def test_existing_ours_S_chain_reuse_requires_identical_hashes_split_and_science(tmp_path):
+    import copy
+    from ops.jobs.dsreset_reuse import aliases,prove_reuse,reuse_rows
+    from s4d.rwlearn.dsreset import paired_manifests,manifest_gate,sha256
+    from tests.test_rwlearn_dsreset import fixture_roots
+    from tests.test_rwlearn_gate import entry
+    task='covering'
+    m=paired_manifests(task,fixture_roots(tmp_path),inspect=lambda p:{})['S']
+    ingest={'episodes':{r['id']:entry(task,i,sha=r['sha256'],validated=True) for i,r in enumerate(m['episodes'])}}
+    report=manifest_gate(m,ingest)
+    for key,rec in report['tasks'][task]['episode_identities'].items():rec['store_episode']=key
+    inputs='/home/compu/kaist/sunho/realworld/learning_inputs/dsreset/covering'
+    r=registrar()
+    rows=build_rows(task,inputs,{'commit':'a'*40,'image':'sha256:'+'b'*64},methods=('ours',),
+                    stage_rows=r.default_stages(task,inputs),rig=inputs+'/rig-covering.json')
+    mapping=aliases(task)
+    current={}
+    for row in rows:
+        if row['id'] not in mapping:continue
+        old=copy.deepcopy(row)
+        old['id']=mapping[row['id']]
+        old['deps']=[mapping.get(d,d) for d in old['deps']]
+        for a,b in sorted(mapping.items(),key=lambda pair:-len(pair[0])):
+            old['args']=[x.replace(a,b) for x in old['args']]
+        current[old['id']]=old
+    pre=current[row_id('pre400k','ours',task,'S')]
+    base='configs/realworld/ours_ext/baseline200k-covering-S.yaml'
+    pre['args'][pre['args'].index('--baseline-config')+1]=base
+    pre['args'][pre['args'].index('--baseline-sha256')+1]=sha256(REPO/base)
+    descriptor={'kind':'compact','paths':['/exact/same/compact/store']}
+    proof=prove_reuse(task,m,report,m['split'],m['outcomes'],descriptor,descriptor,rows,current,REPO,new_gate=report)
+    assert proof['aliases']==mapping
+    changed_gate=copy.deepcopy(report)
+    next(iter(changed_gate['calibration_hold'][task]['episodes'].values()))['calibrate_build_id']='changed'
+    with pytest.raises(ValueError,match='calibration builds'):
+        prove_reuse(task,m,report,m['split'],m['outcomes'],descriptor,descriptor,rows,current,REPO,new_gate=changed_gate)
+    changed=copy.deepcopy(m['split'])
+    changed['train'][0],changed['validation'][0]=changed['validation'][0],changed['train'][0]
+    with pytest.raises(ValueError,match='splits differ'):
+        prove_reuse(task,m,report,changed,m['outcomes'],descriptor,descriptor,rows,current,REPO,new_gate=report)
+    rewritten=reuse_rows(rows,task,current)
+    assert row_id('pre400k','ours',task,'S') not in {r['id'] for r in rewritten}
+    ev=next(r for r in rewritten if r['id']==row_id('eval','ours',task,'S',0))
+    assert ev['deps']==[row_id('fql400k','ours',task,'S',0)]
+    assert f"runs/{ev['deps'][0]}/policy.pt" in ev['args']
