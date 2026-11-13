@@ -121,7 +121,7 @@ def test_unready_evaluator_is_not_a_contending_family():
 def test_driver_integration_uses_all_active_local_jobs_and_preserves_order():
     source = (Path(__file__).resolve().parents[1] / "ops/campaign/baseline_local_driver.py").read_text()
     ast.parse(source)
-    assert "fair_share.select(fair_candidates, fair_active, queue['hosts']['local']['limits'], CAP, total)" in source
+    assert "fair_share.select(ready_candidates, fair_active, _host['limits'], CAP, total," in source
     assert "print('FAIR_SHARE '" in source
     assert "trainer_blocked = fair['blocked']" in source
     assert "for i, current in state.items() if current.get('host', 'local') == 'local'" in source
@@ -266,3 +266,17 @@ def test_queue_priority_precedes_family_guarantees_and_prevents_lower_priority_r
         assert select(rows, busy)["admitted"] == []
     assert busy == original  # no preemption or mutation
     assert select(rows)["admitted"][0] == "pretrain"
+
+
+def test_priority_multireservations_preserve_other_mig_and_host_resources():
+    gib = 2**30
+    limits = {g: dict(max_jobs=3,max_mem_gb=10 if g != 'm2' else 4) for g in ('m0','m1','m2')}
+    active = [row('a0',ram=0,mem=6,gpu='m0'),row('a1',ram=0,mem=6,gpu='m1')]
+    rows = [row('h0',priority=-1,ram=2*gib,mem=8,cpu_threads=2),
+            row('h1',priority=-1,ram=2*gib,mem=8,cpu_threads=2),
+            row('low',priority=2,ram=gib,mem=1,cpu_threads=1),
+            row('excess',priority=2,ram=2*gib,mem=1,cpu_threads=1)]
+    result = fair.select(rows,active,limits,20*gib,14*gib,cpu_budget=10,cpu_used=4)
+    assert result['admitted'] == ['low']
+    assert result['assigned'] == {'low':'m2'}
+    assert {r['gpu'] for r in result['report']['priority_reservations'].values()} == {'m0','m1'}

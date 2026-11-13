@@ -476,7 +476,7 @@ def test_placement_plan_rules_and_priority(mirrored):
     assert by_id["first"]["decision"] == "local"
     assert by_id["second"]["reason"] == "local capacity"
     assert planning(f, [row("paused")], paused_fn=lambda _: ["hold"], allow_pauses=["hold"])[0]["decision"] == "local"
-    assert planning(f, [row()], capacity={"ram_free_bytes": 0})[0]["reason"] == "local capacity"
+    assert planning(f, [row()], capacity={"ram_free_bytes": 0})[0]["reason"] == "infeasible on empty local host"
     assert planning(f, [row()], capacity={"ram_free_bytes": 0}, policy="all")[0]["decision"] == "local"
     assert planning(f, [row()], ownership={"fql": {}})[0]["reason"] == "ownership record exists"
     (f.runs / "fql").mkdir()
@@ -487,7 +487,8 @@ def test_placement_reserves_active_and_already_placed_capacity(mirrored):
     f = mirrored
     active = {**f.state, "running": {"host": "local", "status": "running", "gpu": LOCAL_GPU, "mem_gb": 8}}
     assert planning(f, [row()], state=active)[0]["reason"] == "local capacity"
-    placed = row("placed", host="local", pin_host="local", gpu="any", placement="realworld-local yesterday")
+    placed = row("placed", host="local", pin_host="local", gpu="any", role="metaworld", script="scripts/train.py",
+                 args=[], deps=[])
     assert planning(f, [placed, row()])[0]["reason"] == "local capacity"
     assert planning(f, [placed, row()], policy="all")[0]["decision"] == "local"
     # paused or dependency-blocked local rows (e.g. a paused Meta-World campaign) reserve no capacity
@@ -813,7 +814,7 @@ def test_retry_identity_covers_the_transitive_input_closure(mirrored, monkeypatc
 
 def test_ready_local_retries_reserve_capacity(mirrored):
     f = mirrored
-    local = row("retry", host="local", pin_host="local", gpu="any", deps=[])
+    local = row("retry", host="local", pin_host="local", gpu="any", role="metaworld", script="scripts/train.py", args=[], deps=[])
     crashed = {**f.state, "retry": {"host": "local", "status": "crashed", "failures": 1, "attempts": 1}}
     assert planning(f, [local, row()], state=crashed)[0]["reason"] == "local capacity"
     exhausted = {**f.state, "retry": {"host": "local", "status": "crashed", "failures": 2, "attempts": 2}}
@@ -1781,7 +1782,8 @@ def test_ours_priority_placement_and_blocked_head_cannot_be_backfilled(mirrored)
     assert decisions[0]["decision"] == "local"
     # Six GB cannot fit the eight-GB head; even the tiny lower-priority rows must wait.
     decisions = planning(f, rows, capacity={"ram_free_bytes": 6 * 2**30})
-    assert all(d["decision"] == "waits" for d in decisions)
+    assert decisions[0]["decision"] == "waits"
+    assert decisions[1]["decision"] == "local"  # empty-host-infeasible head reserves nothing
     # A pending (unstarted) lower-priority local row must not reserve ahead of new pretraining.
     placed = row("placed", priority=2, host="local", pin_host="local", gpu="any")
     assert planning(f, [placed, rows[-1]])[0]["decision"] == "local"
@@ -1789,7 +1791,8 @@ def test_ours_priority_placement_and_blocked_head_cannot_be_backfilled(mirrored)
 
 def test_local_planner_packs_selected_high_tier_before_pending_lower_tier(mirrored):
     f = mirrored
-    rows = [row("pending", host="local", pin_host="local", priority=0, mem_gb=1, ram_gb=1),
+    rows = [row("pending", host="local", pin_host="local", priority=0, mem_gb=1, ram_gb=1,
+                script="scripts/train.py", args=[], deps=[]),
             row("pretrain", priority=-1, mem_gb=8, ram_gb=1), row("ours-fql", priority=0, mem_gb=1, ram_gb=1),
             row("old-fql", priority=2, mem_gb=1, ram_gb=1)]
     decisions = rw.plan({"hosts": {"local": {"limits": {LOCAL_GPU: {"max_jobs": 3, "max_mem_gb": 8}}}}, "jobs": rows},
@@ -1797,3 +1800,38 @@ def test_local_planner_packs_selected_high_tier_before_pending_lower_tier(mirror
                         capacity={"ram_free_bytes": 100 * 2**30})
     assert [d["id"] for d in decisions] == ["pretrain", "ours-fql", "old-fql"]
     assert decisions[0]["decision"] == "local" and all(d["decision"] == "waits" for d in decisions[1:])
+
+
+def test_local_planner_multirow_reservations_leave_another_mig_for_backfill(mirrored):
+    f = mirrored
+    g0,g1,g2 = jobs.APPROVED_HOST_GPUS['local'][:3]
+    limits = {g0: dict(max_jobs=3,max_mem_gb=10),g1: dict(max_jobs=3,max_mem_gb=10),
+              g2: dict(max_jobs=3,max_mem_gb=4)}
+    rows = [row('h0',priority=-1,mem_gb=8,ram_gb=2),row('h1',priority=-1,mem_gb=8,ram_gb=2),
+            row('low',priority=2,mem_gb=1,ram_gb=1),row('excess',priority=2,mem_gb=1,ram_gb=2)]
+    state = {**f.state, **{f'a{i}': dict(host='local',status='running',gpu=g,mem_gb=6) for i,g in enumerate((g0,g1))}}
+    decisions = rw.plan(dict(hosts={'local': dict(limits=limits,cpu_thread_budget=100)},jobs=rows),state,ROLES,
+                        paused_fn=lambda _: [],mirror=f.mirror,runs=f.runs,root=f.root,
+                        capacity=dict(ram_total_bytes=20 * 2**30,ram_free_bytes=6 * 2**30))
+    assert [(d['id'],d['decision']) for d in decisions] == [('h0','waits'),('h1','waits'),('low','local'),('excess','waits')]
+
+
+@pytest.mark.parametrize('not_ready',['paused','deps','mirror','release'])
+def test_local_planner_not_ready_high_row_reserves_nothing(mirrored,monkeypatch,not_ready):
+    f = mirrored
+    head = row('head',priority=-1,mem_gb=8)
+    kwargs = {}
+    if not_ready == 'paused':
+        kwargs['paused_fn'] = lambda i: ['hold'] if i == 'head' else []
+    elif not_ready == 'deps':
+        head['deps'] = ['missing']
+    elif not_ready == 'mirror':
+        head['args'] = [PREFIX+'/missing']
+    else:
+        def scope(j,**kw):
+            if j['id'] == 'head':
+                raise ValueError('release missing')
+            return SCOPE
+        monkeypatch.setattr(rw,'placement_scope',scope)
+    decisions = planning(f,[head,row('low',priority=2,mem_gb=1)],**kwargs)
+    assert decisions[0]['decision'] != 'local' and decisions[1]['decision'] == 'local'

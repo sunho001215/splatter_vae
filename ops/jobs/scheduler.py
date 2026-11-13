@@ -32,7 +32,7 @@ from ops.containers.admission import gpu_reasons, host_reasons  # noqa: E402
 from ops.containers.verification import validate_report, validate_verification, verification_resources  # noqa: E402
 from ops.jobs.footprints import exclusive, fql_ram_gb, ram_gb  # noqa: E402
 from ops.jobs import host_roles, realworld_local  # noqa: E402
-from ops.jobs.priority import PriorityBarrier  # noqa: E402
+from ops.jobs.priority import PriorityReservations  # noqa: E402
 from ops.jobs import release_reservation  # noqa: E402
 from ops.jobs.arguments import option as _option  # noqa: E402
 from ops.resources.gpu_guard import (APPROVED_HOST_GPUS, HOST_CONFIG_PATH, MIG_DEVICES, REMOTE_MIG_DEVICES,  # noqa: E402
@@ -1257,7 +1257,10 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
                     foreign = {uuid for uuid, procs in snapshot.usage.items()
                                if any(pid not in owned and pid not in known.get(uuid, ()) for pid, _ in procs)}
                     resources["remote"] = {"available": snapshot.available_gb, "disk_total": snapshot.disk_total_bytes,
-                                           "disk_free": snapshot.disk_free_bytes, "foreign": foreign, "snapshot": snapshot}
+                                           "disk_free": snapshot.disk_free_bytes, "foreign": foreign, "snapshot": snapshot,
+                                           "total_ram_gb": snapshot.total_ram_gb or snapshot.available_gb + sum(
+                                               reservation(c, jobs.get(i, {}), 'ram_gb') for i, c in state.items()
+                                               if c.get('host') == 'remote' and c['status'] in RESERVING)}
             else:
                 messages.append("remote: resource evidence unavailable; no remote jobs launched")
         except RemoteUnreachable:
@@ -1364,13 +1367,56 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
     local_cpu_used = sum(reservation(current, jobs.get(job_id, {}), "cpu_threads") or DEFAULT_REMOTE_CPU_THREADS
                          for job_id, current in state.items()
                          if current.get("host", "local") == "local" and current["status"] in RESERVING)
-    priority_barrier = PriorityBarrier()
-    for job in eligible(list(jobs.values()), state):
+    # Budgets describe an empty host; remaining() below describes current live capacity.
+    policies = {}
+    for name, resource in resources.items():
+        host = queue['hosts'][name]
+        own_ram = sum(reservation(c, jobs.get(i, {}), 'ram_gb') for i, c in state.items()
+                      if c.get('host', 'local') == name and c['status'] in RESERVING)
+        total_ram = resource.get('total_ram_gb')
+        if name == 'local':
+            total_ram = next((int(line.split()[1]) / 2**20 for line in Path('/proc/meminfo').read_text().splitlines()
+                              if line.startswith('MemTotal:')), None)
+        if total_ram is None:  # compatibility snapshots: available plus executing declarations
+            total_ram = resource['available'] + own_ram
+        floor = max(float(host.get('disk_floor_gb', 0)) * GIB,
+                    resource['disk_total'] * max(.15 if name == 'remote' else 0,
+                                                 float(host.get('disk_floor_fraction', 0))))
+        budgets = dict(ram_gb=max(0, total_ram-float(host.get('host_ram_reserve_gb', 0))),
+                       cpu_threads=float(host.get('cpu_thread_budget', REMOTE_CPU_THREAD_BUDGET if name == 'remote'
+                                                  else os.cpu_count() or 1)),
+                       disk_gb=max(0, (resource['disk_total']-floor) / GIB))
+        def slots(name=name, host=host, resource=resource):
+            result = {}
+            for gpu, limit in host.get('limits', {}).items():
+                here = [r for r in running if r.get('host', 'local') == name and r['gpu'] == gpu]
+                shared = resource.get('cotenant', {}).get(gpu, {})
+                memory = sum(r['mem_gb'] for r in here) + shared.get('mem_gb', 0)
+                if 'free_gb' in shared:
+                    memory = max(memory, limit['max_mem_gb']-shared['free_gb'])
+                result[gpu] = dict(jobs=len(here)+shared.get('jobs', 0), mem_gb=memory)
+            return result
+        def remaining(name=name, host=host, resource=resource, budgets=budgets, floor=floor):
+            return dict(ram_gb=resource['available']-float(host.get('host_ram_reserve_gb', 0)),
+                        cpu_threads=budgets['cpu_threads']-(cpu_used if name == 'remote' else local_cpu_used),
+                        disk_gb=(resource['disk_free']-floor) / GIB)
+        policies[name] = PriorityReservations(host.get('limits', {}), budgets, slots, remaining,
+            request=lambda r: dict(ram_gb=ram_gb(r), cpu_threads=thread_limit(r.get('cpu_threads', 8)),
+                                   disk_gb=float(r.get('disk_gb', 0))), messages=messages)
+    from ops.jobs.admission_pause import paused
+    ready_rows = eligible(list(jobs.values()), state)
+    ready_ids = {j['id'] for j in ready_rows}
+    for row in jobs.values():
+        if row['id'] not in ready_ids and state.get(row['id'], {}).get('status', PENDING) == PENDING:
+            messages.append(f"{row['id']}: not ready; no priority reservation")
+    for job in ready_rows:
         host_name = job.get("host", "local")
-        if not priority_barrier.allows(job, host_name):
-            continue
         host, resource = queue["hosts"][host_name], resources.get(host_name)
         if resource is None or host.get("enabled", host_name == "local") is not True or host.get("hold", False):
+            continue
+        policy = policies[host_name]
+        if paused(job['id']):
+            policy.log(job, 'paused')
             continue
         if host_name == "remote" and release_invalid:
             continue
@@ -1388,71 +1434,8 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
         if refused is not None:
             messages.append(f"{job['id']}: not admitted on {host_name}: {refused}")
             continue
-        backed_off = {gpu for gpu, until in state.get(job['id'], {}).get('placement_backoff', {}).items()
-                      if until > now} if host_name == 'remote' else set()
-        gpu = choose_gpu(job, host.get("limits", {}), running + (phantom if held_back else []), resource["foreign"] | backed_off,
-                         resource.get("cotenant"))
-        if gpu is None:
-            priority_barrier.block(job, host_name)
-            if held_back and choose_gpu(job, host.get("limits", {}), running, resource["foreign"],
-                                        resource.get("cotenant")) is not None:
-                messages.append(f"{job['id']}: waiting for GPU capacity reserved for release {release_hold['short']}")
-            continue
-        if resource.get('guard_accounted'):
-            try:
-                problems = remote_host_refusals(resource, job, host, cpu_used)
-            except ValueError as exc:
-                messages.append(f"{job['id']}: invalid remote resource request: {exc}")
-                continue
-            if problems:
-                priority_barrier.block(job, host_name)
-                messages.append(f"{job['id']}: waiting for remote guard resources: {', '.join(problems)}")
-                continue
-        need, reserve = ram_gb(job), float(host.get("host_ram_reserve_gb", 0))
-        available = resource["available"] - (release_charge["ram_gb"] if held_back else 0.0)
-        if (not resource.get('guard_accounted') or held_back) and available - need < reserve:
-            priority_barrier.block(job, host_name)
-            messages.append(f"{job['id']}: waiting for host RAM ({available:.0f} GB available"
-                            + (f" after {release_charge['ram_gb']:.0f} GB reserved for release {release_hold['short']}"
-                               if held_back else "") + f", needs {need:.0f} + {reserve:.0f}) on {host_name}")
-            continue
-        try:
-            threads = thread_limit(job.get("cpu_threads", DEFAULT_REMOTE_CPU_THREADS))
-        except ValueError as exc:
-            messages.append(f"{job['id']}: not admitted on {host_name}: {exc}")
-            continue
-        if host_name == "local" and local_cpu_used + threads > float(host.get("cpu_thread_budget", os.cpu_count() or 1)):
-            priority_barrier.block(job, host_name)
-            messages.append(f"{job['id']}: waiting for local CPU thread budget")
-            continue
-        if host_name == "remote" and cotenant_cpus is None:
-            priority_barrier.block(job, host_name)
-            messages.append(f"{job['id']}: co-tenant CPU use is unbounded; "
-                            "not admitted")
-            continue
-        if host_name == "remote":  # every shared admission must fit the host thread budget
-            budget = float(host.get("cpu_thread_budget", REMOTE_CPU_THREAD_BUDGET))
-            charged = release_charge["cpu_threads"] if held_back else 0
-            if (not resource.get('guard_accounted') or held_back) and cpu_used + threads + charged > budget:
-                priority_barrier.block(job, host_name)
-                messages.append(f"{job['id']}: waiting for CPU threads ({cpu_used:.0f} used + {threads:.0f}"
-                                + (f" + {charged:.0f} reserved for release {release_hold['short']}" if held_back else "")
-                                + f" > {budget:.0f}) on {host_name}")
-                continue
-        floor = max(float(host.get("disk_floor_gb", 0)) * GIB,
-                    resource["disk_total"] * (max(0.15, float(host.get("disk_floor_fraction", 0.15)))
-                                              if host_name == "remote" else float(host.get("disk_floor_fraction", 0))))
-        disk_need = float(job.get("disk_gb", 0)) * GIB
-        disk_free = resource["disk_free"] - (release_charge["disk_gb"] * GIB if held_back else 0.0)
-        if (not resource.get('guard_accounted') or held_back) and disk_free - disk_need < floor:
-            priority_barrier.block(job, host_name)
-            messages.append(f"{job['id']}: waiting for {host_name} disk floor/reservation")
-            if host_name == "remote":
-                record({"event": "host_disk_low", "id": HOST_EVENT_ID, "host": host_name,
-                        "free_bytes": resource["disk_free"], "floor_bytes": floor}, registry)
-            continue
-        attempt = state.get(job["id"], {}).get("attempts", 0) + 1
-        if host_name == "remote":
+        # Readiness precedes all reservations, including GPU waits.
+        if host_name == 'remote':
             purpose = validate_verification(job, queued=True)
             if purpose is not None:
                 if purpose not in verification_evidence:
@@ -1485,6 +1468,108 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
                 # a recorded release re-pin: the next attempt's container carries the source release so that runtime
                 # provenance accepts exactly this transition (ops/jobs/run_identity.py)
                 job = {**job, "repinned_from": previous["repinned_from"]}
+        else:
+            identity = source_identity() if identity is None else identity
+            moved = (host_roles.migrated_source_refusal(job["id"], ownership, identity.get("source_sha256", {}), REPO)
+                     or host_roles.migrated_state_refusal(job, ownership, state.get(job["id"]), job_fingerprint(job), REPO))
+            if moved is not None:
+                messages.append(f"{job['id']}: not admitted on local: {moved}")
+                continue
+            input_event = {}
+            if host_roles.remote_resident(job, roles, jobs):
+                try:
+                    effective, inputs = realworld_local.localize(job, state, roles=roles, by_id=jobs, runs=runs,
+                                                                source_identity=identity, ownership=ownership)
+                except realworld_local.LocalInputError as exc:
+                    messages.append(f"{job['id']}: not admitted on local: {exc}")
+                    continue
+                previous_inputs = state.get(job["id"], {}).get("inputs")
+                if previous_inputs is not None and any(previous_inputs.get(key) != inputs[key]
+                                                       for key in ("inputs", "dependency_inputs", "input_closure")):
+                    messages.append(f"{job['id']}: retry inputs changed; admission held")
+                    continue
+                try:  # the container quota of the same row on the remote (remote_backend: cpu_threads, default 8)
+                    threads = thread_limit(job.get("cpu_threads", DEFAULT_CPU_THREADS))
+                except ValueError as exc:
+                    messages.append(f"{job['id']}: not admitted on local: {exc}")
+                    continue
+        if not policy.feasible(job):
+            policy.log(job, 'infeasible on empty host')
+            continue
+        priority_free = policy.remaining()
+        if held_back:
+            priority_free = {k: priority_free[k]-release_charge[k] for k in priority_free}
+        if not policy.allows(job, remaining=priority_free):
+            policy.reserve(job)
+            messages.append(f"{job['id']}: waiting for higher-priority host resources")
+            continue
+        backed_off = {gpu for gpu, until in state.get(job['id'], {}).get('placement_backoff', {}).items()
+                      if until > now} if host_name == 'remote' else set()
+        gpu = choose_gpu(job, host.get("limits", {}), running + (phantom if held_back else []),
+                         resource["foreign"] | backed_off | policy.excluded(job),
+                         resource.get("cotenant"))
+        if gpu is None:
+            policy.reserve(job)
+            messages.append(f"{job['id']}: waiting for GPU capacity on {host_name}")
+            if held_back and choose_gpu(job, host.get("limits", {}), running, resource["foreign"],
+                                        resource.get("cotenant")) is not None:
+                messages.append(f"{job['id']}: waiting for GPU capacity reserved for release {release_hold['short']}")
+            continue
+        if resource.get('guard_accounted'):
+            try:
+                problems = remote_host_refusals(resource, job, host, cpu_used)
+            except ValueError as exc:
+                messages.append(f"{job['id']}: invalid remote resource request: {exc}")
+                continue
+            if problems:
+                policy.reserve(job)
+                messages.append(f"{job['id']}: waiting for remote guard resources: {', '.join(problems)}")
+                continue
+        need, reserve = ram_gb(job), float(host.get("host_ram_reserve_gb", 0))
+        available = resource["available"] - (release_charge["ram_gb"] if held_back else 0.0)
+        if (not resource.get('guard_accounted') or held_back) and available - need < reserve:
+            policy.reserve(job)
+            messages.append(f"{job['id']}: waiting for host RAM ({available:.0f} GB available"
+                            + (f" after {release_charge['ram_gb']:.0f} GB reserved for release {release_hold['short']}"
+                               if held_back else "") + f", needs {need:.0f} + {reserve:.0f}) on {host_name}")
+            continue
+        try:
+            threads = thread_limit(job.get("cpu_threads", DEFAULT_REMOTE_CPU_THREADS))
+        except ValueError as exc:
+            messages.append(f"{job['id']}: not admitted on {host_name}: {exc}")
+            continue
+        if host_name == "local" and local_cpu_used + threads > float(host.get("cpu_thread_budget", os.cpu_count() or 1)):
+            policy.reserve(job)
+            messages.append(f"{job['id']}: waiting for local CPU thread budget")
+            continue
+        if host_name == "remote" and cotenant_cpus is None:
+            policy.reserve(job)
+            messages.append(f"{job['id']}: co-tenant CPU use is unbounded; "
+                            "not admitted")
+            continue
+        if host_name == "remote":  # every shared admission must fit the host thread budget
+            budget = float(host.get("cpu_thread_budget", REMOTE_CPU_THREAD_BUDGET))
+            charged = release_charge["cpu_threads"] if held_back else 0
+            if (not resource.get('guard_accounted') or held_back) and cpu_used + threads + charged > budget:
+                policy.reserve(job)
+                messages.append(f"{job['id']}: waiting for CPU threads ({cpu_used:.0f} used + {threads:.0f}"
+                                + (f" + {charged:.0f} reserved for release {release_hold['short']}" if held_back else "")
+                                + f" > {budget:.0f}) on {host_name}")
+                continue
+        floor = max(float(host.get("disk_floor_gb", 0)) * GIB,
+                    resource["disk_total"] * (max(0.15, float(host.get("disk_floor_fraction", 0.15)))
+                                              if host_name == "remote" else float(host.get("disk_floor_fraction", 0))))
+        disk_need = float(job.get("disk_gb", 0)) * GIB
+        disk_free = resource["disk_free"] - (release_charge["disk_gb"] * GIB if held_back else 0.0)
+        if (not resource.get('guard_accounted') or held_back) and disk_free - disk_need < floor:
+            policy.reserve(job)
+            messages.append(f"{job['id']}: waiting for {host_name} disk floor/reservation")
+            if host_name == "remote":
+                record({"event": "host_disk_low", "id": HOST_EVENT_ID, "host": host_name,
+                        "free_bytes": resource["disk_free"], "floor_bytes": floor}, registry)
+            continue
+        attempt = state.get(job["id"], {}).get("attempts", 0) + 1
+        if host_name == "remote":
             path, spec = remote_backend.prepare(job, gpu, attempt, host, evidence)
             event = {"id": job["id"], "host": "remote", "gpu": gpu, "attempt": attempt,
                      "container": spec["container"], "commit": spec["commit"], "image_digest": spec["image_digest"],
@@ -1545,30 +1630,7 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
                 _unknown(job["id"], registry, "launch outcome requires reconciliation", messages)
                 resources.pop("remote", None)
         else:
-            identity = source_identity() if identity is None else identity
-            moved = (host_roles.migrated_source_refusal(job["id"], ownership, identity.get("source_sha256", {}), REPO)
-                     or host_roles.migrated_state_refusal(job, ownership, state.get(job["id"]), job_fingerprint(job), REPO))
-            if moved is not None:
-                messages.append(f"{job['id']}: not admitted on local: {moved}")
-                continue
-            input_event = {}
             if host_roles.remote_resident(job, roles, jobs):
-                try:
-                    effective, inputs = realworld_local.localize(job, state, roles=roles, by_id=jobs, runs=runs,
-                                                                source_identity=identity, ownership=ownership)
-                except realworld_local.LocalInputError as exc:
-                    messages.append(f"{job['id']}: not admitted on local: {exc}")
-                    continue
-                previous_inputs = state.get(job["id"], {}).get("inputs")
-                if previous_inputs is not None and any(previous_inputs.get(key) != inputs[key]
-                                                       for key in ("inputs", "dependency_inputs", "input_closure")):
-                    messages.append(f"{job['id']}: retry inputs changed; admission held")
-                    continue
-                try:  # the container quota of the same row on the remote (remote_backend: cpu_threads, default 8)
-                    threads = thread_limit(job.get("cpu_threads", DEFAULT_CPU_THREADS))
-                except ValueError as exc:
-                    messages.append(f"{job['id']}: not admitted on local: {exc}")
-                    continue
                 pid = launch(job, gpu, attempt, runs, args=effective, cpu_threads=threads)
                 input_event["inputs"] = inputs
             else:

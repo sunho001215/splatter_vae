@@ -2466,7 +2466,7 @@ def test_negative_priorities_load_and_admit_before_older_fql(tmp_path):
 
 
 @pytest.mark.parametrize("resource", ["gpu", "ram", "cpu", "disk"])
-def test_remote_blocked_priority_head_stops_smaller_backfill(tmp_path, resource):
+def test_remote_infeasible_priority_head_allows_smaller_backfill(tmp_path, resource):
     backend = FakeBackend(tmp_path / "runs")
     head = {"gpu": {"mem_gb": 50}, "ram": {"ram_gb": 180}, "cpu": {"cpu_threads": 40},
             "disk": {"disk_gb": 950}}[resource]
@@ -2474,7 +2474,7 @@ def test_remote_blocked_priority_head_stops_smaller_backfill(tmp_path, resource)
                                     job("ours-fql", priority=0, mem_gb=1, ram_gb=1),
                                     job("pretrain", priority=-1, **head)], cpu_thread_budget=32)
     tick(tmp_path, queued, backend)
-    assert not backend.launches
+    assert [r["id"] for r in backend.launches] == ["ours-fql", "old-fql"]
 
 
 def test_blocked_remote_priority_does_not_hold_independent_local_capacity(tmp_path, monkeypatch):
@@ -2485,4 +2485,44 @@ def test_blocked_remote_priority_does_not_hold_independent_local_capacity(tmp_pa
     queued = write_queue(tmp_path, [job("old-fql", priority=2), job("pretrain", priority=-1, ram_gb=180),
                                     job("local", host="local", priority=2)])
     tick(tmp_path, queued, backend)
-    assert not backend.launches and local_launches == ["local"]
+    assert [r["id"] for r in backend.launches] == ["old-fql"] and local_launches == ["local"]
+
+
+def test_remote_waiting_head_keeps_its_mig_and_backfills_another(tmp_path):
+    backend = FakeBackend(tmp_path/'runs')
+    other = APPROVED_HOST_GPUS['remote'][1]
+    # A foreign process is live occupancy too; it is never excluded from the wait or stopped.
+    backend.value.usage[REMOTE] = [(999, 6 * 1024)]
+    queued = write_queue(tmp_path, [job('high', priority=-1, gpu=REMOTE, mem_gb=8),
+                                   job('other', priority=2, gpu=other, mem_gb=1),
+                                   job('refill', priority=2, gpu=REMOTE, mem_gb=1)],
+                         limits={g: dict(max_jobs=3,max_mem_gb=10) for g in (REMOTE,other)})
+    messages = tick(tmp_path,queued,backend)
+    assert [r['id'] for r in backend.launches] == ['other'], messages
+    assert backend.value.usage[REMOTE] == [(999,6 * 1024)]
+
+
+@pytest.mark.parametrize('resource', ['ram_gb','cpu_threads','disk_gb'])
+def test_remote_backfill_leaves_exact_host_reservations(tmp_path, resource):
+    backend = FakeBackend(tmp_path/'runs')
+    other = APPROVED_HOST_GPUS['remote'][1]
+    backend.value.available_gb = 10
+    backend.value.total_ram_gb = 100
+    backend.value.disk_free_bytes = 160 * GIB  # 150 GiB floor, 10 GiB usable
+    backend.value.usage[REMOTE] = [(999,6 * 1024)]
+    rows = [job('high', priority=-1, gpu=REMOTE, mem_gb=8, ram_gb=1, cpu_threads=1, disk_gb=1),
+            job('fits', priority=2, gpu=other, mem_gb=1, ram_gb=1, cpu_threads=1, disk_gb=1),
+            job('excess', priority=2, gpu=other, mem_gb=1, ram_gb=1, cpu_threads=1, disk_gb=1)]
+    rows[0][resource], rows[1][resource] = 7, 3
+    queued = write_queue(tmp_path,rows,host_ram_reserve_gb=0,cpu_thread_budget=10,
+                         limits={g: dict(max_jobs=3,max_mem_gb=10) for g in (REMOTE,other)})
+    messages = tick(tmp_path,queued,backend)
+    assert [r['id'] for r in backend.launches] == ['fits'], messages
+
+
+def test_snapshot_retains_total_ram_for_empty_host_feasibility():
+    output = snapshot_output().replace('MemAvailable: 209715200 kB',
+                                       'MemAvailable: 209715200 kB\nMemTotal: 1073741824 kB')
+    snapshot = remote.parse_snapshot(output)
+    assert snapshot.available_gb == 200 and snapshot.total_ram_gb == 1024
+    assert remote.parse_snapshot(snapshot_output()).total_ram_gb is None  # legacy synthetic evidence

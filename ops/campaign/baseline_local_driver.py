@@ -8,6 +8,7 @@ drivers never admit at the same time. Never deletes anything.
 import copy
 import fcntl
 import json
+import os
 import subprocess
 import sys
 from datetime import datetime
@@ -210,11 +211,10 @@ candidates = [j for j in candidates if not paused(j['id'])]
 # no row held by migration ownership. The scheduler checks roles and verified local inputs again at launch.
 _roles, _ownership, _context = host_roles.load_roles(), host_roles.read_ownership(), by_queue
 candidates = [j for j in candidates if host_roles.refusal(j, 'local', _roles, _ownership, _context) is None]
+# Stage 2 keeps its established precedence on ties; strictly lower tiers may backfill its reservations.
 if stage2_waiting:
-    messages.append(f'YIELD equal/lower priority to {len(stage2_waiting)} waiting Stage 2 local jobs, '
-                    f'e.g. {stage2_waiting[:3]}')
     ceiling = min(by_queue[i].get('priority', 5) for i in stage2_waiting)
-    candidates = [j for j in candidates if j.get('priority', 5) < ceiling]
+    candidates = [j for j in candidates if j.get('priority', 5) != ceiling]
 # Encoder pilots (user directive 2026-10-25): lowest priority (4). Capacity-based scheduling (user 2026-10-25 16:xx,
 # superseding the blanket ENC_HOLD): ready rows are offered in priority order and every ready row that fits the
 # remaining capacity is admitted; rows waiting for unfinished dependencies never block others. Encoder-pilot rows are
@@ -283,16 +283,51 @@ fair_active = [{'id': i, 'family': family(by_queue.get(i, {})),
                 'ram_bytes': max(active_footprint(i, current), pss.get(int(current.get('pid') or -1), 0))
                 if i not in FROZEN else pss.get(int(current.get('pid') or -1), 0),
                 'exclusive_gpu': current.get('exclusive_gpu', False) or by_queue.get(i, {}).get('exclusive_gpu', False),
+                'cpu_threads': current.get('cpu_threads', by_queue.get(i, {}).get('cpu_threads', 8)),
+                'disk_gb': jobs.reservation(current, by_queue.get(i, {}), 'disk_gb'),
                 'gpu': current.get('gpu'), 'mem_gb': jobs.reservation(current, by_queue.get(i, {}), 'mem_gb')}
                for i, current in state.items() if current.get('host', 'local') == 'local'
                and current['status'] in jobs.RESERVING]
 fair_candidates = [{'id': j['id'], 'priority': j.get('priority', 5), 'family': family(j), 'ram_bytes': footprint(j),
+                    'ram_gb': float(j.get('ram_gb', 0)), 'cpu_threads': j.get('cpu_threads', 8),
+                    'disk_gb': float(j.get('disk_gb', 0)),
                     'exclusive_gpu': j.get('exclusive_gpu', False),
                     'gpu': j.get('gpu', 'any'), 'mem_gb': float(j.get('mem_gb', 0)),
                     'evaluator': j['script'] == 'scripts/eval_rl.py', 'trainer': trained_by(j),
                     'trainer_ready': status(trained_by(j)) in jobs.ACTIVE | {jobs.DONE}}
                    for j in candidates]
-fair = fair_share.select(fair_candidates, fair_active, queue['hosts']['local']['limits'], CAP, total)
+# Other drivers' ready rows claim only their own capacity. Mirror/refusal gates apply before reservation.
+external = [j for j in jobs.eligible(queue['jobs'], {**state, **view})
+            if j.get('host', 'local') == 'local' and j['id'] not in {r['id'] for r in candidates}
+            and not paused(j['id']) and j['id'].removesuffix('-eval') not in FROZEN
+            and host_roles.refusal(j, 'local', _roles, _ownership, _context) is None]
+for j in external:
+    fair_candidates.append({**j, 'family': family(j), 'ram_bytes': footprint(j), 'reserve_only': True,
+                            'evaluator': j['script'] == 'scripts/eval_rl.py', 'trainer': trained_by(j),
+                            'trainer_ready': status(trained_by(j)) in jobs.ACTIVE | {jobs.DONE}})
+from ops.jobs import realworld_local  # noqa: E402
+from ops.jobs.priority import log_unready  # noqa: E402
+ready_candidates = []
+for r in fair_candidates:
+    j = by_queue[r['id']]
+    if host_roles.remote_resident(j, _roles, by_queue):
+        try:
+            realworld_local.localize(j, state, roles=_roles, by_id=by_queue, ownership=_ownership)
+        except realworld_local.LocalInputError as exc:
+            messages.append(f"{j['id']}: not ready: {exc}; no priority reservation")
+            continue
+    ready_candidates.append(r)
+log_unready([j for j in queue['jobs'] if j.get('host', 'local') == 'local'],
+            {r['id'] for r in ready_candidates}, state, messages)
+_host = queue['hosts']['local']
+_disk_total, _disk_free = jobs.disk_usage(ROOT)
+_disk_floor = max(float(_host.get('disk_floor_gb', 0)) * 2**30,
+                  _disk_total * float(_host.get('disk_floor_fraction', 0)))
+fair = fair_share.select(ready_candidates, fair_active, _host['limits'], CAP, total,
+                        cpu_budget=float(_host.get('cpu_thread_budget', os.cpu_count() or 1)),
+                        disk_budget=(_disk_total-_disk_floor) / 2**30,
+                        disk_free=(_disk_free-_disk_floor) / 2**30
+                                  - sum(r['disk_gb'] for r in fair_active), messages=messages)
 admitted = [by_id[i] for i in fair['admitted']]
 total = fair['total_ram_bytes']
 trainer_blocked = fair['blocked']

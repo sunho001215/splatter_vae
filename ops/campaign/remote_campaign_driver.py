@@ -15,10 +15,10 @@ REPO = Path('/home/ws/ws/splatter4d')
 sys.path.insert(0, str(REPO))
 from ops.jobs.footprints import exclusive, ram_gb  # noqa: E402
 from ops.jobs import host_roles  # noqa: E402
-from ops.jobs.priority import PriorityBarrier  # noqa: E402
+from ops.jobs.priority import PriorityReservations, log_unready  # noqa: E402
 from ops.jobs import release_reservation  # noqa: E402
 from ops.jobs import scheduler as jobs  # noqa: E402
-from ops.jobs.remote_backend import (COTENANT_GPU_MARGIN_GB, RemoteBackend, cotenant_charges,  # noqa: E402
+from ops.jobs.remote_backend import (RemoteBackend, RemoteJobError, cotenant_charges,  # noqa: E402
                                      guard_headroom_gib, owned_cpu_threads)
 from ops.remote.access import RemoteClient  # noqa: E402
 from ops.resources.gpu_guard import APPROVED_HOST_GPUS, REMOTE_MIG_ACTIVE, REMOTE_MIG_INSTANCES  # noqa: E402
@@ -613,6 +613,40 @@ def dispatch_key(job):
     return job.get('priority', 5), rank, not companion, seed, [j['id'] for j in remote].index(job['id'])
 
 
+def job_release(job):
+    """(commit, image) a job runs on: a retry keeps its first launch's; pool rows the pool release; others COMMIT/IMAGE."""
+    previous = state.get(job['id'], {})
+    if job['id'] in SNERL_NT_IDS and not previous.get('commit'):  # new launches only (see SNERL_NT_COMMIT)
+        return SNERL_NT_COMMIT, POOL_IMAGE
+    if previous.get('repinned_from'):
+        target = previous.get('repinned_target', {})
+        if (target.get('commit'), target.get('image_digest')) != (previous.get('commit'), previous.get('image_digest')):
+            raise ValueError(f"{job['id']}: release differs from recorded re-pin target")
+        return target['commit'], target['image_digest']
+    if previous.get('commit'):
+        return previous['commit'], previous.get('image_digest', IMAGE)
+    if kind(job['id']) == 'role':
+        return ROLE_COMMIT, ROLE_IMAGE
+    if job['id'].startswith(ENC_PREFIXES):
+        return ENC_COMMIT, POOL_IMAGE
+    if job['id'].startswith(SRV4_PREFIXES):
+        return SRV4_COMMIT, POOL_IMAGE
+    if job['id'].startswith(HYB_PREFIXES):
+        return HYB_COMMIT, POOL_IMAGE
+    if job['id'].startswith(CST_PREFIXES):
+        return CST_COMMIT, POOL_IMAGE
+    if job['id'].startswith(ANA_PREFIXES):
+        return ANA_COMMIT, POOL_IMAGE
+    if job['id'].startswith(DS_PREFIXES):
+        return DS_COMMIT, POOL_IMAGE
+    return (POOL_COMMIT, POOL_IMAGE) if kind(job['id']) in ('pool_pretrain', 'pool_rl') else (COMMIT, IMAGE)
+
+
+def release_ready(job):
+    pin = job_release(job)
+    return pin in RELEASES and (REPO / RELEASES[pin]).is_file()
+
+
 # Crashed jobs with restarts left are retried, exactly as scripts/jobs.py _tick treats them (status -> pending when
 # failures <= max_restarts); the scheduler resumes them from checkpoints/latest.pt (--resume auto) under a new attempt.
 # (2026-10-21: after the 08:38-08:48 remote outage the raw registry view never offered the seven crashed SNeRL
@@ -647,6 +681,10 @@ if not ANA_READY:
     candidates = [j for j in candidates if not j['id'].startswith(ANA_PREFIXES)]
 if not SNERL_NT_READY:
     candidates = [j for j in candidates if j['id'] not in SNERL_NT_IDS]
+for job in candidates:
+    if not release_ready(job):
+        messages.append(f"{job['id']}: release not ready; no priority reservation")
+candidates = [j for j in candidates if release_ready(j)]
 candidates.sort(key=dispatch_key)
 # 2026-10-27: capacity is reserved only by executing jobs; a compute-complete container awaiting backup holds none
 active = {i: s for i, s in state.items() if s.get('host') == 'remote' and s['status'] in jobs.RESERVING}
@@ -732,9 +770,53 @@ if COTENANT is not None and COTENANT.get('cpus', 0) is None:
     candidates, COTENANT = [], None  # unknown CPU quotas cannot admit shared work
 
 
+_host = queue['hosts']['remote']
+_disk_total = snapshot.disk_total_bytes if COTENANT is not None and 'snapshot' in globals() else 0
+_disk_floor = max(float(_host.get('disk_floor_gb', 0)) * 2**30,
+                  _disk_total * max(.15, float(_host.get('disk_floor_fraction', .15))))
+disk_budget = max(0, (_disk_total-_disk_floor) / 2**30)
+disk_free = ((snapshot.disk_free_bytes-_disk_floor) / 2**30
+             - float(COTENANT.get('reserved_disk_bytes', 0)) / 2**30
+             - sum(jobs.reservation(s, by_id.get(i, {}), 'disk_gb') for i, s in active.items()
+                   if not COTENANT.get('guard_accounted')
+                   or s.get('container') not in COTENANT.get('live_names', ()))
+             if COTENANT is not None and 'snapshot' in globals() else 0)
+if RELEASE_HOLD:
+    disk_free -= release_reservation.charges(RELEASE_HOLD)['disk_gb']
+
+def priority_request(job):
+    return dict(ram_gb=ram_gb(job), cpu_threads=jobs.thread_limit(job.get('cpu_threads', 8)),
+                disk_gb=float(job.get('disk_gb', 0)))
+
+_ram_budget = min(CAP / 2**30, ((snapshot.total_ram_gb or snapshot.available_gb + reserved / 2**30)
+                               - float(_host.get('host_ram_reserve_gb', 0)))
+                  if COTENANT is not None and 'snapshot' in globals() else 0)
+_ram_available = min((CAP-reserved) / 2**30,
+                     snapshot.available_gb-float(COTENANT.get('ram_pending_bytes', 0)) / 2**30
+                     - float(_host.get('host_ram_reserve_gb', 0))) if COTENANT is not None and 'snapshot' in globals() else 0
+if COTENANT is not None and COTENANT.get('guard_accounted'):
+    _ram_available -= sum(jobs.reservation(s, by_id.get(i, {}), 'ram_gb') for i, s in active.items()
+                          if s.get('container') not in COTENANT.get('live_names', ()))
+if RELEASE_HOLD:
+    _ram_available -= release_reservation.charges(RELEASE_HOLD)['ram_gb']
+
+def priority_policy():
+    limits = {g: dict(max_jobs=int(_host['limits'].get(g, {}).get('max_jobs', 4 if g.startswith('MIG-') else 20)),
+                      max_mem_gb=min(GPU_CAP[g], float(_host['limits'].get(g, {}).get('max_mem_gb', GPU_CAP[g]))))
+              for g in GPUS}
+    return PriorityReservations(limits, dict(ram_gb=_ram_budget, cpu_threads=CPU_BUDGET, disk_gb=disk_budget),
+        lambda: {g: dict(jobs=gpu_jobs[g], mem_gb=gpu_mem[g]) for g in GPUS},
+        lambda: dict(ram_gb=min((CAP-total) / 2**30, _ram_available-(total-reserved) / 2**30),
+                     cpu_threads=CPU_BUDGET-cpu_used, disk_gb=disk_free),
+        request=priority_request, messages=messages)
+
+
 def capacity_fits(job, g):
     limit = queue['hosts']['remote']['limits'].get(g, {})
-    return (cpu_used + jobs.thread_limit(job.get('cpu_threads', 8)) <= CPU_BUDGET
+    return (priority_reservations.allows(job, g) and g in priority_reservations.devices(job)
+            and ram_gb(job) <= priority_reservations.remaining()['ram_gb']
+            and float(job.get('disk_gb', 0)) <= disk_free
+            and cpu_used + jobs.thread_limit(job.get('cpu_threads', 8)) <= CPU_BUDGET
             and g not in gpu_exclusive and not (exclusive(job) and gpu_jobs[g])
             and gpu_jobs[g] < int(limit.get('max_jobs', 4 if g.startswith('MIG-') else 20))
             and gpu_mem[g] + float(job['mem_gb']) <= min(GPU_CAP[g], float(limit.get('max_mem_gb', GPU_CAP[g]))))
@@ -742,7 +824,8 @@ def capacity_fits(job, g):
 
 def place(job):
     fitting = [g for g in GPUS
-               if capacity_fits(job, g) and gpu_load[g] + load(job) <= GPU_LOAD_LIMIT + (2.0 if kind(job['id']) == 'proxy' and not REMOTE_MIG_ACTIVE
+               if capacity_fits(job, g) and gpu_load[g] + load(job) <= GPU_LOAD_LIMIT + (
+                   2.0 if kind(job['id']) == 'proxy' and not REMOTE_MIG_ACTIVE
                                                               else 0.0) + 1e-9
                and gpu_mem[g] + float(job['mem_gb']) <= GPU_CAP[g]
                and (g != hyb_reserved or may_use_reserved(job['id']))]
@@ -798,7 +881,10 @@ if POOL_READY and not DRY and not held and ROLES is not None and COTENANT is not
         members = [job] + ([by_id[job['id'] + '-eval']] if job['script'] == 'scripts/train_rl.py' else [])
         if not all(role_admits(u, drain=False) for u in members):  # unified pool: every admitted family may move when unheld
             continue
-        units.append(members)
+        if not all(release_ready(u) and ready(u) for u in members):
+            messages.append(f"{job['id']}: pool inputs/release not ready; no priority reservation")
+            continue
+        units.append([{**u, 'gpu': 'any'} for u in members])
     if not ENC_ALLOWED:
         units = [m for m in units if not m[0]['id'].startswith(ENC_PREFIXES)]
     if not DS_READY:
@@ -817,28 +903,38 @@ if POOL_READY and not DRY and not held and ROLES is not None and COTENANT is not
                               not m[0]['id'].startswith(CST_PREFIXES),  # then the CSW4 tube-ratio campaign
                               m[0]['id'].startswith(ENC_PREFIXES),
                               {'scripts/export_encoder.py': -1, 'scripts/train.py': 0}.get(m[0]['script'], 1)))
+log_unready(remote, {j['id'] for j in candidates}, state, messages)
 # Remote rows and movable local units share priority tiers. On ties the existing remote-first order holds.
-priority_barrier = PriorityBarrier()
+priority_reservations = priority_policy()
+# Save live charges; post-claim validation replays only planned admissions, never running jobs.
+_live = (cpu_used, total, disk_free, dict(gpu_jobs), set(gpu_exclusive), dict(gpu_load), dict(gpu_mem))
+waiting = []
 plan = []
 for priority in sorted({j.get('priority', 5) for j in candidates}
                        | {m[0].get('priority', 5) for m in units}):
     for job in candidates:
-        if job.get('priority', 5) != priority or not priority_barrier.allows(job):
+        if job.get('priority', 5) != priority:
             continue
         if job['id'].endswith('-eval'):
             trainer = job['id'].removesuffix('-eval')
             if state.get(trainer, {}).get('status') not in jobs.ACTIVE | {jobs.DONE} and trainer not in taken:
+                priority_reservations.log(job, 'not ready')
                 continue
         if job['id'].startswith('s4-reviwo-') and reviwo >= MAX_REVIWO:
-            priority_barrier.block(job)
+            priority_reservations.log(job, 'campaign limit not ready')
+            continue
+        if not priority_reservations.feasible(job):
+            priority_reservations.log(job, 'infeasible on empty host')
             continue
         need = int(ram_gb(job) * 2**30)
-        if total + need > CAP:
-            priority_barrier.block(job)
+        if total + need > CAP or not priority_reservations.allows(job):
+            priority_reservations.reserve(job)
+            waiting.append(job)
             continue
         gpu = place(job)
         if gpu is None:
-            priority_barrier.block(job)
+            priority_reservations.reserve(job)
+            waiting.append(job)
             if (hyb_reserved is None and job['id'].startswith(HYB_PREFIXES + CST_PREFIXES)
                     and not job['id'].endswith('-eval')
                     and any(float(job['mem_gb']) <= GPU_CAP[g] for g in GPUS)):  # never for a row no device can hold
@@ -846,6 +942,7 @@ for priority in sorted({j.get('priority', 5) for j in candidates}
                 messages.append(f"HYB_RESERVED {hyb_reserved} for waiting {job['id']} (load {gpu_load[hyb_reserved]:.1f} + "
                                 f"{load(job):.1f} > {GPU_LOAD_LIMIT}; no new lower-priority rows there this pass)")
             continue
+        disk_free -= float(job.get('disk_gb', 0))
         cpu_used += jobs.thread_limit(job.get('cpu_threads', 8))
         gpu_jobs[gpu] += 1
         if exclusive(job):
@@ -857,7 +954,7 @@ for priority in sorted({j.get('priority', 5) for j in candidates}
         total += need
         reviwo += job['id'].startswith('s4-reviwo-')
     for members in units:
-        if members[0].get('priority', 5) != priority or not priority_barrier.allows(members[0]):
+        if members[0].get('priority', 5) != priority:
             continue
         tentative = []
         for u in members:
@@ -871,6 +968,7 @@ for priority in sorted({j.get('priority', 5) for j in candidates}
             if total + need > CAP or not fitting:
                 break
             g = min(fitting, key=lambda g: (gpu_load[g], gpu_mem[g]))
+            disk_free -= float(u.get('disk_gb', 0))
             cpu_used += jobs.thread_limit(u.get('cpu_threads', 8))
             gpu_jobs[g] += 1
             if exclusive(u):
@@ -880,8 +978,8 @@ for priority in sorted({j.get('priority', 5) for j in candidates}
             total += need
             tentative.append((u['id'], g, row_load, float(u['mem_gb']), need))
         if len(tentative) != len(members):
-            priority_barrier.block(members[0])
             for row_id, g, row_load, mem, need in tentative:
+                disk_free += float(by_id.get(row_id, {}).get('disk_gb', 0))
                 cpu_used -= jobs.thread_limit(by_id.get(row_id, {}).get('cpu_threads', 8))
                 gpu_jobs[g] -= 1
                 if exclusive(by_id.get(row_id, {})):
@@ -889,14 +987,18 @@ for priority in sorted({j.get('priority', 5) for j in candidates}
                 gpu_load[g] -= row_load
                 gpu_mem[g] -= mem
                 total -= need
+            for u in members:
+                # The companion cannot independently reserve before its trainer is active.
+                if (not u['id'].endswith('-eval')
+                        or state.get(u['id'].removesuffix('-eval'), {}).get('status') in jobs.ACTIVE | {jobs.DONE}):
+                    priority_reservations.reserve(u)
+                    waiting.append(u)
             continue
         plan.append(tentative)
 if plan:
     wanted = [t[0] for tentative in plan for t in tentative]
     moved = set(pool_placement.move(wanted, 'remote', 'free remote capacity (remote driver pass)')) if wanted else set()
-    for tentative in plan:
-        if any(i not in moved for i, *_ in tentative):
-            priority_barrier.block(by_id[tentative[0][0]])
+    state = jobs.read_registry()
     if wanted and not moved:
         messages.append(f'POOL move skipped (local admission in progress or rows already admitted): {wanted[:4]}')
     if moved:
@@ -904,65 +1006,87 @@ if plan:
         by_id = {j['id']: j for j in queue['jobs']}
         remote = [j for j in queue['jobs'] if j.get('host') == 'remote' and kind(j['id'])]
         messages.append(f'POOL moved to remote: {sorted(moved)}')
-        for tentative in plan:
-            ok = all(i in moved for i, *_ in tentative) and all(ready(by_id[i]) for i, *_ in tentative)
-            for i, g, row_load, mem, need in tentative:
-                if ok:
-                    chosen.append({**with_role(by_id[i]), 'gpu': g})
-                    taken.add(i)
-                else:  # placed but not startable yet (e.g. export upload pending): admitted by a later pass
-                    priority_barrier.block(by_id[i])
-                    cpu_used -= jobs.thread_limit(by_id[i].get('cpu_threads', 8))
-                    gpu_jobs[g] -= 1
-                    if exclusive(by_id[i]):
-                        gpu_exclusive.discard(g)
-                    gpu_load[g] -= row_load
-                    gpu_mem[g] -= mem
-                    total -= need
+    for tentative in plan:
+        ok = (all(i in moved for i, *_ in tentative)
+              and all(ready(by_id[i]) and release_ready(by_id[i]) for i, *_ in tentative))
+        for i, g, *_ in tentative:
+            if ok:
+                chosen.append({**with_role(by_id[i]), 'gpu': g})
+            elif (state.get(i, {}).get('status') not in jobs.ACTIVE | {jobs.DONE}
+                  and ready(by_id[i]) and release_ready(by_id[i]) and not i.endswith('-eval')):
+                waiting.append({**by_id[i], 'gpu': 'any'})
 
-# Pool claims can fail after planning (another driver holds admission); retain the higher tier first.
+# Claims may fail after planning. Replay the live baseline and preserve only exact reservations of still-ready rows.
 _pool_load = {i: row_load for tentative in plan for i, _, row_load, _, _ in tentative}
-for job in chosen:
-    if not priority_barrier.allows(job):
-        gpu = job['gpu']
-        cpu_used -= jobs.thread_limit(job.get('cpu_threads', 8))
-        gpu_jobs[gpu] -= 1
-        if exclusive(job):
-            gpu_exclusive.discard(gpu)
-        gpu_load[gpu] -= _pool_load.get(job['id'], load(job))
-        gpu_mem[gpu] -= float(job['mem_gb'])
-        total -= int(ram_gb(job) * 2**30)
-        taken.discard(job['id'])
-chosen = [j for j in chosen if priority_barrier.allows(j)]
+cpu_used, total, disk_free, gpu_jobs, gpu_exclusive, gpu_load, gpu_mem = _live
+_logged = priority_reservations.logged
+priority_reservations = priority_policy()
+priority_reservations.logged = _logged
+_replayed = []
+_selected = {j['id'] for j in chosen}
+for job in sorted(waiting + chosen, key=lambda j: j.get('priority', 5)):
+    if job['id'] not in _selected:
+        priority_reservations.reserve(job)
+        continue
+    g = job['gpu']
+    need = int(ram_gb(job) * 2**30)
+    if not capacity_fits(job, g) or total + need > CAP:
+        priority_reservations.reserve(job)
+        waiting.append({**job, 'gpu': by_id[job['id']].get('gpu', 'any')})
+        continue
+    cpu_used += jobs.thread_limit(job.get('cpu_threads', 8))
+    total += need
+    disk_free -= float(job.get('disk_gb', 0))
+    gpu_jobs[g] += 1
+    gpu_mem[g] += float(job['mem_gb'])
+    gpu_load[g] += _pool_load.get(job['id'], load(job))
+    if exclusive(job):
+        gpu_exclusive.add(g)
+    _replayed.append(job)
+chosen = _replayed
 
 
-def job_release(job):
-    """(commit, image) a job runs on: a retry keeps its first launch's; pool rows the pool release; others COMMIT/IMAGE."""
-    previous = state.get(job['id'], {})
-    if job['id'] in SNERL_NT_IDS and not previous.get('commit'):  # new launches only (see SNERL_NT_COMMIT)
-        return SNERL_NT_COMMIT, POOL_IMAGE
-    if previous.get('repinned_from'):
-        target = previous.get('repinned_target', {})
-        if (target.get('commit'), target.get('image_digest')) != (previous.get('commit'), previous.get('image_digest')):
-            raise ValueError(f"{job['id']}: release differs from recorded re-pin target")
-        return target['commit'], target['image_digest']
-    if previous.get('commit'):
-        return previous['commit'], previous.get('image_digest', IMAGE)
-    if kind(job['id']) == 'role':
-        return ROLE_COMMIT, ROLE_IMAGE
-    if job['id'].startswith(ENC_PREFIXES):
-        return ENC_COMMIT, POOL_IMAGE
-    if job['id'].startswith(SRV4_PREFIXES):
-        return SRV4_COMMIT, POOL_IMAGE
-    if job['id'].startswith(HYB_PREFIXES):
-        return HYB_COMMIT, POOL_IMAGE
-    if job['id'].startswith(CST_PREFIXES):
-        return CST_COMMIT, POOL_IMAGE
-    if job['id'].startswith(ANA_PREFIXES):
-        return ANA_COMMIT, POOL_IMAGE
-    if job['id'].startswith(DS_PREFIXES):
-        return DS_COMMIT, POOL_IMAGE
-    return (POOL_COMMIT, POOL_IMAGE) if kind(job['id']) in ('pool_pretrain', 'pool_rl') else (COMMIT, IMAGE)
+def dispatch_policy(observed, backend):
+    """Fresh live evidence between release ticks; reservations cannot rely on a preceding batch's outcome."""
+    fresh = backend.snapshot()
+    if not fresh.resources_ready:
+        raise ValueError('remote dispatch resource evidence unavailable')
+    live = {i: s for i, s in observed.items() if s.get('host') == 'remote' and s['status'] in jobs.RESERVING}
+    charges = cotenant_charges(fresh, [(s['gpu'], s.get('container'), jobs.reservation(s, by_id.get(i, {}), 'mem_gb'))
+                                     for i, s in live.items()])
+    if charges['unbounded'] or charges.get('cpus', 0) is None:
+        raise ValueError('unbounded remote dispatch resources')
+    slots = {}
+    for g in GPUS:
+        charge = charges['gpus'].get(g, {})
+        here = [(i, s) for i, s in live.items() if s.get('gpu') == g]
+        mem = sum(jobs.reservation(s, by_id.get(i, {}), 'mem_gb') for i, s in here) + charge.get('mem_gb', 0)
+        if 'free_gb' in charge:
+            mem = max(mem, priority_reservations.limits[g]['max_mem_gb']-charge['free_gb'])
+        slots[g] = dict(jobs=len(here)+charge.get('jobs', 0), mem_gb=mem)
+    cpu = owned_cpu_threads(charges, [(s.get('container'), jobs.reservation(s, by_id.get(i, {}), 'cpu_threads') or 8)
+                                      for i, s in live.items()])
+    ram = fresh.available_gb - charges['ram_pending_bytes'] / 2**30 - float(_host.get('host_ram_reserve_gb', 0))
+    disk = (fresh.disk_free_bytes-_disk_floor-charges.get('reserved_disk_bytes', 0)) / 2**30
+    ram = min(ram, CAP / 2**30-sum(jobs.reservation(s, by_id.get(i, {}), 'ram_gb') for i, s in live.items()))
+    for i, s in live.items():
+        if not charges.get('guard_accounted') or s.get('container') not in charges.get('live_names', ()):
+            disk -= jobs.reservation(s, by_id.get(i, {}), 'disk_gb')
+            if charges.get('guard_accounted'):
+                ram -= jobs.reservation(s, by_id.get(i, {}), 'ram_gb')
+    if RELEASE_HOLD:
+        held = release_reservation.charges(RELEASE_HOLD)
+        ram -= held['ram_gb']
+        cpu += held['cpu_threads']
+        disk -= held['disk_gb']
+        for g, charge in held['gpus'].items():
+            if g in slots:
+                slots[g]['mem_gb'] += charge['mem_gb']
+    policy = PriorityReservations(priority_reservations.limits, priority_reservations.budgets, lambda: slots,
+        lambda: dict(ram_gb=ram, cpu_threads=CPU_BUDGET-cpu, disk_gb=disk),
+        request=priority_request, messages=messages)
+    policy.logged = priority_reservations.logged
+    return policy
 
 
 if chosen and DRY:
@@ -972,9 +1096,23 @@ if chosen and not DRY:
     groups = {}
     for job in chosen:
         groups.setdefault((job.get('priority', 5), *job_release(job)), []).append(job)
-    dispatch_barrier = PriorityBarrier()
+    pending_dispatch = list(waiting)
     for (priority, commit, image), group in sorted(groups.items(), key=lambda item: item[0][0]):
-        if not dispatch_barrier.allows(group[0]):
+        backend = RemoteBackend(REPO, REPO / 'runs')
+        try:
+            observed = jobs.read_registry()
+            dispatch_reservations = dispatch_policy(observed, backend)
+        except (RemoteJobError, OSError, ValueError, RuntimeError, subprocess.SubprocessError) as exc:
+            messages.append(f'DISPATCH held: {exc}')
+            break
+        for row in sorted(pending_dispatch, key=lambda j: j.get('priority', 5)):
+            if (row.get('priority', 5) < priority
+                    and observed.get(row['id'], {}).get('status') not in jobs.ACTIVE | {jobs.DONE}
+                    and all(jobs.dependency_ready(row, observed.get(d, {})) for d in row.get('deps', []))
+                    and ready(row) and release_ready(row) and not paused(row['id'])):
+                dispatch_reservations.reserve(row)
+        group = dispatch_reservations.backfill(group)
+        if not group:
             continue
         if (commit, image) not in RELEASES or not (REPO / RELEASES[(commit, image)]).is_file():
             messages.append(f'HELD {[j["id"] for j in group]}: release {commit[:7]}/{image[7:15]} has no accepted manifest')
@@ -996,8 +1134,8 @@ if chosen and not DRY:
         backend = RemoteBackend(REPO, REPO / 'runs')
         messages += jobs.tick(queue_path=qpath, remote_backend=backend)
         observed = jobs.read_registry()
-        if any(observed.get(j['id'], {}).get('status') not in jobs.ACTIVE | {jobs.DONE} for j in group):
-            dispatch_barrier.block(group[0])
+        pending_dispatch.extend({**j, 'gpu': by_id[j['id']].get('gpu', 'any')} for j in group
+                                if observed.get(j['id'], {}).get('status') not in jobs.ACTIVE | {jobs.DONE})
 state = jobs.read_registry()
 counts = {}
 for job in remote:

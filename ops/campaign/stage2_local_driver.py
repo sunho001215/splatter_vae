@@ -9,6 +9,7 @@ import fcntl
 import hashlib
 import json
 import math
+import os
 import subprocess
 import sys
 from datetime import datetime
@@ -363,10 +364,6 @@ _own = {j['id'] for j in candidates}
 _other_ready = [j for j in jobs.eligible(queue['jobs'], eligible_view)
                 if j['id'] not in _own and j.get('host', 'local') == 'local' and not paused(j['id'])
                 and host_roles.refusal(j, 'local', _roles, _ownership, _context) is None]
-if _other_ready:
-    _ceiling = min(j.get('priority', 5) for j in _other_ready)
-    candidates = [j for j in candidates if j.get('priority', 5) <= _ceiling]
-
 # Planned local shutdown (user, 2026-10-15): while this file exists, admit only the listed jobs and nothing after
 # its cutoff, so no local job is started that cannot finish before the stop; closeouts continue unchanged.
 HOLD = SETUP / 'stage2-admission-hold.json'
@@ -397,22 +394,78 @@ growth = {i: max(0, (footprint(by_id[i]) if i in by_id else int(MEASURED.get(que
           for i, s in state.items() if s.get('host', 'local') == 'local' and s['status'] in jobs.ACTIVE}
 ramp = sum(growth.values())
 total = charge + ramp + cache_reserve
-from ops.jobs.priority import PriorityBarrier  # noqa: E402
-priority_barrier = PriorityBarrier()
-admitted, taken = [], set()
-for job in candidates:
-    if not priority_barrier.allows(job):
+from ops.jobs.priority import PriorityReservations, log_unready  # noqa: E402
+from ops.jobs import realworld_local  # noqa: E402
+log_unready([j for j in queue.get('jobs', []) if j.get('host', 'local') == 'local'],
+            {j['id'] for j in candidates + _other_ready}, state, messages)
+_host = queue['hosts']['local']
+limits = _host['limits']
+slots = {g: dict(jobs=0, mem_gb=0.0, exclusive_gpu=False) for g in limits}
+cpu_used = disk_used = 0.0
+for i, current in state.items():
+    if current.get('host', 'local') != 'local' or current['status'] not in jobs.RESERVING:
         continue
+    row = _context.get(i, {})
+    cpu_used += jobs.reservation(current, row, 'cpu_threads') or 8
+    disk_used += jobs.reservation(current, row, 'disk_gb')
+    if current.get('gpu') in slots:
+        slot = slots[current['gpu']]
+        slot['jobs'] += 1
+        slot['mem_gb'] += jobs.reservation(current, row, 'mem_gb')
+        slot['exclusive_gpu'] |= bool(current.get('exclusive_gpu') or row.get('exclusive_gpu'))
+_disk_total, _disk_free = jobs.disk_usage(ROOT)
+_disk_floor = max(float(_host.get('disk_floor_gb', 0)) * 2**30,
+                  _disk_total * float(_host.get('disk_floor_fraction', 0)))
+budgets = dict(ram_gb=CAP / 2**30,
+               cpu_threads=float(_host.get('cpu_thread_budget', os.cpu_count() or 1)),
+               disk_gb=(_disk_total-_disk_floor) / 2**30)
+def request(row):
+    return dict(ram_gb=max(float(row.get('ram_gb', 0)), footprint(row) / 2**30),
+                cpu_threads=float(row.get('cpu_threads', 8)), disk_gb=float(row.get('disk_gb', 0)))
+
+def remaining():
+    return dict(ram_gb=(CAP-total) / 2**30, cpu_threads=budgets['cpu_threads']-cpu_used,
+                disk_gb=(_disk_free-_disk_floor) / 2**30-disk_used)
+
+priority_reservations = PriorityReservations(limits, budgets, lambda: slots, remaining,
+                                            request=request, messages=messages)
+admitted, taken, assigned = [], set(), {}
+_own = {j['id'] for j in candidates}
+for job in sorted(candidates + _other_ready, key=lambda j: (j.get('priority', 5), j['id'] in _own)):
     if job['script'] == 'scripts/eval_rl.py':
         trainer = job['id'].removesuffix('-eval')
         if status(trainer) not in jobs.ACTIVE | {jobs.DONE} and trainer not in taken:
+            priority_reservations.log(job, 'not ready')
             continue
-    if total + footprint(job) >= CAP:
-        priority_barrier.block(job)
+    if host_roles.remote_resident(job, _roles, _context):
+        try:
+            realworld_local.localize(job, state, roles=_roles, by_id=_context, ownership=_ownership)
+        except realworld_local.LocalInputError as exc:
+            priority_reservations.log(job, f'not ready: {exc}')
+            continue
+    if not priority_reservations.feasible(job):
+        priority_reservations.log(job, 'infeasible on empty host')
         continue
+    free, need = remaining(), request(job)
+    fitting = {g: slots[g] for g in limits if g not in priority_reservations.excluded(job)}
+    if (job['id'] not in _own or any(need[k] > free[k] for k in budgets)
+            or not priority_reservations.allows(job)):
+        priority_reservations.reserve(job)
+        continue
+    # _pack mutates only the selected live planning slot; running registry entries are untouched.
+    gpu = realworld_local._pack(job, {g: {**limits[g], **s} for g, s in fitting.items()})
+    if gpu is None:
+        priority_reservations.reserve(job)
+        continue
+    slots[gpu]['jobs'] += 1
+    slots[gpu]['mem_gb'] += float(job['mem_gb'])
+    slots[gpu]['exclusive_gpu'] |= bool(job.get('exclusive_gpu'))
     admitted.append(job)
+    assigned[job['id']] = gpu
     taken.add(job['id'])
-    total += footprint(job)
+    total += need['ram_gb'] * 2**30
+    cpu_used += need['cpu_threads']
+    disk_used += need['disk_gb']
 counts, crop_counts = {}, {}
 for job in stage2:
     table = counts if job['id'] in original else crop_counts
@@ -425,7 +478,8 @@ if admitted and not DRY:
     qpath = SETUP / f's2-local-{tag}.yaml'
     with qpath.open('x') as stream:
         yaml.safe_dump({'hosts': {'local': copy.deepcopy(queue['hosts']['local'])},
-                        'jobs': json.loads(json.dumps(admitted))}, stream, sort_keys=False)
+                        'jobs': json.loads(json.dumps([{**j, 'gpu': assigned[j['id']]} for j in admitted]))},
+                       stream, sort_keys=False)
     with (SETUP / f's2-local-admission-{tag}.json').open('x') as stream:
         json.dump({'recorded_local': stamp.isoformat(), 'charge_bytes': charge, 'budget_metric': 'budget_usage',
                    'memory_snapshot': memory, 'remaining_growth_bytes': ramp, 'remaining_growth_by_job': growth,

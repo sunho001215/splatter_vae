@@ -581,4 +581,47 @@ def test_local_ours_priority_and_capacity_barrier(tmp_path, monkeypatch, resourc
     path.write_text(yaml.safe_dump(queue))
     assert jobs.load_queue(path)["jobs"][-1]["priority"] == -1
     jobs.tick(path, tmp_path / "registry.jsonl", tmp_path / "runs", usage={}, available_gb=200)
-    assert launched == (["pretrain", "ours-fql"] if resource is None else [])
+    assert launched == (["pretrain", "ours-fql"] if resource is None else
+                        ["ours-fql", "old-fql"] if resource in {"gpu", "cpu", "disk"} else [])
+
+
+def test_local_waiting_head_reserves_one_mig_and_allows_other_mig(tmp_path, monkeypatch):
+    launched = []
+    monkeypatch.setattr(jobs, 'launch', lambda r,*a,**k: launched.append((r['id'],a[0])) or 2**30)
+    monkeypatch.setattr(jobs, 'pid_alive', lambda _: True)
+    monkeypatch.setattr(jobs, 'source_identity', lambda: {})
+    rows = [dict(id='high', priority=-1, script='tests/_job_worker.py', gpu=GPU4, mem_gb=8, ram_gb=1),
+            dict(id='other', priority=2, script='tests/_job_worker.py', gpu=GPU5, mem_gb=1, ram_gb=1),
+            dict(id='refill', priority=2, script='tests/_job_worker.py', gpu=GPU4, mem_gb=1, ram_gb=1)]
+    path = write_queue(tmp_path/'q.yaml', rows, {g: dict(max_jobs=3,max_mem_gb=10) for g in (GPU4,GPU5)})
+    registry = tmp_path/'registry.jsonl'
+    jobs.record(dict(event='launched', id='running', host='local', pid=123, gpu=GPU4, mem_gb=6,
+                     ram_gb=1, cpu_threads=1, attempt=1), registry)
+    messages = jobs.tick(path,registry,tmp_path/'runs',usage={},available_gb=100)
+    assert launched == [('other',GPU5)], messages
+    assert jobs.read_registry(registry)['running']['status'] == 'running'
+
+
+@pytest.mark.parametrize('resource', ['ram_gb','cpu_threads','disk_gb'])
+def test_local_backfill_leaves_exact_host_reservations(tmp_path, monkeypatch, resource):
+    launched = []
+    monkeypatch.setattr(jobs, 'launch', lambda r,*a,**k: launched.append(r['id']) or 2**30)
+    monkeypatch.setattr(jobs, 'pid_alive', lambda _: True)
+    monkeypatch.setattr(jobs, 'source_identity', lambda: {})
+    monkeypatch.setattr(jobs, 'disk_usage', lambda _: (1000 * 2**30, 310 * 2**30))
+    rows = [dict(id='high', priority=-1, script='tests/_job_worker.py', gpu=GPU4, mem_gb=8,
+                 ram_gb=1, cpu_threads=1, disk_gb=1),
+            dict(id='fits', priority=2, script='tests/_job_worker.py', gpu=GPU5, mem_gb=1,
+                 ram_gb=1, cpu_threads=1, disk_gb=1),
+            dict(id='excess', priority=2, script='tests/_job_worker.py', gpu=GPU5, mem_gb=1,
+                 ram_gb=1, cpu_threads=1, disk_gb=1)]
+    rows[0][resource], rows[1][resource] = 7, 3
+    path = write_queue(tmp_path/'q.yaml', rows, {g: dict(max_jobs=3,max_mem_gb=10) for g in (GPU4,GPU5)})
+    queue = yaml.safe_load(path.read_text())
+    queue['hosts'] = {'local': {'cpu_thread_budget': 11, 'disk_floor_fraction': 0, 'disk_floor_gb': 0}}
+    path.write_text(yaml.safe_dump(queue))
+    registry = tmp_path/'registry.jsonl'
+    jobs.record(dict(event='launched', id='running', host='local', pid=123, gpu=GPU4, mem_gb=6,
+                     ram_gb=0, cpu_threads=1, disk_gb=0, attempt=1), registry)
+    messages = jobs.tick(path,registry,tmp_path/'runs',usage={},available_gb=10)
+    assert launched == ['fits'], messages

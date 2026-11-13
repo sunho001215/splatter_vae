@@ -116,6 +116,7 @@ class RemoteSnapshot:
     # inspect, its verified PID set and cgroup anon+shmem, plus ALL Docker names (all states).
     admission_records: list | None = None
     container_names: set[str] | None = None
+    total_ram_gb: float | None = None
 
 
 def container_name(run_id: str, attempt: int) -> str:
@@ -681,7 +682,9 @@ def parse_snapshot(output: str) -> RemoteSnapshot:
     hold = launch_hold.parse_status(output) if "__S4D_LAUNCH_HOLD__" in output else None
     return RemoteSnapshot(usage, int(memory) / 2**20, int(disk[0][0]), int(disk[0][1]), containers, ready,
                           cotenants, gpu_memory, hold, admission_records,
-                          set(sections['__S4D_NAMES__']) if '__S4D_NAMES__' in sections else None)
+                          set(sections['__S4D_NAMES__']) if '__S4D_NAMES__' in sections else None,
+                          next((int(line.split()[1]) / 2**20 for line in sections['__S4D_MEMORY__']
+                                if line.startswith('MemTotal:')), None))
 
 
 def resource_limits(ram_gb: float, cpu_threads: int) -> dict:

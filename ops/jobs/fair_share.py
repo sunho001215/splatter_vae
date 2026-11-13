@@ -39,7 +39,8 @@ def permits(family: str, need: dict, usage: dict, capacity: dict, pending: dict,
         for other, used in usage.items() if other != family) for k in RESOURCES)
 
 
-def _select_tier(candidates: list[dict], active: list[dict], limits: dict, ram_cap: float, ram_used: float) -> dict:
+def _select_tier(candidates: list[dict], active: list[dict], limits: dict, ram_cap: float, ram_used: float, *,
+                 can_start=None, on_start=None) -> dict:
     """Return admitted ids with their MIG instance (dispatched with the row), per-family blocked trainer ids, MIG
     instances reserved for protected heads, and a usage/guarantee report.
 
@@ -90,7 +91,8 @@ def _select_tier(candidates: list[dict], active: list[dict], limits: dict, ram_c
                     and not slot.get("exclusive_gpu", False)
                     and not (row.get("exclusive_gpu", False) and slot["jobs"])
                     and slot["jobs"] < int(slot["max_jobs"])
-                    and slot["mem_gb"] + float(row.get("mem_gb", 0)) <= float(slot["max_mem_gb"])):
+                    and slot["mem_gb"] + float(row.get("mem_gb", 0)) <= float(slot["max_mem_gb"])
+                    and (can_start is None or can_start(row, gpu, total["ram_bytes"]))):
                 memory = slot["mem_gb"] + float(row.get("mem_gb", 0))
                 if best is None or memory < best[0]:
                     best = (memory, gpu)
@@ -103,6 +105,8 @@ def _select_tier(candidates: list[dict], active: list[dict], limits: dict, ram_c
         return all(need[k] <= free[k] + 1e-9 for k in RESOURCES)
 
     def start(row, gpu):
+        if on_start is not None:
+            on_start(row)
         admitted.append(row["id"])
         assigned[row["id"]] = gpu
         slots[gpu]["exclusive_gpu"] = row.get("exclusive_gpu", False)
@@ -181,28 +185,69 @@ def _select_tier(candidates: list[dict], active: list[dict], limits: dict, ram_c
                                         "dominant_share": dominant(usage[f], capacity)} for f in families}}}
 
 
-def select(candidates: list[dict], active: list[dict], limits: dict, ram_cap: float, ram_used: float) -> dict:
-    """Queue priority precedes fairness; equal priorities retain the established fair-share policy.
+def select(candidates: list[dict], active: list[dict], limits: dict, ram_cap: float, ram_used: float, *,
+           cpu_budget=float("inf"), cpu_used=None, disk_budget=float("inf"), disk_free=None,
+           messages=None) -> dict:
+    """Run the established family policy per tier, preserving other tiers' exact reservations."""
+    from ops.jobs.priority import PriorityReservations
 
-    A tier with a waiting ready row holds all lower tiers until it drains. Within a tier,
-    protected heads and evaluator exceptions are unchanged. Running rows are only charged.
-    """
-    priorities = sorted({r.get("priority", 5) for r in candidates})
-    if len(priorities) <= 1:
-        return _select_tier(candidates, active, limits, ram_cap, ram_used)
-    admitted, assigned, blocked, reserved = [], {}, {}, {}
+    def request(row):
+        return dict(ram_gb=max(float(row.get("ram_gb", 0)), float(row.get("ram_bytes", 0)) / 2**30),
+                    cpu_threads=float(row.get("cpu_threads", 8)), disk_gb=float(row.get("disk_gb", 0)))
+
+    cpu = sum(request(r)["cpu_threads"] for r in active) if cpu_used is None else cpu_used
+    disk = disk_budget - sum(request(r)["disk_gb"] for r in active) if disk_free is None else disk_free
     charged = list(active)
+    admitted, assigned, blocked, reserved = [], {}, {}, {}
+
+    def slots():
+        return {g: dict(jobs=sum(r.get("gpu") == g for r in charged),
+                        mem_gb=sum(float(r.get("mem_gb", 0)) for r in charged if r.get("gpu") == g)) for g in limits}
+
+    policy = PriorityReservations(limits, dict(ram_gb=ram_cap / 2**30, cpu_threads=cpu_budget, disk_gb=disk_budget),
+                                  slots, lambda: dict(ram_gb=(ram_cap-ram_used) / 2**30,
+                                                      cpu_threads=cpu_budget-cpu, disk_gb=disk),
+                                  request=request, messages=messages)
+    result = _select_tier([], charged, limits, ram_cap, ram_used)
+    priorities = sorted({r.get("priority", 5) for r in candidates})
     for priority in priorities:
         tier = [r for r in candidates if r.get("priority", 5) == priority]
         tier = [{**r, "trainer_ready": r.get("trainer_ready") or r.get("trainer") in admitted} for r in tier]
-        result = _select_tier(tier, charged, limits, ram_cap, ram_used)
+        ready = [r for r in tier if not r.get("evaluator") or r.get("trainer_ready")]
+        for row in tier:
+            if row not in ready:
+                policy.log(row, "not ready")
+            elif not policy.feasible(row):
+                policy.log(row, "infeasible on empty host")
+        ready = [r for r in ready if policy.feasible(r) and not r.get("reserve_only")]
+
+        def can_start(row, gpu, used):
+            free = dict(ram_gb=(ram_cap-used) / 2**30, cpu_threads=cpu_budget-cpu, disk_gb=disk)
+            return (request(row)["cpu_threads"] <= free["cpu_threads"]
+                    and request(row)["disk_gb"] <= free["disk_gb"]
+                    and policy.allows(row, gpu, remaining=free))
+
+        def on_start(row):
+            nonlocal cpu, disk
+            cpu += request(row)["cpu_threads"]
+            disk -= request(row)["disk_gb"]
+
+        # A companion whose trainer is in this tier becomes ready inside the existing family policy.
+        companions = [r for r in tier if r not in ready and r.get("evaluator")
+                      and r.get("trainer") in {j["id"] for j in ready} and policy.feasible(r)]
+        result = _select_tier([r for r in tier if r in ready or r in companions], charged, limits,
+                              ram_cap, ram_used, can_start=can_start, on_start=on_start)
         admitted.extend(result["admitted"])
         assigned.update(result["assigned"])
         blocked.update(result["blocked"])
         reserved.update(result["reserved"])
         ram_used = result["total_ram_bytes"]
-        charged.extend({**r, "gpu": assigned[r["id"]]} for r in tier if r["id"] in assigned)
-        if any(r["id"] not in assigned and (not r.get("evaluator") or r.get("trainer_ready")
-                                            or r.get("trainer") in admitted) for r in tier):
-            break
-    return {**result, "admitted": admitted, "assigned": assigned, "blocked": blocked, "reserved": reserved}
+        charged.extend({**r, "gpu": assigned[r["id"]]} for r in tier if r["id"] in result["assigned"])
+        for row in tier:
+            if priority != priorities[-1] and row["id"] not in result["assigned"]:
+                policy.reserve(row, ready=not row.get("evaluator") or row.get("trainer_ready")
+                               or row.get("trainer") in admitted)
+    reserved.update({r["gpu"]: i for i, r in policy.reservations.items()})
+    return {**result, "admitted": admitted, "assigned": assigned, "blocked": blocked, "reserved": reserved,
+            "total_ram_bytes": ram_used,
+            "report": {**result["report"], "priority_reservations": policy.reservations}}

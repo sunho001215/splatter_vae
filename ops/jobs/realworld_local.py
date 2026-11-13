@@ -28,6 +28,7 @@ import json
 import os
 import re
 import shlex
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -1019,45 +1020,26 @@ def _pause_names(paused_fn, job_id: str) -> list[str]:
     return [""] if result is True else list(result or [])
 
 
-def _packing(queue: dict, state: dict, paused_fn=None, *, priority=float("inf")) -> tuple[dict, float]:
-    """Local capacity left for placement: running / launching local jobs, then never-launched local rows that the
-    local drivers could admit now (no active pause, every dependency done). Paused or dependency-blocked local rows
-    (e.g. intentionally paused Meta-World campaigns) reserve nothing: they cannot start before a later pass."""
+def _running_slots(queue: dict, state: dict) -> dict:
+    """Charge every running/launching local job without changing its registry entry."""
     limits = queue.get("hosts", {}).get("local", {}).get("limits", {})
     slots = {gpu: {"jobs": 0, "mem_gb": 0.0, **limit} for gpu, limit in limits.items()}
-    queued_ram = 0.0
     by_id = {j["id"]: j for j in queue["jobs"]}
     for job_id, current in state.items():
         if current.get("host", "local") == "local" and current.get("status") in ("running", "launching"):
-            job = by_id.get(job_id, {})
-            gpu = current.get("gpu")
+            job, gpu = by_id.get(job_id, {}), current.get("gpu")
             if gpu in slots:
                 slots[gpu]["exclusive_gpu"] = (slots[gpu].get("exclusive_gpu", False)
                     or current.get("exclusive_gpu", False) or job.get("exclusive_gpu", False))
                 slots[gpu]["jobs"] += 1
                 slots[gpu]["mem_gb"] += max(float(current.get("mem_gb", 0)), float(job.get("mem_gb", 0)))
-    def waiting(job):
-        current = state.get(job["id"])
-        if current is None:
-            return True
-        return current.get("status") == "pending" or (
-            current.get("status") == "crashed" and current.get("failures", 0) <= int(job.get("max_restarts", 1)))
-
-    for job in sorted(queue["jobs"], key=lambda j: j.get("priority", 5)):
-        if (job.get("priority", 5) <= priority and job.get("host", "local") == "local" and waiting(job)
-                and not (paused_fn is not None and _pause_names(paused_fn, job["id"]))
-                and all(state.get(dep, {}).get("status") == "done" for dep in job.get("deps", []))):
-            queued_ram += float(job.get("ram_gb", 0)) * 2**30
-            if _pack(job, slots) is None:
-                # An existing waiting reservation that cannot pack consumes the remaining placement capacity.
-                for slot in slots.values():
-                    slot["jobs"] = int(slot["max_jobs"])
-    return slots, queued_ram
+    return slots
 
 
-def _pack(job: dict, slots: dict) -> str | None:
+def _pack(job: dict, slots: dict, excluded=()) -> str | None:
     for gpu, slot in slots.items():
-        if (not slot.get("exclusive_gpu", False) and not (job.get("exclusive_gpu", False) and slot["jobs"])
+        if (gpu not in excluded and not slot.get("exclusive_gpu", False)
+                and not (job.get("exclusive_gpu", False) and slot["jobs"])
                 and job.get("gpu", "any") in ("any", gpu) and slot["jobs"] < int(slot["max_jobs"])
                 and slot["mem_gb"] + float(job.get("mem_gb", 0)) <= float(slot["max_mem_gb"])):
             slot["exclusive_gpu"] = job.get("exclusive_gpu", False)
@@ -1107,19 +1089,64 @@ def plan(queue: dict, state: dict, roles: dict, *, paused_fn, allow_pauses=(), p
         raise ValueError("unknown local placement policy")
     mirror, manifest, runs = Path(mirror), Path(manifest or Path(mirror) / "MANIFEST.json"), Path(runs or root / "runs")
     by_id, decisions = {j["id"]: j for j in queue["jobs"]}, []
-    from ops.jobs.priority import PriorityBarrier
+    from ops.jobs.priority import PriorityReservations
 
-    priority_barrier = PriorityBarrier()
-    selected, current_priority = [], None
+    capacity = capacity or {}
+    host = queue.get("hosts", {}).get("local", {})
+    slots = _running_slots(queue, state)
+    ram = float(capacity.get("ram_free_bytes", 0)) / 2**30
+    cpu = float(capacity.get("cpu_free_threads", host.get("cpu_thread_budget", os.cpu_count() or 1)))
+    disk = float(capacity.get("disk_free_bytes", float("inf"))) / 2**30
+    budgets = dict(ram_gb=float(capacity.get("ram_total_bytes", capacity.get("ram_free_bytes", 0))) / 2**30,
+                   cpu_threads=float(host.get("cpu_thread_budget", os.cpu_count() or 1)),
+                   disk_gb=float(capacity.get("disk_total_bytes", float("inf"))) / 2**30)
+    def request(row):
+        return dict(ram_gb=float(row.get("ram_gb", 0)), cpu_threads=float(row.get("cpu_threads", 8)),
+                    disk_gb=float(row.get("disk_gb", 0)))
+
+    priority_reservations = PriorityReservations(host.get("limits", {}), budgets, lambda: slots,
+        lambda: dict(ram_gb=ram, cpu_threads=cpu, disk_gb=disk), request=request)
+    pending_local = [j for j in queue["jobs"] if j.get("host", "local") == "local"
+                     and (j["id"] not in state or state[j["id"]].get("status") == "pending"
+                          or (state[j["id"]].get("status") == "crashed"
+                              and state[j["id"]].get("failures", 0) <= int(j.get("max_restarts", 1))))]
+    current_priority = None
+
+    def admit(row):
+        nonlocal ram, cpu, disk
+        need = request(row)
+        if (not priority_reservations.feasible(row) or ram < need["ram_gb"] or cpu < need["cpu_threads"]
+                or disk < need["disk_gb"] or not priority_reservations.allows(row)):
+            return False
+        gpu = _pack(row, slots, priority_reservations.excluded(row))
+        if gpu is None:
+            return False
+        ram -= need["ram_gb"]
+        cpu -= need["cpu_threads"]
+        disk -= need["disk_gb"]
+        return True
+
     for _, job in sorted(enumerate(queue["jobs"]), key=lambda pair: (pair[1].get("priority", 5), pair[0])):
         if job.get("host", "local") != "remote" or not applies(job, roles, by_id):
             continue
         if current_priority != job.get("priority", 5):
             current_priority = job.get("priority", 5)
-            placed = {j["id"]: host_roles.destination_row(j, "local", "") for j in selected}
-            packing_queue = {**queue, "jobs": [placed.get(j["id"], j) for j in queue["jobs"]]}
-            slots, queued_ram = _packing(packing_queue, state, paused_fn, priority=current_priority)
-            ram = float((capacity or {}).get("ram_free_bytes", 0)) - queued_ram
+            for local in sorted(pending_local, key=lambda j: j.get("priority", 5)):
+                if local.get("priority", 5) > current_priority:
+                    continue
+                pending_local.remove(local)
+                ready = (not _pause_names(paused_fn, local["id"])
+                         and all(state.get(d, {}).get("status") == "done" for d in local.get("deps", []))
+                         and host_roles.refusal(local, "local", roles, ownership or {}, by_id,
+                                                state.get(local["id"])) is None)
+                if ready and host_roles.remote_resident(local, roles, by_id):
+                    try:
+                        localize(local, state, roles=roles, by_id=by_id, mirror=mirror, manifest=manifest,
+                                 runs=runs, root=root, ownership=ownership or {}, remote_prefix=remote_prefix)
+                    except (OSError, ValueError, KeyError, TypeError, yaml.YAMLError):
+                        ready = False
+                if ready and not admit(local):
+                    priority_reservations.reserve(local)
         job_id, reason, decision, scope = job["id"], "ready", "local", None
         needs = 0
         if job_id in state:
@@ -1146,18 +1173,13 @@ def plan(queue: dict, state: dict, roles: dict, *, paused_fn, allow_pauses=(), p
                     scope = placement_scope(job, root=root)
                 except (OSError, ValueError, subprocess.SubprocessError) as exc:
                     decision, reason = "stay_remote", str(exc)
-            if decision == "local" and policy == "fit":
-                if not priority_barrier.allows(job):
-                    decision, reason = "waits", "higher-priority local capacity reservation"
-                elif ram < float(job.get("ram_gb", 0)) * 2**30:
+            if decision == "local" and policy == "fit" and not _pause_names(paused_fn, job_id):
+                destination = host_roles.destination_row(job, "local", "")
+                if not admit(destination):
                     decision, reason = "waits", "local capacity"
-                elif _pack(host_roles.destination_row(job, "local", ""), slots) is None:
-                    decision, reason = "waits", "local capacity"
-                else:
-                    ram -= float(job.get("ram_gb", 0)) * 2**30
-                    selected.append(job)
-                if reason == "local capacity":
-                    priority_barrier.block(job)
+                    if not priority_reservations.feasible(destination):
+                        reason = "infeasible on empty local host"
+                    priority_reservations.reserve(destination, ready=not _pause_names(paused_fn, job_id))
         item = {"id": job_id, "decision": decision, "reason": reason, "mem_gb": float(job.get("mem_gb", 0)),
                 "ram_gb": float(job.get("ram_gb", 0)), "needs_mirror_bytes": needs}
         if scope is not None:
@@ -1308,7 +1330,20 @@ def _capacity(queue: dict, state: dict) -> dict:
         job = by_id.get(i)
         footprint = local_footprint(job, by_id) if job else int(float(s.get("ram_gb", 0)) * 2**30)
         growth += max(0, footprint - pss.get(int(s.get("pid") or -1), 0))
-    return {"ram_free_bytes": max(0, mb.TRAINING_CEILING - mb.snapshot()["budget_usage"] - growth)}
+    host = queue.get("hosts", {}).get("local", {})
+    cpu_budget = float(host.get("cpu_thread_budget", os.cpu_count() or 1))
+    active = [(s, by_id.get(i, {})) for i, s in state.items()
+              if s.get("host", "local") == "local" and s.get("status") in ("running", "launching")]
+    disk = shutil.disk_usage(REPO)
+    floor = max(float(host.get("disk_floor_gb", 0)) * 2**30,
+                disk.total * float(host.get("disk_floor_fraction", 0)))
+    return {"ram_free_bytes": max(0, mb.TRAINING_CEILING - mb.snapshot()["budget_usage"] - growth),
+            "ram_total_bytes": mb.TRAINING_CEILING,
+            "cpu_free_threads": cpu_budget-sum(max(float(s.get("cpu_threads", 8)), float(j.get("cpu_threads", 8)))
+                                               for s, j in active),
+            "disk_total_bytes": disk.total-floor,
+            "disk_free_bytes": disk.free-floor-sum(max(float(s.get("disk_gb", 0)), float(j.get("disk_gb", 0)))
+                                                    * 2**30 for s, j in active)}
 
 
 def main() -> None:
