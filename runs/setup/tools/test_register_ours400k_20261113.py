@@ -141,3 +141,73 @@ def test_local_hold_exact_new_ids(tmp_path):
     path.write_text(json.dumps(dict(pauses=[hold])))
     with pytest.raises(RuntimeError):
         reg.reviewed.require_local_hold(tmp_path, record)
+
+
+@pytest.mark.parametrize("task", ["drawer-open-v2", "covering", "pick-and-place"])
+@pytest.mark.parametrize("variant", ["S", "SF"])
+def test_pipeline_can_generate_each_fresh_task_variant(task, variant):
+    _, current, spec = make_rows("covering")
+    m = copy.deepcopy(spec["data_manifest"])
+    m.update(baseline_config=f"configs/realworld/ours_ext/baseline200k-{task}-{variant}.yaml", include_eval=True)
+    prefix = f"{rw.REMOTE_PREFIX}/learning_inputs/dsreset/{task}/{variant}"
+    for key, name in (
+        ("store", "store.yaml"),
+        ("split_manifest", "split_seed0.json"),
+        ("gate_report", "gate_report.json"),
+        ("outcomes", "outcomes.json"),
+    ):
+        m[key] = f"{prefix}/{name}"
+    m["stats_id"] = f"rwv2-20261113-stats-ours-{task}-{variant}"
+    m["anchor_stats"] = f"runs/{m['stats_id']}/workspace_stats.json"
+    m["deps"] = [f"rwv2-20261113-qa-ours-{task}-{variant}"]
+    rows = reg.build_rows(
+        task,
+        variant,
+        m,
+        None,
+        current=current,
+        release=dict(commit="a" * 40, image="sha256:" + "b" * 64, evidence_manifest="tests.json"),
+    )
+    assert len(rows) == 8
+    assert all(f"-ours-{task}-{variant}" in r["id"] for r in rows)
+    assert rows[0]["deps"] == [m["stats_id"], *m["deps"]]
+    assert m["deps"][0] in rows[1]["deps"]
+    assert all(r["realworld_inputs"] == prefix for r in rows)
+    assert all(r["realworld_variant"] == variant for r in rows)
+
+
+def test_placement_hold_release_is_exact_and_keeps_other_pauses(tmp_path, monkeypatch):
+    from contextlib import contextmanager
+
+    spec = importlib.util.spec_from_file_location("place_ours400k", ROOT / "runs/setup/tools/place_ours400k_20261113.py")
+    place = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(place)
+    rows, _, _ = make_rows("covering")
+    moved = rows[0]["id"]
+    rows[0]["host"] = "local"
+    queue_path = tmp_path / "experiments/queue.yaml"
+    queue_path.parent.mkdir()
+    import yaml
+
+    queue_path.write_text(yaml.safe_dump(dict(jobs=rows)))
+    path = tmp_path / "runs/setup/admission-pauses.json"
+    path.parent.mkdir(parents=True)
+    other = dict(name="unrelated", active=True, ids=["other"])
+    hold = reg.reviewed.local_hold(rows, reg.LOCAL_PAUSE)
+    path.write_text(json.dumps(dict(pauses=[hold, other])))
+
+    @contextmanager
+    def locks(root):
+        yield
+
+    monkeypatch.setattr(reg.reviewed, "locks", locks)
+    monkeypatch.setattr(place.host_roles, "read_ownership", lambda: {moved: dict(owner_host="local")})
+    assert place.lift_moved(tmp_path, [moved]) == [moved]
+    after = json.loads(path.read_text())
+    assert after["pauses"][1] == other
+    assert after["pauses"][0]["ids"] == sorted(r["id"] for r in rows[1:])
+    assert after["pauses"][0]["active"] is True
+    before = path.read_bytes()
+    with pytest.raises(RuntimeError, match="ownership"):
+        place.lift_moved(tmp_path, [rows[1]["id"]])
+    assert path.read_bytes() == before

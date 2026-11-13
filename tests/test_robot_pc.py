@@ -1376,7 +1376,12 @@ class FakeSerial:
 
 
 def test_gripper_single_owner_read_only_status_and_command_path(tmp_path, monkeypatch):
+    from ops.robot_pc import devices
     from ops.robot_pc import gripper as G
+
+    # This unit test uses FakeSerial and synthetic holders. Live data-transfer
+    # commands can contain panda-teleop paths; keep its process evidence synthetic too.
+    monkeypatch.setattr(devices, "scan", lambda **kw: {"recorders": []})
 
     with pytest.raises(G.PortBusy, match="second Modbus master"):
         G.RobotiqRTU(serial_module=SimpleNamespace(Serial=FakeSerial), lock_path=str(tmp_path / "l"),
