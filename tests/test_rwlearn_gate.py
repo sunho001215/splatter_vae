@@ -373,7 +373,7 @@ def measured_scenes(monkeypatch):
         monkeypatch.setitem(configs.SCENE_PARAMETERS, task, dict(configs.SCENE_PARAMETERS["drawer-open"]))
 
 
-NEW_TASKS = ("covering", "pick-and-place")
+NEW_TASKS = ("covering", "pick-and-place", "drawer-open-v2")
 SCENE_IDS = {f"rw-{b}-{{t}}-pre" for b in ("snerl", "mvp3d")} | {f"rw-fql-{c}-{{t}}" for c in
                                                                  ("snerl", "mvp3d_multiview", "mvp3d_single")}
 
@@ -387,6 +387,9 @@ def test_preview_matches_a_fully_passed_plan_and_the_table(scenes, monkeypatch):
     m = manifest(validated=True)
     m["counts"]["pick-and-place"] = {"complete": True, "target": 100}
     m["episodes"].update({f"pick-and-place/episode_{i:06d}.h5": entry("pick-and-place", i, validated=True)
+                          for i in range(100)})
+    m["counts"]["drawer-open-v2"] = {"complete": True, "target": 100}
+    m["episodes"].update({f"drawer-open-v2/episode_{i:06d}.h5": entry("drawer-open-v2", i, validated=True)
                           for i in range(100)})
     covering = amended_manifest()  # covering passes through its 98-episode amendment
     m["counts"].update(covering["counts"])
@@ -405,7 +408,7 @@ def test_preview_matches_a_fully_passed_plan_and_the_table(scenes, monkeypatch):
                             and (r.get("baseline") or launch.FQL_ENCODER.get(r.get("fql_condition"))) in ("snerl",
                                                                                                          "mvp3d"))
     assert [strip(r) for r in full] == [strip(r) for r in prev if not unmeasured(r)]
-    assert len(prev) == 33 * len(launch.TASKS) and len(full) == len(prev) - (2 * 14 if scenes == "pending" else 0)
+    assert len(prev) == 33 * len(launch.TASKS) and len(full) == len(prev) - (len(NEW_TASKS) * 14 if scenes == "pending" else 0)
     table = launch.plan_table()
     assert len(table) == len(launch.TASKS) * 7
     geo = {(t["task"], t["condition"]) for t in table if t["calibration_dependent"]}

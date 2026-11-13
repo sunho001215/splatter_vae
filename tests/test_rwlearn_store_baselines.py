@@ -359,7 +359,7 @@ def test_new_task_registry_and_scene_measurement_hooks():
     from s4d.rwlearn import launch
     from s4d.rwlearn.tasks import TARGET_TASKS, TARGETS
 
-    assert TARGETS == ("drawer-open", "mug-hanging", "covering", "pick-and-place")
+    assert TARGETS == ("drawer-open", "mug-hanging", "covering", "pick-and-place", "drawer-open-v2")
     assert C.TARGETS is launch.TASKS is TARGETS  # one registry, imported everywhere
     assert C.TARGET_TASKS is launch.TARGET_TASKS is TARGET_TASKS and REALWORLD_TASKS == frozenset(TARGETS)
     assert TARGET_TASKS == {t: (t,) for t in TARGETS}  # task-specific encoders only

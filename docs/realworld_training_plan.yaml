@@ -346,7 +346,7 @@ rows:
   oom_score_adj: 0
   realworld_target: drawer-open
   fql_condition: reviwo
-  realworld_consumer: reviwo
+  realworld_consumer: fql_reviwo
   calibration_dependent: false
   gate_level: image (100-episode gate)
   realworld_gate_sha256: <gate report sha256 at registration>
@@ -386,7 +386,7 @@ rows:
     alpha: 10.0
     log_interval: 5000
     eval_interval: 100000
-  realworld_consumer: reviwo
+  realworld_consumer: fql_reviwo
   calibration_dependent: false
   gate_level: image (100-episode gate)
   realworld_gate_sha256: <gate report sha256 at registration>
@@ -426,7 +426,7 @@ rows:
     alpha: 10.0
     log_interval: 5000
     eval_interval: 100000
-  realworld_consumer: reviwo
+  realworld_consumer: fql_reviwo
   calibration_dependent: false
   gate_level: image (100-episode gate)
   realworld_gate_sha256: <gate report sha256 at registration>
@@ -466,7 +466,7 @@ rows:
     alpha: 10.0
     log_interval: 5000
     eval_interval: 100000
-  realworld_consumer: reviwo
+  realworld_consumer: fql_reviwo
   calibration_dependent: false
   gate_level: image (100-episode gate)
   realworld_gate_sha256: <gate report sha256 at registration>
@@ -502,7 +502,7 @@ rows:
   oom_score_adj: 0
   realworld_target: drawer-open
   fql_condition: sincro
-  realworld_consumer: sincro
+  realworld_consumer: fql_sincro
   calibration_dependent: true
   gate_level: geometry (100-episode gate + calibration_validated)
   realworld_gate_sha256: <gate report sha256 at registration>
@@ -542,7 +542,7 @@ rows:
     alpha: 10.0
     log_interval: 5000
     eval_interval: 100000
-  realworld_consumer: sincro
+  realworld_consumer: fql_sincro
   calibration_dependent: true
   gate_level: geometry (100-episode gate + calibration_validated)
   realworld_gate_sha256: <gate report sha256 at registration>
@@ -582,7 +582,7 @@ rows:
     alpha: 10.0
     log_interval: 5000
     eval_interval: 100000
-  realworld_consumer: sincro
+  realworld_consumer: fql_sincro
   calibration_dependent: true
   gate_level: geometry (100-episode gate + calibration_validated)
   realworld_gate_sha256: <gate report sha256 at registration>
@@ -622,7 +622,7 @@ rows:
     alpha: 10.0
     log_interval: 5000
     eval_interval: 100000
-  realworld_consumer: sincro
+  realworld_consumer: fql_sincro
   calibration_dependent: true
   gate_level: geometry (100-episode gate + calibration_validated)
   realworld_gate_sha256: <gate report sha256 at registration>
@@ -973,7 +973,7 @@ rows:
   oom_score_adj: 0
   realworld_target: drawer-open
   fql_condition: mvp3d_single
-  realworld_consumer: mvp3d
+  realworld_consumer: mvp3d_single
   calibration_dependent: true
   gate_level: geometry (100-episode gate + calibration_validated)
   realworld_gate_sha256: <gate report sha256 at registration>
@@ -1014,7 +1014,7 @@ rows:
     alpha: 10.0
     log_interval: 5000
     eval_interval: 100000
-  realworld_consumer: mvp3d
+  realworld_consumer: mvp3d_single
   calibration_dependent: true
   gate_level: geometry (100-episode gate + calibration_validated)
   realworld_gate_sha256: <gate report sha256 at registration>
@@ -1055,7 +1055,7 @@ rows:
     alpha: 10.0
     log_interval: 5000
     eval_interval: 100000
-  realworld_consumer: mvp3d
+  realworld_consumer: mvp3d_single
   calibration_dependent: true
   gate_level: geometry (100-episode gate + calibration_validated)
   realworld_gate_sha256: <gate report sha256 at registration>
@@ -1096,7 +1096,7 @@ rows:
     alpha: 10.0
     log_interval: 5000
     eval_interval: 100000
-  realworld_consumer: mvp3d
+  realworld_consumer: mvp3d_single
   calibration_dependent: true
   gate_level: geometry (100-episode gate + calibration_validated)
   realworld_gate_sha256: <gate report sha256 at registration>
@@ -1607,7 +1607,7 @@ rows:
   oom_score_adj: 0
   realworld_target: mug-hanging
   fql_condition: reviwo
-  realworld_consumer: reviwo
+  realworld_consumer: fql_reviwo
   calibration_dependent: false
   gate_level: image (100-episode gate)
   realworld_gate_sha256: <gate report sha256 at registration>
@@ -1647,7 +1647,7 @@ rows:
     alpha: 10.0
     log_interval: 5000
     eval_interval: 100000
-  realworld_consumer: reviwo
+  realworld_consumer: fql_reviwo
   calibration_dependent: false
   gate_level: image (100-episode gate)
   realworld_gate_sha256: <gate report sha256 at registration>
@@ -1687,7 +1687,7 @@ rows:
     alpha: 10.0
     log_interval: 5000
     eval_interval: 100000
-  realworld_consumer: reviwo
+  realworld_consumer: fql_reviwo
   calibration_dependent: false
   gate_level: image (100-episode gate)
   realworld_gate_sha256: <gate report sha256 at registration>
@@ -1727,7 +1727,7 @@ rows:
     alpha: 10.0
     log_interval: 5000
     eval_interval: 100000
-  realworld_consumer: reviwo
+  realworld_consumer: fql_reviwo
   calibration_dependent: false
   gate_level: image (100-episode gate)
   realworld_gate_sha256: <gate report sha256 at registration>
@@ -1763,7 +1763,7 @@ rows:
   oom_score_adj: 0
   realworld_target: mug-hanging
   fql_condition: sincro
-  realworld_consumer: sincro
+  realworld_consumer: fql_sincro
   calibration_dependent: true
   gate_level: geometry (100-episode gate + calibration_validated)
   realworld_gate_sha256: <gate report sha256 at registration>
@@ -1803,7 +1803,7 @@ rows:
     alpha: 10.0
     log_interval: 5000
     eval_interval: 100000
-  realworld_consumer: sincro
+  realworld_consumer: fql_sincro
   calibration_dependent: true
   gate_level: geometry (100-episode gate + calibration_validated)
   realworld_gate_sha256: <gate report sha256 at registration>
@@ -1843,7 +1843,7 @@ rows:
     alpha: 10.0
     log_interval: 5000
     eval_interval: 100000
-  realworld_consumer: sincro
+  realworld_consumer: fql_sincro
   calibration_dependent: true
   gate_level: geometry (100-episode gate + calibration_validated)
   realworld_gate_sha256: <gate report sha256 at registration>
@@ -1883,7 +1883,7 @@ rows:
     alpha: 10.0
     log_interval: 5000
     eval_interval: 100000
-  realworld_consumer: sincro
+  realworld_consumer: fql_sincro
   calibration_dependent: true
   gate_level: geometry (100-episode gate + calibration_validated)
   realworld_gate_sha256: <gate report sha256 at registration>
@@ -2234,7 +2234,7 @@ rows:
   oom_score_adj: 0
   realworld_target: mug-hanging
   fql_condition: mvp3d_single
-  realworld_consumer: mvp3d
+  realworld_consumer: mvp3d_single
   calibration_dependent: true
   gate_level: geometry (100-episode gate + calibration_validated)
   realworld_gate_sha256: <gate report sha256 at registration>
@@ -2275,7 +2275,7 @@ rows:
     alpha: 10.0
     log_interval: 5000
     eval_interval: 100000
-  realworld_consumer: mvp3d
+  realworld_consumer: mvp3d_single
   calibration_dependent: true
   gate_level: geometry (100-episode gate + calibration_validated)
   realworld_gate_sha256: <gate report sha256 at registration>
@@ -2316,7 +2316,7 @@ rows:
     alpha: 10.0
     log_interval: 5000
     eval_interval: 100000
-  realworld_consumer: mvp3d
+  realworld_consumer: mvp3d_single
   calibration_dependent: true
   gate_level: geometry (100-episode gate + calibration_validated)
   realworld_gate_sha256: <gate report sha256 at registration>
@@ -2357,7 +2357,7 @@ rows:
     alpha: 10.0
     log_interval: 5000
     eval_interval: 100000
-  realworld_consumer: mvp3d
+  realworld_consumer: mvp3d_single
   calibration_dependent: true
   gate_level: geometry (100-episode gate + calibration_validated)
   realworld_gate_sha256: <gate report sha256 at registration>
@@ -5043,9 +5043,1267 @@ rows:
   realworld_gate_sha256: <gate report sha256 at registration>
   planned_commit: <release commit pinned by the coordinator>
   remote_host: 192.168.10.22
-registrable: false
-remote_host: 192.168.10.22
-commit: <release commit pinned by the coordinator>
+- id: rw-snerl-drawer-open-v2-pre
+  script: scripts/train_snerl.py
+  args:
+  - --config
+  - configs/realworld/baselines/snerl/drawer-open-v2.yaml
+  - --name
+  - rw-snerl-drawer-open-v2-pre
+  - --output-root
+  - runs/pretrain
+  - --resume
+  - auto
+  role: realworld_pretrain
+  host: remote
+  gpu: any
+  mem_gb: 16
+  ram_gb: 20
+  priority: 1
+  deps: []
+  max_restarts: 2
+  oom_score_adj: 0
+  baseline: snerl
+  realworld_target: drawer-open-v2
+  pretraining: task-specific, documented protocol (configs/realworld/baselines)
+  realworld_consumer: snerl
+  calibration_dependent: true
+  gate_level: geometry (100-episode gate + calibration_validated)
+  realworld_gate_sha256: <gate report sha256 at registration>
+  planned_commit: <release commit pinned by the coordinator>
+  remote_host: 192.168.10.22
+  inputs:
+  - /home/compu/kaist/sunho/realworld/learning_inputs/drawer-open-v2/store.yaml
+  - /home/compu/kaist/sunho/realworld/learning_inputs/drawer-open-v2/gate_report.json
+  - /home/compu/kaist/sunho/realworld/learning_inputs/drawer-open-v2/split_seed0.json
+- id: rw-mvp3d-drawer-open-v2-pre
+  script: scripts/train_mvp3d.py
+  args:
+  - --config
+  - configs/realworld/baselines/mvp3d/drawer-open-v2.yaml
+  - --name
+  - rw-mvp3d-drawer-open-v2-pre
+  - --output-root
+  - runs/pretrain
+  - --resume
+  - auto
+  role: realworld_pretrain
+  host: remote
+  gpu: any
+  mem_gb: 12
+  ram_gb: 24
+  priority: 1
+  deps: []
+  max_restarts: 2
+  oom_score_adj: 0
+  baseline: mvp3d
+  realworld_target: drawer-open-v2
+  pretraining: task-specific, documented protocol (configs/realworld/baselines)
+  realworld_consumer: mvp3d
+  calibration_dependent: true
+  gate_level: geometry (100-episode gate + calibration_validated)
+  realworld_gate_sha256: <gate report sha256 at registration>
+  planned_commit: <release commit pinned by the coordinator>
+  remote_host: 192.168.10.22
+  inputs:
+  - /home/compu/kaist/sunho/realworld/learning_inputs/drawer-open-v2/store.yaml
+  - /home/compu/kaist/sunho/realworld/learning_inputs/drawer-open-v2/gate_report.json
+  - /home/compu/kaist/sunho/realworld/learning_inputs/drawer-open-v2/split_seed0.json
+- id: rw-sincro-drawer-open-v2-pre
+  script: scripts/train_sincro.py
+  args:
+  - --config
+  - configs/realworld/baselines/sincro/drawer-open-v2.yaml
+  - --name
+  - rw-sincro-drawer-open-v2-pre
+  - --output-root
+  - runs/pretrain
+  role: realworld_pretrain
+  host: remote
+  gpu: any
+  mem_gb: 12
+  ram_gb: 24
+  priority: 1
+  deps: []
+  max_restarts: 2
+  oom_score_adj: 0
+  baseline: sincro
+  realworld_target: drawer-open-v2
+  pretraining: task-specific, documented protocol (configs/realworld/baselines)
+  realworld_consumer: sincro
+  calibration_dependent: true
+  gate_level: geometry (100-episode gate + calibration_validated)
+  realworld_gate_sha256: <gate report sha256 at registration>
+  planned_commit: <release commit pinned by the coordinator>
+  remote_host: 192.168.10.22
+  inputs:
+  - /home/compu/kaist/sunho/realworld/learning_inputs/drawer-open-v2/store.yaml
+  - /home/compu/kaist/sunho/realworld/learning_inputs/drawer-open-v2/gate_report.json
+  - /home/compu/kaist/sunho/realworld/learning_inputs/drawer-open-v2/split_seed0.json
+- id: rw-reviwo-drawer-open-v2-pre
+  script: scripts/train_reviwo.py
+  args:
+  - --config
+  - configs/realworld/baselines/reviwo/drawer-open-v2.yaml
+  - --name
+  - rw-reviwo-drawer-open-v2-pre
+  - --output-root
+  - runs/pretrain
+  role: realworld_pretrain
+  host: remote
+  gpu: any
+  mem_gb: 4
+  ram_gb: 16
+  priority: 1
+  deps: []
+  max_restarts: 2
+  oom_score_adj: 0
+  baseline: reviwo
+  realworld_target: drawer-open-v2
+  pretraining: task-specific, documented protocol (configs/realworld/baselines)
+  realworld_consumer: reviwo
+  calibration_dependent: false
+  gate_level: image (100-episode gate)
+  realworld_gate_sha256: <gate report sha256 at registration>
+  planned_commit: <release commit pinned by the coordinator>
+  remote_host: 192.168.10.22
+  inputs:
+  - /home/compu/kaist/sunho/realworld/learning_inputs/drawer-open-v2/store.yaml
+  - /home/compu/kaist/sunho/realworld/learning_inputs/drawer-open-v2/gate_report.json
+  - /home/compu/kaist/sunho/realworld/learning_inputs/drawer-open-v2/split_seed0.json
+- id: rw-dynamo-drawer-open-v2-pre
+  script: scripts/train_dynamo.py
+  args:
+  - --config
+  - configs/realworld/baselines/dynamo/drawer-open-v2.yaml
+  - --name
+  - rw-dynamo-drawer-open-v2-pre
+  - --output-root
+  - runs/pretrain
+  - --resume
+  - auto
+  role: realworld_pretrain
+  host: remote
+  gpu: any
+  mem_gb: 12
+  ram_gb: 32
+  priority: 1
+  deps: []
+  max_restarts: 2
+  oom_score_adj: 0
+  baseline: dynamo
+  realworld_target: drawer-open-v2
+  pretraining: task-specific, documented protocol (configs/realworld/baselines)
+  realworld_consumer: dynamo
+  calibration_dependent: false
+  gate_level: image (100-episode gate)
+  realworld_gate_sha256: <gate report sha256 at registration>
+  planned_commit: <release commit pinned by the coordinator>
+  remote_host: 192.168.10.22
+  inputs:
+  - /home/compu/kaist/sunho/realworld/learning_inputs/drawer-open-v2/store.yaml
+  - /home/compu/kaist/sunho/realworld/learning_inputs/drawer-open-v2/gate_report.json
+  - /home/compu/kaist/sunho/realworld/learning_inputs/drawer-open-v2/split_seed0.json
+- id: rw-fqldata-dynamo-drawer-open-v2
+  script: scripts/realworld_fql_dataset.py
+  args:
+  - build
+  - --store
+  - /home/compu/kaist/sunho/realworld/learning_inputs/drawer-open-v2/store.yaml
+  - --condition
+  - dynamo
+  - --out
+  - runs/realworld_fql/data/dynamo-drawer-open-v2.h5
+  - --gate-report
+  - /home/compu/kaist/sunho/realworld/learning_inputs/drawer-open-v2/gate_report.json
+  - --outcomes
+  - /home/compu/kaist/sunho/realworld/learning_inputs/drawer-open-v2/outcomes.json
+  - --export
+  - runs/pretrain/rw-dynamo-drawer-open-v2-pre/encoder.pt
+  - --device
+  - cuda
+  role: realworld_fql
+  host: remote
+  gpu: any
+  mem_gb: 8
+  ram_gb: 16
+  priority: 2
+  deps:
+  - rw-dynamo-drawer-open-v2-pre
+  max_restarts: 1
+  oom_score_adj: 0
+  realworld_target: drawer-open-v2
+  fql_condition: dynamo
+  realworld_consumer: dynamo
+  calibration_dependent: false
+  gate_level: image (100-episode gate)
+  realworld_gate_sha256: <gate report sha256 at registration>
+  planned_commit: <release commit pinned by the coordinator>
+  remote_host: 192.168.10.22
+- id: rw-fql-dynamo-drawer-open-v2-s0
+  script: scripts/train_realworld_fql.py
+  args:
+  - --config
+  - configs/realworld/fql/base.yaml
+  - --name
+  - rw-fql-dynamo-drawer-open-v2-s0
+  - --output-root
+  - runs/realworld_fql
+  - --set
+  - condition=dynamo
+  - data.dataset=runs/realworld_fql/data/dynamo-drawer-open-v2.h5
+  - data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open-v2/split_seed0.json
+  - data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open-v2/gate_report.json
+  - train.seed=0
+  role: realworld_fql
+  host: remote
+  gpu: any
+  mem_gb: 6
+  ram_gb: 12
+  priority: 2
+  deps:
+  - rw-fqldata-dynamo-drawer-open-v2
+  max_restarts: 2
+  oom_score_adj: 0
+  realworld_target: drawer-open-v2
+  fql_condition: dynamo
+  fql_seed: 0
+  fql_budget:
+    offline_steps: 1000000
+    batch_size: 256
+    alpha: 10.0
+    log_interval: 5000
+    eval_interval: 100000
+  realworld_consumer: dynamo
+  calibration_dependent: false
+  gate_level: image (100-episode gate)
+  realworld_gate_sha256: <gate report sha256 at registration>
+  planned_commit: <release commit pinned by the coordinator>
+  remote_host: 192.168.10.22
+- id: rw-fql-dynamo-drawer-open-v2-s1
+  script: scripts/train_realworld_fql.py
+  args:
+  - --config
+  - configs/realworld/fql/base.yaml
+  - --name
+  - rw-fql-dynamo-drawer-open-v2-s1
+  - --output-root
+  - runs/realworld_fql
+  - --set
+  - condition=dynamo
+  - data.dataset=runs/realworld_fql/data/dynamo-drawer-open-v2.h5
+  - data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open-v2/split_seed0.json
+  - data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open-v2/gate_report.json
+  - train.seed=1
+  role: realworld_fql
+  host: remote
+  gpu: any
+  mem_gb: 6
+  ram_gb: 12
+  priority: 2
+  deps:
+  - rw-fqldata-dynamo-drawer-open-v2
+  max_restarts: 2
+  oom_score_adj: 0
+  realworld_target: drawer-open-v2
+  fql_condition: dynamo
+  fql_seed: 1
+  fql_budget:
+    offline_steps: 1000000
+    batch_size: 256
+    alpha: 10.0
+    log_interval: 5000
+    eval_interval: 100000
+  realworld_consumer: dynamo
+  calibration_dependent: false
+  gate_level: image (100-episode gate)
+  realworld_gate_sha256: <gate report sha256 at registration>
+  planned_commit: <release commit pinned by the coordinator>
+  remote_host: 192.168.10.22
+- id: rw-fql-dynamo-drawer-open-v2-s2
+  script: scripts/train_realworld_fql.py
+  args:
+  - --config
+  - configs/realworld/fql/base.yaml
+  - --name
+  - rw-fql-dynamo-drawer-open-v2-s2
+  - --output-root
+  - runs/realworld_fql
+  - --set
+  - condition=dynamo
+  - data.dataset=runs/realworld_fql/data/dynamo-drawer-open-v2.h5
+  - data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open-v2/split_seed0.json
+  - data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open-v2/gate_report.json
+  - train.seed=2
+  role: realworld_fql
+  host: remote
+  gpu: any
+  mem_gb: 6
+  ram_gb: 12
+  priority: 2
+  deps:
+  - rw-fqldata-dynamo-drawer-open-v2
+  max_restarts: 2
+  oom_score_adj: 0
+  realworld_target: drawer-open-v2
+  fql_condition: dynamo
+  fql_seed: 2
+  fql_budget:
+    offline_steps: 1000000
+    batch_size: 256
+    alpha: 10.0
+    log_interval: 5000
+    eval_interval: 100000
+  realworld_consumer: dynamo
+  calibration_dependent: false
+  gate_level: image (100-episode gate)
+  realworld_gate_sha256: <gate report sha256 at registration>
+  planned_commit: <release commit pinned by the coordinator>
+  remote_host: 192.168.10.22
+- id: rw-fqldata-reviwo-drawer-open-v2
+  script: scripts/realworld_fql_dataset.py
+  args:
+  - build
+  - --store
+  - /home/compu/kaist/sunho/realworld/learning_inputs/drawer-open-v2/store.yaml
+  - --condition
+  - reviwo
+  - --out
+  - runs/realworld_fql/data/reviwo-drawer-open-v2.h5
+  - --gate-report
+  - /home/compu/kaist/sunho/realworld/learning_inputs/drawer-open-v2/gate_report.json
+  - --outcomes
+  - /home/compu/kaist/sunho/realworld/learning_inputs/drawer-open-v2/outcomes.json
+  - --export
+  - runs/pretrain/rw-reviwo-drawer-open-v2-pre/encoder.pt
+  - --device
+  - cuda
+  role: realworld_fql
+  host: remote
+  gpu: any
+  mem_gb: 8
+  ram_gb: 16
+  priority: 2
+  deps:
+  - rw-reviwo-drawer-open-v2-pre
+  max_restarts: 1
+  oom_score_adj: 0
+  realworld_target: drawer-open-v2
+  fql_condition: reviwo
+  realworld_consumer: fql_reviwo
+  calibration_dependent: false
+  gate_level: image (100-episode gate)
+  realworld_gate_sha256: <gate report sha256 at registration>
+  planned_commit: <release commit pinned by the coordinator>
+  remote_host: 192.168.10.22
+- id: rw-fql-reviwo-drawer-open-v2-s0
+  script: scripts/train_realworld_fql.py
+  args:
+  - --config
+  - configs/realworld/fql/base.yaml
+  - --name
+  - rw-fql-reviwo-drawer-open-v2-s0
+  - --output-root
+  - runs/realworld_fql
+  - --set
+  - condition=reviwo
+  - data.dataset=runs/realworld_fql/data/reviwo-drawer-open-v2.h5
+  - data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open-v2/split_seed0.json
+  - data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open-v2/gate_report.json
+  - train.seed=0
+  role: realworld_fql
+  host: remote
+  gpu: any
+  mem_gb: 6
+  ram_gb: 12
+  priority: 2
+  deps:
+  - rw-fqldata-reviwo-drawer-open-v2
+  max_restarts: 2
+  oom_score_adj: 0
+  realworld_target: drawer-open-v2
+  fql_condition: reviwo
+  fql_seed: 0
+  fql_budget:
+    offline_steps: 1000000
+    batch_size: 256
+    alpha: 10.0
+    log_interval: 5000
+    eval_interval: 100000
+  realworld_consumer: fql_reviwo
+  calibration_dependent: false
+  gate_level: image (100-episode gate)
+  realworld_gate_sha256: <gate report sha256 at registration>
+  planned_commit: <release commit pinned by the coordinator>
+  remote_host: 192.168.10.22
+- id: rw-fql-reviwo-drawer-open-v2-s1
+  script: scripts/train_realworld_fql.py
+  args:
+  - --config
+  - configs/realworld/fql/base.yaml
+  - --name
+  - rw-fql-reviwo-drawer-open-v2-s1
+  - --output-root
+  - runs/realworld_fql
+  - --set
+  - condition=reviwo
+  - data.dataset=runs/realworld_fql/data/reviwo-drawer-open-v2.h5
+  - data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open-v2/split_seed0.json
+  - data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open-v2/gate_report.json
+  - train.seed=1
+  role: realworld_fql
+  host: remote
+  gpu: any
+  mem_gb: 6
+  ram_gb: 12
+  priority: 2
+  deps:
+  - rw-fqldata-reviwo-drawer-open-v2
+  max_restarts: 2
+  oom_score_adj: 0
+  realworld_target: drawer-open-v2
+  fql_condition: reviwo
+  fql_seed: 1
+  fql_budget:
+    offline_steps: 1000000
+    batch_size: 256
+    alpha: 10.0
+    log_interval: 5000
+    eval_interval: 100000
+  realworld_consumer: fql_reviwo
+  calibration_dependent: false
+  gate_level: image (100-episode gate)
+  realworld_gate_sha256: <gate report sha256 at registration>
+  planned_commit: <release commit pinned by the coordinator>
+  remote_host: 192.168.10.22
+- id: rw-fql-reviwo-drawer-open-v2-s2
+  script: scripts/train_realworld_fql.py
+  args:
+  - --config
+  - configs/realworld/fql/base.yaml
+  - --name
+  - rw-fql-reviwo-drawer-open-v2-s2
+  - --output-root
+  - runs/realworld_fql
+  - --set
+  - condition=reviwo
+  - data.dataset=runs/realworld_fql/data/reviwo-drawer-open-v2.h5
+  - data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open-v2/split_seed0.json
+  - data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open-v2/gate_report.json
+  - train.seed=2
+  role: realworld_fql
+  host: remote
+  gpu: any
+  mem_gb: 6
+  ram_gb: 12
+  priority: 2
+  deps:
+  - rw-fqldata-reviwo-drawer-open-v2
+  max_restarts: 2
+  oom_score_adj: 0
+  realworld_target: drawer-open-v2
+  fql_condition: reviwo
+  fql_seed: 2
+  fql_budget:
+    offline_steps: 1000000
+    batch_size: 256
+    alpha: 10.0
+    log_interval: 5000
+    eval_interval: 100000
+  realworld_consumer: fql_reviwo
+  calibration_dependent: false
+  gate_level: image (100-episode gate)
+  realworld_gate_sha256: <gate report sha256 at registration>
+  planned_commit: <release commit pinned by the coordinator>
+  remote_host: 192.168.10.22
+- id: rw-fqldata-sincro-drawer-open-v2
+  script: scripts/realworld_fql_dataset.py
+  args:
+  - build
+  - --store
+  - /home/compu/kaist/sunho/realworld/learning_inputs/drawer-open-v2/store.yaml
+  - --condition
+  - sincro
+  - --out
+  - runs/realworld_fql/data/sincro-drawer-open-v2.h5
+  - --gate-report
+  - /home/compu/kaist/sunho/realworld/learning_inputs/drawer-open-v2/gate_report.json
+  - --outcomes
+  - /home/compu/kaist/sunho/realworld/learning_inputs/drawer-open-v2/outcomes.json
+  - --export
+  - runs/pretrain/rw-sincro-drawer-open-v2-pre/encoder.pt
+  - --device
+  - cuda
+  role: realworld_fql
+  host: remote
+  gpu: any
+  mem_gb: 8
+  ram_gb: 16
+  priority: 2
+  deps:
+  - rw-sincro-drawer-open-v2-pre
+  max_restarts: 1
+  oom_score_adj: 0
+  realworld_target: drawer-open-v2
+  fql_condition: sincro
+  realworld_consumer: fql_sincro
+  calibration_dependent: true
+  gate_level: geometry (100-episode gate + calibration_validated)
+  realworld_gate_sha256: <gate report sha256 at registration>
+  planned_commit: <release commit pinned by the coordinator>
+  remote_host: 192.168.10.22
+- id: rw-fql-sincro-drawer-open-v2-s0
+  script: scripts/train_realworld_fql.py
+  args:
+  - --config
+  - configs/realworld/fql/base.yaml
+  - --name
+  - rw-fql-sincro-drawer-open-v2-s0
+  - --output-root
+  - runs/realworld_fql
+  - --set
+  - condition=sincro
+  - data.dataset=runs/realworld_fql/data/sincro-drawer-open-v2.h5
+  - data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open-v2/split_seed0.json
+  - data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open-v2/gate_report.json
+  - train.seed=0
+  role: realworld_fql
+  host: remote
+  gpu: any
+  mem_gb: 6
+  ram_gb: 12
+  priority: 2
+  deps:
+  - rw-fqldata-sincro-drawer-open-v2
+  max_restarts: 2
+  oom_score_adj: 0
+  realworld_target: drawer-open-v2
+  fql_condition: sincro
+  fql_seed: 0
+  fql_budget:
+    offline_steps: 1000000
+    batch_size: 256
+    alpha: 10.0
+    log_interval: 5000
+    eval_interval: 100000
+  realworld_consumer: fql_sincro
+  calibration_dependent: true
+  gate_level: geometry (100-episode gate + calibration_validated)
+  realworld_gate_sha256: <gate report sha256 at registration>
+  planned_commit: <release commit pinned by the coordinator>
+  remote_host: 192.168.10.22
+- id: rw-fql-sincro-drawer-open-v2-s1
+  script: scripts/train_realworld_fql.py
+  args:
+  - --config
+  - configs/realworld/fql/base.yaml
+  - --name
+  - rw-fql-sincro-drawer-open-v2-s1
+  - --output-root
+  - runs/realworld_fql
+  - --set
+  - condition=sincro
+  - data.dataset=runs/realworld_fql/data/sincro-drawer-open-v2.h5
+  - data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open-v2/split_seed0.json
+  - data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open-v2/gate_report.json
+  - train.seed=1
+  role: realworld_fql
+  host: remote
+  gpu: any
+  mem_gb: 6
+  ram_gb: 12
+  priority: 2
+  deps:
+  - rw-fqldata-sincro-drawer-open-v2
+  max_restarts: 2
+  oom_score_adj: 0
+  realworld_target: drawer-open-v2
+  fql_condition: sincro
+  fql_seed: 1
+  fql_budget:
+    offline_steps: 1000000
+    batch_size: 256
+    alpha: 10.0
+    log_interval: 5000
+    eval_interval: 100000
+  realworld_consumer: fql_sincro
+  calibration_dependent: true
+  gate_level: geometry (100-episode gate + calibration_validated)
+  realworld_gate_sha256: <gate report sha256 at registration>
+  planned_commit: <release commit pinned by the coordinator>
+  remote_host: 192.168.10.22
+- id: rw-fql-sincro-drawer-open-v2-s2
+  script: scripts/train_realworld_fql.py
+  args:
+  - --config
+  - configs/realworld/fql/base.yaml
+  - --name
+  - rw-fql-sincro-drawer-open-v2-s2
+  - --output-root
+  - runs/realworld_fql
+  - --set
+  - condition=sincro
+  - data.dataset=runs/realworld_fql/data/sincro-drawer-open-v2.h5
+  - data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open-v2/split_seed0.json
+  - data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open-v2/gate_report.json
+  - train.seed=2
+  role: realworld_fql
+  host: remote
+  gpu: any
+  mem_gb: 6
+  ram_gb: 12
+  priority: 2
+  deps:
+  - rw-fqldata-sincro-drawer-open-v2
+  max_restarts: 2
+  oom_score_adj: 0
+  realworld_target: drawer-open-v2
+  fql_condition: sincro
+  fql_seed: 2
+  fql_budget:
+    offline_steps: 1000000
+    batch_size: 256
+    alpha: 10.0
+    log_interval: 5000
+    eval_interval: 100000
+  realworld_consumer: fql_sincro
+  calibration_dependent: true
+  gate_level: geometry (100-episode gate + calibration_validated)
+  realworld_gate_sha256: <gate report sha256 at registration>
+  planned_commit: <release commit pinned by the coordinator>
+  remote_host: 192.168.10.22
+- id: rw-fqldata-snerl-drawer-open-v2
+  script: scripts/realworld_fql_dataset.py
+  args:
+  - build
+  - --store
+  - /home/compu/kaist/sunho/realworld/learning_inputs/drawer-open-v2/store.yaml
+  - --condition
+  - snerl
+  - --out
+  - runs/realworld_fql/data/snerl-drawer-open-v2.h5
+  - --gate-report
+  - /home/compu/kaist/sunho/realworld/learning_inputs/drawer-open-v2/gate_report.json
+  - --outcomes
+  - /home/compu/kaist/sunho/realworld/learning_inputs/drawer-open-v2/outcomes.json
+  - --export
+  - runs/pretrain/rw-snerl-drawer-open-v2-pre/encoder.pt
+  - --device
+  - cuda
+  role: realworld_fql
+  host: remote
+  gpu: any
+  mem_gb: 8
+  ram_gb: 16
+  priority: 2
+  deps:
+  - rw-snerl-drawer-open-v2-pre
+  max_restarts: 1
+  oom_score_adj: 0
+  realworld_target: drawer-open-v2
+  fql_condition: snerl
+  realworld_consumer: snerl
+  calibration_dependent: true
+  gate_level: geometry (100-episode gate + calibration_validated)
+  realworld_gate_sha256: <gate report sha256 at registration>
+  planned_commit: <release commit pinned by the coordinator>
+  remote_host: 192.168.10.22
+- id: rw-fql-snerl-drawer-open-v2-s0
+  script: scripts/train_realworld_fql.py
+  args:
+  - --config
+  - configs/realworld/fql/base.yaml
+  - --name
+  - rw-fql-snerl-drawer-open-v2-s0
+  - --output-root
+  - runs/realworld_fql
+  - --set
+  - condition=snerl
+  - data.dataset=runs/realworld_fql/data/snerl-drawer-open-v2.h5
+  - data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open-v2/split_seed0.json
+  - data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open-v2/gate_report.json
+  - train.seed=0
+  role: realworld_fql
+  host: remote
+  gpu: any
+  mem_gb: 6
+  ram_gb: 12
+  priority: 2
+  deps:
+  - rw-fqldata-snerl-drawer-open-v2
+  max_restarts: 2
+  oom_score_adj: 0
+  realworld_target: drawer-open-v2
+  fql_condition: snerl
+  fql_seed: 0
+  fql_budget:
+    offline_steps: 1000000
+    batch_size: 256
+    alpha: 10.0
+    log_interval: 5000
+    eval_interval: 100000
+  realworld_consumer: snerl
+  calibration_dependent: true
+  gate_level: geometry (100-episode gate + calibration_validated)
+  realworld_gate_sha256: <gate report sha256 at registration>
+  planned_commit: <release commit pinned by the coordinator>
+  remote_host: 192.168.10.22
+- id: rw-fql-snerl-drawer-open-v2-s1
+  script: scripts/train_realworld_fql.py
+  args:
+  - --config
+  - configs/realworld/fql/base.yaml
+  - --name
+  - rw-fql-snerl-drawer-open-v2-s1
+  - --output-root
+  - runs/realworld_fql
+  - --set
+  - condition=snerl
+  - data.dataset=runs/realworld_fql/data/snerl-drawer-open-v2.h5
+  - data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open-v2/split_seed0.json
+  - data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open-v2/gate_report.json
+  - train.seed=1
+  role: realworld_fql
+  host: remote
+  gpu: any
+  mem_gb: 6
+  ram_gb: 12
+  priority: 2
+  deps:
+  - rw-fqldata-snerl-drawer-open-v2
+  max_restarts: 2
+  oom_score_adj: 0
+  realworld_target: drawer-open-v2
+  fql_condition: snerl
+  fql_seed: 1
+  fql_budget:
+    offline_steps: 1000000
+    batch_size: 256
+    alpha: 10.0
+    log_interval: 5000
+    eval_interval: 100000
+  realworld_consumer: snerl
+  calibration_dependent: true
+  gate_level: geometry (100-episode gate + calibration_validated)
+  realworld_gate_sha256: <gate report sha256 at registration>
+  planned_commit: <release commit pinned by the coordinator>
+  remote_host: 192.168.10.22
+- id: rw-fql-snerl-drawer-open-v2-s2
+  script: scripts/train_realworld_fql.py
+  args:
+  - --config
+  - configs/realworld/fql/base.yaml
+  - --name
+  - rw-fql-snerl-drawer-open-v2-s2
+  - --output-root
+  - runs/realworld_fql
+  - --set
+  - condition=snerl
+  - data.dataset=runs/realworld_fql/data/snerl-drawer-open-v2.h5
+  - data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open-v2/split_seed0.json
+  - data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open-v2/gate_report.json
+  - train.seed=2
+  role: realworld_fql
+  host: remote
+  gpu: any
+  mem_gb: 6
+  ram_gb: 12
+  priority: 2
+  deps:
+  - rw-fqldata-snerl-drawer-open-v2
+  max_restarts: 2
+  oom_score_adj: 0
+  realworld_target: drawer-open-v2
+  fql_condition: snerl
+  fql_seed: 2
+  fql_budget:
+    offline_steps: 1000000
+    batch_size: 256
+    alpha: 10.0
+    log_interval: 5000
+    eval_interval: 100000
+  realworld_consumer: snerl
+  calibration_dependent: true
+  gate_level: geometry (100-episode gate + calibration_validated)
+  realworld_gate_sha256: <gate report sha256 at registration>
+  planned_commit: <release commit pinned by the coordinator>
+  remote_host: 192.168.10.22
+- id: rw-fqldata-mvp3d_multiview-drawer-open-v2
+  script: scripts/realworld_fql_dataset.py
+  args:
+  - build
+  - --store
+  - /home/compu/kaist/sunho/realworld/learning_inputs/drawer-open-v2/store.yaml
+  - --condition
+  - mvp3d_multiview
+  - --out
+  - runs/realworld_fql/data/mvp3d_multiview-drawer-open-v2.h5
+  - --gate-report
+  - /home/compu/kaist/sunho/realworld/learning_inputs/drawer-open-v2/gate_report.json
+  - --outcomes
+  - /home/compu/kaist/sunho/realworld/learning_inputs/drawer-open-v2/outcomes.json
+  - --export
+  - runs/pretrain/rw-mvp3d-drawer-open-v2-pre/encoder.pt
+  - --device
+  - cuda
+  role: realworld_fql
+  host: remote
+  gpu: any
+  mem_gb: 8
+  ram_gb: 16
+  priority: 2
+  deps:
+  - rw-mvp3d-drawer-open-v2-pre
+  max_restarts: 1
+  oom_score_adj: 0
+  realworld_target: drawer-open-v2
+  fql_condition: mvp3d_multiview
+  realworld_consumer: mvp3d
+  calibration_dependent: true
+  gate_level: geometry (100-episode gate + calibration_validated)
+  realworld_gate_sha256: <gate report sha256 at registration>
+  planned_commit: <release commit pinned by the coordinator>
+  remote_host: 192.168.10.22
+- id: rw-fql-mvp3d_multiview-drawer-open-v2-s0
+  script: scripts/train_realworld_fql.py
+  args:
+  - --config
+  - configs/realworld/fql/base.yaml
+  - --name
+  - rw-fql-mvp3d_multiview-drawer-open-v2-s0
+  - --output-root
+  - runs/realworld_fql
+  - --set
+  - condition=mvp3d_multiview
+  - data.dataset=runs/realworld_fql/data/mvp3d_multiview-drawer-open-v2.h5
+  - data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open-v2/split_seed0.json
+  - data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open-v2/gate_report.json
+  - train.seed=0
+  - encoder.feature_norm=train_standardize
+  role: realworld_fql
+  host: remote
+  gpu: any
+  mem_gb: 6
+  ram_gb: 12
+  priority: 2
+  deps:
+  - rw-fqldata-mvp3d_multiview-drawer-open-v2
+  max_restarts: 2
+  oom_score_adj: 0
+  realworld_target: drawer-open-v2
+  fql_condition: mvp3d_multiview
+  fql_seed: 0
+  fql_budget:
+    offline_steps: 1000000
+    batch_size: 256
+    alpha: 10.0
+    log_interval: 5000
+    eval_interval: 100000
+  realworld_consumer: mvp3d
+  calibration_dependent: true
+  gate_level: geometry (100-episode gate + calibration_validated)
+  realworld_gate_sha256: <gate report sha256 at registration>
+  planned_commit: <release commit pinned by the coordinator>
+  remote_host: 192.168.10.22
+- id: rw-fql-mvp3d_multiview-drawer-open-v2-s1
+  script: scripts/train_realworld_fql.py
+  args:
+  - --config
+  - configs/realworld/fql/base.yaml
+  - --name
+  - rw-fql-mvp3d_multiview-drawer-open-v2-s1
+  - --output-root
+  - runs/realworld_fql
+  - --set
+  - condition=mvp3d_multiview
+  - data.dataset=runs/realworld_fql/data/mvp3d_multiview-drawer-open-v2.h5
+  - data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open-v2/split_seed0.json
+  - data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open-v2/gate_report.json
+  - train.seed=1
+  - encoder.feature_norm=train_standardize
+  role: realworld_fql
+  host: remote
+  gpu: any
+  mem_gb: 6
+  ram_gb: 12
+  priority: 2
+  deps:
+  - rw-fqldata-mvp3d_multiview-drawer-open-v2
+  max_restarts: 2
+  oom_score_adj: 0
+  realworld_target: drawer-open-v2
+  fql_condition: mvp3d_multiview
+  fql_seed: 1
+  fql_budget:
+    offline_steps: 1000000
+    batch_size: 256
+    alpha: 10.0
+    log_interval: 5000
+    eval_interval: 100000
+  realworld_consumer: mvp3d
+  calibration_dependent: true
+  gate_level: geometry (100-episode gate + calibration_validated)
+  realworld_gate_sha256: <gate report sha256 at registration>
+  planned_commit: <release commit pinned by the coordinator>
+  remote_host: 192.168.10.22
+- id: rw-fql-mvp3d_multiview-drawer-open-v2-s2
+  script: scripts/train_realworld_fql.py
+  args:
+  - --config
+  - configs/realworld/fql/base.yaml
+  - --name
+  - rw-fql-mvp3d_multiview-drawer-open-v2-s2
+  - --output-root
+  - runs/realworld_fql
+  - --set
+  - condition=mvp3d_multiview
+  - data.dataset=runs/realworld_fql/data/mvp3d_multiview-drawer-open-v2.h5
+  - data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open-v2/split_seed0.json
+  - data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open-v2/gate_report.json
+  - train.seed=2
+  - encoder.feature_norm=train_standardize
+  role: realworld_fql
+  host: remote
+  gpu: any
+  mem_gb: 6
+  ram_gb: 12
+  priority: 2
+  deps:
+  - rw-fqldata-mvp3d_multiview-drawer-open-v2
+  max_restarts: 2
+  oom_score_adj: 0
+  realworld_target: drawer-open-v2
+  fql_condition: mvp3d_multiview
+  fql_seed: 2
+  fql_budget:
+    offline_steps: 1000000
+    batch_size: 256
+    alpha: 10.0
+    log_interval: 5000
+    eval_interval: 100000
+  realworld_consumer: mvp3d
+  calibration_dependent: true
+  gate_level: geometry (100-episode gate + calibration_validated)
+  realworld_gate_sha256: <gate report sha256 at registration>
+  planned_commit: <release commit pinned by the coordinator>
+  remote_host: 192.168.10.22
+- id: rw-fqldata-mvp3d_single-drawer-open-v2
+  script: scripts/realworld_fql_dataset.py
+  args:
+  - build
+  - --store
+  - /home/compu/kaist/sunho/realworld/learning_inputs/drawer-open-v2/store.yaml
+  - --condition
+  - mvp3d_single
+  - --out
+  - runs/realworld_fql/data/mvp3d_single-drawer-open-v2.h5
+  - --gate-report
+  - /home/compu/kaist/sunho/realworld/learning_inputs/drawer-open-v2/gate_report.json
+  - --outcomes
+  - /home/compu/kaist/sunho/realworld/learning_inputs/drawer-open-v2/outcomes.json
+  - --export
+  - runs/pretrain/rw-mvp3d-drawer-open-v2-pre/encoder.pt
+  - --device
+  - cuda
+  role: realworld_fql
+  host: remote
+  gpu: any
+  mem_gb: 8
+  ram_gb: 16
+  priority: 2
+  deps:
+  - rw-mvp3d-drawer-open-v2-pre
+  max_restarts: 1
+  oom_score_adj: 0
+  realworld_target: drawer-open-v2
+  fql_condition: mvp3d_single
+  realworld_consumer: mvp3d_single
+  calibration_dependent: true
+  gate_level: geometry (100-episode gate + calibration_validated)
+  realworld_gate_sha256: <gate report sha256 at registration>
+  planned_commit: <release commit pinned by the coordinator>
+  remote_host: 192.168.10.22
+- id: rw-fql-mvp3d_single-drawer-open-v2-s0
+  script: scripts/train_realworld_fql.py
+  args:
+  - --config
+  - configs/realworld/fql/base.yaml
+  - --name
+  - rw-fql-mvp3d_single-drawer-open-v2-s0
+  - --output-root
+  - runs/realworld_fql
+  - --set
+  - condition=mvp3d_single
+  - data.dataset=runs/realworld_fql/data/mvp3d_single-drawer-open-v2.h5
+  - data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open-v2/split_seed0.json
+  - data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open-v2/gate_report.json
+  - train.seed=0
+  - encoder.feature_norm=train_standardize
+  role: realworld_fql
+  host: remote
+  gpu: any
+  mem_gb: 6
+  ram_gb: 12
+  priority: 2
+  deps:
+  - rw-fqldata-mvp3d_single-drawer-open-v2
+  max_restarts: 2
+  oom_score_adj: 0
+  realworld_target: drawer-open-v2
+  fql_condition: mvp3d_single
+  fql_seed: 0
+  fql_budget:
+    offline_steps: 1000000
+    batch_size: 256
+    alpha: 10.0
+    log_interval: 5000
+    eval_interval: 100000
+  realworld_consumer: mvp3d_single
+  calibration_dependent: true
+  gate_level: geometry (100-episode gate + calibration_validated)
+  realworld_gate_sha256: <gate report sha256 at registration>
+  planned_commit: <release commit pinned by the coordinator>
+  remote_host: 192.168.10.22
+- id: rw-fql-mvp3d_single-drawer-open-v2-s1
+  script: scripts/train_realworld_fql.py
+  args:
+  - --config
+  - configs/realworld/fql/base.yaml
+  - --name
+  - rw-fql-mvp3d_single-drawer-open-v2-s1
+  - --output-root
+  - runs/realworld_fql
+  - --set
+  - condition=mvp3d_single
+  - data.dataset=runs/realworld_fql/data/mvp3d_single-drawer-open-v2.h5
+  - data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open-v2/split_seed0.json
+  - data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open-v2/gate_report.json
+  - train.seed=1
+  - encoder.feature_norm=train_standardize
+  role: realworld_fql
+  host: remote
+  gpu: any
+  mem_gb: 6
+  ram_gb: 12
+  priority: 2
+  deps:
+  - rw-fqldata-mvp3d_single-drawer-open-v2
+  max_restarts: 2
+  oom_score_adj: 0
+  realworld_target: drawer-open-v2
+  fql_condition: mvp3d_single
+  fql_seed: 1
+  fql_budget:
+    offline_steps: 1000000
+    batch_size: 256
+    alpha: 10.0
+    log_interval: 5000
+    eval_interval: 100000
+  realworld_consumer: mvp3d_single
+  calibration_dependent: true
+  gate_level: geometry (100-episode gate + calibration_validated)
+  realworld_gate_sha256: <gate report sha256 at registration>
+  planned_commit: <release commit pinned by the coordinator>
+  remote_host: 192.168.10.22
+- id: rw-fql-mvp3d_single-drawer-open-v2-s2
+  script: scripts/train_realworld_fql.py
+  args:
+  - --config
+  - configs/realworld/fql/base.yaml
+  - --name
+  - rw-fql-mvp3d_single-drawer-open-v2-s2
+  - --output-root
+  - runs/realworld_fql
+  - --set
+  - condition=mvp3d_single
+  - data.dataset=runs/realworld_fql/data/mvp3d_single-drawer-open-v2.h5
+  - data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open-v2/split_seed0.json
+  - data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open-v2/gate_report.json
+  - train.seed=2
+  - encoder.feature_norm=train_standardize
+  role: realworld_fql
+  host: remote
+  gpu: any
+  mem_gb: 6
+  ram_gb: 12
+  priority: 2
+  deps:
+  - rw-fqldata-mvp3d_single-drawer-open-v2
+  max_restarts: 2
+  oom_score_adj: 0
+  realworld_target: drawer-open-v2
+  fql_condition: mvp3d_single
+  fql_seed: 2
+  fql_budget:
+    offline_steps: 1000000
+    batch_size: 256
+    alpha: 10.0
+    log_interval: 5000
+    eval_interval: 100000
+  realworld_consumer: mvp3d_single
+  calibration_dependent: true
+  gate_level: geometry (100-episode gate + calibration_validated)
+  realworld_gate_sha256: <gate report sha256 at registration>
+  planned_commit: <release commit pinned by the coordinator>
+  remote_host: 192.168.10.22
+- id: rw-fqldata-e2e_cnn-drawer-open-v2
+  script: scripts/realworld_fql_dataset.py
+  args:
+  - build
+  - --store
+  - /home/compu/kaist/sunho/realworld/learning_inputs/drawer-open-v2/store.yaml
+  - --condition
+  - e2e_cnn
+  - --out
+  - runs/realworld_fql/data/e2e_cnn-drawer-open-v2.h5
+  - --gate-report
+  - /home/compu/kaist/sunho/realworld/learning_inputs/drawer-open-v2/gate_report.json
+  - --outcomes
+  - /home/compu/kaist/sunho/realworld/learning_inputs/drawer-open-v2/outcomes.json
+  - --device
+  - cpu
+  role: realworld_fql
+  host: remote
+  gpu: any
+  mem_gb: 1
+  ram_gb: 8
+  priority: 2
+  deps:
+  - rw-dynamo-drawer-open-v2-pre
+  - rw-reviwo-drawer-open-v2-pre
+  max_restarts: 1
+  oom_score_adj: 0
+  realworld_target: drawer-open-v2
+  fql_condition: e2e_cnn
+  realworld_consumer: e2e_cnn
+  calibration_dependent: false
+  gate_level: image (100-episode gate)
+  realworld_gate_sha256: <gate report sha256 at registration>
+  planned_commit: <release commit pinned by the coordinator>
+  remote_host: 192.168.10.22
+- id: rw-fql-e2e_cnn-drawer-open-v2-s0
+  script: scripts/train_realworld_fql.py
+  args:
+  - --config
+  - configs/realworld/fql/base.yaml
+  - --name
+  - rw-fql-e2e_cnn-drawer-open-v2-s0
+  - --output-root
+  - runs/realworld_fql
+  - --set
+  - condition=e2e_cnn
+  - data.dataset=runs/realworld_fql/data/e2e_cnn-drawer-open-v2.h5
+  - data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open-v2/split_seed0.json
+  - data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open-v2/gate_report.json
+  - train.seed=0
+  - data.store=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open-v2/store.yaml
+  role: realworld_fql
+  host: remote
+  gpu: any
+  mem_gb: 12
+  ram_gb: 24
+  priority: 2
+  deps:
+  - rw-fqldata-e2e_cnn-drawer-open-v2
+  max_restarts: 2
+  oom_score_adj: 0
+  realworld_target: drawer-open-v2
+  fql_condition: e2e_cnn
+  fql_seed: 0
+  fql_budget:
+    offline_steps: 1000000
+    batch_size: 256
+    alpha: 10.0
+    log_interval: 5000
+    eval_interval: 100000
+  realworld_consumer: e2e_cnn
+  calibration_dependent: false
+  gate_level: image (100-episode gate)
+  realworld_gate_sha256: <gate report sha256 at registration>
+  planned_commit: <release commit pinned by the coordinator>
+  remote_host: 192.168.10.22
+- id: rw-fql-e2e_cnn-drawer-open-v2-s1
+  script: scripts/train_realworld_fql.py
+  args:
+  - --config
+  - configs/realworld/fql/base.yaml
+  - --name
+  - rw-fql-e2e_cnn-drawer-open-v2-s1
+  - --output-root
+  - runs/realworld_fql
+  - --set
+  - condition=e2e_cnn
+  - data.dataset=runs/realworld_fql/data/e2e_cnn-drawer-open-v2.h5
+  - data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open-v2/split_seed0.json
+  - data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open-v2/gate_report.json
+  - train.seed=1
+  - data.store=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open-v2/store.yaml
+  role: realworld_fql
+  host: remote
+  gpu: any
+  mem_gb: 12
+  ram_gb: 24
+  priority: 2
+  deps:
+  - rw-fqldata-e2e_cnn-drawer-open-v2
+  max_restarts: 2
+  oom_score_adj: 0
+  realworld_target: drawer-open-v2
+  fql_condition: e2e_cnn
+  fql_seed: 1
+  fql_budget:
+    offline_steps: 1000000
+    batch_size: 256
+    alpha: 10.0
+    log_interval: 5000
+    eval_interval: 100000
+  realworld_consumer: e2e_cnn
+  calibration_dependent: false
+  gate_level: image (100-episode gate)
+  realworld_gate_sha256: <gate report sha256 at registration>
+  planned_commit: <release commit pinned by the coordinator>
+  remote_host: 192.168.10.22
+- id: rw-fql-e2e_cnn-drawer-open-v2-s2
+  script: scripts/train_realworld_fql.py
+  args:
+  - --config
+  - configs/realworld/fql/base.yaml
+  - --name
+  - rw-fql-e2e_cnn-drawer-open-v2-s2
+  - --output-root
+  - runs/realworld_fql
+  - --set
+  - condition=e2e_cnn
+  - data.dataset=runs/realworld_fql/data/e2e_cnn-drawer-open-v2.h5
+  - data.split_manifest=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open-v2/split_seed0.json
+  - data.gate_report=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open-v2/gate_report.json
+  - train.seed=2
+  - data.store=/home/compu/kaist/sunho/realworld/learning_inputs/drawer-open-v2/store.yaml
+  role: realworld_fql
+  host: remote
+  gpu: any
+  mem_gb: 12
+  ram_gb: 24
+  priority: 2
+  deps:
+  - rw-fqldata-e2e_cnn-drawer-open-v2
+  max_restarts: 2
+  oom_score_adj: 0
+  realworld_target: drawer-open-v2
+  fql_condition: e2e_cnn
+  fql_seed: 2
+  fql_budget:
+    offline_steps: 1000000
+    batch_size: 256
+    alpha: 10.0
+    log_interval: 5000
+    eval_interval: 100000
+  realworld_consumer: e2e_cnn
+  calibration_dependent: false
+  gate_level: image (100-episode gate)
+  realworld_gate_sha256: <gate report sha256 at registration>
+  planned_commit: <release commit pinned by the coordinator>
+  remote_host: 192.168.10.22
 table:
 - task: drawer-open
   condition: dynamo
@@ -5399,6 +6657,97 @@ table:
   - 6
   - 12
 - task: pick-and-place
+  condition: e2e_cnn
+  baseline: none (end-to-end)
+  pretraining: 'none: random-init CNN trained jointly with FQL'
+  fql_seeds:
+  - 0
+  - 1
+  - 2
+  fql_steps: 1000000
+  calibration_dependent: false
+  resources_gpu_ram_gb:
+  - 12
+  - 24
+- task: drawer-open-v2
+  condition: dynamo
+  baseline: dynamo
+  pretraining: rw-dynamo-drawer-open-v2-pre (task-specific, seed from config)
+  fql_seeds:
+  - 0
+  - 1
+  - 2
+  fql_steps: 1000000
+  calibration_dependent: false
+  resources_gpu_ram_gb:
+  - 6
+  - 12
+- task: drawer-open-v2
+  condition: reviwo
+  baseline: reviwo
+  pretraining: rw-reviwo-drawer-open-v2-pre (task-specific, seed from config)
+  fql_seeds:
+  - 0
+  - 1
+  - 2
+  fql_steps: 1000000
+  calibration_dependent: false
+  resources_gpu_ram_gb:
+  - 6
+  - 12
+- task: drawer-open-v2
+  condition: sincro
+  baseline: sincro
+  pretraining: rw-sincro-drawer-open-v2-pre (task-specific, seed from config)
+  fql_seeds:
+  - 0
+  - 1
+  - 2
+  fql_steps: 1000000
+  calibration_dependent: true
+  resources_gpu_ram_gb:
+  - 6
+  - 12
+- task: drawer-open-v2
+  condition: snerl
+  baseline: snerl
+  pretraining: rw-snerl-drawer-open-v2-pre (task-specific, seed from config)
+  fql_seeds:
+  - 0
+  - 1
+  - 2
+  fql_steps: 1000000
+  calibration_dependent: true
+  resources_gpu_ram_gb:
+  - 6
+  - 12
+- task: drawer-open-v2
+  condition: mvp3d_multiview
+  baseline: mvp3d
+  pretraining: rw-mvp3d-drawer-open-v2-pre (task-specific, seed from config)
+  fql_seeds:
+  - 0
+  - 1
+  - 2
+  fql_steps: 1000000
+  calibration_dependent: true
+  resources_gpu_ram_gb:
+  - 6
+  - 12
+- task: drawer-open-v2
+  condition: mvp3d_single
+  baseline: mvp3d
+  pretraining: rw-mvp3d-drawer-open-v2-pre (task-specific, seed from config)
+  fql_seeds:
+  - 0
+  - 1
+  - 2
+  fql_steps: 1000000
+  calibration_dependent: true
+  resources_gpu_ram_gb:
+  - 6
+  - 12
+- task: drawer-open-v2
   condition: e2e_cnn
   baseline: none (end-to-end)
   pretraining: 'none: random-init CNN trained jointly with FQL'
