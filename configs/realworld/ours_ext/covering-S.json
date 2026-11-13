@@ -1,0 +1,23 @@
+{
+  "task": "covering",
+  "variant": "S",
+  "data_manifest": {
+    "baseline_config": "configs/realworld/ours_ext/baseline200k-covering-S.yaml",
+    "baseline_sha256": "33a04396eea11b829f1aa973414b35e15ed6073a5c506e7cc3f734b013b64436",
+    "store": "/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering/store.yaml",
+    "split_manifest": "/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering/split_seed0.json",
+    "gate_report": "/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering/gate_report.json",
+    "anchor_stats": "runs/rwcal-20261111-ours-covering-stats/workspace_stats.json",
+    "stats_id": "rwcal-20261111-ours-covering-stats",
+    "outcomes": "/home/compu/kaist/sunho/realworld/learning_inputs/calrel-6c3b9ec/covering/outcomes.json",
+    "gate_sha256": "ac331513ef0745b75745b81b4d80659ddc1dcd1de0687b77749fd1ef7be510e3",
+    "manifest_sha256": "5f9304f710df7bff324fb982318a41e51524fd0ce617f61b7724d18565450ac5",
+    "recipe_source": "rwcal-20261111-ours-covering-pre",
+    "include_eval": true
+  },
+  "base200k_source": {
+    "id": "rwcal-20261111-ours-covering-pre",
+    "checkpoint_sha256": "f4b345da0e9ca9d71ba904b8a895ad441759264c66ff4d218f834be935e63169"
+  },
+  "recipe_config": "runs/rwcal-20261111-ours-covering-pre/config.yaml"
+}

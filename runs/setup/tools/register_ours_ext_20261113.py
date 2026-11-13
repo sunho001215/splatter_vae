@@ -1,5 +1,7 @@
 """Append the 15 Ours length-continuation jobs. Dry-run default; coordinator-only publication under both locks.
 
+With --release-source local, pin main HEAD + passing docs/tests.json and require the pre-created active
+ourx-await-local-placement-20261113 hold for exactly these 15 IDs until explicit local placement.
 No driver, scheduler, launch API, network, or registry mutations. Copy to the released main checkout before --execute.
 """
 from __future__ import annotations
@@ -9,6 +11,7 @@ import hashlib
 import json
 import re
 import sys
+import subprocess
 from pathlib import Path
 
 sys.dont_write_bytecode = True
@@ -29,6 +32,61 @@ STATS = 'rwcal-20261111-ours-drawer-open-stats'
 BASE = 'configs/realworld/ours_ext/baseline200k.yaml'
 OVERLAY = 'configs/realworld/ours_ext/continuation.yaml'
 PREFIX = 'ourx-20261113-ours-drawer-open-'
+LOCAL_PAUSE = 'ourx-await-local-placement-20261113'
+LOCAL_EVIDENCE = 'docs/tests.json (local evidence)'
+
+
+def local_release_pin(repo, commit, image):
+    """The precedents' adopted LOCAL release: passing full-suite evidence, exact HEAD sources and role image."""
+    head = subprocess.run(['git', '-C', str(repo), 'rev-parse', 'HEAD'], capture_output=True, text=True,
+                          check=True).stdout.strip()
+    require(head == commit, 'main HEAD differs from --commit')
+    role = json.loads((repo / 'runs/setup/role-release.json').read_bytes())
+    require(role.get('image') == image, 'local release image differs from role release')
+    evidence = json.loads((repo / 'docs/tests.json').read_bytes())
+    counts = evidence.get('counts', {})
+    require(evidence.get('full_suite_passed') is True and evidence.get('exit_code') == 0
+            and not any(counts.get(k, 1) for k in ('failed', 'error', 'skipped')) and counts.get('passed', 0) > 0,
+            'docs/tests.json is not a passing full suite')
+    sys.path.insert(0, str(repo / 'scripts'))
+    try:
+        sys.modules.pop('_bootstrap', None)  # use this checkout's gate, never a cached module
+        from _bootstrap import source_fingerprints
+    finally:
+        sys.path.remove(str(repo / 'scripts'))
+    fingerprints = source_fingerprints()
+    require(evidence.get('source_sha256') == fingerprints, 'docs/tests.json is stale for the main checkout')
+    # Compare bytes with HEAD, as release_evidence in register_realworld_newtasks_20261110.py does.
+    # Cover the full fingerprint so a passing suite from dirty sources cannot masquerade as this release.
+    from ops.jobs.migration import commit_reader
+    from ops.provenance.upstreams import commit_identity
+    read, listed = commit_reader(repo, head)
+    pinned = {name: sha(read(name)) for name in listed if name == 'mujoco_mig_setup.py' or
+              (Path(name).parts[0] in ('s4d', 'ops', 'scripts', 'tests', 'configs')
+               and Path(name).suffix in ('.py', '.yaml', '.sh'))}
+    pinned.update(commit_identity(repo, head))
+    require(fingerprints == pinned, 'source differs from the local release HEAD')
+    return dict(commit=commit, image=image, source='local', evidence_manifest=LOCAL_EVIDENCE)
+
+
+def local_hold(rows, name=LOCAL_PAUSE):
+    ids = sorted(r['id'] for r in rows)
+    return dict(name=name, active=True, ids=ids, prefixes=[], rows=ids,
+                reason='LOCAL release (main HEAD + docs/tests.json; remote role release gate not feasible): '
+                       'held until each row is placed on local with ops/jobs/realworld_local.py place')
+
+
+def require_local_hold(repo, record):
+    """Pre-created ACTIVE hold, checked under both locks and immediately before queue replacement."""
+    from ops.jobs import lifecycle
+    pause = record.get('local_pause', LOCAL_PAUSE)
+    holds = [h for h in lifecycle.load_pauses(repo / 'runs/setup/admission-pauses.json')
+             if h.get('name') == pause]
+    ids = local_hold(record['rows'])['ids']
+    require(bool(ids) and len(ids) == len(set(ids)), 'local placement hold requires unique IDs')
+    require(len(holds) == 1 and sorted(holds[0].get('ids', [])) == ids and not holds[0].get('prefixes')
+            and all(lifecycle.paused(job, holds) for job in ids),
+            f'publish the ACTIVE admission pause {pause} with exactly the planned IDs and no prefixes first')
 
 
 def input_overrides(cfg):
@@ -55,6 +113,8 @@ def build_rows(current, release, checkpoint_sha, baseline_sha, cfg):
                    cpu_threads=8, gpu_mem_gb=row['mem_gb'], planned_commit=release['commit'],
                    planned_image=release['image'], evidence_manifest=release['evidence_manifest'],
                    registration_tool=TOOL, priority=priority if priority is not None else fql_priority)
+        if release.get('source') == 'local':
+            row.update(release_source='local', local_placement_pause=LOCAL_PAUSE)
         if script is not None:
             row['script'] = script
         if args is not None:
@@ -107,10 +167,14 @@ def build_rows(current, release, checkpoint_sha, baseline_sha, cfg):
                   'semantics': 'smaller numbers run first; recomputed from the publication queue'}
 
 
-def prepare(repo, source_root, commit, image):
+def prepare(repo, source_root, commit, image, release_source='role'):
     require(re.fullmatch(r'[0-9a-f]{40}', commit or ''), 'full --commit required')
     require(re.fullmatch(r'sha256:[0-9a-f]{64}', image or ''), '--image must be a sha256 digest')
     release = dict(commit=commit, image=image, evidence_manifest=f'runs/remote/acceptance/{commit[:7]}-cc/manifest.json')
+    require(release_source in ('role', 'local'), 'unknown release source')
+    if release_source == 'local':
+        require(source_root.resolve() == repo.resolve(), 'local release must use main sources')
+        release = local_release_pin(repo, commit, image)
     before = (repo / 'experiments/queue.yaml').read_bytes()
     registry = (repo / 'experiments/registry.jsonl').read_bytes()
     current = queue_document(before)
@@ -144,9 +208,12 @@ def prepare(repo, source_root, commit, image):
     inputs = {str(original / 'config.yaml'): file_sha(original / 'config.yaml'), str(ckpt): digest,
               **{str(source_root / path): file_sha(source_root / path) for path in (BASE, OVERLAY, TOOL)}}
     inputs.update(fql_evidence)
+    if release_source == 'local':
+        inputs[str(repo / 'docs/tests.json')] = file_sha(repo / 'docs/tests.json')
     return dict(schema='rw-registration/v1', status='dry-run', registered=False, prepared_at=now(),
                 repo=str(repo.resolve()), source_root=str(source_root.resolve()), release=release, rows=rows,
                 rows_sha256=json_sha(rows), priorities=priorities, input_sha256=inputs,
+                **({'holds': [local_hold(rows)]} if release_source == 'local' else {}),
                 queue_sha256_before=sha(before), queue_sha256_after=sha(candidate), registry_sha256=sha(registry),
                 queue_diff=dict(added_rows=len(rows), modified_rows=0, removed_rows=0, added_ids=[r['id'] for r in rows]))
 
@@ -156,14 +223,22 @@ def execute(repo, record):
             'only the coordinator may publish from the released main-checkout copy')
     require(Path(record['source_root']).resolve() == MAIN, 'execute must use main sources')
     setup = repo / 'runs/setup'
-    pending, proof = setup / f'{STEM}.pending.json', setup / f'{STEM}.json'
-    candidate_path = setup / f'{STEM}.queue-candidate.yaml'
+    stem = record.get('journal_stem', STEM)
+    require(re.fullmatch(r'rw-registration-[a-z0-9-]+', stem), 'unsafe journal stem')
+    pending, proof = setup / f'{stem}.pending.json', setup / f'{stem}.json'
+    candidate_path = setup / f'{stem}.queue-candidate.yaml'
     with locks(repo):
         require(not pending.exists() and not proof.exists(), 'existing journal/proof requires inspection')
-        role = json.loads((setup / 'role-release.json').read_bytes())
-        require(all(role.get(k) == record['release'][k] for k in ('commit', 'image')), 'accepted role release differs')
-        require((repo / record['release']['evidence_manifest']).is_file(), 'missing accepted release evidence')
+        local = record['release'].get('source') == 'local'
+        if not local:
+            role = json.loads((setup / 'role-release.json').read_bytes())
+            require(all(role.get(k) == record['release'][k] for k in ('commit', 'image')), 'accepted role release differs')
+            require((repo / record['release']['evidence_manifest']).is_file(), 'missing accepted release evidence')
         def check():
+            if local:
+                require(local_release_pin(repo, record['release']['commit'], record['release']['image'])
+                        == record['release'], 'local release changed')
+                require_local_hold(repo, record)
             require(file_sha(repo / 'experiments/queue.yaml') == record['queue_sha256_before'], 'queue changed')
             require(file_sha(repo / 'experiments/registry.jsonl') == record['registry_sha256'], 'registry changed')
             require(json_sha(record['rows']) == record['rows_sha256'], 'plan changed')
@@ -195,10 +270,13 @@ def main(argv=None):
     p.add_argument('--source-root', type=Path, default=SOURCE)
     p.add_argument('--commit', required=True)
     p.add_argument('--image', required=True)
+    p.add_argument('--release-source', choices=('role', 'local'), default='role',
+                   help=f'local: adopted main HEAD + passing docs/tests.json; requires active {LOCAL_PAUSE} '
+                        'for exactly the 15 IDs before --execute; place explicitly on local')
     p.add_argument('--execute', action='store_true')
     p.add_argument('--summary', action='store_true')
     a = p.parse_args(argv)
-    record = prepare(a.repo, a.source_root, a.commit, a.image)
+    record = prepare(a.repo, a.source_root, a.commit, a.image, a.release_source)
     if a.execute:
         record = execute(a.repo, record)
     print(json.dumps({k: v for k, v in record.items() if k != 'rows'} if a.summary else record, indent=2))

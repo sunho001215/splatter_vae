@@ -1,0 +1,7 @@
+# One restart after the unchanged task-specific 200k recipe. No 300k boundary.
+train:
+  steps: 400000
+  original_steps: 200000
+  lr_schedule: cosine_restarts
+  restarts:
+    - {start: 200000, end: 400000, warmup: 2500, peak_lr: 0.00025}

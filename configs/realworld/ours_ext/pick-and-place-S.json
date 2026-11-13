@@ -1,0 +1,19 @@
+{
+  "task": "pick-and-place",
+  "variant": "S",
+  "data_manifest": {
+    "baseline_config": "configs/realworld/ours_ext/baseline200k-pick-and-place-S.yaml",
+    "baseline_sha256": "27de8c2c34370430436a1caaac2753fab90d0067f1376ba3c1f2e8e26bea510e",
+    "store": "/home/compu/kaist/sunho/realworld/learning_inputs/calv2-4368f22/pick-and-place/store.yaml",
+    "split_manifest": "/home/compu/kaist/sunho/realworld/learning_inputs/calv2-4368f22/pick-and-place/split_seed0.json",
+    "gate_report": "/home/compu/kaist/sunho/realworld/learning_inputs/calv2-4368f22/pick-and-place/gate_report.json",
+    "anchor_stats": "runs/rwcal-20261111-ours-pick-and-place-stats/workspace_stats.json",
+    "stats_id": "rwcal-20261111-ours-pick-and-place-stats",
+    "outcomes": "/home/compu/kaist/sunho/realworld/learning_inputs/calv2-4368f22/pick-and-place/outcomes.json",
+    "gate_sha256": "a01174643b2e5061566c2fbce8d7576037daabdeb26b7d81ad5a8ba2c8d7892e",
+    "manifest_sha256": "eab2892dcc6c08b4403db0fe85809e72afa9ee05330752b5ee5ca441b8d96e0b",
+    "recipe_source": "rwcal-20261111-ours-pick-and-place-pre",
+    "include_eval": false
+  },
+  "base200k_source": null
+}

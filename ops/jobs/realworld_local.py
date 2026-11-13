@@ -63,7 +63,7 @@ RESOLVERS = {
 OURS_CONTINUATION = "scripts/train_ours_continuation.py"
 OURS_EVAL = "scripts/evaluate_ours_length.py"
 OURS_OPTIONS = ("--name", "--output-root", "--set", "--source-checkpoint", "--source-sha256",
-                "--baseline-config", "--baseline-sha256", "--start-step", "--stop-step")
+                "--baseline-config", "--baseline-sha256", "--start-step", "--stop-step", "--schedule-config")
 OURS_EVAL_OPTIONS = ("--name", "--output-root", "--set", "--config", "--checkpoint")
 for _script in (OURS_CONTINUATION, OURS_EVAL):
     RESOLVERS[_script] = {"inputs": ("--set", "--checkpoint", "--source-checkpoint"),
@@ -198,6 +198,9 @@ def _arguments(job: dict):
             for flag in ("--source-checkpoint", "--baseline-config", "--baseline-sha256", "--start-step", "--stop-step"):
                 parser.add_argument(flag, required=True)
             parser.add_argument("--source-sha256")
+            parser.add_argument("--schedule-config", choices=("configs/realworld/ours_ext/continuation.yaml",
+                                "configs/realworld/ours_ext/continuation400k.yaml"),
+                                default="configs/realworld/ours_ext/continuation.yaml")
         else:
             parser.add_argument("--config", nargs="+", required=True)
             parser.add_argument("--checkpoint", required=True)
@@ -276,7 +279,8 @@ def _arguments(job: dict):
                 or parts[2] != "checkpoints" or not re.fullmatch(r"step_\d{7}\.pt", parts[3])):
             raise LocalInputError("Ours checkpoint must name a step checkpoint of a declared dependency")
         configs = [known.baseline_config] if script == OURS_CONTINUATION else known.config
-        if configs != ["configs/realworld/ours_ext/baseline200k.yaml"]:
+        if (len(configs) != 1 or not re.fullmatch(
+                r"configs/realworld/ours_ext/(?:baseline200k|baseline200k-[a-z0-9-]+-(?:S|SF))\.yaml", configs[0])):
             raise LocalInputError("Ours length jobs require the pinned baseline200k science snapshot")
         allowed = {"data.store", "data.split_manifest", "data.gate_report", "model.anchor_stats"}
         if ({item.partition("=")[0] for item in known.set} != allowed or len(known.set) != len(allowed)):
