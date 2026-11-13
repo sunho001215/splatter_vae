@@ -6,6 +6,7 @@ Usage: .venv/bin/python -I runs/setup/tools/sync_wandb_remote.py [--run ID ...] 
 from __future__ import annotations
 
 import argparse
+import fcntl
 import hashlib
 import json
 import os
@@ -74,6 +75,16 @@ def media_inventory(local_wandb: Path) -> dict[str, int]:
 
 
 def main() -> int:
+    # One exclusion lock with the canonical uploader (realworld-ops/wandb/tools/rwwandb.py takes it, non-blocking,
+    # whenever it pins a canonical id or marks offline folders): status.json is never read-modified-written by both,
+    # and no offline folder is synced while its canonical id is being reserved.
+    STATUS.parent.mkdir(parents=True, exist_ok=True)
+    with STATUS.with_name('status.lock').open('a') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        return _main()
+
+
+def _main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument('--run', action='append')
     parser.add_argument('--no-upload', action='store_true')

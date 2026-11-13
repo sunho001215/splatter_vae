@@ -32,3 +32,23 @@ def test_main_skips_owned_runs_before_any_remote_access(monkeypatch, tmp_path):
     assert calls == ["s4-other"]
     status = json.loads((tmp_path / "status.json").read_text())
     assert "rwnq-20261111-fql-dynamo-covering-s0" not in status
+
+
+def test_main_holds_the_shared_status_lock(monkeypatch, tmp_path):
+    import fcntl
+
+    monkeypatch.setattr(sync_wandb, "STATUS", tmp_path / "status.json")
+    held = []
+
+    def probe():
+        with (tmp_path / "status.lock").open("a") as other:
+            try:
+                fcntl.flock(other, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                held.append(False)
+            except BlockingIOError:
+                held.append(True)
+        return 0
+
+    monkeypatch.setattr(sync_wandb, "_main", probe)
+    assert sync_wandb.main() == 0
+    assert held == [True]
