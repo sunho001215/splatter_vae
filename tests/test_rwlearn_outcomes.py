@@ -373,3 +373,8 @@ def test_outcome_scan_defaults_use_the_authoritative_task_registry(tmp_path):
     report = O.scan(tmp_path)
     assert tuple(report['counts']) == TARGETS and not report['episodes']
     assert tuple(O.CHECKS) == TARGETS
+
+
+def test_new_drawer_ending_check_requires_review_without_old_rig_thresholds():
+    result=O.CHECKS['drawer-open-v2'](drawer())
+    assert result['phases']=={} and {f['severity'] for f in result['flags']}=={'review'}

@@ -497,8 +497,19 @@ def check_pick_and_place(sig: dict) -> dict:
     return _check_transport_release(sig, "pick-and-place", PICK_AND_PLACE_THRESHOLDS, provisional=True)
 
 
+def check_drawer_v2(sig: dict) -> dict:
+    """New rig/session: do not reuse the old drawer's measured ending thresholds.
+
+    This diagnostic flag never determines outcomes. Paired datasets supply their
+    directory-derived labels through realworld_dsreset_inputs.py instead.
+    """
+    return {"phases": {}, "return": {}, "flags": [
+        _flag("drawer_v2_ending_review", "review", "New task ending thresholds require image review",
+              sig, [0, len(sig["robot/t"])-1])]}
+
+
 CHECKS = {"drawer-open": check_drawer, "mug-hanging": check_mug,
-          "covering": check_covering, "pick-and-place": check_pick_and_place}
+          "covering": check_covering, "pick-and-place": check_pick_and_place, "drawer-open-v2": check_drawer_v2}
 
 
 def check_episode(path, task: str) -> dict:
