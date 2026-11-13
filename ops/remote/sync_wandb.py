@@ -25,6 +25,21 @@ ROOT = '/home/compu/kaist/sunho'
 STATUS = REPO / 'runs/remote/wandb/status.json'
 MEDIA_KINDS = ('images', 'object3D', 'videos', 'table')
 FINISHED = {jobs.DONE, jobs.FAILED, 'crashed'}
+# Real-world jobs get ONE canonical W&B run each, written from their deduplicated metrics.jsonl by
+# realworld-ops/wandb/tools/rwwandb.py (ledger runs/remote/wandb/canonical.json; often under the id of the first
+# offline attempt). `wandb sync` of their offline folders would add a second run per attempt or repeat rows in the
+# canonical run, and pulling the folders would spend the download budget for nothing: such runs are skipped here.
+CANONICAL = REPO / 'runs/remote/wandb/canonical.json'
+CANONICAL_PREFIXES = ('rwcal-', 'rwnt-', 'rwnq-', 'rwa100-', 'rwng-')
+
+
+def canonical_owned(run_id: str, ledger: Path = CANONICAL) -> bool:
+    if run_id.startswith(CANONICAL_PREFIXES):
+        return True
+    try:
+        return run_id in json.loads(ledger.read_text()).get('runs', {})
+    except (OSError, ValueError, AttributeError):
+        return False
 
 
 def sha(path: Path) -> str:
@@ -69,6 +84,8 @@ def main() -> int:
     status = json.loads(STATUS.read_text()) if STATUS.is_file() else {}
     client = RemoteClient()
     for run_id in runs:
+        if canonical_owned(run_id):
+            continue
         entry = status.setdefault(run_id, {'uploaded': {}, 'errors': []})
         job_status = state.get(run_id, {}).get('status')
         try:
