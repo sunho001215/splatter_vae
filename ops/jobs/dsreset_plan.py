@@ -88,7 +88,7 @@ def build_rows(task, inputs, release, *, stage_rows, rig, methods=METHODS, nativ
                     ['--name',final,'--output-root','runs','--source-checkpoint',
                      f'runs/{pre}/checkpoints/step_0200000.pt','--baseline-config',baseline,
                      '--baseline-sha256',sha256(Path(__file__).resolve().parents[2]/baseline),
-                     '--continuation-config','configs/realworld/dsreset/continuation.yaml',
+                     '--schedule-config','configs/realworld/ours_ext/continuation400k.yaml',
                      '--start-step','200000','--stop-step','400000','--set',*sets[:-1]],
                     [pre,stats],['completion.json','continuation.json','resume_source.json','metrics.jsonl',
                                  'checkpoints/step_0400000.pt'],mem=8,ram=16)

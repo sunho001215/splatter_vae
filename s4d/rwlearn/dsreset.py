@@ -164,8 +164,10 @@ def paired_manifests(task, roots, *, seed=0, validation_fraction=.1, expected=No
                 raise ValueError('legacy success split is not an exact disjoint partition')
         else:
             # Per-label PRNG: SF order/count does not influence S.
-            order = np.random.default_rng(seed).permutation(len(files))
-            nval = max(1, round(len(files) * validation_fraction)) if len(files) > 1 else 0
+            task_seed = int(hashlib.sha256(task.encode()).hexdigest()[:8],16)
+            stream = [int(seed),task_seed] + ([1] if label=='failure' else [])
+            order = np.random.default_rng(stream).permutation(len(files))
+            nval = max(1, int(np.ceil(len(files) * validation_fraction))) if len(files) > 1 else 0
             val = {files[int(i)].name for i in order[:nval]}
         for r in label_rows:
             r['split'] = 'validation' if r['filename'] in val else 'train'

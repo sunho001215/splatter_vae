@@ -398,3 +398,19 @@ def test_substituted_path_refuses_incomplete_rng_and_scheduler(tmp_path, monkeyp
                            Log(), None, resume=path)
     assert not (tmp_path / 'rejected/continuation.json').exists()
     assert not (tmp_path / 'rejected/completion.json').exists()
+
+
+def test_single_200k_to_400k_cycle_has_no_300k_restart():
+    cfg = load_config([ROOT / "configs/realworld/ours_ext/baseline200k-covering-S.yaml",
+                       ROOT / "configs/realworld/ours_ext/continuation400k.yaml"])
+    original = copy.deepcopy(cfg)
+    for key in ("original_steps", "lr_schedule", "restarts"):
+        original["train"].pop(key)
+    original["train"]["steps"] = 200000
+    continued, old = lr_function(cfg), lr_function(original)
+    assert all(continued(step) == old(step) for step in range(200000))
+    assert continued(200000) * cfg["train"]["lr"] == 1e-5
+    assert continued(202500) * cfg["train"]["lr"] == 2.5e-4
+    assert continued(300000) * cfg["train"]["lr"] > 1e-4
+    assert continued(400000) * cfg["train"]["lr"] == 1e-5
+    assert training_end(cfg) == 400000

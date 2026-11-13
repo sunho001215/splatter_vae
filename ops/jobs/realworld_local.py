@@ -68,7 +68,7 @@ RESOLVERS[DSRESET_ARTIFACT] = {"inputs": ("--source",), "outputs": ("--out",), "
 OURS_CONTINUATION = "scripts/train_ours_continuation.py"
 OURS_EVAL = "scripts/evaluate_ours_length.py"
 OURS_OPTIONS = ("--name", "--output-root", "--set", "--source-checkpoint", "--source-sha256",
-                "--baseline-config", "--baseline-sha256", "--start-step", "--stop-step", "--continuation-config")
+                "--baseline-config", "--baseline-sha256", "--start-step", "--stop-step", "--schedule-config")
 OURS_EVAL_OPTIONS = ("--name", "--output-root", "--set", "--config", "--checkpoint")
 for _script in (OURS_CONTINUATION, OURS_EVAL):
     RESOLVERS[_script] = {"inputs": ("--set", "--checkpoint", "--source-checkpoint"),
@@ -203,7 +203,9 @@ def _arguments(job: dict):
             for flag in ("--source-checkpoint", "--baseline-config", "--baseline-sha256", "--start-step", "--stop-step"):
                 parser.add_argument(flag, required=True)
             parser.add_argument("--source-sha256")
-            parser.add_argument("--continuation-config", default="configs/realworld/ours_ext/continuation.yaml")
+            parser.add_argument("--schedule-config", choices=("configs/realworld/ours_ext/continuation.yaml",
+                                "configs/realworld/ours_ext/continuation400k.yaml"),
+                                default="configs/realworld/ours_ext/continuation.yaml")
         else:
             parser.add_argument("--config", nargs="+", required=True)
             parser.add_argument("--checkpoint", required=True)
@@ -293,11 +295,10 @@ def _arguments(job: dict):
         dsreset = (script == OURS_CONTINUATION and job.get("id", "").startswith("rwv2-20261113-pre400k-ours-")
                    and configs == [f"configs/realworld/dsreset/ours/{job.get('realworld_target')}-"
                                    f"{'SF' if job['id'].endswith('-SF') else 'S'}.yaml"]
-                   and known.continuation_config == "configs/realworld/dsreset/continuation.yaml"
+                   and known.schedule_config == "configs/realworld/ours_ext/continuation400k.yaml"
                    and known.start_step == "200000" and known.stop_step == "400000")
-        if not dsreset and (configs != ["configs/realworld/ours_ext/baseline200k.yaml"] or
-                            (script == OURS_CONTINUATION and
-                             known.continuation_config != "configs/realworld/ours_ext/continuation.yaml")):
+        if not dsreset and (len(configs) != 1 or not re.fullmatch(
+                r"configs/realworld/ours_ext/(?:baseline200k|baseline200k-[a-z0-9-]+-(?:S|SF))\.yaml", configs[0])):
             raise LocalInputError("Ours length jobs require the pinned baseline200k science snapshot")
         allowed = {"data.store", "data.split_manifest", "data.gate_report", "model.anchor_stats"}
         if ({item.partition("=")[0] for item in known.set} != allowed or len(known.set) != len(allowed)):

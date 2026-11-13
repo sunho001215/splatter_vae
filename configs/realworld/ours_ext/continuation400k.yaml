@@ -1,4 +1,4 @@
-# One warm restart, 200k -> 400k; full optimizer/scheduler/RNG resume.
+# One restart after the unchanged task-specific 200k recipe. No 300k boundary.
 train:
   steps: 400000
   original_steps: 200000

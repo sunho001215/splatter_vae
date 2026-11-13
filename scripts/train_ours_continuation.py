@@ -26,10 +26,11 @@ def main():
     p.add_argument("--source-sha256")  # B binds to the immutable dependency checkpoint at launch
     p.add_argument("--baseline-config", type=Path, required=True)
     p.add_argument("--baseline-sha256", required=True)
+    p.add_argument("--schedule-config", choices=("configs/realworld/ours_ext/continuation.yaml",
+                                                "configs/realworld/ours_ext/continuation400k.yaml"),
+                   default="configs/realworld/ours_ext/continuation.yaml")
     p.add_argument("--start-step", type=int, required=True)
     p.add_argument("--stop-step", type=int, choices=(300000, 400000), required=True)
-    p.add_argument("--continuation-config", choices=("configs/realworld/ours_ext/continuation.yaml",
-                    "configs/realworld/dsreset/continuation.yaml"), default="configs/realworld/ours_ext/continuation.yaml")
     p.add_argument("--set", nargs="*", default=[])
     p.add_argument("--output-root", type=Path, default=Path("runs"))
     a = p.parse_args()
@@ -41,7 +42,7 @@ def main():
     ):
         raise ValueError("only verified input path overrides are allowed")
     cfg = load_config(
-        [a.baseline_config, a.continuation_config], [f"train.stop_step={a.stop_step}", *a.set]
+        [a.baseline_config, a.schedule_config], [f"train.stop_step={a.stop_step}", *a.set]
     )
     training_end(cfg)
     from s4d.train.continuation import science_config
@@ -79,7 +80,7 @@ def main():
         "train.py",
         "--config",
         str(a.baseline_config),
-        a.continuation_config,
+        a.schedule_config,
         "--name",
         a.name,
         "--output-root",

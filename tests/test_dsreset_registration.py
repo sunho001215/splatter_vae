@@ -150,7 +150,7 @@ def test_ours_exports_only_final_single_cycle_400k():
         assert export['args'][export['args'].index('--checkpoint')+1].endswith('/step_0400000.pt')
         args=final['args']
         base=args[args.index('--baseline-config')+1]
-        overlay=args[args.index('--continuation-config')+1]
+        overlay=args[args.index('--schedule-config')+1]
         cfg=load_config([REPO/base,REPO/overlay])
         assert cfg['train']['restarts']==[{'start':200000,'end':400000,'warmup':2500,'peak_lr':.00025}]
         lr=lr_function(cfg)

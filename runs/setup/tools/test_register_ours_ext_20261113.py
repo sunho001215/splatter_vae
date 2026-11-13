@@ -3,6 +3,9 @@
 import copy
 import importlib.util
 import json
+import subprocess
+from contextlib import contextmanager
+from functools import partial
 from pathlib import Path
 
 import pytest
@@ -29,7 +32,7 @@ def make_plan():
     return reg.build_rows(queue(), release, "c" * 64, file_sha(ROOT / reg.BASE), cfg)
 
 
-def test_dry_run_rows_priorities_exact_fql_and_independent_branches(tmp_path, capsys):
+def test_dry_run_rows_priorities_exact_fql_and_independent_branches(tmp_path, capsys, monkeypatch):
     current = queue()
     rows, priorities = make_plan()
     assert len(rows) == len({r["id"] for r in rows}) == 15
@@ -96,6 +99,32 @@ def test_dry_run_rows_priorities_exact_fql_and_independent_branches(tmp_path, ca
     assert report["queue_diff"]["modified_rows"] == 0
     assert (tmp_path / "experiments/queue.yaml").read_bytes() == before
     assert not (tmp_path / "runs/setup").exists()
+    assert 'source' not in report['release'] and 'holds' not in report
+    # The local CLI uses the same preparation and science checks, adding only local evidence and an exact hold.
+    for relative in {reg.BASE, reg.OVERLAY, reg.TOOL, *[
+            row['args'][row['args'].index('--config') + 1] for row in current['jobs']
+            if '--config' in row.get('args', [])]}:
+        destination = tmp_path / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes((ROOT / relative).read_bytes())
+    (tmp_path / 'docs').mkdir()
+    (tmp_path / 'docs/tests.json').write_text('{}')
+    release = {**report['release'], 'source': 'local', 'evidence_manifest': reg.LOCAL_EVIDENCE}
+    monkeypatch.setattr(reg, 'local_release_pin', lambda repo, commit, image: release)
+    reg.main(['--repo', str(tmp_path), '--source-root', str(tmp_path), '--commit', 'a' * 40,
+              '--image', 'sha256:' + 'b' * 64, '--release-source', 'local'])
+    local = json.loads(capsys.readouterr().out)
+    assert local['registered'] is False and local['release'] == release
+    assert local['holds'] == [reg.local_hold(local['rows'])]
+    assert local['input_sha256'][str(tmp_path / 'docs/tests.json')] == file_sha(tmp_path / 'docs/tests.json')
+    assert all(row['host'] == 'remote' and row['release_source'] == 'local' for row in local['rows'])
+    assert (tmp_path / 'experiments/queue.yaml').read_bytes() == before
+    assert (tmp_path / 'experiments/registry.jsonl').read_bytes() == b''
+    assert list((tmp_path / 'runs/setup').iterdir()) == [tmp_path / 'runs/setup/tools']
+    with pytest.raises(RuntimeError, match='main sources'):
+        reg.prepare(tmp_path, ROOT, 'a' * 40, 'sha256:' + 'b' * 64, 'local')
+    with pytest.raises(RuntimeError, match='unknown release source'):
+        reg.prepare(tmp_path, ROOT, 'a' * 40, 'sha256:' + 'b' * 64, 'invalid')
     # Rerun against a changed priority field computes a strictly higher new priority.
     current["jobs"].append(dict(id="higher-fql", role="realworld_fql", priority=-10))
     cfg = yaml.safe_load((ROOT / reg.BASE).read_text())
@@ -105,7 +134,7 @@ def test_dry_run_rows_priorities_exact_fql_and_independent_branches(tmp_path, ca
 
 def test_execute_refuses_worktree_and_unverified_inputs(tmp_path):
     with pytest.raises(RuntimeError, match="coordinator"):
-        reg.execute(ROOT, {})
+        reg.execute(tmp_path, {})
     rows, _ = make_plan()
     bad = copy.deepcopy(rows[0])
     bad["args"][bad["args"].index("--source-checkpoint") + 1] = "runs/undeclared/checkpoints/step_0200000.pt"
@@ -181,3 +210,232 @@ def test_local_closeout_requires_separate_verified_continuation_metadata(tmp_pat
     else:
         record = rw.closeout(row['id'], state, row, tmp_path / 'finished', runs=tmp_path / 'runs')
         assert set(record['files']) == {'completion.json', 'continuation.json'}
+
+
+@pytest.fixture
+def local_repo(tmp_path):
+    """Small real git checkout; its own bootstrap fingerprints exactly the launch-gate file kinds."""
+    (tmp_path / 'scripts').mkdir()
+    (tmp_path / 's4d').mkdir()
+    (tmp_path / 'runs/setup').mkdir(parents=True)
+    (tmp_path / 'docs').mkdir()
+    (tmp_path / 's4d/source.py').write_text('VALUE = 1\n')
+    (tmp_path / 'scripts/_bootstrap.py').write_text(
+        'from pathlib import Path\nimport hashlib\n'
+        'def source_fingerprints():\n'
+        '    root = Path(__file__).resolve().parents[1]\n'
+        '    return {str(p.relative_to(root)): hashlib.sha256(p.read_bytes()).hexdigest()\n'
+        '            for folder in ("s4d", "scripts") for p in (root / folder).rglob("*.py")}\n')
+    image = 'sha256:' + 'b' * 64
+    (tmp_path / 'runs/setup/role-release.json').write_text(json.dumps(dict(commit='a' * 40, image=image)))
+    subprocess.run(['git', 'init', '-q', str(tmp_path)], check=True)
+    subprocess.run(['git', '-C', str(tmp_path), 'add', '.'], check=True)
+    subprocess.run(['git', '-C', str(tmp_path), '-c', 'user.name=test', '-c', 'user.email=test@test',
+                    'commit', '-qm', 'fixture'], check=True)
+    head = subprocess.run(['git', '-C', str(tmp_path), 'rev-parse', 'HEAD'], check=True,
+                          capture_output=True, text=True).stdout.strip()
+    evidence = dict(full_suite_passed=True, exit_code=0,
+                    counts=dict(passed=5, failed=0, error=0, skipped=0),
+                    source_sha256={str(p.relative_to(tmp_path)): file_sha(p)
+                                   for folder in ('s4d', 'scripts') for p in (tmp_path / folder).rglob('*.py')})
+    (tmp_path / 'docs/tests.json').write_text(json.dumps(evidence))
+    return tmp_path, head, image, evidence
+
+
+def test_local_release_requires_head_and_role_image(local_repo):
+    repo, head, image, _ = local_repo
+    assert reg.local_release_pin(repo, head, image) == dict(
+        commit=head, image=image, source='local', evidence_manifest=reg.LOCAL_EVIDENCE)
+    with pytest.raises(RuntimeError, match='HEAD differs'):
+        reg.local_release_pin(repo, 'c' * 40, image)
+    with pytest.raises(RuntimeError, match='image differs'):
+        reg.local_release_pin(repo, head, 'sha256:' + 'd' * 64)
+
+
+@pytest.mark.parametrize('bad', [dict(full_suite_passed=False), dict(exit_code=1), dict(source_sha256={}),
+                               *[dict(counts={**dict(passed=5, failed=0, error=0, skipped=0), **change})
+                                 for change in (dict(failed=1), dict(error=1), dict(skipped=1),
+                                                dict(passed=0))], dict(counts={})])
+def test_local_release_refuses_incomplete_or_stale_suite(local_repo, bad):
+    repo, head, image, good = local_repo
+    (repo / 'docs/tests.json').write_text(json.dumps({**good, **bad}))
+    with pytest.raises(RuntimeError, match='passing full suite|stale'):
+        reg.local_release_pin(repo, head, image)
+
+
+@pytest.mark.parametrize('name', ['s4d/source.py', 's4d/untracked.py'])
+def test_local_release_refuses_passing_evidence_from_dirty_sources(local_repo, name):
+    repo, head, image, evidence = local_repo
+    (repo / name).write_text('VALUE = 2\n')
+    evidence['source_sha256'][name] = file_sha(repo / name)
+    (repo / 'docs/tests.json').write_text(json.dumps(evidence))
+    with pytest.raises(RuntimeError, match='source differs from the local release HEAD'):
+        reg.local_release_pin(repo, head, image)
+
+
+def local_rows():
+    cfg = yaml.safe_load((ROOT / reg.BASE).read_text())
+    release = dict(commit='a' * 40, image='sha256:' + 'b' * 64, source='local',
+                   evidence_manifest=reg.LOCAL_EVIDENCE)
+    rows, priorities = reg.build_rows(queue(), release, 'c' * 64, file_sha(ROOT / reg.BASE), cfg)
+    return rows, priorities, release
+
+
+def test_local_rows_preserve_science_priorities_and_remote_host():
+    rows, priorities, _ = local_rows()
+    remote, remote_priorities = make_plan()
+    assert priorities == remote_priorities == dict(pretraining=-1, ours_fql=0,
+        semantics='smaller numbers run first; recomputed from the publication queue')
+    for row, original in zip(rows, remote):
+        assert row['release_source'] == 'local' and row['local_placement_pause'] == reg.LOCAL_PAUSE
+        assert row['evidence_manifest'] == reg.LOCAL_EVIDENCE and row['host'] == 'remote'
+        assert {k: v for k, v in row.items() if k not in ('release_source', 'local_placement_pause', 'evidence_manifest')} == {
+            k: v for k, v in original.items() if k != 'evidence_manifest'}
+        assert rw.has_resolver(row)
+        rw.needed_inputs(row)
+    hold = reg.local_hold(rows)
+    assert hold['active'] is True and hold['prefixes'] == []
+    assert hold['ids'] == hold['rows'] == sorted(r['id'] for r in rows)
+
+
+@pytest.mark.parametrize('mutation', ['missing', 'inactive', 'missing-id', 'extra-id', 'prefix', 'duplicate'])
+def test_local_publication_requires_exact_active_hold(tmp_path, mutation):
+    rows, _, _ = local_rows()
+    hold = reg.local_hold(rows)
+    if mutation == 'inactive':
+        hold['active'] = False
+    elif mutation == 'missing-id':
+        hold['ids'].pop()
+    elif mutation == 'extra-id':
+        hold['ids'].append('unrelated')
+    elif mutation == 'prefix':
+        hold['prefixes'] = ['ourx-']
+    path = tmp_path / 'runs/setup/admission-pauses.json'
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps(dict(pauses=[] if mutation == 'missing' else
+                                   [hold, hold] if mutation == 'duplicate' else [hold])))
+    with pytest.raises(RuntimeError, match='ACTIVE admission pause'):
+        reg.require_local_hold(tmp_path, dict(rows=rows))
+    path.write_text(json.dumps(dict(pauses=[reg.local_hold(rows)])))
+    reg.require_local_hold(tmp_path, dict(rows=rows))
+
+
+@pytest.mark.parametrize('changed', ['hold', 'head', 'evidence', None])
+def test_local_transaction_rechecks_under_locks_before_replace(tmp_path, monkeypatch, changed):
+    rows, _, release = local_rows()
+    setup = tmp_path / 'runs/setup'
+    setup.mkdir(parents=True)
+    (tmp_path / 'experiments').mkdir()
+    queue_path = tmp_path / 'experiments/queue.yaml'
+    before = yaml.safe_dump(queue()).encode()
+    queue_path.write_bytes(before)
+    (tmp_path / 'experiments/registry.jsonl').write_bytes(b'')
+    evidence = tmp_path / 'docs/tests.json'
+    evidence.parent.mkdir()
+    evidence.write_text('{}')
+    pause = setup / 'admission-pauses.json'
+    pause.write_text(json.dumps(dict(pauses=[reg.local_hold(rows)])))
+    candidate = reg.queue_candidate(before, rows)
+    record = dict(repo=str(tmp_path), source_root=str(tmp_path), release=release, rows=rows,
+                  rows_sha256=reg.json_sha(rows), queue_sha256_before=reg.sha(before),
+                  queue_sha256_after=reg.sha(candidate), registry_sha256=reg.sha(b''),
+                  input_sha256={str(evidence): file_sha(evidence)})
+    monkeypatch.setattr(reg, 'MAIN', tmp_path)
+    monkeypatch.setattr(reg, '__file__', str(tmp_path / reg.TOOL))
+    locked = False
+    @contextmanager
+    def locks(repo):
+        nonlocal locked
+        locked = True
+        yield
+        locked = False
+    monkeypatch.setattr(reg, 'locks', locks)
+    checks = []
+    def pin(repo, commit, image):
+        assert locked
+        checks.append(True)
+        if changed == 'head' and len(checks) == 2:
+            raise RuntimeError('main HEAD differs from --commit')
+        return release
+    monkeypatch.setattr(reg, 'local_release_pin', pin)
+    monkeypatch.setattr(rw, 'placement_scope', lambda row, root: {})
+    write = reg.atomic_write
+    def atomic(path, raw):
+        write(path, raw)
+        if path.name.endswith('.pending.json'):
+            if changed == 'hold':
+                pause.write_text(json.dumps(dict(pauses=[])))
+            elif changed == 'evidence':
+                evidence.write_text('{"changed": true}')
+    monkeypatch.setattr(reg, 'atomic_write', atomic)
+    if changed:
+        with pytest.raises(RuntimeError, match='ACTIVE admission pause|HEAD differs|source/config changed'):
+            reg.execute(tmp_path, record)
+        assert queue_path.read_bytes() == before
+    else:
+        result = reg.execute(tmp_path, record)
+        assert result['registered'] is True and queue_path.read_bytes() == candidate
+        assert not (setup / f'{reg.STEM}.pending.json').exists()
+    assert len(checks) == 2
+    assert (tmp_path / 'experiments/registry.jsonl').read_bytes() == b''
+
+
+@pytest.mark.parametrize('index', range(15))
+def test_local_planner_checks_each_rows_mirrors_and_dependencies(tmp_path, monkeypatch, index):
+    """Exercise the actual input resolver/planner for all five scripts with synthetic completed local producers."""
+    rows, _, _ = local_rows()
+    row = rows[index]
+    needed = rw.needed_inputs(row)
+    mirror, runs, finished = (tmp_path / part for part in ('mirror', 'runs', 'finished'))
+    mirror.mkdir()
+    raw = tmp_path / 'raw-originals'
+    raw.mkdir()
+    monkeypatch.setattr(rw, 'LOCAL_RAW_ROOT', raw)
+    files = {}
+    for name in needed['mirror']:
+        path = mirror / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text('kind: compact\npaths: []\n' if path.name == 'store.yaml' else '{}')
+        stat = path.stat()
+        files[name] = dict(kind='copy', sha256=file_sha(path), remote_sha256=file_sha(path),
+                           bytes=stat.st_size, mtime_ns=stat.st_mtime_ns, requires=[])
+    manifest = mirror / 'MANIFEST.json'
+    manifest.write_text(json.dumps(dict(version=1, remote_root=rw.REMOTE_PREFIX,
+                                        local_root='runs/realworld-inputs', files=files)))
+    state = {dep: dict(status='done', host='local') for dep in row['deps']}
+    results = {dep: [] for dep in row['deps']}
+    for dep, name in needed['dependency_files']:
+        path = runs / dep / name
+        if name == '.':
+            path.mkdir(parents=True, exist_ok=True)
+        else:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(b'verified producer result')
+            results[dep].append(name)
+    for dep, names in results.items():
+        rw.closeout(dep, state, dict(id=dep, required_results=names), finished, runs=runs)
+    # The synthetic commit has no git objects; real HEAD scope/input checks are also exercised by the main dry run.
+    monkeypatch.setattr(rw, 'placement_scope', lambda job, root: dict(source_commit=job['planned_commit'], files={}))
+    monkeypatch.setattr(rw, '_inputs', partial(rw._inputs, finished_dir=finished))
+    capacity = dict(ram_total_bytes=128 * 2**30, ram_free_bytes=128 * 2**30, cpu_free_threads=64,
+                    disk_total_bytes=1000 * 2**30, disk_free_bytes=1000 * 2**30)
+    def plan(allow):
+        return rw.plan(dict(jobs=[row]), state, host_roles.load_roles(),
+                       paused_fn=lambda job: [reg.LOCAL_PAUSE], allow_pauses=allow,
+                       policy='all', capacity=capacity, mirror=mirror, manifest=manifest,
+                       runs=runs, root=ROOT)[0]
+    assert plan([])['reason'] == 'paused'
+    allowed = plan([reg.LOCAL_PAUSE])
+    assert allowed['decision'] == 'local', allowed
+    effective, inputs = rw._inputs(row, state, mirror, manifest, runs, root=ROOT, finished_dir=finished)
+    assert not any(rw.REMOTE_PREFIX in arg for arg in effective)
+    assert len(inputs['dependency_inputs']) == sum(name != '.' for _, name in needed['dependency_files'])
+    if row['script'] == rw.FQL_DATASET:
+        assert effective[-2:] == ['--raw-root', f'{rw.REMOTE_RAW_ROOT}={raw}']
+    # A disappearing checked input must make placement wait, even with the hold explicitly allowed.
+    if needed['mirror']:
+        (mirror / needed['mirror'][0]).unlink()
+    else:
+        dep, name = next((dep, name) for dep, name in needed['dependency_files'] if name != '.')
+        (runs / dep / name).unlink()
+    assert plan([reg.LOCAL_PAUSE])['decision'] == 'waits'
