@@ -965,7 +965,10 @@ def train(
     optimizer, scheduler = build_optimizer(model, cfg)
     step = 0
     if resume:
-        step = load_checkpoint(resume, model.encoder, model.decoder, optimizer, scheduler, rank=ctx.rank)
+        step = load_checkpoint(
+            resume, model.encoder, model.decoder, optimizer, scheduler, rank=ctx.rank,
+            strict_optimizer=get(cfg, "train.lr_schedule") == "cosine_restarts",
+        )
         logger.text(f"resumed from {resume} at step {step}")
     wrapped = DistributedDataParallel(model, device_ids=[ctx.local_rank]) if ctx.world_size > 1 else model
     loader = make_train_loader(train_dataset, cfg, ctx, seed)

@@ -39,7 +39,7 @@ def permits(family: str, need: dict, usage: dict, capacity: dict, pending: dict,
         for other, used in usage.items() if other != family) for k in RESOURCES)
 
 
-def select(candidates: list[dict], active: list[dict], limits: dict, ram_cap: float, ram_used: float) -> dict:
+def _select_tier(candidates: list[dict], active: list[dict], limits: dict, ram_cap: float, ram_used: float) -> dict:
     """Return admitted ids with their MIG instance (dispatched with the row), per-family blocked trainer ids, MIG
     instances reserved for protected heads, and a usage/guarantee report.
 
@@ -179,3 +179,30 @@ def select(candidates: list[dict], active: list[dict], limits: dict, ram_cap: fl
             "report": {"capacity": capacity, "held_for_protected_heads": held, "reserved_instances": reserved,
                        "families": {f: {"usage": usage[f], "guarantee": guarantee,
                                         "dominant_share": dominant(usage[f], capacity)} for f in families}}}
+
+
+def select(candidates: list[dict], active: list[dict], limits: dict, ram_cap: float, ram_used: float) -> dict:
+    """Queue priority precedes fairness; equal priorities retain the established fair-share policy.
+
+    A tier with a waiting ready row holds all lower tiers until it drains. Within a tier,
+    protected heads and evaluator exceptions are unchanged. Running rows are only charged.
+    """
+    priorities = sorted({r.get("priority", 5) for r in candidates})
+    if len(priorities) <= 1:
+        return _select_tier(candidates, active, limits, ram_cap, ram_used)
+    admitted, assigned, blocked, reserved = [], {}, {}, {}
+    charged = list(active)
+    for priority in priorities:
+        tier = [r for r in candidates if r.get("priority", 5) == priority]
+        tier = [{**r, "trainer_ready": r.get("trainer_ready") or r.get("trainer") in admitted} for r in tier]
+        result = _select_tier(tier, charged, limits, ram_cap, ram_used)
+        admitted.extend(result["admitted"])
+        assigned.update(result["assigned"])
+        blocked.update(result["blocked"])
+        reserved.update(result["reserved"])
+        ram_used = result["total_ram_bytes"]
+        charged.extend({**r, "gpu": assigned[r["id"]]} for r in tier if r["id"] in assigned)
+        if any(r["id"] not in assigned and (not r.get("evaluator") or r.get("trainer_ready")
+                                            or r.get("trainer") in admitted) for r in tier):
+            break
+    return {**result, "admitted": admitted, "assigned": assigned, "blocked": blocked, "reserved": reserved}

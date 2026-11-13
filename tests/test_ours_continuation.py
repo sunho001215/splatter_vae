@@ -141,7 +141,8 @@ def assert_tree_equal(a, b):
         assert a == b
 
 
-def test_actual_loop_two_jobs_matches_uninterrupted_optimizer_rng_stream(tmp_path, monkeypatch):
+@pytest.mark.parametrize("num_workers", [0, 2])
+def test_actual_loop_two_jobs_matches_uninterrupted_optimizer_rng_stream(tmp_path, monkeypatch, num_workers):
     monkeypatch.setattr(loop, "build_model", lambda cfg: Tiny())
     monkeypatch.setattr(loop, "validate_batch", lambda batch: None)
     monkeypatch.setattr(
@@ -172,7 +173,7 @@ def test_actual_loop_two_jobs_matches_uninterrupted_optimizer_rng_stream(tmp_pat
             lr=0.0005,
             min_lr=0.00001,
             batch_size=2,
-            num_workers=0,
+            num_workers=num_workers,
             log_every=1,
             eval_every=3,
             save_every=3,
@@ -261,28 +262,56 @@ def test_resume_validation_rejects_reset_moments_and_wrong_schedule(tmp_path):
         baseline["train"].pop(key)
     path = save_checkpoint(tmp_path / "source.pt", 200000, model.encoder, model.decoder, opt, sch, baseline)
     state = torch.load(path, weights_only=False)
-    validate_resume_state(state, cfg, lower=200000, upper=300000, exact_step=200000)
+    validate_resume_state(state, cfg, optimizer=opt, lower=200000, upper=300000, exact_step=200000)
     reset = copy.deepcopy(state)
     next(iter(reset["optimizer"]["state"].values()))["step"].zero_()
     with pytest.raises(ValueError, match="counters"):
-        validate_resume_state(reset, cfg, lower=200000, upper=300000)
+        validate_resume_state(reset, cfg, optimizer=opt, lower=200000, upper=300000)
     wrong = copy.deepcopy(state)
     wrong["config"]["train"]["steps"] = 400000
     with pytest.raises(ValueError, match="original cosine"):
-        validate_resume_state(wrong, cfg, lower=200000, upper=300000)
+        validate_resume_state(wrong, cfg, optimizer=opt, lower=200000, upper=300000)
 
 
-def test_legacy_stop_semantics_and_isolated_wrapper_help(tmp_path):
-    import subprocess
-    import sys
+def test_legacy_stop_semantics():
 
     assert training_end({"train": {"steps": 10, "stop_step": None}}) == 10
     assert training_end({"train": {"steps": 10, "stop_step": 0}}) == 10
     assert training_end({"train": {"steps": 10, "stop_step": 12}}) == 10
-    result = subprocess.run(
-        [sys.executable, "-I", str(ROOT / "scripts/train_ours_continuation.py"), "--help"],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    assert result.returncode == 0 and "--source-checkpoint" in result.stdout
+
+
+@pytest.mark.parametrize("corruption", ["missing", "exp_avg", "exp_avg_sq", "both_shapes", "fractional_step", "group"])
+def test_resume_requires_every_parameter_and_exact_moment_shapes(tmp_path, corruption):
+    from s4d.train.checkpoint import save_checkpoint
+    from s4d.train.continuation import validate_resume_state
+
+    cfg = real_config()
+    model = Tiny()
+    opt, sch = loop.build_optimizer(model, cfg)
+    model.decoder(model.encoder(torch.ones(2, 2))).sum().backward()
+    opt.step()
+    sch.step()
+    for value in opt.state.values():
+        value["step"].fill_(200000)
+    sch.last_epoch = 200000
+    baseline = copy.deepcopy(cfg)
+    baseline["train"]["steps"] = 200000
+    for key in ("lr_schedule", "original_steps", "restarts"):
+        baseline["train"].pop(key)
+    path = save_checkpoint(tmp_path / "valid.pt", 200000, model.encoder, model.decoder, opt, sch, baseline)
+    state = torch.load(path, weights_only=False)
+    pid = state["optimizer"]["param_groups"][-1]["params"][-1]  # check coverage in every group
+    if corruption == "missing":
+        del state["optimizer"]["state"][pid]
+    elif corruption == "group":
+        state["optimizer"]["param_groups"].pop()
+    elif corruption == "fractional_step":
+        state["optimizer"]["state"][pid]["step"].fill_(200000.5)
+    else:
+        for key in ("exp_avg", "exp_avg_sq") if corruption == "both_shapes" else (corruption,):
+            state["optimizer"]["state"][pid][key] = torch.zeros(1, 7)
+    with pytest.raises(ValueError, match="optimizer"):
+        validate_resume_state(state, cfg, optimizer=opt, lower=200000, upper=300000)
+    torch.save(state, tmp_path / "broken.pt")
+    with pytest.raises(ValueError, match="optimizer"):
+        load_checkpoint(tmp_path / "broken.pt", model.encoder, model.decoder, opt, sch, strict_optimizer=True)

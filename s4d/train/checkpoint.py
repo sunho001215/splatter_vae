@@ -60,9 +60,14 @@ def save_checkpoint(
 
 
 def load_checkpoint(
-    path: str | Path, encoder, decoder, optimizer=None, scheduler=None, restore_rng: bool = True, *, rank: int = 0
+    path: str | Path, encoder, decoder, optimizer=None, scheduler=None, restore_rng: bool = True, *,
+    rank: int = 0, strict_optimizer: bool = False
 ) -> int:
     state = torch.load(path, map_location="cpu", weights_only=False)
+    if strict_optimizer and optimizer is not None:
+        from s4d.train.continuation import validate_adamw_state
+
+        validate_adamw_state(state["optimizer"], optimizer, state["step"])
     _unwrap(encoder).load_state_dict(state["encoder"])
     _unwrap(decoder).load_state_dict(state["decoder"])
     if optimizer is not None:

@@ -10,11 +10,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import _bootstrap  # noqa: F401
+from _bootstrap import REPO, guard_gpus, require_passed_tests
+
+guard_gpus()
+
 
 def main():
-    from _bootstrap import REPO, guard_gpus, require_passed_tests
-
-    guard_gpus()
     require_passed_tests()
     import torch
     import torch.nn.functional as F

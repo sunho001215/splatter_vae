@@ -2453,3 +2453,36 @@ def test_removal_archives_durably_and_refuses_symlinked_archive_paths(tmp_path):
     done = subprocess.run(["bash", "-c", script], capture_output=True, text=True, env=env)
     assert done.returncode == 0 and json.loads(done.stdout.splitlines()[-1])["removed"] is True
     assert (run / "containers/s4d-r-a1.docker.log").read_text() == "log\n" and (tmp_path / "removed").exists()
+
+
+def test_negative_priorities_load_and_admit_before_older_fql(tmp_path):
+    backend = FakeBackend(tmp_path / "runs")
+    queued = write_queue(tmp_path, [job("old-fql", priority=2), job("ours-fql", priority=0),
+                                    job("pretrain", priority=-1)])
+    assert [j["id"] for j in jobs.eligible(jobs.load_queue(queued)["jobs"], {})] == [
+        "pretrain", "ours-fql", "old-fql"]
+    tick(tmp_path, queued, backend)
+    assert [call["id"] for call in backend.launches] == ["pretrain", "ours-fql"]
+
+
+@pytest.mark.parametrize("resource", ["gpu", "ram", "cpu", "disk"])
+def test_remote_blocked_priority_head_stops_smaller_backfill(tmp_path, resource):
+    backend = FakeBackend(tmp_path / "runs")
+    head = {"gpu": {"mem_gb": 50}, "ram": {"ram_gb": 180}, "cpu": {"cpu_threads": 40},
+            "disk": {"disk_gb": 950}}[resource]
+    queued = write_queue(tmp_path, [job("old-fql", priority=2, mem_gb=1, ram_gb=1),
+                                    job("ours-fql", priority=0, mem_gb=1, ram_gb=1),
+                                    job("pretrain", priority=-1, **head)], cpu_thread_budget=32)
+    tick(tmp_path, queued, backend)
+    assert not backend.launches
+
+
+def test_blocked_remote_priority_does_not_hold_independent_local_capacity(tmp_path, monkeypatch):
+    backend = FakeBackend(tmp_path / "runs")
+    local_launches = []
+    monkeypatch.setattr(jobs, "launch", lambda row, *args, **kwargs: local_launches.append(row["id"]) or 2**30)
+    monkeypatch.setattr(jobs, "source_identity", lambda: {})
+    queued = write_queue(tmp_path, [job("old-fql", priority=2), job("pretrain", priority=-1, ram_gb=180),
+                                    job("local", host="local", priority=2)])
+    tick(tmp_path, queued, backend)
+    assert not backend.launches and local_launches == ["local"]

@@ -563,3 +563,22 @@ def test_detached_launch_success_restart_once_then_fail(tmp_path, monkeypatch):
     log = (runs / "bad" / "console.log").read_text()
     assert log.count("=== attempt") == 2 and f"[gpu_guard] cuda:0 -> {uuid}" in log
     assert (runs / "ok" / "exit_code").read_text().strip() == "0"
+
+
+@pytest.mark.parametrize("resource", [None, "gpu", "ram", "cpu", "disk"])
+def test_local_ours_priority_and_capacity_barrier(tmp_path, monkeypatch, resource):
+    launched = []
+    monkeypatch.setattr(jobs, "launch", lambda row, *args, **kwargs: launched.append(row["id"]) or 2**30)
+    monkeypatch.setattr(jobs, "source_identity", lambda: {"commit": "a" * 40, "source_sha256": {}})
+    overrides = {None: {}, "gpu": {"mem_gb": 100}, "ram": {"ram_gb": 300},
+                 "cpu": {"cpu_threads": 16}, "disk": {"disk_gb": 1800}}[resource]
+    rows = [{"id": name, "priority": priority, "script": "tests/_job_worker.py", "gpu": GPU4,
+             "mem_gb": 1, "ram_gb": 1, "cpu_threads": 1, **(overrides if priority == -1 else {})}
+            for name, priority in [("old-fql", 2), ("ours-fql", 0), ("pretrain", -1)]]
+    path = write_queue(tmp_path / "queue.yaml", rows)
+    queue = yaml.safe_load(path.read_text())
+    queue["hosts"] = {"local": {"cpu_thread_budget": 8}}
+    path.write_text(yaml.safe_dump(queue))
+    assert jobs.load_queue(path)["jobs"][-1]["priority"] == -1
+    jobs.tick(path, tmp_path / "registry.jsonl", tmp_path / "runs", usage={}, available_gb=200)
+    assert launched == (["pretrain", "ours-fql"] if resource is None else [])

@@ -315,7 +315,7 @@ def admissible(job):
     middle = job.get('stage2_admission_rank') == 'middle'
     if middle and script in MIDDLE_WORK and original_rl_pending:
         return False  # user 2026-10-15: crop pretrains/RL only after every original Stage 2 RL job is admitted
-    if script == 'scripts/train.py' and not middle and job['priority'] != 0 and middle_pretrain_pending:
+    if script == 'scripts/train.py' and not middle and job.get('priority', 5) != 0 and middle_pretrain_pending:
         return False  # ... and the pretrain-only variants only after the crop pretrains
     if script == 'scripts/evaluate.py':
         return (ROOT / 'runs' / job['id'] / 'config.yaml').is_file()
@@ -335,7 +335,7 @@ def rank(job):
     if job.get('stage2_admission_rank') == 'middle':
         return 2.5  # after the original Stage 2 RL pairs (2), before the pretrain-only variants (3)
     if script == 'scripts/train.py':
-        return 1 if job['priority'] == 0 else 3
+        return 1 if job.get('priority', 5) == 0 else 3
     return 2
 
 
@@ -344,7 +344,7 @@ def key(job):
     trainer = by_id[job['id'].removesuffix('-eval')] if is_eval else job
     companion = is_eval and status(trainer['id']) in jobs.ACTIVE | {jobs.DONE}
     seed = int(trainer['args'][trainer['args'].index('--seed') + 1]) if '--seed' in trainer['args'] else 0
-    return rank(job), not companion, seed, order.index(job['id'])
+    return job.get('priority', 5), rank(job), not companion, seed, order.index(job['id'])
 
 
 eligible_view = {i: {**s, 'status': status(i)} for i, s in state.items()}
@@ -358,6 +358,15 @@ candidates = [j for j in candidates if not paused(j['id'])]
 from ops.jobs import host_roles  # noqa: E402
 _roles, _ownership, _context = host_roles.load_roles(), host_roles.read_ownership(), {j['id']: j for j in queue['jobs']}
 candidates = [j for j in candidates if host_roles.refusal(j, 'local', _roles, _ownership, _context) is None]
+# A ready higher-priority row served by another local driver must get capacity first.
+_own = {j['id'] for j in candidates}
+_other_ready = [j for j in jobs.eligible(queue['jobs'], eligible_view)
+                if j['id'] not in _own and j.get('host', 'local') == 'local' and not paused(j['id'])
+                and host_roles.refusal(j, 'local', _roles, _ownership, _context) is None]
+if _other_ready:
+    _ceiling = min(j.get('priority', 5) for j in _other_ready)
+    candidates = [j for j in candidates if j.get('priority', 5) <= _ceiling]
+
 # Planned local shutdown (user, 2026-10-15): while this file exists, admit only the listed jobs and nothing after
 # its cutoff, so no local job is started that cannot finish before the stop; closeouts continue unchanged.
 HOLD = SETUP / 'stage2-admission-hold.json'
@@ -388,13 +397,18 @@ growth = {i: max(0, (footprint(by_id[i]) if i in by_id else int(MEASURED.get(que
           for i, s in state.items() if s.get('host', 'local') == 'local' and s['status'] in jobs.ACTIVE}
 ramp = sum(growth.values())
 total = charge + ramp + cache_reserve
+from ops.jobs.priority import PriorityBarrier  # noqa: E402
+priority_barrier = PriorityBarrier()
 admitted, taken = [], set()
 for job in candidates:
+    if not priority_barrier.allows(job):
+        continue
     if job['script'] == 'scripts/eval_rl.py':
         trainer = job['id'].removesuffix('-eval')
         if status(trainer) not in jobs.ACTIVE | {jobs.DONE} and trainer not in taken:
             continue
     if total + footprint(job) >= CAP:
+        priority_barrier.block(job)
         continue
     admitted.append(job)
     taken.add(job['id'])

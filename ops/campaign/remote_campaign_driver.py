@@ -15,6 +15,7 @@ REPO = Path('/home/ws/ws/splatter4d')
 sys.path.insert(0, str(REPO))
 from ops.jobs.footprints import exclusive, ram_gb  # noqa: E402
 from ops.jobs import host_roles  # noqa: E402
+from ops.jobs.priority import PriorityBarrier  # noqa: E402
 from ops.jobs import release_reservation  # noqa: E402
 from ops.jobs import scheduler as jobs  # noqa: E402
 from ops.jobs.remote_backend import (COTENANT_GPU_MARGIN_GB, RemoteBackend, cotenant_charges,  # noqa: E402
@@ -606,10 +607,10 @@ def dispatch_key(job):
     if job['id'].startswith(ENC_PREFIXES):
         rank += 100  # encoder pilots: after every other remote row
     if job['id'].startswith(HYB_PREFIXES) and job.get('priority', 5) <= 1:
-        rank -= 10  # hybrid masking (user 2026-11-03, HIGH priority): before every other ready remote row; non-preemptive
+        rank -= 10  # hybrid masking ranks first within its queue-priority tier; non-preemptive
     elif job['id'].startswith(CST_PREFIXES) and job.get('priority', 5) <= 1:
-        rank -= 5  # CSW4 tube-ratio campaign (user 2026-11-04): after hybrid masking, before every other row
-    return rank, not companion, seed, [j['id'] for j in remote].index(job['id'])
+        rank -= 5  # CSW4 follows hybrid masking within its queue-priority tier
+    return job.get('priority', 5), rank, not companion, seed, [j['id'] for j in remote].index(job['id'])
 
 
 # Crashed jobs with restarts left are retried, exactly as scripts/jobs.py _tick treats them (status -> pending when
@@ -767,46 +768,18 @@ def reserve_for_hybrid(job):
     return min(room, key=lambda g: (gpu_load[g], gpu_mem[g]))
 
 
-for job in candidates:
-    if job['id'].endswith('-eval'):
-        trainer = job['id'].removesuffix('-eval')
-        if state.get(trainer, {}).get('status') not in jobs.ACTIVE | {jobs.DONE} and trainer not in taken:
-            continue
-    if job['id'].startswith('s4-reviwo-') and reviwo >= MAX_REVIWO:
-        continue
-    need = int(ram_gb(job) * 2**30)
-    if total + need > CAP:
-        continue
-    gpu = place(job)
-    if gpu is None:
-        if (hyb_reserved is None and job['id'].startswith(HYB_PREFIXES + CST_PREFIXES) and not job['id'].endswith('-eval')
-                and any(float(job['mem_gb']) <= GPU_CAP[g] for g in GPUS)):  # never for a row no device can hold
-            hyb_reserved, hyb_reserved_for = reserve_for_hybrid(job), job['id']
-            messages.append(f"HYB_RESERVED {hyb_reserved} for waiting {job['id']} (load {gpu_load[hyb_reserved]:.1f} + "
-                            f"{load(job):.1f} > {GPU_LOAD_LIMIT}; no new lower-priority rows there this pass)")
-        continue
-    cpu_used += jobs.thread_limit(job.get('cpu_threads', 8))
-    gpu_jobs[gpu] += 1
-    if exclusive(job):
-        gpu_exclusive.add(gpu)
-    gpu_load[gpu] += load(job)
-    gpu_mem[gpu] += float(job['mem_gb'])
-    chosen.append({**with_role(job), 'gpu': gpu})
-    taken.add(job['id'])
-    total += need
-    reviwo += job['id'].startswith('s4-reviwo-')
 # ---- host-neutral pool (user instruction 2026-10-23): eligible, never-launched local rows that the remote can start
 # now move here (runs/setup/tools/pool_placement.py: host-specific fields only) and are admitted in this pass. Pretraining
-# first (it gains most from the full GPUs), then RL trainer + evaluator pairs, each in priority / registration order.
+# and admitted by queue priority first, then the existing pretraining / RL-pair order within ties.
 # Remote holds hold the REMOTE only (unified pool, 2026-11-11): the admission-hold file or the queue's remote host
 # `hold: true` (MIG reboot hold) stop every pool move to the remote; local admission never reads either.
 held = ((REPO / 'runs/setup/remote-hold-admissions').exists()
         or queue['hosts'].get('remote', {}).get('hold', False) is not False)
+units = []
 if POOL_READY and not DRY and not held and ROLES is not None and COTENANT is not None:
     sys.path.insert(0, str(REPO / 'runs/setup/tools'))
     from ops.jobs import pool_placement  # noqa: E402
 
-    units = []
     # 2026-10-27: a local row is offered if it would be eligible on the remote, so rows whose dependencies are verified
     # in place there (remote exports of remote pretrainings, RL pairs of remote exports) move without a local download
     as_remote = [{**j, 'host': 'remote'} if j.get('host', 'local') == 'local' else j for j in queue['jobs']]
@@ -839,12 +812,53 @@ if POOL_READY and not DRY and not held and ROLES is not None and COTENANT is not
     if not SNERL_NT_READY:
         units = [m for m in units if m[0]['id'] not in SNERL_NT_IDS]
     # encoder-pilot units after every other unit (stable sort keeps the established order otherwise)
-    units.sort(key=lambda m: (not m[0]['id'].startswith(HYB_PREFIXES),  # hybrid masking first (HIGH priority)
+    units.sort(key=lambda m: (m[0].get('priority', 5),
+                              not m[0]['id'].startswith(HYB_PREFIXES),  # hybrid masking first within ties
                               not m[0]['id'].startswith(CST_PREFIXES),  # then the CSW4 tube-ratio campaign
                               m[0]['id'].startswith(ENC_PREFIXES),
                               {'scripts/export_encoder.py': -1, 'scripts/train.py': 0}.get(m[0]['script'], 1)))
-    plan = []
+# Remote rows and movable local units share priority tiers. On ties the existing remote-first order holds.
+priority_barrier = PriorityBarrier()
+plan = []
+for priority in sorted({j.get('priority', 5) for j in candidates}
+                       | {m[0].get('priority', 5) for m in units}):
+    for job in candidates:
+        if job.get('priority', 5) != priority or not priority_barrier.allows(job):
+            continue
+        if job['id'].endswith('-eval'):
+            trainer = job['id'].removesuffix('-eval')
+            if state.get(trainer, {}).get('status') not in jobs.ACTIVE | {jobs.DONE} and trainer not in taken:
+                continue
+        if job['id'].startswith('s4-reviwo-') and reviwo >= MAX_REVIWO:
+            priority_barrier.block(job)
+            continue
+        need = int(ram_gb(job) * 2**30)
+        if total + need > CAP:
+            priority_barrier.block(job)
+            continue
+        gpu = place(job)
+        if gpu is None:
+            priority_barrier.block(job)
+            if (hyb_reserved is None and job['id'].startswith(HYB_PREFIXES + CST_PREFIXES)
+                    and not job['id'].endswith('-eval')
+                    and any(float(job['mem_gb']) <= GPU_CAP[g] for g in GPUS)):  # never for a row no device can hold
+                hyb_reserved, hyb_reserved_for = reserve_for_hybrid(job), job['id']
+                messages.append(f"HYB_RESERVED {hyb_reserved} for waiting {job['id']} (load {gpu_load[hyb_reserved]:.1f} + "
+                                f"{load(job):.1f} > {GPU_LOAD_LIMIT}; no new lower-priority rows there this pass)")
+            continue
+        cpu_used += jobs.thread_limit(job.get('cpu_threads', 8))
+        gpu_jobs[gpu] += 1
+        if exclusive(job):
+            gpu_exclusive.add(gpu)
+        gpu_load[gpu] += load(job)
+        gpu_mem[gpu] += float(job['mem_gb'])
+        chosen.append({**with_role(job), 'gpu': gpu})
+        taken.add(job['id'])
+        total += need
+        reviwo += job['id'].startswith('s4-reviwo-')
     for members in units:
+        if members[0].get('priority', 5) != priority or not priority_barrier.allows(members[0]):
+            continue
         tentative = []
         for u in members:
             row_load = load(u) if u['id'].startswith(GPU_HEAVY) or kind(u['id']) == 'role' else (
@@ -866,6 +880,7 @@ if POOL_READY and not DRY and not held and ROLES is not None and COTENANT is not
             total += need
             tentative.append((u['id'], g, row_load, float(u['mem_gb']), need))
         if len(tentative) != len(members):
+            priority_barrier.block(members[0])
             for row_id, g, row_load, mem, need in tentative:
                 cpu_used -= jobs.thread_limit(by_id.get(row_id, {}).get('cpu_threads', 8))
                 gpu_jobs[g] -= 1
@@ -876,8 +891,12 @@ if POOL_READY and not DRY and not held and ROLES is not None and COTENANT is not
                 total -= need
             continue
         plan.append(tentative)
+if plan:
     wanted = [t[0] for tentative in plan for t in tentative]
     moved = set(pool_placement.move(wanted, 'remote', 'free remote capacity (remote driver pass)')) if wanted else set()
+    for tentative in plan:
+        if any(i not in moved for i, *_ in tentative):
+            priority_barrier.block(by_id[tentative[0][0]])
     if wanted and not moved:
         messages.append(f'POOL move skipped (local admission in progress or rows already admitted): {wanted[:4]}')
     if moved:
@@ -892,6 +911,7 @@ if POOL_READY and not DRY and not held and ROLES is not None and COTENANT is not
                     chosen.append({**with_role(by_id[i]), 'gpu': g})
                     taken.add(i)
                 else:  # placed but not startable yet (e.g. export upload pending): admitted by a later pass
+                    priority_barrier.block(by_id[i])
                     cpu_used -= jobs.thread_limit(by_id[i].get('cpu_threads', 8))
                     gpu_jobs[g] -= 1
                     if exclusive(by_id[i]):
@@ -899,6 +919,21 @@ if POOL_READY and not DRY and not held and ROLES is not None and COTENANT is not
                     gpu_load[g] -= row_load
                     gpu_mem[g] -= mem
                     total -= need
+
+# Pool claims can fail after planning (another driver holds admission); retain the higher tier first.
+_pool_load = {i: row_load for tentative in plan for i, _, row_load, _, _ in tentative}
+for job in chosen:
+    if not priority_barrier.allows(job):
+        gpu = job['gpu']
+        cpu_used -= jobs.thread_limit(job.get('cpu_threads', 8))
+        gpu_jobs[gpu] -= 1
+        if exclusive(job):
+            gpu_exclusive.discard(gpu)
+        gpu_load[gpu] -= _pool_load.get(job['id'], load(job))
+        gpu_mem[gpu] -= float(job['mem_gb'])
+        total -= int(ram_gb(job) * 2**30)
+        taken.discard(job['id'])
+chosen = [j for j in chosen if priority_barrier.allows(j)]
 
 
 def job_release(job):
@@ -936,14 +971,17 @@ if chosen and DRY:
 if chosen and not DRY:
     groups = {}
     for job in chosen:
-        groups.setdefault(job_release(job), []).append(job)
-    for (commit, image), group in groups.items():
+        groups.setdefault((job.get('priority', 5), *job_release(job)), []).append(job)
+    dispatch_barrier = PriorityBarrier()
+    for (priority, commit, image), group in sorted(groups.items(), key=lambda item: item[0][0]):
+        if not dispatch_barrier.allows(group[0]):
+            continue
         if (commit, image) not in RELEASES or not (REPO / RELEASES[(commit, image)]).is_file():
             messages.append(f'HELD {[j["id"] for j in group]}: release {commit[:7]}/{image[7:15]} has no accepted manifest')
             continue
         host = copy.deepcopy(queue['hosts']['remote'])
         host.update(enabled=True, commit=commit, image_digest=image, evidence_manifest=RELEASES[(commit, image)])
-        qtag = f'{tag}-{commit[:7]}' if len(groups) > 1 else tag
+        qtag = f'{tag}-p{priority}-{commit[:7]}' if len(groups) > 1 else tag
         qpath = REPO / 'runs/setup' / f'remote-dispatch-{qtag}.yaml'
         with qpath.open('x') as stream:
             yaml.safe_dump({'hosts': {'local': {'enabled': False}, 'remote': host}, 'jobs': group}, stream, sort_keys=False)
@@ -957,6 +995,9 @@ if chosen and not DRY:
         messages.append(f"ADMITTING {[(j['id'], j['gpu'][4:8]) for j in group]} on {commit[:7]}")
         backend = RemoteBackend(REPO, REPO / 'runs')
         messages += jobs.tick(queue_path=qpath, remote_backend=backend)
+        observed = jobs.read_registry()
+        if any(observed.get(j['id'], {}).get('status') not in jobs.ACTIVE | {jobs.DONE} for j in group):
+            dispatch_barrier.block(group[0])
 state = jobs.read_registry()
 counts = {}
 for job in remote:

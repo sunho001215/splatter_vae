@@ -7,11 +7,16 @@ import json
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from s4d.config import load_config
-from s4d.train.continuation import file_sha, stage_checkpoint, validate_resume_state
-from s4d.train.schedule import training_end
+
+import _bootstrap  # noqa: F401
+from _bootstrap import guard_gpus
+
+guard_gpus()
+
+from s4d.config import load_config  # noqa: E402
+from s4d.train.continuation import file_sha, stage_checkpoint, validate_resume_state  # noqa: E402
+from s4d.train.schedule import training_end  # noqa: E402
 
 
 def main():
@@ -41,15 +46,19 @@ def main():
 
     if science_config(cfg) != science_config(load_config([a.baseline_config])):
         raise ValueError("input overrides may only map the same data into the verified local mirror")
-    from _bootstrap import guard_gpus
-
-    guard_gpus()
     import torch
 
     from ops.resources.gpu_guard import validate_runtime_path
 
+    # Use actual CPU parameters to check every AdamW group/id/shape before staging or accepting a resume.
+    from s4d.train.loop import build_model, build_optimizer
+
+    validation_model = build_model(cfg)
+    validation_optimizer, _ = build_optimizer(validation_model, cfg)
     source = torch.load(a.source_checkpoint, map_location="cpu", weights_only=False)
-    validate_resume_state(source, cfg, lower=a.start_step, upper=a.stop_step, exact_step=a.start_step)
+    validate_resume_state(
+        source, cfg, optimizer=validation_optimizer, lower=a.start_step, upper=a.stop_step, exact_step=a.start_step
+    )
     run = validate_runtime_path(a.output_root / a.name)
     digest = a.source_sha256 or file_sha(a.source_checkpoint)
     copied = stage_checkpoint(a.source_checkpoint, run / "checkpoints" / a.source_checkpoint.name, digest)
@@ -61,8 +70,8 @@ def main():
     latest = run / "checkpoints/latest.pt"
     resume = latest if latest.exists() else copied
     state = torch.load(resume, map_location="cpu", weights_only=False)
-    validate_resume_state(state, cfg, lower=a.start_step, upper=a.stop_step)
-    del state, source
+    validate_resume_state(state, cfg, optimizer=validation_optimizer, lower=a.start_step, upper=a.stop_step)
+    del state, source, validation_optimizer, validation_model, _
     sys.argv = [
         "train.py",
         "--config",

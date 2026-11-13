@@ -211,8 +211,10 @@ candidates = [j for j in candidates if not paused(j['id'])]
 _roles, _ownership, _context = host_roles.load_roles(), host_roles.read_ownership(), by_queue
 candidates = [j for j in candidates if host_roles.refusal(j, 'local', _roles, _ownership, _context) is None]
 if stage2_waiting:
-    messages.append(f'YIELD to {len(stage2_waiting)} waiting Stage 2 local jobs, e.g. {stage2_waiting[:3]}')
-    candidates = []
+    messages.append(f'YIELD equal/lower priority to {len(stage2_waiting)} waiting Stage 2 local jobs, '
+                    f'e.g. {stage2_waiting[:3]}')
+    ceiling = min(by_queue[i].get('priority', 5) for i in stage2_waiting)
+    candidates = [j for j in candidates if j.get('priority', 5) < ceiling]
 # Encoder pilots (user directive 2026-10-25): lowest priority (4). Capacity-based scheduling (user 2026-10-25 16:xx,
 # superseding the blanket ENC_HOLD): ready rows are offered in priority order and every ready row that fits the
 # remaining capacity is admitted; rows waiting for unfinished dependencies never block others. Encoder-pilot rows are
@@ -222,8 +224,9 @@ ENC = 'enc-'
 # priority with trainers before their companions
 candidates.sort(key=lambda j: (not (j['script'] == 'scripts/eval_rl.py'
                                     and status(trained_by(j)) == jobs.DONE),
-                               j['priority'], j['script'] == 'scripts/eval_rl.py', registered.index(j)))
-candidates.sort(key=lambda j: j['id'].startswith(ENC))  # stable: encoder-pilot rows after every other candidate
+                               j.get('priority', 5), j['script'] == 'scripts/eval_rl.py', registered.index(j)))
+# Stable: encoder pilots follow the old order within each queue-priority tier.
+candidates.sort(key=lambda j: (j.get('priority', 5), j['id'].startswith(ENC)))
 memory = mb.snapshot()
 # Budget (user decision 2026-10-21, option (b); memory_budget.py): every byte of the cgroup except verified clean,
 # disk-backed file cache, active or inactive. Clean dataset and replay cache are therefore excluded, and no dataset-cache
@@ -283,7 +286,7 @@ fair_active = [{'id': i, 'family': family(by_queue.get(i, {})),
                 'gpu': current.get('gpu'), 'mem_gb': jobs.reservation(current, by_queue.get(i, {}), 'mem_gb')}
                for i, current in state.items() if current.get('host', 'local') == 'local'
                and current['status'] in jobs.RESERVING]
-fair_candidates = [{'id': j['id'], 'family': family(j), 'ram_bytes': footprint(j),
+fair_candidates = [{'id': j['id'], 'priority': j.get('priority', 5), 'family': family(j), 'ram_bytes': footprint(j),
                     'exclusive_gpu': j.get('exclusive_gpu', False),
                     'gpu': j.get('gpu', 'any'), 'mem_gb': float(j.get('mem_gb', 0)),
                     'evaluator': j['script'] == 'scripts/eval_rl.py', 'trainer': trained_by(j),

@@ -1019,7 +1019,7 @@ def _pause_names(paused_fn, job_id: str) -> list[str]:
     return [""] if result is True else list(result or [])
 
 
-def _packing(queue: dict, state: dict, paused_fn=None) -> tuple[dict, float]:
+def _packing(queue: dict, state: dict, paused_fn=None, *, priority=float("inf")) -> tuple[dict, float]:
     """Local capacity left for placement: running / launching local jobs, then never-launched local rows that the
     local drivers could admit now (no active pause, every dependency done). Paused or dependency-blocked local rows
     (e.g. intentionally paused Meta-World campaigns) reserve nothing: they cannot start before a later pass."""
@@ -1043,8 +1043,8 @@ def _packing(queue: dict, state: dict, paused_fn=None) -> tuple[dict, float]:
         return current.get("status") == "pending" or (
             current.get("status") == "crashed" and current.get("failures", 0) <= int(job.get("max_restarts", 1)))
 
-    for job in queue["jobs"]:
-        if (job.get("host", "local") == "local" and waiting(job)
+    for job in sorted(queue["jobs"], key=lambda j: j.get("priority", 5)):
+        if (job.get("priority", 5) <= priority and job.get("host", "local") == "local" and waiting(job)
                 and not (paused_fn is not None and _pause_names(paused_fn, job["id"]))
                 and all(state.get(dep, {}).get("status") == "done" for dep in job.get("deps", []))):
             queued_ram += float(job.get("ram_gb", 0)) * 2**30
@@ -1107,11 +1107,19 @@ def plan(queue: dict, state: dict, roles: dict, *, paused_fn, allow_pauses=(), p
         raise ValueError("unknown local placement policy")
     mirror, manifest, runs = Path(mirror), Path(manifest or Path(mirror) / "MANIFEST.json"), Path(runs or root / "runs")
     by_id, decisions = {j["id"]: j for j in queue["jobs"]}, []
-    slots, queued_ram = _packing(queue, state, paused_fn)
-    ram = float((capacity or {}).get("ram_free_bytes", 0)) - queued_ram
+    from ops.jobs.priority import PriorityBarrier
+
+    priority_barrier = PriorityBarrier()
+    selected, current_priority = [], None
     for _, job in sorted(enumerate(queue["jobs"]), key=lambda pair: (pair[1].get("priority", 5), pair[0])):
         if job.get("host", "local") != "remote" or not applies(job, roles, by_id):
             continue
+        if current_priority != job.get("priority", 5):
+            current_priority = job.get("priority", 5)
+            placed = {j["id"]: host_roles.destination_row(j, "local", "") for j in selected}
+            packing_queue = {**queue, "jobs": [placed.get(j["id"], j) for j in queue["jobs"]]}
+            slots, queued_ram = _packing(packing_queue, state, paused_fn, priority=current_priority)
+            ram = float((capacity or {}).get("ram_free_bytes", 0)) - queued_ram
         job_id, reason, decision, scope = job["id"], "ready", "local", None
         needs = 0
         if job_id in state:
@@ -1139,12 +1147,17 @@ def plan(queue: dict, state: dict, roles: dict, *, paused_fn, allow_pauses=(), p
                 except (OSError, ValueError, subprocess.SubprocessError) as exc:
                     decision, reason = "stay_remote", str(exc)
             if decision == "local" and policy == "fit":
-                if ram < float(job.get("ram_gb", 0)) * 2**30:
+                if not priority_barrier.allows(job):
+                    decision, reason = "waits", "higher-priority local capacity reservation"
+                elif ram < float(job.get("ram_gb", 0)) * 2**30:
                     decision, reason = "waits", "local capacity"
                 elif _pack(host_roles.destination_row(job, "local", ""), slots) is None:
                     decision, reason = "waits", "local capacity"
                 else:
                     ram -= float(job.get("ram_gb", 0)) * 2**30
+                    selected.append(job)
+                if reason == "local capacity":
+                    priority_barrier.block(job)
         item = {"id": job_id, "decision": decision, "reason": reason, "mem_gb": float(job.get("mem_gb", 0)),
                 "ram_gb": float(job.get("ram_gb", 0)), "needs_mirror_bytes": needs}
         if scope is not None:

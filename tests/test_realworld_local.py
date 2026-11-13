@@ -1411,7 +1411,7 @@ def test_local_dataset_construction_fails_closed(mirrored, monkeypatch, tmp_path
     elif edit == "out_name":
         args[args.index("--out") + 1] = "runs/data-row/other.h5"
     elif edit == "condition":
-        args[args.index("--condition") + 1] = "ours"  # mvp3d_* / sincro / snerl are local since 2026-11-13
+        args[args.index("--condition") + 1] = "unsupported"  # ours now has an accepted local resolver
     elif edit == "descriptor_extra":
         args[args.index("--store") + 1] = PREFIX + "/" + STORE
     elif edit == "store_local":
@@ -1426,11 +1426,13 @@ def test_local_dataset_construction_fails_closed(mirrored, monkeypatch, tmp_path
 
 
 def _dataset_script():
-    import importlib.util
-    spec = importlib.util.spec_from_file_location("realworld_fql_dataset_test", rw.REPO / "scripts/realworld_fql_dataset.py")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+    import ast
+
+    source = ast.parse((rw.REPO / "scripts/realworld_fql_dataset.py").read_text())
+    node = next(n for n in source.body if isinstance(n, ast.FunctionDef) and n.name == "mapped_raw_recordings")
+    names = {"Path": Path}
+    exec(compile(ast.Module(body=[node], type_ignores=[]), "<dataset helper>", "exec"), names)
+    return SimpleNamespace(mapped_raw_recordings=names["mapped_raw_recordings"])
 
 
 def test_dataset_builder_raw_root_mapping_verifies_every_file(tmp_path):
@@ -1768,3 +1770,30 @@ def test_native_depth_rig_reference_is_a_verified_mirror_input(mirrored, monkeyp
         path.symlink_to(target)
     with pytest.raises(rw.LocalInputError, match="not mirrored|changed|mismatch|symlink"):
         localize(f, job)
+
+
+def test_ours_priority_placement_and_blocked_head_cannot_be_backfilled(mirrored):
+    f = mirrored
+    rows = [row("older-fql", priority=2, ram_gb=1), row("ours-fql", priority=0, ram_gb=1),
+            row("pretrain", priority=-1, ram_gb=8)]
+    decisions = planning(f, rows)
+    assert [d["id"] for d in decisions] == ["pretrain", "ours-fql", "older-fql"]
+    assert decisions[0]["decision"] == "local"
+    # Six GB cannot fit the eight-GB head; even the tiny lower-priority rows must wait.
+    decisions = planning(f, rows, capacity={"ram_free_bytes": 6 * 2**30})
+    assert all(d["decision"] == "waits" for d in decisions)
+    # A pending (unstarted) lower-priority local row must not reserve ahead of new pretraining.
+    placed = row("placed", priority=2, host="local", pin_host="local", gpu="any")
+    assert planning(f, [placed, rows[-1]])[0]["decision"] == "local"
+
+
+def test_local_planner_packs_selected_high_tier_before_pending_lower_tier(mirrored):
+    f = mirrored
+    rows = [row("pending", host="local", pin_host="local", priority=0, mem_gb=1, ram_gb=1),
+            row("pretrain", priority=-1, mem_gb=8, ram_gb=1), row("ours-fql", priority=0, mem_gb=1, ram_gb=1),
+            row("old-fql", priority=2, mem_gb=1, ram_gb=1)]
+    decisions = rw.plan({"hosts": {"local": {"limits": {LOCAL_GPU: {"max_jobs": 3, "max_mem_gb": 8}}}}, "jobs": rows},
+                        f.state, ROLES, paused_fn=lambda _: [], mirror=f.mirror, runs=f.runs, root=f.root,
+                        capacity={"ram_free_bytes": 100 * 2**30})
+    assert [d["id"] for d in decisions] == ["pretrain", "ours-fql", "old-fql"]
+    assert decisions[0]["decision"] == "local" and all(d["decision"] == "waits" for d in decisions[1:])

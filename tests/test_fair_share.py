@@ -253,3 +253,16 @@ def test_random_scenarios_keep_every_hard_invariant():
             assert len(here) <= limit["max_jobs"] and sum(r["mem_gb"] for r in here) <= limit["max_mem_gb"], case
         for gpu, owner in result["reserved"].items():
             assert all(result["assigned"][i] != gpu or i == owner for i in admitted), case
+
+
+def test_queue_priority_precedes_family_guarantees_and_prevents_lower_priority_refill():
+    rows = [row("old-fql", priority=2), row("ours-fql", "realworld", priority=0),
+            row("pretrain", "realworld", priority=-1), row("default")]
+    assert select(rows)["admitted"] == ["pretrain", "ours-fql", "old-fql", "default"]
+    rows[2]["ram_bytes"] = 80
+    busy = [row("running", ram=30, gpu="mig")]
+    original = copy.deepcopy(busy)
+    for _ in range(3):
+        assert select(rows, busy)["admitted"] == []
+    assert busy == original  # no preemption or mutation
+    assert select(rows)["admitted"][0] == "pretrain"

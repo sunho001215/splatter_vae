@@ -54,7 +54,33 @@ def science_config(cfg):
     return canonical(cfg)
 
 
-def validate_resume_state(state, cfg, *, lower, upper, exact_step=None):
+def validate_adamw_state(saved, optimizer, step):
+    """Validate every saved group/parameter against the actual optimizer before PyTorch can load it."""
+    import torch
+
+    groups, moments = saved.get("param_groups", []), saved.get("state", {})
+    if not groups or len(groups) != len(optimizer.param_groups):
+        raise ValueError("resume optimizer parameter groups are missing or inconsistent")
+    ids = [pid for group in groups for pid in group.get("params", [])]
+    if not ids or len(ids) != len(set(ids)) or set(ids) != set(moments):
+        raise ValueError("resume optimizer requires complete parameter-state coverage")
+    for saved_group, live_group in zip(groups, optimizer.param_groups):
+        if len(saved_group["params"]) != len(live_group["params"]):
+            raise ValueError("resume optimizer parameter groups are missing or inconsistent")
+        for pid, param in zip(saved_group["params"], live_group["params"]):
+            state = moments[pid]
+            counter = state.get("step")
+            if torch.is_tensor(counter):
+                counter = counter.item() if counter.numel() == 1 else None
+            if counter != step:
+                raise ValueError("resume optimizer counters are missing or inconsistent")
+            for key in ("exp_avg", "exp_avg_sq"):
+                value = state.get(key)
+                if not torch.is_tensor(value) or value.shape != param.shape:
+                    raise ValueError("resume optimizer moment shapes are missing or inconsistent")
+
+
+def validate_resume_state(state, cfg, *, optimizer, lower, upper, exact_step=None):
     """Reject a partial/reset optimizer or a continuation made with a different schedule."""
     step = state.get("step")
     if type(step) is not int or not lower <= step <= upper or (exact_step is not None and step != exact_step):
@@ -63,13 +89,9 @@ def validate_resume_state(state, cfg, *, lower, upper, exact_step=None):
         raise ValueError("resume checkpoint science differs from baseline")
     if any(k not in state for k in ("optimizer", "scheduler", "rng")):
         raise ValueError("resume requires optimizer, scheduler and RNG state")
-    moments = state["optimizer"].get("state", {})
-    if (
-        not moments
-        or any(int(s.get("step", -1)) != step or "exp_avg" not in s or "exp_avg_sq" not in s for s in moments.values())
-        or state["scheduler"].get("last_epoch") != step
-    ):
-        raise ValueError("resume optimizer moments/counters or scheduler are missing or inconsistent")
+    validate_adamw_state(state["optimizer"], optimizer, step)
+    if state["scheduler"].get("last_epoch") != step:
+        raise ValueError("resume scheduler counter is missing or inconsistent")
     original = cfg["train"]["original_steps"]
     old = state["config"]["train"]
     if step == original:

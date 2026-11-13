@@ -32,6 +32,7 @@ from ops.containers.admission import gpu_reasons, host_reasons  # noqa: E402
 from ops.containers.verification import validate_report, validate_verification, verification_resources  # noqa: E402
 from ops.jobs.footprints import exclusive, fql_ram_gb, ram_gb  # noqa: E402
 from ops.jobs import host_roles, realworld_local  # noqa: E402
+from ops.jobs.priority import PriorityBarrier  # noqa: E402
 from ops.jobs import release_reservation  # noqa: E402
 from ops.jobs.arguments import option as _option  # noqa: E402
 from ops.resources.gpu_guard import (APPROVED_HOST_GPUS, HOST_CONFIG_PATH, MIG_DEVICES, REMOTE_MIG_DEVICES,  # noqa: E402
@@ -1363,8 +1364,11 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
     local_cpu_used = sum(reservation(current, jobs.get(job_id, {}), "cpu_threads") or DEFAULT_REMOTE_CPU_THREADS
                          for job_id, current in state.items()
                          if current.get("host", "local") == "local" and current["status"] in RESERVING)
+    priority_barrier = PriorityBarrier()
     for job in eligible(list(jobs.values()), state):
         host_name = job.get("host", "local")
+        if not priority_barrier.allows(job, host_name):
+            continue
         host, resource = queue["hosts"][host_name], resources.get(host_name)
         if resource is None or host.get("enabled", host_name == "local") is not True or host.get("hold", False):
             continue
@@ -1389,6 +1393,7 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
         gpu = choose_gpu(job, host.get("limits", {}), running + (phantom if held_back else []), resource["foreign"] | backed_off,
                          resource.get("cotenant"))
         if gpu is None:
+            priority_barrier.block(job, host_name)
             if held_back and choose_gpu(job, host.get("limits", {}), running, resource["foreign"],
                                         resource.get("cotenant")) is not None:
                 messages.append(f"{job['id']}: waiting for GPU capacity reserved for release {release_hold['short']}")
@@ -1400,11 +1405,13 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
                 messages.append(f"{job['id']}: invalid remote resource request: {exc}")
                 continue
             if problems:
+                priority_barrier.block(job, host_name)
                 messages.append(f"{job['id']}: waiting for remote guard resources: {', '.join(problems)}")
                 continue
         need, reserve = ram_gb(job), float(host.get("host_ram_reserve_gb", 0))
         available = resource["available"] - (release_charge["ram_gb"] if held_back else 0.0)
         if (not resource.get('guard_accounted') or held_back) and available - need < reserve:
+            priority_barrier.block(job, host_name)
             messages.append(f"{job['id']}: waiting for host RAM ({available:.0f} GB available"
                             + (f" after {release_charge['ram_gb']:.0f} GB reserved for release {release_hold['short']}"
                                if held_back else "") + f", needs {need:.0f} + {reserve:.0f}) on {host_name}")
@@ -1415,9 +1422,11 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
             messages.append(f"{job['id']}: not admitted on {host_name}: {exc}")
             continue
         if host_name == "local" and local_cpu_used + threads > float(host.get("cpu_thread_budget", os.cpu_count() or 1)):
+            priority_barrier.block(job, host_name)
             messages.append(f"{job['id']}: waiting for local CPU thread budget")
             continue
         if host_name == "remote" and cotenant_cpus is None:
+            priority_barrier.block(job, host_name)
             messages.append(f"{job['id']}: co-tenant CPU use is unbounded; "
                             "not admitted")
             continue
@@ -1425,6 +1434,7 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
             budget = float(host.get("cpu_thread_budget", REMOTE_CPU_THREAD_BUDGET))
             charged = release_charge["cpu_threads"] if held_back else 0
             if (not resource.get('guard_accounted') or held_back) and cpu_used + threads + charged > budget:
+                priority_barrier.block(job, host_name)
                 messages.append(f"{job['id']}: waiting for CPU threads ({cpu_used:.0f} used + {threads:.0f}"
                                 + (f" + {charged:.0f} reserved for release {release_hold['short']}" if held_back else "")
                                 + f" > {budget:.0f}) on {host_name}")
@@ -1435,6 +1445,7 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
         disk_need = float(job.get("disk_gb", 0)) * GIB
         disk_free = resource["disk_free"] - (release_charge["disk_gb"] * GIB if held_back else 0.0)
         if (not resource.get('guard_accounted') or held_back) and disk_free - disk_need < floor:
+            priority_barrier.block(job, host_name)
             messages.append(f"{job['id']}: waiting for {host_name} disk floor/reservation")
             if host_name == "remote":
                 record({"event": "host_disk_low", "id": HOST_EVENT_ID, "host": host_name,
