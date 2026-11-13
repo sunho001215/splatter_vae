@@ -43,7 +43,10 @@ def inspect_raw(path):
     if not EPISODE.fullmatch(path.name) or path.is_symlink() or 'discarded' in path.parts:
         raise ValueError(f'not a complete episode path: {path}')
     before = path.stat()
-    raw = read_raw_episode(path)
+    try:
+        raw = read_raw_episode(path)
+    except (KeyError, TypeError) as exc:
+        raise ValueError(f'{path}: missing/invalid required action/state schema: {exc}') from exc
     if raw.status != 'complete':
         raise ValueError(f'{path}: recorder has not completed')
     def monotonic(t, label):
@@ -61,6 +64,11 @@ def inspect_raw(path):
             g = f[f'cameras/cam_{serial}']
             if len(g['color']) != len(cam['t']) or len(cam['segment']) != len(cam['t']):
                 raise ValueError(f'{path}: camera rows disagree')
+            for clock in ('frame_timestamp_us','sensor_timestamp_us'):
+                if clock in g:
+                    monotonic(np.asarray(g[clock],dtype=np.float64),f'{serial}/{clock}')
+                if 'stereo' in g and clock in g['stereo']:
+                    monotonic(np.asarray(g['stereo'][clock],dtype=np.float64),f'{serial}/stereo/{clock}')
             cal = json.loads(g.attrs['calibration_json'])
             k = np.asarray(cal['streams']['color']['intrinsics']['K'], float)
             if k.shape != (3, 3) or not np.isfinite(k).all() or min(k[0, 0], k[1, 1]) <= 0:
@@ -81,7 +89,7 @@ def inspect_raw(path):
 
 
 def paired_manifests(task, roots, *, seed=0, validation_fraction=.1, expected=None,
-                     require_verified=True, inspect=inspect_raw, success_split=None):
+                     require_verified=True, inspect=inspect_raw, success_split=None, amendment=None):
     """Split each label independently; adding failures cannot change success membership.
 
     ``success_split`` can preserve a validated legacy split, keyed by filenames.
@@ -91,8 +99,13 @@ def paired_manifests(task, roots, *, seed=0, validation_fraction=.1, expected=No
         raise ValueError('task/label roots must be explicit')
     if not 0 < validation_fraction < 1:
         raise ValueError('validation_fraction must lie in (0,1)')
-    rows = []
+    rows, excluded = [], []
     digests = set()
+    if amendment is not None and (amendment.get('format') != 'rw-gate-amendment/1'
+            or amendment.get('task') != task or not amendment.get('decided_by') or not amendment.get('decision')
+            or amendment.get('base_target') != 100
+            or amendment.get('target') != len(amendment.get('episodes',{}))):
+        raise ValueError('need a documented task-specific success gate amendment')
     for label in LABELS:
         root = Path(roots[label])
         if root.is_symlink() or 'discarded' in root.parts or not root.is_dir():
@@ -103,21 +116,38 @@ def paired_manifests(task, roots, *, seed=0, validation_fraction=.1, expected=No
         if not files or (expected and len(files) != expected[label]):
             raise ValueError(f'{label}: expected {expected and expected[label]} complete episodes, found {len(files)}')
         label_rows = []
+        omitted = {}
+        if label == 'success' and amendment:
+            included = {Path(k).name:v for k,v in amendment['episodes'].items()}
+            omitted = {Path(k).name:v for k,v in amendment['excluded'].items()}
+            if (len(included) != len(amendment['episodes']) or len(omitted) != len(amendment['excluded'])
+                    or set(included)&set(omitted) or set(included)|set(omitted) != {p.name for p in files}
+                    or len(files) != amendment['base_target']):
+                raise ValueError('amendment must bind the exact success recording set')
         for p in files:
             if p.is_symlink() or not p.is_file():
                 raise ValueError(f'unsafe recording: {p}')
             stat = p.stat()
-            qa = inspect(p)
             digest = sha256(p)
+            if label == 'success' and amendment:
+                wanted = omitted[p.name]['raw_sha256'] if p.name in omitted else included[p.name]
+                if wanted != digest:
+                    raise ValueError(f'amendment raw sha256 differs: {p}')
+            qa = {'status':'excluded','reason':omitted[p.name]['reason']} if p.name in omitted else inspect(p)
             if (stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns) != (
                     p.stat().st_size, p.stat().st_mtime_ns, p.stat().st_ctime_ns):
                 raise ValueError(f'recording changed during hashing: {p}')
             if digest in digests:
                 raise ValueError(f'duplicate recording content across episodes: {p}')
             digests.add(digest)
+            if p.name in omitted:
+                excluded.append(dict(id=f'{task}-{label}-{p.stem}',task=task,label=label,filename=p.name,
+                                     path=str(p.resolve()),sha256=digest,split='excluded',qa=qa))
+                continue
             # Label stays in identity even when success/failure counters overlap.
             label_rows.append(dict(id=f'{task}-{label}-{p.stem}', task=task, label=label,
                                    filename=p.name, path=str(p.resolve()), sha256=digest, qa=qa))
+        files = [p for p in files if p.name not in omitted]
         if label == 'success' and success_split is not None:
             train, val = set(success_split['train']), set(success_split['validation'])
             if train & val or train | val != {p.name for p in files}:
@@ -133,7 +163,8 @@ def paired_manifests(task, roots, *, seed=0, validation_fraction=.1, expected=No
     def manifest(variant):
         eps = [r for r in rows if variant == 'SF' or r['label'] == 'success']
         return dict(schema='dsreset-episodes/v1', task=task, variant=variant, seed=seed,
-                    validation_fraction=validation_fraction, episodes=eps,
+                    validation_fraction=validation_fraction, episodes=eps, excluded=excluded,
+                    amendment=copy.deepcopy(amendment),
                     split={s: [r['id'] for r in eps if r['split'] == s] for s in ('train', 'validation')},
                     outcomes={r['id']: r['label'] == 'success' for r in eps})
     return {v: manifest(v) for v in ('S', 'SF')}
@@ -250,6 +281,19 @@ def validate_manifest(m):
                 or r['id'] != f"{m['task']}-{r['label']}-{path.stem}" or not re.fullmatch('[0-9a-f]{64}',r['sha256'])
                 or r['split'] not in ('train','validation') or (m['variant']=='S' and r['label']!='success')):
             raise ValueError(f"invalid directory label/identity/split: {r['id']}")
+    excluded = m.get('excluded',[])
+    amendment = m.get('amendment')
+    if excluded:
+        if not amendment or amendment.get('format') != 'rw-gate-amendment/1' or amendment.get('task') != m['task']:
+            raise ValueError('exclusions require the documented task gate amendment')
+        wanted = {Path(k).name:v['raw_sha256'] for k,v in amendment['excluded'].items()}
+        if ({r['filename']:r['sha256'] for r in excluded} != wanted
+                or len({r['id'] for r in excluded}) != len(excluded)
+                or any(r['split']!='excluded' or r['label']!='success' for r in excluded)
+                or set(wanted)&{r['filename'] for r in rows if r['label']=='success'}
+                or {r['filename']:r['sha256'] for r in rows if r['label']=='success'} !=
+                   {Path(k).name:v for k,v in amendment['episodes'].items()}):
+            raise ValueError('active/excluded raw hashes differ from the task amendment')
     want = {s:[r['id'] for r in rows if r['split']==s] for s in ('train','validation')}
     outcomes = {r['id']:r['label']=='success' for r in rows}
     if m.get('split') != want or m.get('outcomes') != outcomes:
@@ -312,7 +356,7 @@ def available_preprocessing(task, roots, *, inspect=inspect_raw):
                     raise ValueError('changed while inspecting/hashing')
                 rows.append(dict(id=f'{task}-{label}-{path.stem}',task=task,label=label,filename=path.name,
                                  path=str(path.resolve()),sha256=digest,qa=qa))
-            except (ValueError, OSError) as exc:
+            except (ValueError, OSError, KeyError, TypeError) as exc:
                 rejected.append(dict(path=str(path),label=label,reason=str(exc)))
     return {'SF':{'task':task,'episodes':rows}}, rejected
 

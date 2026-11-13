@@ -18,6 +18,7 @@ def main():
     p.add_argument('--prep-only-available', action='store_true', help='provisional prep plan only; no training manifests or split; reports raw QA rejections')
     p.add_argument('--reuse-ingest', type=Path, help='discover success output reuse by exact hash from ingest snapshot')
     p.add_argument('--reuse', type=Path, help='JSON id -> {raw_sha256, train_data}; success outputs only')
+    p.add_argument('--amendment', type=Path, help='existing documented hash-bound success gate amendment; never infers exclusions')
     p.add_argument('--success-split', type=Path, help='legacy split keyed by episode filenames, exact partition required')
     p.add_argument('--processed-root', type=Path, required=True)
     p.add_argument('--out', type=Path, required=True)
@@ -33,7 +34,7 @@ def main():
     else:
         manifests = paired_manifests(a.task, raw_roots(a.raw_root, a.task), seed=a.seed,
                                 expected={'success': a.success_count, 'failure': a.failure_count},
-                                success_split=read(a.success_split))
+                                success_split=read(a.success_split), amendment=read(a.amendment))
     template = yaml.safe_load(a.template.read_text())
     template['stages']['calibrate']['rig_calibration'] = a.rig
     reuse = reuse_from_ingest(manifests['SF'], read(a.reuse_ingest)) if a.reuse_ingest else {}

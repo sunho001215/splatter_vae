@@ -203,3 +203,42 @@ def test_manifest_gate_keeps_calibration_and_family_checks(tmp_path):
     from s4d.rwlearn import gate
     assert not gate.task_passed(report,'covering','ours')
     assert gate.task_passed(report,'covering','dynamo')
+
+
+def test_raw_qa_reports_camera_only_recordings_instead_of_aborting_inventory(tmp_path):
+    import h5py
+    from s4d.rwlearn.dsreset import inspect_raw
+    path=tmp_path/'episode_000077.h5'
+    with h5py.File(path,'w') as f:
+        f.attrs['status']='complete'
+        f.attrs['format']='panda_teleop_episode'
+        f.attrs['format_version']=2
+        f.create_group('cameras')
+        f.create_group('events')
+    with pytest.raises(ValueError,match='required action/state schema'):
+        inspect_raw(path)
+
+
+def test_existing_task_amendment_preserves_hash_bound_exclusion_and_paired_split(tmp_path):
+    from s4d.rwlearn.dsreset import sha256,validate_manifest
+    roots=fixture_roots(tmp_path)
+    included={f'covering/{p.name}':sha256(p) for p in roots['success'].glob('*.h5') if p.name!='episode_000001.h5'}
+    omitted=roots['success']/'episode_000001.h5'
+    # The real amendment's base count remains 100; extend the fixture accordingly.
+    for i in range(10,100):
+        p=roots['success']/f'episode_{i:06d}.h5';p.write_bytes(f'success:{i}'.encode())
+        included[f'covering/{p.name}']=sha256(p)
+    amendment={'format':'rw-gate-amendment/1','task':'covering','base_target':100,'target':99,
+               'decided_by':'fixture user','decision':'exclude invalid episode, no timestamp repair',
+               'episodes':included,'excluded':{'covering/'+omitted.name:{'raw_sha256':sha256(omitted),'reason':'invalid'}}}
+    def qa(path):
+        assert path != omitted
+        return {}
+    m=paired_manifests('covering',roots,inspect=qa,amendment=amendment)
+    for v in m.values():
+        validate_manifest(v)
+        assert len(v['excluded'])==1 and v['excluded'][0]['split']=='excluded'
+    assert m['S']['episodes']==[ep for ep in m['SF']['episodes'] if ep['label']=='success']
+    omitted.write_bytes(b'changed')
+    with pytest.raises(ValueError,match='amendment raw sha256'):
+        paired_manifests('covering',roots,inspect=qa,amendment=amendment)
