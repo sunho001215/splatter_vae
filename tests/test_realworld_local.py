@@ -1574,7 +1574,7 @@ def test_native_depth_stage_resolver_maps_store_rig_reference_and_raw_root(mirro
     assert effective == [a.replace(PREFIX, str(f.mirror)) for a in job["args"]] + [
         "--raw-root", f"{rw.REMOTE_RAW_ROOT}={raw_root}"]
     assert record["raw_map"] == {"from": rw.REMOTE_RAW_ROOT, "to": str(raw_root)}
-    assert set(record["inputs"]) == {PREFIX + "/" + PLAIN, PREFIX + "/" + RIG}
+    assert set(record["inputs"]) == {PREFIX + "/" + PLAIN, PREFIX + "/" + RIG, PREFIX + "/" + RIG_REF}
 
 
 @pytest.mark.parametrize("edit,reason", [
@@ -1698,3 +1698,73 @@ def test_geometry_dataset_conditions_sincro_and_snerl(mirrored, monkeypatch, tmp
         assert record["dependency_inputs"] == {"runs/dyn-pre/encoder.pt": sha(b"verified output")}
     assert set(rw.LOCAL_DATASET_CONDITIONS) <= set(__import__("s4d.rwlearn.observation",
                                                               fromlist=["CONDITIONS"]).CONDITIONS)
+
+
+def _snerl_teacher(f, monkeypatch, payload=b"official dino weights", pinned=None):
+    """The real SNeRL configuration (dino.pretrained: true) + a synthetic copy of the trainer's pinned constants."""
+    cache = f.root / "cache-root"
+    weights = cache / "torch/hub/checkpoints/dino_deitsmall8_pretrain.pth"
+    weights.parent.mkdir(parents=True, exist_ok=True)
+    weights.write_bytes(payload)
+    upstream = f.root / "s4d/baselines/snerl/upstream.py"
+    upstream.parent.mkdir(parents=True, exist_ok=True)
+    upstream.write_text(f'DINO_WEIGHTS_SHA256 = "{pinned or sha(payload)}"\n'
+                        'DINO_WEIGHTS_FILE = "dino_deitsmall8_pretrain.pth"\n')
+    monkeypatch.setenv("S4D_CACHE_ROOT", str(cache))
+    job = geometry_rows(f)["snerl"]
+    config = f.root / "configs/realworld/baselines/snerl/real.yaml"
+    config.write_bytes((rw.REPO / "configs/realworld/baselines/snerl/pick-and-place.yaml").read_bytes())
+    job["args"][job["args"].index("configs/realworld/baselines/snerl/task.yaml")] = "configs/realworld/baselines/snerl/real.yaml"
+    return job, weights
+
+
+def test_snerl_real_config_admits_only_the_pinned_dino_teacher(mirrored, monkeypatch):
+    """Codex review21 P1: the real SNeRL config keeps its official DINO teacher; admission verifies the pinned file."""
+    f = mirrored
+    job, weights = _snerl_teacher(f, monkeypatch)
+    effective, record = localize(f, job)
+    assert record["pretrained_weights"] == {str(weights): sha(b"official dino weights")}
+    with pytest.raises(rw.LocalInputError, match="no dino"):
+        localize(f, {**job, "args": job["args"] + ["dino.pretrained=false"]})
+    weights.write_bytes(b"other weights")
+    with pytest.raises(rw.LocalInputError, match="DINO teacher weights"):
+        localize(f, job)
+    weights.unlink()
+    with pytest.raises(rw.LocalInputError, match="missing mirror file|symlink"):
+        localize(f, job)
+    for b in ("sincro", "mvp3d"):  # the other geometry baselines still load no pretrained weights
+        cfg = yaml.safe_load((rw.REPO / f"configs/realworld/baselines/{b}/pick-and-place.yaml").read_text())
+        found, todo = [], [cfg]
+        while todo:
+            node = todo.pop()
+            if isinstance(node, dict):
+                found += [v for k, v in node.items() if k == "pretrained"]
+                todo += list(node.values())
+            elif isinstance(node, list):
+                todo += node
+        assert all(v is False for v in found), b
+
+
+@pytest.mark.parametrize("case", ["missing", "altered", "symlink"])
+def test_native_depth_rig_reference_is_a_verified_mirror_input(mirrored, monkeypatch, tmp_path, case):
+    """Codex review21 P2: the implicit reference arrays are checked like every argument input."""
+    f = mirrored
+    monkeypatch.setattr(rw, "LOCAL_RAW_ROOT", tmp_path)
+    job = native_row(f)
+    assert PREFIX + "/" + RIG_REF in localize(f, job)[1]["inputs"]
+    path = f.mirror / RIG_REF
+    if case == "missing":
+        spec = json.loads(f.manifest.read_text())
+        del spec["files"][RIG_REF]
+        f.manifest.write_text(json.dumps(spec))
+    elif case == "altered":
+        os.chmod(path, 0o644)
+        path.write_bytes(b"other arrays")
+    else:
+        target = tmp_path / "elsewhere.npz"
+        target.write_bytes(path.read_bytes())
+        os.chmod(path, 0o644)
+        path.unlink()
+        path.symlink_to(target)
+    with pytest.raises(rw.LocalInputError, match="not mirrored|changed|mismatch|symlink"):
+        localize(f, job)

@@ -65,8 +65,12 @@ def _build_episode_mapped(job):
     """Episode worker entry point (spawned process): install the mapping, then the unchanged episode build."""
     if not os.environ.get(ENV):
         raise RuntimeError(f"{ENV} is not set in the native depth worker")
+    previous = _nd.CompactStore
     _nd.CompactStore = _MappedCompactStore
-    return _ORIGINAL_BUILD(job)
+    try:
+        return _ORIGINAL_BUILD(job)
+    finally:  # the worker process may be reused (pool): leave its module state as found (Codex review21)
+        _nd.CompactStore = previous
 
 
 def build_native_depth_mapped(store_path, rig, out_dir, out_store, *, raw_root: str, workers=1, episodes=None) -> dict:

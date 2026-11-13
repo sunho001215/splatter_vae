@@ -586,3 +586,26 @@ def test_native_depth_cli_build_with_raw_root(tmp_path):
     assert result.returncode == 0, result.stdout + result.stderr
     payload = "\n".join(line for line in result.stdout.splitlines() if not line.startswith("[gpu_guard]"))
     assert json.loads(payload) == {"built": 1, "skipped": 0, "descriptor_written": True, "out_store": str(fixture.out)}
+
+
+@pytest.mark.parametrize("outcome", ["built", "refused"])
+def test_mapped_worker_restores_its_module_state(tmp_path, monkeypatch, outcome):
+    """Codex review21 P2: a (reused) pool worker leaves native_depth.CompactStore as it found it."""
+    from s4d.rwlearn import native_depth as ND
+    from s4d.rwlearn import native_depth_mapped as NM
+
+    fixture = make_store(tmp_path / "store")
+    local = _moved_raw(fixture, tmp_path)
+    if outcome == "refused":
+        raw, = (local / "drawer-open").glob("*.h5")
+        with h5py.File(raw, "a") as f:
+            f.attrs["tampered"] = 1
+    monkeypatch.setenv(NM.ENV, f"{fixture.root}={local}")
+    fixture.overlays.mkdir()
+    job = (fixture.paths[0], str(fixture.overlays / "x.h5"), str(fixture.rig.resolve()), sha256_file(fixture.rig))
+    if outcome == "built":
+        assert NM._build_episode_mapped(job) == "built"
+    else:
+        with pytest.raises(ValueError, match="sha256"):
+            NM._build_episode_mapped(job)
+    assert ND.CompactStore is TS.CompactStore

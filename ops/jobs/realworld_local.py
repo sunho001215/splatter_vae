@@ -669,7 +669,7 @@ def _resolved_paths(job: dict, root: Path, remote_prefix: str = REMOTE_PREFIX, *
     return found
 
 
-def _baseline_fields(job: dict, root: Path, remote_prefix: str) -> None:
+def _baseline_fields(job: dict, root: Path, remote_prefix: str) -> dict | None:
     """The configuration a baseline trainer resolves from the QUEUE arguments must name its store / split / gate as
     mirrored remote files (no relative, local or inline spelling) and load no external pretrained weights."""
     from s4d.config import load_config
@@ -695,17 +695,48 @@ def _baseline_fields(job: dict, root: Path, remote_prefix: str) -> None:
             raise LocalInputError(f"{section}.{key} must name a mirrored remote input, not {value!r}")
     if not native and PurePosixPath(cfg["dataset"]["hdf5_path"]).name != "store.yaml":
         raise LocalInputError("dataset.hdf5_path must name a mirrored compact store.yaml")
-    todo = [cfg]
+    todo = [((), cfg)]
     while todo:
-        node = todo.pop()
+        where, node = todo.pop()
         if isinstance(node, dict):
             for key, value in node.items():
-                if key == "pretrained" and value is not False:
+                if key == "pretrained" and value is not False and not (
+                        (*where, key) == ("dino", "pretrained") and value is True and _snerl_teacher(job, cfg)):
                     raise LocalInputError("local baseline pretraining loads no external pretrained weights "
                                           "(every 'pretrained' must be false)")
-                todo.append(value)
+                todo.append(((*where, key), value))
         elif isinstance(node, list):
-            todo += node
+            todo += [(where, v) for v in node]
+    if job.get("script") == "scripts/train_snerl.py":
+        if any(str(a).split("=", 1)[0].split(".", 1)[0] == "dino" for a in args if "=" in str(a)):
+            raise LocalInputError("local SNeRL rows keep the configured DINO teacher (no dino.* override)")
+        if (cfg.get("dino") or {}).get("pretrained") is True:
+            return dict([_snerl_teacher_file(root)])
+    return None
+
+
+def _snerl_teacher(job: dict, cfg: dict) -> bool:
+    """SNeRL's DINO ViT-S/8 teacher (``dino.pretrained: true`` with the default ``dino.weights: null``) is the official
+    checkpoint in the repository cache, which the trainer itself loads only after checking the pinned sha256
+    (s4d/baselines/snerl/upstream.py load_dino_vits8); admission re-verifies it (``_snerl_teacher_file``)."""
+    return job.get("script") == "scripts/train_snerl.py" and (cfg.get("dino") or {}).get("weights") is None
+
+
+def _snerl_teacher_file(root: Path) -> tuple[str, str]:
+    """(path, sha256) of the official DINO weights the SNeRL trainer loads, checked against the trainer's pinned
+    constant (read from the source text: no torch import here)."""
+    import ast
+
+    source = (Path(root) / "s4d/baselines/snerl/upstream.py").read_text()
+    constants = {t.id: node.value.value for node in ast.parse(source).body if isinstance(node, ast.Assign)
+                 for t in node.targets if isinstance(t, ast.Name) and isinstance(node.value, ast.Constant)}
+    want, name = constants.get("DINO_WEIGHTS_SHA256"), constants.get("DINO_WEIGHTS_FILE")
+    path = Path(os.environ.get("S4D_CACHE_ROOT", str(Path(root) / ".cache"))) / "torch/hub/checkpoints" / str(name)
+    _regular(path)
+    digest = _hash(path)
+    if not want or digest != want:
+        raise LocalInputError(f"SNeRL DINO teacher weights {path} sha256 {digest} != pinned {want}")
+    return str(path), digest
 
 
 def _closeout(dep: str, finished_dir: Path) -> dict:
@@ -770,8 +801,7 @@ def _inputs(job: dict, state: dict, mirror: Path, manifest: Path, runs: Path,
             remote_prefix: str = REMOTE_PREFIX, root: Path = REPO, finished_dir: Path = FINISHED_DIR
             ) -> tuple[list, dict]:
     needed = needed_inputs(job, remote_prefix=remote_prefix)
-    if job.get("script") in BASELINE_OPTIONS:
-        _baseline_fields(job, root, remote_prefix)
+    teacher = _baseline_fields(job, root, remote_prefix) if job.get("script") in BASELINE_OPTIONS else None
     checked = {f"runs/{dep}" + (f"/{relative}" if relative != "." else "")
                for dep, relative in needed["dependency_files"]} | {
         remote_prefix + ("" if relative == "." else "/" + relative) for relative in needed["mirror"]}
@@ -835,6 +865,10 @@ def _inputs(job: dict, state: dict, mirror: Path, manifest: Path, runs: Path,
         relative = _mapped(value, remote_prefix)
         effective.append(str(arg)[:len(str(arg)) - len(value)] + str(mirror) + value[len(remote_prefix):]
                          if relative is not None else arg)
+    for relative in needed["mirror"]:  # implicit mirror inputs (e.g. the rig's reference arrays) are verified too
+        value = remote_prefix + ("" if relative == "." else "/" + relative)
+        if value not in inputs:
+            inputs[value] = _check(relative, files, mirror, closure, remote_prefix=remote_prefix)
     raw_map = None
     if job.get("script") in (FQL_DATASET, NATIVE_DEPTH):
         # actions come from the raw recordings: the local read-only originals, sha256-verified by the builder against
@@ -856,6 +890,7 @@ def _inputs(job: dict, state: dict, mirror: Path, manifest: Path, runs: Path,
         if normal.startswith("runs/") and normal not in checked:
             raise LocalInputError(f"the effective configuration names an unchecked run output: {found}")
     return effective, {"input_map": {"from": remote_prefix, "to": str(mirror)}, **({"raw_map": raw_map} if raw_map else {}),
+                       **({"pretrained_weights": teacher} if teacher else {}),
                        "manifest_sha256": _sha(raw or b""),
                        "inputs": inputs, "dependency_inputs": dependencies,
                        "input_closure": {name: files[name]["sha256"] for name in sorted(closure)}}
