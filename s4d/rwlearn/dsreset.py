@@ -89,7 +89,7 @@ def inspect_raw(path):
 
 
 def paired_manifests(task, roots, *, seed=0, validation_fraction=.1, expected=None,
-                     require_verified=True, inspect=inspect_raw, success_split=None, amendment=None):
+                     require_verified=True, inspect=inspect_raw, success_split=None, amendment=None, verified_success=None):
     """Split each label independently; adding failures cannot change success membership.
 
     ``success_split`` can preserve a validated legacy split, keyed by filenames.
@@ -106,15 +106,23 @@ def paired_manifests(task, roots, *, seed=0, validation_fraction=.1, expected=No
             or amendment.get('base_target') != 100
             or amendment.get('target') != len(amendment.get('episodes',{}))):
         raise ValueError('need a documented task-specific success gate amendment')
+    if verified_success and amendment:
+        # Excluded recordings were intentionally never transferred for learning.
+        # Their accepted amendment hashes prove identity, without admitting them.
+        verified_success = {**{Path(k).name:v['raw_sha256'] for k,v in amendment['excluded'].items()},
+                            **verified_success}
     for label in LABELS:
         root = Path(roots[label])
         if root.is_symlink() or 'discarded' in root.parts or not root.is_dir():
             raise ValueError(f'missing/unsafe {label} root: {root}')
-        if require_verified and not Path(str(root) + '.VERIFIED').is_file():
+        has_marker = Path(str(root)+'.VERIFIED').is_file()
+        if require_verified and not has_marker and not (label=='success' and verified_success):
             raise ValueError(f'missing transfer verification marker: {root}.VERIFIED')
         files = sorted(p for p in root.iterdir() if EPISODE.fullmatch(p.name))
         if not files or (expected and len(files) != expected[label]):
             raise ValueError(f'{label}: expected {expected and expected[label]} complete episodes, found {len(files)}')
+        if require_verified and not has_marker and set(verified_success) != {p.name for p in files}:
+            raise ValueError('verified ingest success set differs from raw directory')
         label_rows = []
         omitted = {}
         if label == 'success' and amendment:
@@ -129,6 +137,8 @@ def paired_manifests(task, roots, *, seed=0, validation_fraction=.1, expected=No
                 raise ValueError(f'unsafe recording: {p}')
             stat = p.stat()
             digest = sha256(p)
+            if require_verified and not has_marker and verified_success.get(p.name) != digest:
+                raise ValueError(f'verified ingest success sha256 differs: {p}')
             if label == 'success' and amendment:
                 wanted = omitted[p.name]['raw_sha256'] if p.name in omitted else included[p.name]
                 if wanted != digest:
@@ -309,6 +319,11 @@ def manifest_gate(manifest, ingest):
     validate_manifest(manifest)
     task, rows = manifest['task'], manifest['episodes']
     selected = {}
+    for r in manifest.get('excluded',[]):
+        matches = [e for e in ingest['episodes'].values()
+                   if e.get('task')==task and e.get('sha256')==r['sha256']]
+        if len(matches)!=1 or matches[0].get('validation',{}).get('status')!='invalid':
+            raise ValueError('excluded task-amendment episode must remain invalid in live ingest')
     for r in rows:
         candidates = [e for e in ingest['episodes'].values()
                       if e.get('task') == task and e.get('sha256') == r['sha256']]
@@ -375,3 +390,27 @@ def reuse_from_ingest(manifest, ingest):
         if stage.get('status') == 'done' and stage.get('input_sha256') == row['sha256'] and stage.get('outputs'):
             reuse[row['id']] = {'raw_sha256':row['sha256'],'train_data':stage['outputs']}
     return reuse
+
+
+def verified_success_from_ingest(ingest, task):
+    """Existing success roots need not be pulled again or receive new marker files.
+
+    Accept only unique identities whose current ingest transfer SHA is verified;
+    paired_manifests rehashes every local file and requires exact set equality.
+    Invalid amended recordings still need transfer integrity, not training QA.
+    """
+    from s4d.rwlearn.identity import recording_label
+    verified = {}
+    for key,e in ingest['episodes'].items():
+        path = e.get('filename') or e.get('source',{}).get('path') or key
+        if e.get('task') != task or recording_label(path) != 'success':
+            continue
+        transfer = e.get('transfer',{})
+        digest = e.get('sha256')
+        if transfer.get('status') != 'verified' or transfer.get('remote_sha256') != digest:
+            continue
+        name = Path(path).name
+        if name in verified:
+            raise ValueError('duplicate existing success transfer identity')
+        verified[name] = digest
+    return verified

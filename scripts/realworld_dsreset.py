@@ -5,7 +5,7 @@ import json
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import yaml
-from s4d.rwlearn.dsreset import TASKS, available_preprocessing, paired_manifests, prep_bundle, raw_roots, reuse_from_ingest, write_bundle
+from s4d.rwlearn.dsreset import TASKS, available_preprocessing, paired_manifests, prep_bundle, raw_roots, reuse_from_ingest, verified_success_from_ingest, write_bundle
 
 
 def main():
@@ -34,7 +34,9 @@ def main():
     else:
         manifests = paired_manifests(a.task, raw_roots(a.raw_root, a.task), seed=a.seed,
                                 expected={'success': a.success_count, 'failure': a.failure_count},
-                                success_split=read(a.success_split), amendment=read(a.amendment))
+                                success_split=read(a.success_split), amendment=read(a.amendment),
+                                verified_success=verified_success_from_ingest(read(a.reuse_ingest),a.task)
+                                if a.reuse_ingest else None)
     template = yaml.safe_load(a.template.read_text())
     template['stages']['calibrate']['rig_calibration'] = a.rig
     reuse = reuse_from_ingest(manifests['SF'], read(a.reuse_ingest)) if a.reuse_ingest else {}

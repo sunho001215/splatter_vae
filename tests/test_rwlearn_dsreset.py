@@ -239,6 +239,38 @@ def test_existing_task_amendment_preserves_hash_bound_exclusion_and_paired_split
         validate_manifest(v)
         assert len(v['excluded'])==1 and v['excluded'][0]['split']=='excluded'
     assert m['S']['episodes']==[ep for ep in m['SF']['episodes'] if ep['label']=='success']
+    from tests.test_rwlearn_gate import entry
+    from s4d.rwlearn.dsreset import manifest_gate
+    ingest={'episodes':{r['id']:entry('covering',int(r['filename'][8:14]),sha=r['sha256'],validated=True)
+                        for r in m['SF']['episodes']}}
+    ex=m['SF']['excluded'][0]
+    ingest['episodes'][ex['id']]=entry('covering',1,sha=ex['sha256'],status='invalid')
+    assert manifest_gate(m['SF'],ingest)['passed']
+    ingest['episodes'][ex['id']]['validation']['status']='valid'
+    with pytest.raises(ValueError,match='remain invalid'):
+        manifest_gate(m['SF'],ingest)
+    Path(str(roots['success'])+'.VERIFIED').unlink()
+    verified={Path(k).name:v for k,v in included.items()}
+    paired_manifests('covering',roots,inspect=qa,amendment=amendment,verified_success=verified)
+    Path(str(roots['success'])+'.VERIFIED').touch()
     omitted.write_bytes(b'changed')
     with pytest.raises(ValueError,match='amendment raw sha256'):
         paired_manifests('covering',roots,inspect=qa,amendment=amendment)
+
+
+def test_existing_verified_success_needs_no_new_pull_marker(tmp_path):
+    from s4d.rwlearn.dsreset import sha256,verified_success_from_ingest
+    roots=fixture_roots(tmp_path)
+    Path(str(roots['success'])+'.VERIFIED').unlink()
+    ingest={'episodes':{f'covering/{p.name}':{'task':'covering','sha256':sha256(p),
+              'transfer':{'status':'verified','remote_sha256':sha256(p)}} for p in roots['success'].glob('*.h5')}}
+    verified=verified_success_from_ingest(ingest,'covering')
+    m=paired_manifests('covering',roots,verified_success=verified,inspect=lambda p:{})
+    assert len(m['SF']['episodes'])==20
+    verified['episode_000000.h5']='f'*64
+    with pytest.raises(ValueError,match='success sha256'):
+        paired_manifests('covering',roots,verified_success=verified,inspect=lambda p:{})
+    verified=verified_success_from_ingest(ingest,'covering')
+    Path(str(roots['failure'])+'.VERIFIED').unlink()
+    with pytest.raises(ValueError,match='verification marker'):
+        paired_manifests('covering',roots,verified_success=verified,inspect=lambda p:{})
