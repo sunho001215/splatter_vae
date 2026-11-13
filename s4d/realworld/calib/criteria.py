@@ -258,7 +258,7 @@ def dt_extension(se: dict) -> dict:
     if not isinstance(rows, list):
         return {"ok": False, "problem": "no dt table in the static evaluation"}
     measured = {(e, p) for e, v in pe.items() for p in (v or {})}
-    table = {}
+    table, seen = {}, set()
     for r in rows:
         try:
             pa, pb = divmod(int(r["pair"]), 10)
@@ -266,14 +266,18 @@ def dt_extension(se: dict) -> dict:
             dt, fi = float(r["abs_dt_ms"]), int(r["file"])
         except (KeyError, IndexError, TypeError, ValueError):
             return {"ok": False, "problem": f"malformed dt row {r}"}
-        if key in table or not _finite(dt) or dt < 0 or fi < 0:
-            return {"ok": False, "problem": f"dt row {r}: duplicate, negative or non-finite (one file per pair)"}
+        if (key, fi) in seen or not _finite(dt) or dt < 0 or fi < 0:
+            return {"ok": False, "problem": f"dt row {r}: duplicate (episode, pair, file), negative or non-finite"}
         if fi == 0 and dt > RELEASE1_MAX_DT_MS:
             return {"ok": False, "problem": f"dt row {r}: a release/1 file row beyond {RELEASE1_MAX_DT_MS} ms"}
         nin = len((se.get("inputs") or {}).get(r["episode"]) or [])
         if se.get("inputs") is not None and fi >= nin:
             return {"ok": False, "problem": f"dt row {r}: file index beyond the episode's {nin} input files"}
-        table[key] = dt
+        seen.add((key, fi))
+        # a pair may be evaluated from BOTH files at different times (the reference rule matched it at some sample
+        # times, the supplement adds the others, e.g. an offset near half a period flipping the reference-nearest
+        # frame): the measurement is classified by its largest |dt| over the contributing files
+        table[key] = max(dt, table.get(key, 0.0))
     if set(table) != measured:
         return {"ok": False, "problem": f"dt table does not reconcile with the measurements "
                                         f"({len(set(table) ^ measured)} differences)"}

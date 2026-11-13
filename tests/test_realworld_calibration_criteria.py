@@ -284,6 +284,13 @@ def test_dt_extension_is_validated_per_pair_with_tails_and_reconciliation():
     assert not dt_extension({"per_episode_extext": pe, "dt": {"rows": _dt_rows(eps)[1:]}})["ok"]
     assert not dt_extension({"per_episode_extext": pe, "dt": {"rows": _dt_rows(eps) + _dt_rows(eps)[:1]}})["ok"]
     assert dt_extension({"per_episode_extext": {}, "dt": {"rows": []}})["ok"]  # nothing measured, nothing extended
+    # a pair evaluated from both files (release/1 at some times, the supplement at the others) at a short offset:
+    # one measurement, classified by its largest |dt|; the same (episode, pair, file) twice is refused
+    both = _dt_rows(eps) + [{"episode": eps[0], "pair": 12, "file": 1, "abs_dt_ms": 7.3}]
+    d = dt_extension({"per_episode_extext": pe, "dt": {"rows": both}})
+    assert d["ok"] and d["n_long"] == 12
+    twice = _dt_rows(eps) + [{"episode": eps[0], "pair": 12, "file": 0, "abs_dt_ms": 8.0}]
+    assert not dt_extension({"per_episode_extext": pe, "dt": {"rows": twice}})["ok"]
     # Codex review 4: negative |dt|, a release/1 row beyond 20 ms, a file index beyond the inputs -> fail closed
     neg = [{**r, "abs_dt_ms": -r["abs_dt_ms"]} if r["abs_dt_ms"] > 20 else r for r in _dt_rows(eps)]
     assert not dt_extension({"per_episode_extext": bad, "dt": {"rows": neg}})["ok"]
