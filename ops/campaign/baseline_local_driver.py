@@ -180,7 +180,7 @@ def footprint(job):
     return local_footprint(job, globals().get('by_queue', {}))
 
 
-from ops.campaign.local_readiness import LocalReadiness  # noqa: E402
+from ops.jobs.local_readiness import LocalReadiness  # noqa: E402
 _owner_ready = LocalReadiness(queue, state, ROOT, now=stamp)
 
 # Baselines rank below the registered Stage 2 work (user 2026-10-13): yield while any local Stage 2 job is waiting

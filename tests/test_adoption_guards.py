@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from ops.campaign.local_readiness import LocalReadiness
+from ops.jobs.local_readiness import LocalReadiness
 from ops.jobs import admission_pause, host_roles, scheduler
 from ops.jobs.closure_impact import audit
 

@@ -1081,27 +1081,30 @@ def plan(queue: dict, state: dict, roles: dict, *, paused_fn, allow_pauses=(), p
          root: Path = REPO, remote_plan: dict | None = None, remote_prefix: str = REMOTE_PREFIX) -> list[dict]:
     """Read-only decisions in priority order. ``fit`` reserves per-MIG slots and remaining local RAM; ``all`` queues.
 
-    The caller supplies RAM remaining after measured budget usage and active-job growth. Reservations for rows already
-    placed but not started, and for rows selected earlier in this plan, are charged here. A named pause may be allowed
-    for placement only; admission remains paused until the coordinator lifts it.
+    Caller capacity overrides the measured snapshot; missing total/free RAM, CPU and disk evidence is measured here.
+    Reservations for rows already placed but not started, and for rows selected earlier in this plan, are charged here.
+    A named pause may be allowed for placement only; admission remains paused until the coordinator lifts it.
     """
     if policy not in ("fit", "all"):
         raise ValueError("unknown local placement policy")
     mirror, manifest, runs = Path(mirror), Path(manifest or Path(mirror) / "MANIFEST.json"), Path(runs or root / "runs")
     by_id, decisions = {j["id"]: j for j in queue["jobs"]}, []
+    from ops.jobs.local_readiness import LocalReadiness
     from ops.jobs.priority import PriorityReservations
-    from ops.campaign.local_readiness import LocalReadiness
 
     owner_ready = LocalReadiness(queue, state, root)
-    capacity = capacity or {}
+    capacity = dict(capacity or {})
+    required = ("ram_total_bytes", "ram_free_bytes", "cpu_free_threads", "disk_total_bytes", "disk_free_bytes")
+    if any(key not in capacity for key in required):
+        capacity = {**_capacity(queue, state, detailed=True), **capacity}
     host = queue.get("hosts", {}).get("local", {})
     slots = _running_slots(queue, state)
-    ram = float(capacity.get("ram_free_bytes", 0)) / 2**30
-    cpu = float(capacity.get("cpu_free_threads", host.get("cpu_thread_budget", os.cpu_count() or 1)))
-    disk = float(capacity.get("disk_free_bytes", float("inf"))) / 2**30
-    budgets = dict(ram_gb=float(capacity.get("ram_total_bytes", capacity.get("ram_free_bytes", 0))) / 2**30,
+    ram = float(capacity["ram_free_bytes"]) / 2**30
+    cpu = float(capacity["cpu_free_threads"])
+    disk = float(capacity["disk_free_bytes"]) / 2**30
+    budgets = dict(ram_gb=float(capacity["ram_total_bytes"]) / 2**30,
                    cpu_threads=float(host.get("cpu_thread_budget", os.cpu_count() or 1)),
-                   disk_gb=float(capacity.get("disk_total_bytes", float("inf"))) / 2**30)
+                   disk_gb=float(capacity["disk_total_bytes"]) / 2**30)
     def request(row):
         return dict(ram_gb=float(row.get("ram_gb", 0)), cpu_threads=float(row.get("cpu_threads", 8)),
                     disk_gb=float(row.get("disk_gb", 0)))

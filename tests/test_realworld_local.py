@@ -452,11 +452,16 @@ def queue_files(root, rows):
     return queue, registry
 
 
+def capacity_evidence(**overrides):
+    return {**dict(ram_total_bytes=10 * 2**30, ram_free_bytes=10 * 2**30, cpu_free_threads=100,
+                   disk_total_bytes=1000 * 2**30, disk_free_bytes=1000 * 2**30), **overrides}
+
+
 def planning(f, rows, **kwargs):
     state = kwargs.pop("state", f.state)
     return rw.plan({"hosts": {"local": {"limits": {LOCAL_GPU: {"max_jobs": 1, "max_mem_gb": 8}}}}, "jobs": rows},
                    state, ROLES, paused_fn=kwargs.pop("paused_fn", lambda _: []), mirror=f.mirror,
-                   runs=f.runs, root=f.root, capacity=kwargs.pop("capacity", {"ram_free_bytes": 10 * 2**30}), **kwargs)
+                   runs=f.runs, root=f.root, capacity=capacity_evidence(**kwargs.pop("capacity", {})), **kwargs)
 
 
 def test_placement_plan_rules_and_priority(mirrored):
@@ -476,7 +481,8 @@ def test_placement_plan_rules_and_priority(mirrored):
     assert by_id["first"]["decision"] == "local"
     assert by_id["second"]["reason"] == "local capacity"
     assert planning(f, [row("paused")], paused_fn=lambda _: ["hold"], allow_pauses=["hold"])[0]["decision"] == "local"
-    assert planning(f, [row()], capacity={"ram_free_bytes": 0})[0]["reason"] == "infeasible on empty local host"
+    assert planning(f, [row()], capacity={"ram_free_bytes": 0})[0]["reason"] == "local capacity"
+    assert planning(f, [row()], capacity={"ram_total_bytes": 0})[0]["reason"] == "infeasible on empty local host"
     assert planning(f, [row()], capacity={"ram_free_bytes": 0}, policy="all")[0]["decision"] == "local"
     assert planning(f, [row()], ownership={"fql": {}})[0]["reason"] == "ownership record exists"
     (f.runs / "fql").mkdir()
@@ -1782,7 +1788,10 @@ def test_ours_priority_placement_and_blocked_head_cannot_be_backfilled(mirrored)
     # Six GB cannot fit the eight-GB head; even the tiny lower-priority rows must wait.
     decisions = planning(f, rows, capacity={"ram_free_bytes": 6 * 2**30})
     assert decisions[0]["decision"] == "waits"
-    assert decisions[1]["decision"] == "local"  # empty-host-infeasible head reserves nothing
+    assert all(d["decision"] == "waits" for d in decisions[1:])
+    # A row larger than the total budget remains infeasible and reserves nothing.
+    decisions = planning(f, rows, capacity={"ram_total_bytes": 6 * 2**30, "ram_free_bytes": 6 * 2**30})
+    assert decisions[1]["decision"] == "local"
     # A pending (unstarted) lower-priority local row must not reserve ahead of new pretraining.
     placed = row("placed", priority=2, host="local", pin_host="local", gpu="any")
     assert planning(f, [placed, rows[-1]])[0]["decision"] == "local"
@@ -1796,7 +1805,7 @@ def test_local_planner_packs_selected_high_tier_before_pending_lower_tier(mirror
             row("old-fql", priority=2, mem_gb=1, ram_gb=1)]
     decisions = rw.plan({"hosts": {"local": {"limits": {LOCAL_GPU: {"max_jobs": 3, "max_mem_gb": 8}}}}, "jobs": rows},
                         f.state, ROLES, paused_fn=lambda _: [], mirror=f.mirror, runs=f.runs, root=f.root,
-                        capacity={"ram_free_bytes": 100 * 2**30})
+                        capacity=capacity_evidence(ram_total_bytes=100 * 2**30, ram_free_bytes=100 * 2**30))
     assert [d["id"] for d in decisions] == ["pretrain", "ours-fql", "old-fql"]
     assert decisions[0]["decision"] == "local" and all(d["decision"] == "waits" for d in decisions[1:])
 
@@ -1811,7 +1820,7 @@ def test_local_planner_multirow_reservations_leave_another_mig_for_backfill(mirr
     state = {**f.state, **{f'a{i}': dict(host='local',status='running',gpu=g,mem_gb=6) for i,g in enumerate((g0,g1))}}
     decisions = rw.plan(dict(hosts={'local': dict(limits=limits,cpu_thread_budget=100)},jobs=rows),state,ROLES,
                         paused_fn=lambda _: [],mirror=f.mirror,runs=f.runs,root=f.root,
-                        capacity=dict(ram_total_bytes=20 * 2**30,ram_free_bytes=6 * 2**30))
+                        capacity=capacity_evidence(ram_total_bytes=20 * 2**30,ram_free_bytes=6 * 2**30))
     assert [(d['id'],d['decision']) for d in decisions] == [('h0','waits'),('h1','waits'),('low','local'),('excess','waits')]
 
 
@@ -1851,3 +1860,66 @@ def test_allowed_pause_placement_charges_capacity_and_multiple_rows(mirrored, re
     free[resource] = 0
     assert planning(f, rows, paused_fn=lambda _: ['allowed'], allow_pauses=['allowed'],
                     capacity=free)[0]['decision'] == 'waits'
+
+
+@pytest.mark.parametrize('resource', ['ram', 'cpu', 'disk'])
+@pytest.mark.parametrize('local_head', [False, True])
+def test_live_backfill_ram_only_capacity_measures_missing_resources(mirrored, monkeypatch, resource, local_head):
+    """local_backfill.driver_capacity returns only free RAM; fit_plan passes it straight to plan."""
+    from ops.resources import memory_budget as mb
+
+    f = mirrored
+    g0, g1 = jobs.APPROVED_HOST_GPUS['local'][:2]
+    limits = {g0: dict(max_jobs=3, max_mem_gb=16), g1: dict(max_jobs=3, max_mem_gb=4)}
+    head = row('head', priority=-1, mem_gb=8, ram_gb=16 if resource == 'ram' else 1,
+               cpu_threads=8, disk_gb=2)
+    if local_head:
+        head.update(host='local', pin_host='local', gpu='any', role='metaworld', script='scripts/train.py',
+                    args=[], deps=[])
+    low = row('low', priority=2, mem_gb=1, ram_gb=1, cpu_threads=1, disk_gb=1)
+    active = row('active', host='local', cpu_threads=16 if resource == 'cpu' else 0,
+                 ram_gb=0, disk_gb=8 if resource == 'disk' else 0)
+    queue = dict(hosts={'local': dict(limits=limits, cpu_thread_budget=16, disk_floor_gb=16)},
+                 jobs=[head, low, active])
+    state = {**f.state, 'active': dict(host='local', status='running', pid=12345, gpu=g0,
+                                      mem_gb=0, ram_gb=0, cpu_threads=0, disk_gb=0)}
+    monkeypatch.setattr(mb, 'TRAINING_CEILING', 64 * 2**30)
+    # The caller's free RAM overrides this snapshot's 64 GiB; it must not become the total budget.
+    monkeypatch.setattr(mb, 'snapshot', lambda: dict(budget_usage=0))
+    monkeypatch.setattr(mb, 'session_nonfile_pss', lambda: {})
+    monkeypatch.setattr(rw.shutil, 'disk_usage', lambda _: SimpleNamespace(
+        total=128 * 2**30, free=(24 if resource == 'disk' else 100) * 2**30))
+    hold = 'fqlnq-await-placement-20261111'
+    caller_capacity = {'ram_free_bytes': 8 * 2**30}
+    # Same API and RAM-only evidence shape as local_backfill.fit_plan; only paths are synthetic.
+    def fit(capacity):
+        return rw.plan(queue, state, ROLES, paused_fn=lambda i: [hold] if i == 'low' else [],
+                       allow_pauses=[hold], policy='fit', capacity=capacity, ownership={},
+                       mirror=f.mirror, runs=f.runs, root=f.root)
+
+    partial = fit(caller_capacity)
+    complete = fit({**rw._capacity(queue, state, detailed=True), **caller_capacity})
+    assert partial == complete
+    assert caller_capacity == {'ram_free_bytes': 8 * 2**30}
+    assert next(d for d in partial if d['id'] == 'low')['decision'] == 'waits'
+    if not local_head:
+        assert next(d for d in partial if d['id'] == 'head')['reason'] == 'local capacity'
+    # With sufficient resources the same call admits work, so the refusal is capacity-driven.
+    assert next(d for d in fit(capacity_evidence(ram_total_bytes=64 * 2**30, ram_free_bytes=64 * 2**30))
+                if d['id'] == 'low')['decision'] == 'local'
+
+
+def test_placement_measures_missing_free_ram(mirrored, monkeypatch):
+    from ops.resources import memory_budget as mb
+
+    f = mirrored
+    monkeypatch.setattr(mb, 'TRAINING_CEILING', 64 * 2**30)
+    monkeypatch.setattr(mb, 'snapshot', lambda: dict(budget_usage=64 * 2**30))
+    monkeypatch.setattr(mb, 'session_nonfile_pss', lambda: {})
+    monkeypatch.setattr(rw.shutil, 'disk_usage', lambda _: SimpleNamespace(total=128 * 2**30, free=100 * 2**30))
+    capacity = capacity_evidence(ram_total_bytes=64 * 2**30)
+    del capacity['ram_free_bytes']
+    result = rw.plan(dict(hosts={'local': dict(limits={LOCAL_GPU: dict(max_jobs=2, max_mem_gb=16)})}, jobs=[row()]),
+                     f.state, ROLES, paused_fn=lambda _: [], policy='fit', capacity=capacity, ownership={},
+                     mirror=f.mirror, runs=f.runs, root=f.root)
+    assert result[0]['decision'] == 'waits' and result[0]['reason'] == 'local capacity'

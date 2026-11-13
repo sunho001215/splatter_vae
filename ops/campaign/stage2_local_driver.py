@@ -311,7 +311,7 @@ middle_pretrain_pending = any(status(j['id']) == jobs.PENDING for j in stage2
                               if j.get('stage2_admission_rank') == 'middle' and j['script'] == 'scripts/train.py')
 
 
-from ops.campaign.local_readiness import LocalReadiness  # noqa: E402
+from ops.jobs.local_readiness import LocalReadiness  # noqa: E402
 _owner_ready = LocalReadiness(queue, state, ROOT, now=stamp)
 
 

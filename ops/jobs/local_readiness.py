@@ -31,7 +31,7 @@ class LocalReadiness:
                                   if name != 'followup-registration-20261017.json' or j.get('stage') == 2)
         self.stage2_ids.update(j['id'] for j in queue['jobs'] if j.get('stage') == 2)
         # Read literal registration declarations; never import/execute the entry module.
-        declarations = ast.parse(Path(__file__).with_name('baseline_local_driver.py').read_text())
+        declarations = ast.parse((Path(__file__).resolve().parents[1] / 'campaign/baseline_local_driver.py').read_text())
         constants = {n.targets[0].id: ast.literal_eval(n.value) for n in declarations.body
                      if isinstance(n, ast.Assign) and isinstance(n.targets[0], ast.Name)
                      and n.targets[0].id in ('REGISTRATIONS', 'ONLY')}

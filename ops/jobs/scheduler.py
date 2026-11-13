@@ -1417,7 +1417,7 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
                                    disk_gb=float(r.get('disk_gb', 0))), messages=messages)
     from ops.jobs.admission_pause import paused, snapshot
     pause_evidence = snapshot()  # refreshed once on every daemon tick, before any reservation
-    from ops.campaign.local_readiness import LocalReadiness
+    from ops.jobs.local_readiness import LocalReadiness
     owner_ready = LocalReadiness(queue, state, REPO)
     ready_rows = eligible(list(jobs.values()), state)
     ready_ids = {j['id'] for j in ready_rows}
