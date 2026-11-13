@@ -14,7 +14,6 @@ FILE_CLASSES = {
     "tests/test_adoption_guards.py": "cpu",
     "tests/test_ours_priority.py": "cpu",
     "tests/test_ours_continuation.py": "cpu",
-    "tests/test_ours_ext_registration.py": "cpu",
     "tests/test_ours_length_eval.py": "cpu",
     "tests/test_launch_hold.py": "cpu",
     "tests/test_mig_validation.py": "cpu",

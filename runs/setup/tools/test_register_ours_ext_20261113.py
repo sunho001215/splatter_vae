@@ -12,7 +12,7 @@ from ops.jobs import host_roles
 from ops.jobs import realworld_local as rw
 from s4d.train.continuation import file_sha
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[3]  # runs/setup/tools -> repository root
 SPEC = importlib.util.spec_from_file_location("ours_ext_reg", ROOT / "runs/setup/tools/register_ours_ext_20261113.py")
 reg = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(reg)
