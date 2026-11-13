@@ -202,6 +202,13 @@ CUDA_VISIBLE_DEVICES="$GPU4" .venv/bin/python -I scripts/run_tests.py
 .venv/bin/ruff check s4d ops scripts tests
 ```
 
+The release suite's `--partition local` selects `metaworld_data or local_host_data`; `--partition remote` selects
+`not (metaworld_data or local_host_data)`. Use `local_host_data` for tests needing local campaign-host files such as
+the live registry/queue, `runs/setup` tools or `/home/ws` paths. The release chain records the local evidence under
+`local-suite/`; acceptance combines it with the remote report only when their selected node IDs are exact
+complements and their source fingerprints and commits match. The default on the local host, `--partition all`, runs
+every test without a marker filter.
+
 **Single branch: `main` (since 2026-11-09; formerly `splatter4d`).** There is no other long-lived branch. Prepare the
 candidate in a clean detached worktree, then publish that exact commit as a fast-forward (never force):
 

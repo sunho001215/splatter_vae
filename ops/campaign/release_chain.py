@@ -41,7 +41,7 @@ from ops.resources.gpu_guard import APPROVED_HOST_GPUS  # noqa: E402
 
 PY = str(ROOT / '.venv/bin/python')
 POLL_SECONDS = 10
-# user 2026-11-12: the remote has no Meta-World development data; the metaworld_data tests run here, on the local test
+# The remote has no Meta-World development data or local campaign files; both markers run here, on the local test
 # MIG slice, from the clean checkout of the release commit, concurrently with the remote native suite
 LOCAL_TEST_GPU = 'MIG-8da55219-bd6b-5260-8be1-3b2a76ac733c'
 LOCAL_PARTITION_TIMEOUT = 3600
@@ -219,7 +219,7 @@ class Release:
         self.native_gpu = self.gpus[0]
 
     def start_local_partition(self):
-        """Run the metaworld_data tests of the release commit on this host (background)."""
+        """Run tests needing local data from the release commit on this host (background)."""
         head = subprocess.run(['git', '-C', str(self.sync_repo), 'rev-parse', 'HEAD'], capture_output=True, text=True,
                               check=True).stdout.strip()
         if head != self.commit:
@@ -234,10 +234,10 @@ class Release:
         self.local_log = open(self.local_out.parent / f'release-local-{self.short}.log', 'w')
         self.local_started = time.time()
         self.local_proc = subprocess.Popen(
-            [PY, '-I', str(self.sync_repo / 'scripts/run_tests.py'), '--partition', 'metaworld_data',
+            [PY, '-I', str(self.sync_repo / 'scripts/run_tests.py'), '--partition', suite_partition.LOCAL,
              '--output-dir', str(self.local_out)], cwd=self.sync_repo, env=env, stdout=self.local_log,
             stderr=subprocess.STDOUT)
-        log(f'local metaworld_data partition started (pid {self.local_proc.pid}, {self.local_gpu})')
+        log(f'local data partition started (pid {self.local_proc.pid}, {self.local_gpu})')
 
     def finish_local_partition(self):
         code = self.local_proc.wait(timeout=LOCAL_PARTITION_TIMEOUT)
@@ -245,8 +245,8 @@ class Release:
         self.timing['stages']['local_partition'] = round(time.time() - self.local_started, 1)
         report_path = self.local_out / 'tests.json'
         if code != 0 or not report_path.is_file():
-            raise SystemExit(f'local metaworld_data partition failed (exit {code}); see {self.local_log.name}')
-        dest = ROOT / 'runs/remote/acceptance' / self.short / 'local-metaworld'
+            raise SystemExit(f'local data partition failed (exit {code}); see {self.local_log.name}')
+        dest = ROOT / 'runs/remote/acceptance' / self.short / suite_partition.LOCAL_EVIDENCE_DIR
         dest.mkdir(parents=True, exist_ok=True)
         for name in ('tests.json', 'tests.log', 'tests.junit.xml'):
             if (self.local_out / name).is_file():

@@ -244,7 +244,10 @@ def test_memory_watch_puts_the_same_tools_directory_on_sys_path():
     assert result.stdout.strip() == str(TOOLS)
 
 
-@pytest.mark.parametrize("name", sorted(TOOL_HELP))
+@pytest.mark.parametrize("name", [
+    pytest.param(name, marks=pytest.mark.local_host_data) if name == "sync_wandb_remote" else name
+    for name in sorted(TOOL_HELP)
+])
 def test_argparse_tool_entry_points_keep_their_help(name):
     shim = tool_path(name)
     if shim is not None:

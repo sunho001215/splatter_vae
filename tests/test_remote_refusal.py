@@ -122,6 +122,7 @@ def test_backend_distinguishes_only_valid_guard_refusal(tmp_path, monkeypatch):
         assert (isinstance(caught.value, remote.AdmissionRefused)) is (expected is remote.AdmissionRefused)
 
 
+@pytest.mark.local_host_data
 def test_real_registry_replay_unchanged_for_every_job(tmp_path):
     """Only read main's registry; replay one captured byte sequence with both reducers."""
     import ast

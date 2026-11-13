@@ -19,9 +19,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
-MARKER = "metaworld_data"  # tests reading the Meta-World development data (pyproject.toml markers)
 sys.path.insert(0, str(REPO / "scripts"))
 sys.path.insert(0, str(REPO))
+from ops.containers.suite_partition import LOCAL, MARKER, REMOTE  # noqa: E402
+
 KINDS = ("passed", "error", "failed", "skipped")
 
 
@@ -278,16 +279,16 @@ def validate_completeness(collected, results):
 
 def select_partition(mode, collected, marked):
     """(mode, pytest marker args, selected, deselected, problems) of a release-suite partition: 'all' runs the complete
-    collection; 'remote' every test but the MARKER ones (the complete suite when none is marked); MARKER exactly those."""
+    collection; 'remote' every test but the MARKER ones (the complete suite when none is marked); 'local' exactly those."""
     problems = []
     if mode != "all" and not marked:
-        if mode == "remote":
-            mode = "all"  # nothing needs the Meta-World data: the remote suite is the complete suite
+        if mode == REMOTE:
+            mode = "all"  # nothing needs local data: the remote suite is the complete suite
         else:
             problems.append({"phase": "collection", "error": f"No {MARKER} tests to run in this partition"})
-    marker = () if mode == "all" else ("-m", f"not {MARKER}") if mode == "remote" else ("-m", MARKER)
+    marker = () if mode == "all" else ("-m", f"not ({MARKER})") if mode == REMOTE else ("-m", MARKER)
     marked_set = set(marked)
-    selected = list(collected) if mode == "all" else [n for n in collected if (n in marked_set) == (mode == MARKER)]
+    selected = list(collected) if mode == "all" else [n for n in collected if (n in marked_set) == (mode == LOCAL)]
     selected_set = set(selected)
     return mode, marker, selected, [n for n in collected if n not in selected_set], problems
 
@@ -309,8 +310,9 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--output-dir", default=os.environ.get("S4D_TEST_EVIDENCE_DIR", str(REPO / "docs")))
     ap.add_argument("--files", nargs="+", help="Development subset; never produces full-suite acceptance")
-    ap.add_argument("--partition", choices=("all", "remote", "metaworld_data"),
-                    help="default: remote on the remote host (no Meta-World development data there), all elsewhere")
+    ap.add_argument("--partition", choices=("all", REMOTE, LOCAL),
+                    help="local: tests needing local-host files or Meta-World development data; "
+                         "default: remote on the remote host, all elsewhere")
     ap.add_argument("--shards-cpu", type=int)
     ap.add_argument("--shards-gpu", type=int)
     ap.add_argument("--worker", type=Path, help=argparse.SUPPRESS)
@@ -400,8 +402,8 @@ def main():
     if collect_code or not collection or collection.get("problems") or timed_out:
         problems.append({"phase": "collection", "error": f"Collection failed (exit {collect_code})",
                          "details": collection})
-    # Release-suite partitions (user 2026-11-12; ops/containers/suite_partition.py): the remote host has no Meta-World
-    # development data, so its suite runs every test but the metaworld_data ones; the release chain runs exactly those
+    # Release-suite partitions (ops/containers/suite_partition.py): the remote host has no Meta-World development
+    # data or local campaign-host files, so its suite excludes both markers; the release chain runs exactly those
     # on the local host. Only the combination of both is a complete suite (full_suite_passed stays false here).
     mode = options.partition or ("remote" if HOST_NAME == "remote" else "all")
     marked = []

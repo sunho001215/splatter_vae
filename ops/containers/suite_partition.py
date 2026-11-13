@@ -1,11 +1,11 @@
-"""Release-suite partitions (user 2026-11-12: the Meta-World development data was removed from the remote host; the
-tests that read it run on the local host, the remote native suite runs every other test).
+"""Release-suite partitions: tests reading Meta-World development data or local campaign-host files run on the
+local host; the remote native suite runs every other test.
 
-scripts/run_tests.py writes, for a partition run, ``partition`` ('remote' or 'metaworld_data'), the nodeids it ran
+scripts/run_tests.py writes, for a partition run, ``partition`` ('remote' or 'local'), the nodeids it ran
 (``selected``), the nodeids of the complete collection it did not run (``deselected``), the size of the complete
 collection (``collected_total``) and ``partition_passed``; ``full_suite_passed`` stays true only for a complete run.
 
-``combine`` turns a passing remote partition and a passing local metaworld_data partition of the SAME sources into the
+``combine`` turns a passing remote partition and a passing local partition of the SAME sources into the
 complete-suite report the gate consumers expect (``full_suite_passed`` true, summed counts, both parts embedded), and
 only when: both partitions passed with no failure, error or skip; the local partition ran exactly the nodeids the
 remote one deselected and nothing else, so the two are disjoint and together equal the remote's complete collection;
@@ -17,10 +17,11 @@ parametrizes over the host's GPUs), so the local host's own complete collection 
 
 from __future__ import annotations
 
-MARKER = "metaworld_data"
+MARKER = "metaworld_data or local_host_data"
 # provenance a consumer may add to a combined report (adopt_remote_suite_evidence: docs/tests.json)
 PROVENANCE_KEYS = frozenset({"adopted_evidence"})
-REMOTE, LOCAL, COMBINED = "remote", MARKER, "combined"
+REMOTE, LOCAL, COMBINED = "remote", "local", "combined"
+LOCAL_EVIDENCE_DIR = "local-suite"
 KINDS = ("passed", "error", "failed", "skipped")
 
 
@@ -30,7 +31,8 @@ def check_partition(report: dict, partition: str) -> None:
         raise ValueError(f"not a {partition} partition report")
     counts = report.get("counts")
     selected, deselected = report.get("selected"), report.get("deselected")
-    if (report.get("partition_passed") is not True or report.get("full_suite_passed") is not False
+    if (report.get("partition_marker") != MARKER
+            or report.get("partition_passed") is not True or report.get("full_suite_passed") is not False
             or type(report.get("exit_code")) is not int or report["exit_code"] != 0 or not isinstance(counts, dict)
             or any(type(counts.get(kind)) is not int for kind in KINDS)
             or any(counts[kind] != 0 for kind in ("failed", "error", "skipped")) or counts["passed"] < 1
@@ -46,13 +48,13 @@ def check_partition(report: dict, partition: str) -> None:
             or report.get("problems")):
         raise ValueError(f"{partition} partition report is incomplete or failing")
     if partition == REMOTE and (report.get("host") != "remote" or not deselected):
-        raise ValueError("the remote partition must run on the remote host and deselect the metaworld_data tests")
+        raise ValueError("the remote partition must run on the remote host and deselect the local-data tests")
     if partition == LOCAL and report.get("host") != "local":
-        raise ValueError("the metaworld_data partition runs on the local host")
+        raise ValueError("the local-data partition runs on the local host")
 
 
 def combine(remote: dict, local: dict) -> dict:
-    """The complete-suite report of a remote partition plus its local metaworld_data complement."""
+    """The complete-suite report of a remote partition plus its local-data complement."""
     check_partition(remote, REMOTE)
     check_partition(local, LOCAL)
     if remote["source_sha256"] != local["source_sha256"]:
@@ -87,7 +89,7 @@ def release_support(read) -> dict:
     required = {
         'scripts/run_tests.py': (b'--partition',),
         'scripts/test_shards.py': (),
-        'ops/containers/suite_partition.py': (b'def combine(',),
+        'ops/containers/suite_partition.py': (b'def combine(', MARKER.encode()),
         'ops/containers/verification.py': (b'from ops.containers import suite_partition',),
     }
     blockers = []

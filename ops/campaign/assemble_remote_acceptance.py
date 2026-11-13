@@ -50,10 +50,10 @@ def write(name, payload):
 
 suite = verified(f'verify-native-{short}', 'tests.json')
 if suite.get('partition') == suite_partition.REMOTE:
-    # user 2026-11-12: the remote suite deselected the metaworld_data tests; the release chain ran exactly those on
-    # the local host (local-metaworld/tests.json + its recorded checksum); only their combination is the full suite
-    local_path = out / 'local-metaworld' / 'tests.json'
-    recorded = json.loads((out / 'local-metaworld' / 'record.json').read_text())
+    # The remote suite deselected both local-data markers; the release chain ran exactly those on the local host.
+    # Only their combination is the full suite (local tests.json plus its recorded checksum).
+    local_path = out / suite_partition.LOCAL_EVIDENCE_DIR / 'tests.json'
+    recorded = json.loads((out / suite_partition.LOCAL_EVIDENCE_DIR / 'record.json').read_text())
     assert recorded['commit'] == commit and recorded['tests_json_sha256'] == hashlib.sha256(local_path.read_bytes()).hexdigest()
     local = json.loads(local_path.read_text())
     assert local.get('expected_commit') == commit, 'local partition ran another commit'

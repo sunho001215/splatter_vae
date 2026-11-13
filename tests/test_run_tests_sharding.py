@@ -183,11 +183,11 @@ def test_thread_budget_affinity_fallback(monkeypatch):
     assert runner.thread_budget() == 3
 
 
-def synthetic_worker(tmp_path, source, collect=False):
+def synthetic_worker(tmp_path, source, collect=False, marker=()):
     test = tmp_path / "test_tiny.py"
     test.write_text(source)
     payload = tmp_path / "worker.json"
-    spec = {"pytest_args": [str(test), "-q", "--basetemp", str(tmp_path / "temp"),
+    spec = {"pytest_args": [str(test), *marker, "-q", "--basetemp", str(tmp_path / "temp"),
                             "-o", f"cache_dir={tmp_path / 'cache'}"], "json": str(payload)}
     if collect:
         spec["pytest_args"].append("--collect-only")
@@ -300,28 +300,70 @@ def test_seeded_model_cache_is_private(tmp_path):
 
 
 def test_release_suite_partitions_select_exactly_and_complement():
-    """User 2026-11-12: the remote runs every test but the metaworld_data ones; the local partition exactly those."""
+    """The remote excludes the union of both local-data markers; the local partition runs exactly that union."""
     collected = ["a.py::x", "a.py::y", "b.py::z", "c.py::w"]
-    marked = ["a.py::y"]
+    marked = ["a.py::y", "b.py::z"]
     mode, marker, selected, deselected, problems = runner.select_partition("remote", collected, marked)
     assert (mode, marker, selected, deselected, problems) == (
-        "remote", ("-m", "not metaworld_data"), ["a.py::x", "b.py::z", "c.py::w"], ["a.py::y"], [])
-    mode, marker, selected, deselected, problems = runner.select_partition("metaworld_data", collected, marked)
+        "remote", ("-m", "not (metaworld_data or local_host_data)"),
+        ["a.py::x", "c.py::w"], ["a.py::y", "b.py::z"], [])
+    mode, marker, selected, deselected, problems = runner.select_partition("local", collected, marked)
     assert (mode, marker, selected, deselected, problems) == (
-        "metaworld_data", ("-m", "metaworld_data"), ["a.py::y"], ["a.py::x", "b.py::z", "c.py::w"], [])
-    assert runner.select_partition("all", collected, marked)[2:4] == (collected, [])
+        "local", ("-m", "metaworld_data or local_host_data"),
+        ["a.py::y", "b.py::z"], ["a.py::x", "c.py::w"], [])
+    assert runner.select_partition("all", collected, marked)[1:4] == ((), collected, [])
     # nothing marked: the remote suite is the complete suite; an empty local partition fails closed
     assert runner.select_partition("remote", collected, [])[0] == "all"
-    assert runner.select_partition("metaworld_data", collected, [])[4]
+    assert runner.select_partition("local", collected, [])[4]
 
 
-def test_the_metaworld_marker_is_registered_and_used():
+def test_the_local_data_markers_are_registered_and_used():
     import subprocess
     import sys
     listed = subprocess.run([sys.executable, "-I", "-m", "pytest", "--markers", "-p", "no:cacheprovider"],
                             cwd=REPO, capture_output=True, text=True, timeout=120).stdout
-    assert f"@pytest.mark.{runner.MARKER}:" in listed
+    assert "@pytest.mark.metaworld_data:" in listed
+    assert "@pytest.mark.local_host_data:" in listed
     assert "@pytest.mark.metaworld_data" in (REPO / "tests/test_baselines_snerl.py").read_text()
+    assert "@pytest.mark.local_host_data" in (REPO / "tests/test_remote_refusal.py").read_text()
+
+
+def test_real_pytest_collection_and_workers_apply_both_markers_as_a_union(tmp_path):
+    source = ("import pytest\n"
+              "def test_portable(): pass\n"
+              "@pytest.mark.metaworld_data\ndef test_metaworld(): pass\n"
+              "@pytest.mark.local_host_data\ndef test_host(): pass\n"
+              "@pytest.mark.metaworld_data\n@pytest.mark.local_host_data\ndef test_both(): pass\n")
+    process, collection = synthetic_worker(tmp_path, source, collect=True)
+    assert process.returncode == 0, process.stdout + process.stderr
+    process, marked = synthetic_worker(tmp_path, source, collect=True, marker=("-m", runner.MARKER))
+    assert process.returncode == 0, process.stdout + process.stderr
+    assert {n.rsplit("::", 1)[1] for n in marked["nodeids"]} == {"test_metaworld", "test_host", "test_both"}
+    expected = {"all": {"test_portable", "test_metaworld", "test_host", "test_both"},
+                "remote": {"test_portable"}, "local": {"test_metaworld", "test_host", "test_both"}}
+    for mode, names in expected.items():
+        _, marker, selected, deselected, problems = runner.select_partition(
+            mode, collection["nodeids"], marked["nodeids"])
+        assert not problems and {n.rsplit("::", 1)[1] for n in selected} == names
+        assert set(selected).isdisjoint(deselected)
+        assert set(selected) | set(deselected) == set(collection["nodeids"])
+        process, payload = synthetic_worker(tmp_path, source, marker=marker)
+        assert process.returncode == 0, process.stdout + process.stderr
+        counts, problems = runner.validate_completeness(selected, [(process.returncode, payload)])
+        assert not problems and counts["passed"] == len(names)
+
+
+def test_only_the_local_host_cases_are_marked_in_the_affected_files(tmp_path):
+    process = subprocess.run([
+        sys.executable, "-I", "-m", "pytest", "tests/test_ops_layout.py", "tests/test_remote_refusal.py",
+        "--collect-only", "-q", "-m", "local_host_data", "-p", "no:cacheprovider",
+        "--basetemp", str(tmp_path / "collection"),
+    ], cwd=REPO, capture_output=True, text=True, timeout=120)
+    assert process.returncode == 0, process.stdout + process.stderr
+    assert {line for line in process.stdout.splitlines() if line.startswith("tests/")} == {
+        "tests/test_ops_layout.py::test_argparse_tool_entry_points_keep_their_help[sync_wandb_remote]",
+        "tests/test_remote_refusal.py::test_real_registry_replay_unchanged_for_every_job",
+    }
 
 
 def test_terminating_the_runner_kills_and_reaps_its_worker_sessions(tmp_path):

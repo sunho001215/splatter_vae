@@ -1,4 +1,4 @@
-"""Release-suite partitions (user 2026-11-12): the remote native suite deselects the metaworld_data tests, the release
+"""Release-suite partitions: the remote native suite deselects tests with either local-data marker, the release
 chain runs exactly those on the local host, and only their exact combination is a complete suite."""
 
 from __future__ import annotations
@@ -13,12 +13,13 @@ from ops.containers.verification import validate_report
 SOURCE = {"s4d/a.py": "1" * 64, "tests/test_x.py": "2" * 64}
 COMMIT, IMAGE = "c" * 40, "sha256:" + "d" * 64
 ALL = [f"tests/test_x.py::t{i}" for i in range(6)]
-LOCAL_IDS = ["tests/test_x.py::t5"]
+LOCAL_IDS = ["tests/test_x.py::t4", "tests/test_x.py::t5"]
 
 
 def part(partition, selected, host, **changes):
     deselected = [n for n in ALL if n not in selected]
-    report = {"partition": partition, "selected": list(selected), "deselected": deselected, "collected_total": len(ALL),
+    report = {"partition": partition, "partition_marker": sp.MARKER,
+              "selected": list(selected), "deselected": deselected, "collected_total": len(ALL),
               "partition_passed": True, "full_suite_passed": False, "exit_code": 0,
               "counts": {"passed": len(selected), "error": 0, "failed": 0, "skipped": 0}, "host": host,
               "source_sha256": dict(SOURCE), "source_sha256_before": dict(SOURCE), "source_changed_during_suite": False,
@@ -54,6 +55,8 @@ def test_exact_partitions_combine_into_a_complete_suite():
     ("local", {"host": "remote"}), ("local", {"counts": {"passed": 0, "error": 0, "failed": 0, "skipped": 0}}),
     ("local", {"source_sha256": {**SOURCE, "s4d/a.py": "9" * 64}, "source_sha256_before": {**SOURCE, "s4d/a.py": "9" * 64}}),
     ("local", {"expected_commit": "e" * 40}), ("remote", {"collected_total": 7}),
+    ("remote", {"partition_marker": "metaworld_data"}), ("local", {"partition_marker": "metaworld_data"}),
+    ("local", {"partition": "metaworld_data"}), ("remote", {"partition_marker": None}),
 ])
 def test_failing_stale_or_mismatched_partitions_never_combine(which, changes):
     parts = {"remote": remote(), "local": local()}
@@ -68,7 +71,7 @@ def test_coverage_must_be_exact():
     with pytest.raises(ValueError):  # a test the remote deselected ran nowhere
         sp.combine(remote(), part(sp.LOCAL, [], "local", counts={"passed": 1, "error": 0, "failed": 0, "skipped": 0}))
     with pytest.raises(ValueError):  # the local partition ran a different test than the remote deselected
-        sp.combine(remote(), part(sp.LOCAL, ["tests/test_x.py::t4"], "local"))
+        sp.combine(remote(), part(sp.LOCAL, ["tests/test_x.py::t3"], "local"))
     with pytest.raises(ValueError):  # duplicates
         duplicated = remote()
         duplicated["selected"] = duplicated["selected"] + duplicated["selected"][:1]
@@ -160,7 +163,7 @@ def test_historical_release_gate_is_rejected_before_launch():
     from ops.containers.suite_partition import release_support
 
     tree = {'scripts/run_tests.py': b'--partition', 'scripts/test_shards.py': b'',
-            'ops/containers/suite_partition.py': b'def combine(',
+            'ops/containers/suite_partition.py': b'def combine(\nmetaworld_data or local_host_data',
             'ops/containers/verification.py': b'from ops.containers import suite_partition'}
     assert release_support(tree.get) == {'compatible': True, 'blockers': []}
     for missing in tree:
@@ -169,3 +172,13 @@ def test_historical_release_gate_is_rejected_before_launch():
         assert not result['compatible'] and len(result['blockers']) == 1
     tree['scripts/run_tests.py'] = b'old unpartitioned runner'
     assert not release_support(tree.get)['compatible']
+
+
+def test_metaworld_only_release_support_is_rejected():
+    tree = {'scripts/run_tests.py': b'--partition', 'scripts/test_shards.py': b'',
+            'ops/containers/suite_partition.py': b'def combine(\nMARKER = "metaworld_data"',
+            'ops/containers/verification.py': b'from ops.containers import suite_partition'}
+    assert sp.release_support(tree.get) == {
+        'compatible': False,
+        'blockers': ['ops/containers/suite_partition.py: missing partitioned release-gate support'],
+    }

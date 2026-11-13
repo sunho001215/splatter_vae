@@ -38,8 +38,8 @@ assert digest == state['sync']['files']['evidence/tests.json']
 report = json.loads(path.read_text())
 combined_from = None
 if report.get('partition') == suite_partition.REMOTE:
-    # user 2026-11-12: the remote suite ran every test but the metaworld_data ones; adopt the release's combined
-    # report (assemble_remote_acceptance.py: this job's report + the local metaworld_data partition of the same sources)
+    # The remote suite excluded both local-data markers; adopt the release's combined report
+    # (assemble_remote_acceptance.py: this job's report + the local partition of the same sources).
     assert job_id.startswith('verify-native-'), job_id
     accepted = ROOT / 'runs/remote/acceptance' / job_id.removeprefix('verify-native-') / 'tests.json'
     record = json.loads(accepted.read_text())

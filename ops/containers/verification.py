@@ -99,7 +99,7 @@ def validate_report(purpose: str, report: dict, source: dict, commit: str, image
     if not isinstance(report, dict) or not source or report.get("host") != "remote":
         raise ValueError("Verification requires an actual remote report")
     if purpose == "native_suite":
-        # user 2026-11-12: a remote PARTITION report (every test but the metaworld_data ones, which the release
+        # A remote PARTITION report (every test but the local-data markers, which the release
         # chain runs on the local host) or a COMBINED report of both partitions (ops/containers/suite_partition.py)
         if report.get("partition") in (suite_partition.REMOTE, suite_partition.COMBINED):
             try:

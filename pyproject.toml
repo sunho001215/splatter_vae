@@ -84,7 +84,8 @@ known-first-party = ["s4d", "ops"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = ["gpu: needs a CUDA device (trainer entry points); runs in the release chain on the remote GPU",
-           "metaworld_data: reads the Meta-World development data (/home/ws/data/metaworld/splatter4d_v1), which is not on the remote host (user 2026-11-12); runs in the release chain's local partition"]
+           "metaworld_data: reads the Meta-World development data (/home/ws/data/metaworld/splatter4d_v1), which is not on the remote host (user 2026-11-12); runs in the release chain's local partition",
+           "local_host_data: reads files that exist only on the local campaign host: the live registry/queue, runs/setup tools, /home/ws paths; runs in the release chain's local partition"]
 
 [[tool.uv.dependency-metadata]]
 name = "gsplat"
