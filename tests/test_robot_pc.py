@@ -1376,7 +1376,10 @@ class FakeSerial:
 
 
 def test_gripper_single_owner_read_only_status_and_command_path(tmp_path, monkeypatch):
-    from ops.robot_pc import gripper as G
+    from ops.robot_pc import gripper as G, devices
+
+    # Unit-test the fake serial owner independently of live collector/data transfers.
+    monkeypatch.setattr(devices, "scan", lambda **kw: {"recorders": []})
 
     with pytest.raises(G.PortBusy, match="second Modbus master"):
         G.RobotiqRTU(serial_module=SimpleNamespace(Serial=FakeSerial), lock_path=str(tmp_path / "l"),
