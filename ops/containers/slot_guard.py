@@ -106,18 +106,23 @@ def instance(listing, query, uuid, parent, gi, device):
 
 
 def decide(data):
-    uuid, parent = data["uuid"], data["parent"]
-    if not re.fullmatch(r"MIG-[0-9a-f-]+", uuid) or not re.fullmatch(r"GPU-[0-9a-f-]+", parent):
-        raise ValueError("invalid device identity")
-    gi = integer(data["gpu_instance_id"], "gpu_instance_id")
-    device = integer(data["device"], "device")
-    max_jobs = integer(data["max_jobs"], "max_jobs", 1)
-    exclusive = data.get("exclusive_gpu", False)
-    if type(exclusive) is not bool:
-        raise ValueError("invalid exclusive_gpu")
-    threshold = integer(data["idle_mib"], "idle_mib")
-    need = integer(data["gpu_bytes"], "gpu_bytes", 1)
-    capacity = integer(data["capacity_bytes"], "capacity_bytes", 1)
+    host_only = data.get("host_only", False)
+    if type(host_only) is not bool:
+        raise ValueError("invalid host_only")
+    uuid = None
+    if not host_only:
+        uuid, parent = data["uuid"], data["parent"]
+        if not re.fullmatch(r"MIG-[0-9a-f-]+", uuid) or not re.fullmatch(r"GPU-[0-9a-f-]+", parent):
+            raise ValueError("invalid device identity")
+        gi = integer(data["gpu_instance_id"], "gpu_instance_id")
+        device = integer(data["device"], "device")
+        max_jobs = integer(data["max_jobs"], "max_jobs", 1)
+        exclusive = data.get("exclusive_gpu", False)
+        if type(exclusive) is not bool:
+            raise ValueError("invalid exclusive_gpu")
+        threshold = integer(data["idle_mib"], "idle_mib")
+        need = integer(data["gpu_bytes"], "gpu_bytes", 1)
+        capacity = integer(data["capacity_bytes"], "capacity_bytes", 1)
     ram = integer(data["ram_bytes"], "ram_bytes", 1)
     reserve = integer(data["reserve_bytes"], "reserve_bytes")
     disk_need = integer(data["disk_bytes"], "disk_bytes")
@@ -127,7 +132,10 @@ def decide(data):
         raise ValueError("invalid disk floor fraction")
     paths = data.get("test_paths", {})
     smi, docker = paths.get("nvidia_smi", "nvidia-smi"), paths.get("docker", "docker")
-    total, used, processes = instance(run(smi, "-L"), run(smi, "-q", "-i", parent), uuid, parent, gi, device)
+    total = used = 0
+    processes = {}
+    if not host_only:
+        total, used, processes = instance(run(smi, "-L"), run(smi, "-q", "-i", parent), uuid, parent, gi, device)
     ids = run(docker, "ps", "-q", "--no-trunc", "--filter", "label=s4d.project=splatter4d",
               "--filter", "label=s4d.owner=kaist-sunho").split()
     if len(ids) != len(set(ids)) or any(not re.fullmatch(r"[0-9a-f]{64}", cid) for cid in ids):
@@ -145,7 +153,7 @@ def decide(data):
         if not (state["Running"] or state.get("Restarting", False) or state.get("Paused", False)):
             continue
         pids = None
-        if labels.get("s4d.gpu") == uuid and labels.get("s4d.role") != "migval":
+        if not host_only and labels.get("s4d.gpu") == uuid and labels.get("s4d.role") != "migval":
             rows = run(docker, "top", cid, "-eo", "pid").strip().splitlines()
             if not rows or rows[0].strip().lower() != "pid" or any(not row.strip().isdigit() for row in rows[1:]):
                 raise ValueError("unreadable container process list")
@@ -156,9 +164,15 @@ def decide(data):
         ram_used = decimal(stat.get("anon"), "cgroup anon") + decimal(stat.get("shmem"), "cgroup shmem")
         records.append((item, pids, ram_used))
     totals = tenant_totals(uuid, processes, records)
-    reasons = gpu_reasons(total, used, need, capacity, totals['gpu_reserved'], totals['gpu_pending'],
-                          totals['count'], max_jobs, exclusive, totals['tenant_exclusive'],
-                          bool(set(processes) - totals['known']), threshold)
+    reasons = []
+    if 'campaign_ram_cap_bytes' in data:
+        cap = integer(data['campaign_ram_cap_bytes'], 'campaign RAM cap', 1)
+        if sum(item['HostConfig']['Memory'] for item, _, _ in records) + ram > cap:
+            reasons.append('campaign RAM cap')
+    if not host_only:
+        reasons += gpu_reasons(total, used, need, capacity, totals['gpu_reserved'], totals['gpu_pending'],
+                              totals['count'], max_jobs, exclusive, totals['tenant_exclusive'],
+                              bool(set(processes) - totals['known']), threshold)
     cpu_need = integer(data.get("cpu_threads", 8), "cpu_threads", 1)
     cpu_budget = integer(data.get("cpu_thread_budget", 320), "cpu_thread_budget", 1)
     meminfo = Path(paths.get("meminfo", "/proc/meminfo")).read_text()

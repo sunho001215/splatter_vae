@@ -7,6 +7,7 @@ from __future__ import annotations
 import argparse
 import fcntl
 import importlib
+import inspect
 import json
 from pathlib import Path
 import shlex
@@ -141,9 +142,26 @@ subprocess.run(['tar','-xf',src,'-C',dest],check=True)
     client.checked_ssh('python3 -I -c '+shlex.quote(script)+' '+shlex.join([incoming,destination,token,expected_commit]))
 
 
+def protect_processed(args, root):
+    """Only this new release is writable; symlink escapes hit read-only mounts."""
+    parent = Path(root) / 'processed'
+    target = parent / 'dsreset-20261113'
+    if target.resolve() != Path(root).resolve() / 'processed' / target.name:
+        raise ValueError('processed root must not alias another path or release')
+    target.mkdir(parents=True, exist_ok=True)
+    args = list(args)
+    # Override any broad inherited processed mount (or planner's realworld mount).
+    broad = 'type=bind,src='+str(parent)+',dst='+str(parent)
+    args = [x+',readonly' if x == broad else x for x in args]
+    if broad+',readonly' not in args:
+        args[2:2] = ['--mount', broad+',readonly']
+    args[2:2] = ['--mount', 'type=bind,src='+str(target)+',dst='+str(target)]
+    return args
+
+
 # Reuse exactly the scheduler's tenant validation and resource arithmetic. The
 # appended wrapper is executed under admission.lock AND realworld/state/launch.lock.
-GUARD_LIBRARY = SOURCE.rsplit('\ntry:\n',1)[0]
+GUARD_LIBRARY = SOURCE.rsplit('\ntry:\n',1)[0] + '\n' + inspect.getsource(protect_processed)
 GUARD_WRAPPER = r'''
 import hashlib
 import shutil
@@ -151,6 +169,8 @@ import time
 job=json.loads(sys.argv[1])
 spec=ROUTE_SPEC
 problems=[]
+if Path(spec['stop_path']).exists():
+    problems.append('STOP requested')
 if time.time()>spec['deadline']:
     problems.append('expired launch intent')
 if job['name'] in run('docker','ps','-a','--format','{{.Names}}').split():
@@ -190,7 +210,7 @@ if run('git','-C',spec['code'],'status','--porcelain','--untracked-files=no').st
 # Input verification can take time; recheck the deadline immediately before launch.
 if time.time()>spec['deadline']:
     print(json.dumps({'refused':['expired launch intent']}));sys.exit(20)
-args=job['docker_args']
+args=protect_processed(job['docker_args'], spec['storage_root'])
 for path in spec.get('extra_readonly',[]):
     assert path.startswith('/home/compu/kaist/sunho/realworld/')
     args[2:2]=['--mount','type=bind,src='+path+',dst='+path+',readonly']
@@ -200,6 +220,8 @@ args=[x.replace('WANDB_MODE=disabled','WANDB_MODE=offline') for x in args]
 verdict=decide(data)  # fresh after potentially slow SHA verification
 if not verdict['admit']:
     print(json.dumps({'refused':verdict.get('reasons',[])}));sys.exit(20)
+if Path(spec['stop_path']).exists():
+    print(json.dumps({'refused':['STOP requested']}));sys.exit(20)
 cid=run(*args).strip()
 print(json.dumps({'container_id':cid,'decision':verdict}))
 '''
@@ -212,7 +234,10 @@ def launch_job(client, config, job, intent):
             'result_dir':RW+'/jobs/'+job['id'],'server':config['remote']+'/state/server.yaml'}
     worker_path=config['remote']+'/configs/'+job['id']+'-a'+str(intent['attempt'])+'.json'
     launcher.push_bytes(client,json.dumps(worker).encode(),worker_path)
+    if (Path(config['state_dir'])/'STOP').exists():
+        raise RuntimeError('STOP requested')
     spec=dict(inputs=job['inputs'],code=config['code'],commit=config['commit'],
+              stop_path=config['remote']+'/state/STOP',storage_root=RW,
               worker_job=worker_path,deadline=intent['deadline'],extra_readonly=config.get('extra_readonly',[]),
               slot_guard=guard_payload(dict(gpu=intent['gpu'],gpu_need_bytes=int(job['gpu_gib']*GIB),
                   ram_bytes=int(job['ram_gib']*GIB),cpus=job['cpus'],disk_bytes=int(job.get('disk_gib',32)*GIB)),
@@ -224,6 +249,8 @@ def launch_job(client, config, job, intent):
         old=launcher.GUARD_SOURCE
         launcher.GUARD_SOURCE=guard
         try:
+            if (Path(config['state_dir'])/'STOP').exists():
+                raise RuntimeError('STOP requested')
             return launcher.launch(client,dict(job_id=job['id'],attempt=intent['attempt'],gpu=intent['gpu'],
                 image=config['image'],commit=config['commit'],code_dir=config['code'],tools=config['tools_id'],
                 episode_key=job.get('episode',job['id']),gpu_need_bytes=int(job['gpu_gib']*GIB),
@@ -318,7 +345,7 @@ print(json.dumps(out))
             if policy is None:raise ValueError('established resource policy unavailable: '+str(why))
             snap=parallel.snapshot(client) if pending else None
             for j in pending:
-                if len(launched)>=max_launch:break
+                if (root/'STOP').exists() or len(launched)>=max_launch:break
                 # No global load/idle/PSI admission: unrelated users cannot consume
                 # our quota budget. Preserve every RAM and disk check in decide().
                 decision=parallel.decide({**snap,'psi_cpu_some_avg60':0},policy,list(REMOTE_MIG_DEVICES),
@@ -330,6 +357,7 @@ print(json.dumps(out))
                     blocked[j['id']]=decision['host'] or 'no fitting scheduler-accounted MIG';break
                 if not apply:
                     launched.append({'would_launch':j['id'],'candidates':candidates});continue
+                if (root/'STOP').exists():break
                 s=states[j['id']];attempt=s['attempt']+1
                 s.update(status='launching',attempt=attempt,gpu=candidates[0],deadline=time.time()+600,
                          container='s4d-rwprep-'+j['id']+'-a'+str(attempt))
@@ -374,6 +402,11 @@ def attach(remote, out, client, base):
 def planner(client,config,argv):
     """Only explicit coordinator planning commands; no GPU, bounded remote container."""
     from ops.remote import launch_hold
+    from ops.containers.rwprep_capacity import remote_host_policy, ROOT
+    data=dict(remote_host_policy(LIVE_QUEUE),host_only=True,ram_bytes=8*GIB,cpu_threads=2,
+              disk_bytes=32*GIB,floor_bytes=0,disk_floor_fraction=.155,root=ROOT,
+              campaign_ram_cap_bytes=1000*GIB)
+    data['reserve_bytes']=max(data['reserve_bytes'],200*GIB)
     args=['docker','run','--rm','--read-only','--network','none','--user','1000:1000',
           '--memory','8g','--memory-swap','8g','--cpus','2','--pids-limit','512',
           '--tmpfs','/tmp:rw,size=2g,mode=1777','--env','NVIDIA_VISIBLE_DEVICES=void',
@@ -384,8 +417,19 @@ def planner(client,config,argv):
           '--mount','type=bind,src='+RAW+',dst='+RAW+',readonly',
           '--workdir','/opt/src/splatter4d','--entrypoint','/opt/s4d/.venv/bin/python',
           config['image'],*argv]
-    # No restart policy, service or host changes. Explicit planning is not a GPU job.
-    command=launch_hold.locked('set -eu; '+launch_hold.check_shell()+'; '+shlex.join(args))
+    labels={'s4d.project':'splatter4d','s4d.owner':'kaist-sunho','s4d.host':'remote',
+            's4d.role':'rwprep','s4d.managed':'false','s4d.commit':config['commit'],
+            's4d.ram_bytes':str(8*GIB),'s4d.mem_bytes':'0','s4d.disk_bytes':str(32*GIB),
+            's4d.gpu':'none'}
+    for k,v in labels.items():args[2:2]=['--label',k+'='+v]
+    source=GUARD_LIBRARY+'\ndata='+repr(data)+'\nargs='+repr(args)+'\n'+r'''
+args=protect_processed(args, STORAGE_ROOT)
+verdict=decide(data)
+if not verdict['admit']:
+    print(json.dumps(verdict));sys.exit(20)
+subprocess.run(args,check=True,timeout=280)
+'''.replace('STORAGE_ROOT',repr(RW))
+    command=launch_hold.locked('set -eu; '+launch_hold.check_shell()+'; python3 -I -c '+shlex.quote(source))
     return client.checked_ssh(command,timeout=300).stdout
 
 

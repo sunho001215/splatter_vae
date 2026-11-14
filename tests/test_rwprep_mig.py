@@ -115,7 +115,7 @@ def test_remote_identity_and_hash_bound_completion():
     with pytest.raises(ValueError,match='identity'):R.reconcile(state,{'named':item},config,'q',0)
 
 
-@pytest.mark.parametrize('problem',['quota','ram','data_disk','duplicate','input','none'])
+@pytest.mark.parametrize('problem',['quota','ram','data_disk','duplicate','input','stop','stop_after_verify','none'])
 def test_remote_guard_preserves_capacity_and_rewrites_worker(tmp_path,monkeypatch,problem):
     """Execute the actual embedded wrapper, with fake remote evidence and no Docker."""
     from ops.jobs import rwprep_remote as R
@@ -125,15 +125,19 @@ def test_remote_guard_preserves_capacity_and_rewrites_worker(tmp_path,monkeypatc
     from types import SimpleNamespace
     p=tmp_path/'raw';p.write_bytes(b'raw')
     spec=dict(deadline=time.time()+600,code='/code',commit='abc',worker_job='/configs/job.json',
+              stop_path=str(tmp_path/'STOP'),storage_root=str(tmp_path/'rw'),
               inputs={str(p):R.digest(p)},slot_guard=dict(uuid='MIG-x',ram_bytes=48*R.GIB,reserve_bytes=120*R.GIB))
     if problem=='input':p.write_bytes(b'changed')
+    if problem=='stop':Path(spec['stop_path']).touch()
     job=dict(name='named',episode='ep',gpu='MIG-x',docker_args=['docker','run','WANDB_MODE=disabled','old_worker','old_job'])
     calls=[];guards=[]
     def run(*args):
         calls.append(args)
         if args[:2]==('docker','ps'):
             return 'named' if problem=='duplicate' and '--format' in args else ''
-        if args[:2]==('git','-C'):return 'abc' if 'rev-parse' in args else ''
+        if args[:2]==('git','-C'):
+            if problem=='stop_after_verify':Path(spec['stop_path']).touch()
+            return 'abc' if 'rev-parse' in args else ''
         if args[:2]==('docker','run'):return 'cid'
         raise AssertionError(args)
     def decide(data):
@@ -142,8 +146,9 @@ def test_remote_guard_preserves_capacity_and_rewrites_worker(tmp_path,monkeypatc
         return {'admit':problem not in ('quota','ram'),'reasons':[problem] if problem in ('quota','ram') else []}
     monkeypatch.setattr(shutil,'disk_usage',lambda _:SimpleNamespace(free=1 if problem=='data_disk' else 100,total=100))
     monkeypatch.setattr(sys,'argv',['guard',json.dumps(job)])
-    env=dict(ROUTE_SPEC=spec,run=run,decide=decide,json=json,sys=sys)
-    if problem in ('quota','ram','data_disk','duplicate'):
+    env=dict(ROUTE_SPEC=spec,run=run,decide=decide,json=json,sys=sys,Path=Path,
+             protect_processed=R.protect_processed)
+    if problem in ('quota','ram','data_disk','duplicate','stop','stop_after_verify'):
         with pytest.raises(SystemExit) as exc:exec(R.GUARD_WRAPPER,env)
         assert exc.value.code==20
     elif problem=='input':
@@ -162,3 +167,126 @@ def test_remote_rewrite_preserves_label_inclusive_identity():
     doc={'/local/configs/drawer-open-v2-failure-000001.yaml':['/local/state/server.yaml','drawer-open-v2-success-000001']}
     assert R.rewrite(doc,'/local','/remote')=={
         '/remote/configs/drawer-open-v2-failure-000001.yaml':['/remote/state/server.yaml','drawer-open-v2-success-000001']}
+
+
+@pytest.mark.parametrize('stop_during', ['launch', 'snapshot', 'decision'])
+def test_remote_stop_drains_current_batch_offline(tmp_path, monkeypatch, stop_during):
+    from types import SimpleNamespace
+    from ops.jobs import rwprep_remote as R
+    from ops.jobs import release_reservation
+    from ops.resources.gpu_guard import REMOTE_MIG_DEVICES
+    jobs = [dict(job(), id=job()['id']+str(n)) for n in range(2)]
+    config = dict(host='remote', image='sha256:'+'a'*64, commit='b'*40,
+                  jobs=str(tmp_path/'jobs.json'), state_dir=str(tmp_path/'state'),
+                  priority_file=str(tmp_path/'priority'), remote='/remote')
+    P.atomic(config['jobs'], jobs)
+    stop = tmp_path/'state/STOP'
+    calls = []
+    def snapshot(_):
+        if stop_during == 'snapshot': stop.touch()
+        return {}
+    def decide(*a, **kw):
+        if stop_during == 'decision': stop.touch()
+        return {'candidates':list(REMOTE_MIG_DEVICES), 'host':[]}
+    parallel = SimpleNamespace(load=lambda *a: ({}, ''), snapshot=snapshot, decide=decide)
+    monkeypatch.setattr(R, 'established', lambda: (None, parallel))
+    monkeypatch.setattr(R, 'guard_payload', lambda *a, **kw: {'input':{'cpu_thread_budget':320}})
+    monkeypatch.setattr(release_reservation, 'reserved_gpus', lambda: set())
+    def launch(*a):
+        calls.append(a[2]['id'])
+        if stop_during == 'launch': stop.touch()
+    monkeypatch.setattr(R, 'launch_job', launch)
+    client = SimpleNamespace(checked_ssh=lambda *a, **kw: SimpleNamespace(stdout=json.dumps([j['id'] for j in jobs])))
+    result = R.tick(config, client, apply=True)
+    assert calls == ([jobs[0]['id']] if stop_during == 'launch' else [])
+    assert result['counts']['pending'] == (1 if calls else 2)
+
+
+def test_processed_mount_guard_confines_cleanup_and_rejects_aliases(tmp_path):
+    from ops.jobs.rwprep_remote import protect_processed
+    root = tmp_path/'rw'
+    old = root/'processed/previous-release'
+    old.mkdir(parents=True)
+    (old/'sentinel').write_text('keep')
+    outside = tmp_path/'outside'
+    outside.mkdir()
+    broad = f'type=bind,src={root}/processed,dst={root}/processed'
+    args = protect_processed(['docker','run','--mount',broad,'image'],str(root))
+    mounts = [args[n+1] for n,x in enumerate(args) if x=='--mount']
+    assert broad+',readonly' in mounts
+    target = root/'processed/dsreset-20261113'
+    assert mounts.count(f'type=bind,src={target},dst={target}') == 1
+    # The only writable processed mount is the fresh release, including when
+    # inherited from the planner's wider realworld mount. Every sibling stays RO.
+    for path in (old, outside, root/'processed/dsreset-202611130'):
+        assert not path.is_relative_to(target)
+    for destination in (old, outside):
+        target.rmdir()
+        target.symlink_to(destination, target_is_directory=True)
+        with pytest.raises(ValueError, match='alias'):
+            protect_processed(['docker','run','image'],str(root))
+        target.unlink()
+        target.mkdir()
+    assert (old/'sentinel').read_text() == 'keep'
+
+
+@pytest.mark.parametrize('admit', [True, False])
+def test_planner_uses_locked_shared_admission_and_owned_accounting(tmp_path, monkeypatch, admit):
+    import shlex
+    import sys
+    import subprocess
+    from types import SimpleNamespace
+    from ops.jobs import rwprep_remote as R
+    from ops.remote import launch_hold
+    queue = tmp_path/'queue.yaml'
+    queue.write_text('hosts:\n  remote:\n    cpu_thread_budget: 42\n    host_ram_reserve_gb: 220\n')
+    monkeypatch.setattr(R, 'LIVE_QUEUE', queue)
+    monkeypatch.setattr(R, 'RW', str(tmp_path/'rw'))
+    monkeypatch.setattr(launch_hold, 'check_shell', lambda: ':')
+    commands = []
+    monkeypatch.setattr(launch_hold, 'locked', lambda body: commands.append(body) or body)
+    launched = []
+    def checked(command, **kw):
+        assert command == commands[-1] and 'python3 -I -c' in command
+        source = shlex.split(command)[-1]
+        library, body = source.split('\ndata=',1)
+        ns = {}
+        exec(library, ns)
+        def decide(data):
+            assert data['host_only'] and data['cpu_threads']==2 and data['cpu_thread_budget']==42
+            assert data['ram_bytes']==8*R.GIB and data['reserve_bytes']==220*R.GIB
+            return {'admit':admit, 'reasons':[] if admit else ['host CPU thread budget']}
+        ns['decide'] = decide
+        exec('\ndata='+body, ns)
+        return SimpleNamespace(stdout='planned')
+    monkeypatch.setattr(subprocess, 'run', lambda args, **kw: launched.append(args))
+    client = SimpleNamespace(checked_ssh=checked)
+    config = dict(code='/code', image='sha256:'+'a'*64, commit='b'*40)
+    if admit:
+        assert R.planner(client,config,['-m','planner']) == 'planned'
+        args = launched[0]
+        labels = dict(args[n+1].split('=',1) for n,x in enumerate(args) if x=='--label')
+        assert labels['s4d.project']=='splatter4d' and labels['s4d.owner']=='kaist-sunho'
+        assert labels['s4d.managed']=='false' and labels['s4d.role']=='rwprep'
+        assert labels['s4d.disk_bytes']==str(32*R.GIB) and labels['s4d.ram_bytes']==str(8*R.GIB)
+    else:
+        with pytest.raises(SystemExit) as exc:R.planner(client,config,['-m','planner'])
+        assert exc.value.code==20 and not launched
+
+
+def test_local_stop_after_slow_worker_upload_prevents_launch(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from ops.jobs import rwprep_remote as R
+    state = tmp_path/'state'
+    state.mkdir()
+    jobs = tmp_path/'jobs.json'
+    jobs.write_text('[]')
+    calls = []
+    def push(*a):
+        (state/'STOP').touch()
+    launcher = SimpleNamespace(push_bytes=push, launch=lambda *a:calls.append(a))
+    monkeypatch.setattr(R, 'established', lambda:(launcher,None))
+    config = dict(jobs=str(jobs),state_dir=str(state),remote='/remote')
+    with pytest.raises(RuntimeError,match='STOP'):
+        R.launch_job(None,config,job(),{'attempt':1})
+    assert not calls

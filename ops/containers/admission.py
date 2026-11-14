@@ -1,7 +1,7 @@
 """Pure byte-based MIG admission shared by placement and the in-lock guard.
 
 Queue ``*_gb`` values are GiB; framebuffer readings are MiB. Every live owned
-container contributes its enforced RAM/CPU limits and managed disk reservation.
+container contributes its enforced RAM/CPU limits and declared disk reservation.
 GPU reservations charge max(declared, measured), pending growth their positive
 difference. No extra placement margin is added to the guard's capacity headroom.
 SOURCE embeds these exact functions in the isolated remote Python interpreter.
@@ -37,7 +37,7 @@ def tenant_totals(uuid, processes, records):
                 or state.get('Status') in ('running', 'restarting', 'paused')):
             continue
         config = item['HostConfig']
-        if labels.get('s4d.gpu') == uuid:
+        if uuid is not None and labels.get('s4d.gpu') == uuid:
             count += 1
             tenant_exclusive |= labels.get('s4d.exclusive_gpu') == 'true' or labels.get('s4d.role') == 'migval'
             if labels.get('s4d.role') != 'migval':
@@ -63,7 +63,9 @@ def tenant_totals(uuid, processes, records):
         limit = integer(config['Memory'], 'container RAM limit', 1)
         cpu_used += integer(config.get('NanoCpus'), 'container CPU quota', 1)
         pending_ram += max(0, limit - integer(ram_used, 'cgroup anon+shmem'))
-        if labels.get('s4d.managed') == 'true' and labels.get('s4d.host') == 'remote':
+        if ((labels.get('s4d.managed') == 'true' and labels.get('s4d.host') == 'remote')
+                or (labels.get('s4d.managed') == 'false'
+                    and labels.get('s4d.role') in ('rwprep', 'rwprep-study', 'rwprep-maint'))):
             reserved_disk += decimal(labels.get('s4d.disk_bytes'), 'container disk reservation')
     return dict(pending_ram=pending_ram, reserved_disk=reserved_disk, count=count,
                 gpu_reserved=gpu_reserved, gpu_pending=gpu_pending, cpu_used=cpu_used,

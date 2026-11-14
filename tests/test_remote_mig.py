@@ -1003,7 +1003,7 @@ def test_slot_evidence_errors_fail_closed(slot_evidence, tmp_path, case):
 def test_slot_ram_exact_resource_boundaries_and_no_declaration_fallback(slot_evidence, tmp_path):
     data = slot_evidence
     slot_container(tmp_path, limit=64 * 2**30, current=16 * 2**30)
-    data.update(gpu_bytes=21 * 2**30, disk_bytes=650 * 2**30)
+    data.update(gpu_bytes=21 * 2**30, disk_bytes=640 * 2**30)  # includes rwprep's 10 GiB reservation
     (tmp_path / 'meminfo').write_text(f'MemAvailable: {200 * 1024**2} kB\n')  # 200 - (64-16) == 120+32
     path = tmp_path / 'query'
     path.write_text(path.read_text().replace(': 67 MiB', ': 256 MiB'))
@@ -1216,8 +1216,8 @@ def test_scheduler_and_guard_same_snapshot_boundaries(slot_evidence, tmp_path, m
         dict(jobs=2), dict(exclusive=True), dict(foreign=True),
         dict(available=216 * 2**30), dict(available=216 * 2**30 - 1024),
         dict(cpu=24), dict(cpu=23),
-        dict(disk_free=(174 if managed == 'true' else 154) * 2**30),
-        dict(disk_free=(174 if managed == 'true' else 154) * 2**30 - 1),
+        dict(disk_free=174 * 2**30),
+        dict(disk_free=174 * 2**30 - 1),
         dict(need=22 * 2**30), dict(total=22016), dict(total=22015),
     ]]
     # Run decide directly with the same synthetic commands; no entry-point execution.
@@ -1419,3 +1419,36 @@ def test_remote_driver_and_release_chain_use_guard_consistent_accounting():
     assert "guard_headroom_gib(charge, cap, g.startswith('MIG-'))" in driver
     chain = (REPO / "ops/campaign/release_chain.py").read_text()
     assert "cotenant_charges(snapshot)['gpus']" not in chain
+
+
+@pytest.mark.parametrize('state', ['running', 'paused', 'restarting'])
+def test_locked_guard_charges_owned_unmanaged_rwprep_disk(slot_evidence, tmp_path, state):
+    item = slot_container(tmp_path, gpu=mig_uuid(0, 1), **{'s4d.disk_bytes':str(32*2**30)})
+    item['State'] = {'Running':state=='running', 'Paused':state=='paused', 'Restarting':state=='restarting'}
+    (tmp_path/'containers').write_text(json.dumps({item['Id']:item}))
+    # Without the 32 GiB reservation this passes the 150 GiB floor.
+    (tmp_path/'disk').write_text(f'Size Avail\n{1000*2**30} {180*2**30}\n')
+    code, result = run_slot(slot_evidence)
+    assert code == 20 and 'disk floor' in result['reasons']
+    assert result['reserved_disk_bytes'] == 32*2**30
+    item['Config']['Labels']['s4d.disk_bytes'] = 'unreadable'
+    (tmp_path/'containers').write_text(json.dumps({item['Id']:item}))
+    code, result = run_slot(slot_evidence)
+    assert code == 1 and 'disk reservation' in result['error']
+
+
+@pytest.mark.parametrize('resource', ['cpu', 'ram', 'none'])
+def test_host_only_shared_admission_uses_campaign_limits(slot_evidence, tmp_path, resource):
+    data = dict(slot_evidence, host_only=True, ram_bytes=8*2**30, cpu_threads=2, cpu_thread_budget=10)
+    slot_container(tmp_path, gpu=mig_uuid(0, 1), limit=48*2**30, current=0)
+    # Host-only admission needs no MIG evidence or GPU PID ownership.
+    (tmp_path/'nvidia-smi.fail').touch()
+    if resource == 'cpu': data['cpu_thread_budget'] = 9
+    if resource == 'ram':
+        (tmp_path/'meminfo').write_text(f'MemAvailable: {175*1024**2} kB\n')
+    code, result = run_slot(data)
+    assert code == (0 if resource=='none' else 20)
+    if resource!='none': assert ('host CPU thread budget' if resource=='cpu' else 'host RAM reserve') in result['reasons']
+    assert result['reserved_disk_bytes'] == 10*2**30
+    calls = [json.loads(line) for line in (tmp_path/'calls').read_text().splitlines()]
+    assert not any(c[0]=='nvidia-smi' or c[:2]==['docker','top'] for c in calls)
