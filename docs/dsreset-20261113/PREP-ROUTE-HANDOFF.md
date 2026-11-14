@@ -1,5 +1,9 @@
 # Container-only preprocessing handoff
 
+> Historical route-only evidence at fb3baee. The current combined release and
+> fresh suite evidence are documented in [COMBINED-RELEASE.md](COMBINED-RELEASE.md).
+> Use the current PREP-ROUTE.md commands and `.worktrees/dss` evidence path.
+
 Candidate branch: `dsreset-prep-route`, worktree
 `/home/ws/ws/splatter4d/.worktrees/dsreset-prep-route`.
 Frozen source: `fb3baee8c012e848d742081a01b88a03df469b0c`, descendant of requested

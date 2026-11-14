@@ -1,0 +1,15 @@
+{
+  "source_commit": "95b3c4cbce6f2faa2549b253abf392bc245c51a4",
+  "offline_only": true,
+  "launched": false,
+  "compiled_jobs": 248,
+  "priorities": [
+    -4
+  ],
+  "counts": {
+    "drawer-open-v2-success": 98,
+    "drawer-open-v2-failure": 50,
+    "covering-failure": 50,
+    "pick-and-place-failure": 50
+  }
+}

@@ -6,7 +6,7 @@ No local host access, sudo, local Docker, mount installation, Docker updates, or
 restart-policy changes are needed. Keep `realworld-ops/pre/STOP` present: the old
 whole-GPU dispatcher and its old episode inventory must stay stopped.
 
-Source worktree: `/home/ws/ws/splatter4d/.worktrees/dsseset-release`, branch
+Source worktree: `/home/ws/ws/splatter4d/.worktrees/dsreset-release`, branch
 `dsreset-20261113-release`, combining fixed pipeline ce8b68e and route 01746f4.
 Full-suite evidence worktree: `/home/ws/ws/splatter4d/.worktrees/dss` (short path
 required for multiprocessing sockets). The external pipeline/PREP-ROUTE.md pins
@@ -68,7 +68,7 @@ by the implementer.
 
 ```bash
 export M=/home/ws/ws/splatter4d
-export W=$M/.worktrees/dsseset-prep-route
+export W=$M/.worktrees/dsreset-release
 export PY=$M/.venv/bin/python
 export P=/home/ws/ws/realworld-ops/dsreset-20261113/pipeline
 export R=/home/compu/kaist/sunho/realworld
@@ -439,8 +439,10 @@ No learning job is released by phase A alone.
 - Offline staging exercised the actual three canonical plans: 248 rows, all -4;
   both generated archives inspected, ordinary `.git` confirmed, remote paths checked.
   `runs/dsreset-route-preview` is fake-image OFFLINE EVIDENCE, never a launch bundle.
-- The prior route-only suite passed at fb3baee. Combined-release results are recorded
-  in COMBINED-RELEASE.md and `.worktrees/dss/docs/tests.json` after a fresh full run.
+- Combined full local suite PASSED: 4009 passed (3982 collected + 27 subtests),
+  zero failed/errors/skips; full_suite_passed=true, exit 0, unchanged sources.
+  All 440 GPU tests passed. Evidence: `.worktrees/dss/docs/tests.json`; see
+  COMBINED-RELEASE.md for the tested commit and scope audit.
 - RemoteClient's nonwaiting read-only SSH probe returned `RemoteUnreachable` during
   implementation. No live remote admission/image check or end-to-end remote model
   smoke was possible in this session. The route must be dry-ticked when reachable.
