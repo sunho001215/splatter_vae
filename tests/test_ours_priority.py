@@ -33,7 +33,8 @@ def rows():
             dict(id="default", script="scripts/train_rl.py", args=[])]
 
 
-@pytest.mark.parametrize("script", ["scripts/train_ours_continuation.py", "scripts/evaluate_ours_length.py"])
+@pytest.mark.parametrize("script", ["scripts/train_ours_continuation.py", "scripts/evaluate_ours_length.py",
+                                    "scripts/evaluate_ours_task_length.py"])
 def test_real_scheduler_guard_accepts_new_entry_preamble(script):
     # Compile the scheduler's actual regex and acceptance function, without importing its entry module.
     nodes = [n for n in tree("ops/jobs/scheduler.py").body

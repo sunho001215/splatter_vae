@@ -68,10 +68,12 @@ RESOLVERS[DSRESET_CHECK] = {"inputs": ("--manifest", "--split", "--outcomes", "-
 RESOLVERS[DSRESET_ARTIFACT] = {"inputs": ("--source",), "outputs": ("--out",), "config": None}
 OURS_CONTINUATION = "scripts/train_ours_continuation.py"
 OURS_EVAL = "scripts/evaluate_ours_length.py"
+OURS_TASK_EVAL = "scripts/evaluate_ours_task_length.py"
+OURS_EVAL_SCRIPTS = (OURS_EVAL, OURS_TASK_EVAL)
 OURS_OPTIONS = ("--name", "--output-root", "--set", "--source-checkpoint", "--source-sha256",
                 "--baseline-config", "--baseline-sha256", "--start-step", "--stop-step", "--schedule-config")
 OURS_EVAL_OPTIONS = ("--name", "--output-root", "--set", "--config", "--checkpoint")
-for _script in (OURS_CONTINUATION, OURS_EVAL):
+for _script in (OURS_CONTINUATION, *OURS_EVAL_SCRIPTS):
     RESOLVERS[_script] = {"inputs": ("--set", "--checkpoint", "--source-checkpoint"),
                           "outputs": OUTPUT_OPTIONS, "config": "ours_length"}
 # Baseline pretraining trainers (scripts/train_<b>.py, s4d.config.load_config of ONE --config + --set): their full option
@@ -113,7 +115,7 @@ BASELINE_INPUT_FIELDS = (("dataset", "hdf5_path"), ("data_interface", "split_man
 # consumers whose LOCAL run dependencies must carry a matching closeout record (realworld_local.py closeout: required
 # results present, nonempty, hashed) - the scheduler marks a local exit-0 run done without that check (Codex review)
 CLOSEOUT_CONSUMERS = (DSRESET_CHECK, DSRESET_ARTIFACT, "scripts/realworld_fql_dataset.py", "scripts/train_realworld_fql.py", "scripts/train_mvp3d.py",
-                      OURS_CONTINUATION, OURS_EVAL)
+                      OURS_CONTINUATION, *OURS_EVAL_SCRIPTS)
 REMOTE_LOCK = REPO / "runs/setup/remote-driver.lock"
 
 
@@ -198,7 +200,7 @@ def _arguments(job: dict):
     if not has_resolver(job):
         raise LocalInputError(f"data locality: inputs live on the remote; no local input resolver for {script}")
     parser = argparse.ArgumentParser(add_help=False, allow_abbrev=False, exit_on_error=False)
-    if script in (OURS_CONTINUATION, OURS_EVAL):
+    if script in (OURS_CONTINUATION, *OURS_EVAL_SCRIPTS):
         parser.add_argument("--name", required=True)
         parser.add_argument("--output-root", required=True)
         parser.add_argument("--set", nargs="*", default=[])
@@ -267,7 +269,7 @@ def _arguments(job: dict):
             raise LocalInputError(f"unsupported local input options: {other[:3]}")
     except (argparse.ArgumentError, SystemExit) as exc:
         raise LocalInputError(f"invalid local resolver arguments: {exc}") from exc
-    if script in ("scripts/train.py", OURS_CONTINUATION, OURS_EVAL) or script in BASELINE_OPTIONS:
+    if script in ("scripts/train.py", OURS_CONTINUATION, *OURS_EVAL_SCRIPTS) or script in BASELINE_OPTIONS:
         # the trainers' default output-root is outside runs (train_<b>.py: runs/pretrain): require the explicit
         # portable output location
         if known.name != job["id"] or known.output_root != "runs" or not any(
@@ -288,7 +290,7 @@ def _arguments(job: dict):
         output = _rel(known.out)
         if not output.startswith(f"runs/{job['id']}/"):
             raise LocalInputError("local output must be runs/<own id>/<file>")
-    if script in (OURS_CONTINUATION, OURS_EVAL):
+    if script in (OURS_CONTINUATION, *OURS_EVAL_SCRIPTS):
         checkpoint = known.source_checkpoint if script == OURS_CONTINUATION else known.checkpoint
         parts = PurePosixPath(_rel(checkpoint)).parts
         if (len(parts) != 4 or parts[0] != "runs" or parts[1] not in job.get("deps", [])
@@ -702,7 +704,7 @@ def _resolved_paths(job: dict, root: Path, remote_prefix: str = REMOTE_PREFIX, *
         return set()
     args = [str(a) for a in job.get("args", [])]
     options = (OURS_OPTIONS if job.get("script") == OURS_CONTINUATION else
-               OURS_EVAL_OPTIONS if job.get("script") == OURS_EVAL else
+               OURS_EVAL_OPTIONS if job.get("script") in OURS_EVAL_SCRIPTS else
                BASELINE_OPTIONS[job["script"]] if resolver["config"] == "baseline" else
                TRAINER_OPTIONS + (("--resume",) if resolver["config"] == "pretrain" else ()))
     if job.get("script") == OURS_CONTINUATION:
