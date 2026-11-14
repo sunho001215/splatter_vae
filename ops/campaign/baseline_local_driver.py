@@ -311,12 +311,17 @@ for j in external:
                             'trainer_ready': status(trained_by(j)) in jobs.ACTIVE | {jobs.DONE}})
 from ops.jobs import realworld_local  # noqa: E402
 from ops.jobs.priority import log_unready  # noqa: E402
+# localize() verifies a placed row's execution scope against the checkout's source identity (incl. pinned third-party
+# commits); without it third-party scope entries can never match (2026-11-14). Computed once per pass, only if needed.
+_source_identity = jobs.source_identity() if any(host_roles.remote_resident(by_queue[r['id']], _roles, by_queue)
+                                                 for r in fair_candidates) else None
 ready_candidates = []
 for r in fair_candidates:
     j = by_queue[r['id']]
     if host_roles.remote_resident(j, _roles, by_queue):
         try:
-            realworld_local.localize(j, state, roles=_roles, by_id=by_queue, ownership=_ownership)
+            realworld_local.localize(j, state, roles=_roles, by_id=by_queue, ownership=_ownership,
+                                     source_identity=_source_identity)
         except realworld_local.LocalInputError as exc:
             messages.append(f"{j['id']}: not ready: {exc}; no priority reservation")
             continue
