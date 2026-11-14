@@ -1,7 +1,7 @@
 {
-  "schema": "dsreset-execution-scope-audit/1",
-  "baseline": "9c901bf",
-  "ownership_dir": "/home/ws/ws/splatter4d/runs/setup/ownership",
+  "schema": "dsreset-execution-scope-audit/2",
+  "baseline": "9c901bf7b0acabe399420c9b5e9a1c2b6bc42479",
+  "ownership_dir": "/home/ws/ws/splatter4d/.worktrees/dsreset-release/tests/fixtures/dsreset-live-scopes.yaml",
   "rows": [
     {
       "job_id": "ourx-20261113-ours-drawer-open-eval200k",
@@ -10,6 +10,8 @@
       "files": 292,
       "scope_persisted": true,
       "differences": [],
+      "baseline_differences": [],
+      "running": false,
       "release_changes": [],
       "record_sha256": "af84dcfa5c74b9e9a6a3b4ba0166b9fd4f5018fcaa7d0c4942a3f291f0fdf5f3"
     },
@@ -22,6 +24,10 @@
       "differences": [
         "scripts/train_ours_continuation.py"
       ],
+      "baseline_differences": [
+        "scripts/train_ours_continuation.py"
+      ],
+      "running": false,
       "release_changes": [],
       "record_sha256": "f793fe93820c1f447f2cfbd30401d5b49d4671be296a76572a1b2803faac63db"
     },
@@ -35,6 +41,11 @@
         "ops/containers/suite_partition.py",
         "pyproject.toml"
       ],
+      "baseline_differences": [
+        "ops/containers/suite_partition.py",
+        "pyproject.toml"
+      ],
+      "running": false,
       "release_changes": [],
       "record_sha256": "ec6d8d0948674057d6699ad368fab7e41adb33667c1134dedec8f7d7ab459de8"
     },
@@ -48,6 +59,11 @@
         "ops/containers/suite_partition.py",
         "pyproject.toml"
       ],
+      "baseline_differences": [
+        "ops/containers/suite_partition.py",
+        "pyproject.toml"
+      ],
+      "running": false,
       "release_changes": [],
       "record_sha256": "d194101455aad4883076c0253ca9e326ac7d89a2a3325a8f28a1b128b31ddcd1"
     },
@@ -61,6 +77,11 @@
         "ops/containers/suite_partition.py",
         "pyproject.toml"
       ],
+      "baseline_differences": [
+        "ops/containers/suite_partition.py",
+        "pyproject.toml"
+      ],
+      "running": false,
       "release_changes": [],
       "record_sha256": "2a022119fd42979cf56662fd86652ab1537d65ecd84640175204b81e8df1fea7"
     },
@@ -74,6 +95,11 @@
         "ops/containers/suite_partition.py",
         "pyproject.toml"
       ],
+      "baseline_differences": [
+        "ops/containers/suite_partition.py",
+        "pyproject.toml"
+      ],
+      "running": false,
       "release_changes": [],
       "record_sha256": "cf02e6e51b44852198c20baef511a5ab17dee55c3ddecfc82273a85b260476d6"
     },
@@ -87,6 +113,11 @@
         "ops/containers/suite_partition.py",
         "pyproject.toml"
       ],
+      "baseline_differences": [
+        "ops/containers/suite_partition.py",
+        "pyproject.toml"
+      ],
+      "running": false,
       "release_changes": [],
       "record_sha256": "8b437b810017bf6a2decc2cff8a1ff95e518b4fea9487ddf04410991068a6d88"
     },
@@ -100,6 +131,11 @@
         "ops/containers/suite_partition.py",
         "pyproject.toml"
       ],
+      "baseline_differences": [
+        "ops/containers/suite_partition.py",
+        "pyproject.toml"
+      ],
+      "running": false,
       "release_changes": [],
       "record_sha256": "d4fefaf57043913db1a5599e501881676956adf45f0d4a7183218d590ce572f4"
     },
@@ -113,6 +149,11 @@
         "ops/containers/suite_partition.py",
         "pyproject.toml"
       ],
+      "baseline_differences": [
+        "ops/containers/suite_partition.py",
+        "pyproject.toml"
+      ],
+      "running": false,
       "release_changes": [],
       "record_sha256": "c2a93c6b00bcd34f6d0fb00ce637ec2d020c8fe0ed38aef198a5ab32c77f9b45"
     },
@@ -126,6 +167,11 @@
         "ops/containers/suite_partition.py",
         "pyproject.toml"
       ],
+      "baseline_differences": [
+        "ops/containers/suite_partition.py",
+        "pyproject.toml"
+      ],
+      "running": false,
       "release_changes": [],
       "record_sha256": "a054614c9823cc0193d96cf54cd4247f235b8d3b727dc3cd07ead2f4e22f1632"
     },
@@ -139,6 +185,11 @@
         "ops/containers/suite_partition.py",
         "pyproject.toml"
       ],
+      "baseline_differences": [
+        "ops/containers/suite_partition.py",
+        "pyproject.toml"
+      ],
+      "running": false,
       "release_changes": [],
       "record_sha256": "f8ae825679330fdc0e317ee4dbefb793b34c720cbab78430157f539feccf7030"
     },
@@ -152,6 +203,11 @@
         "ops/containers/suite_partition.py",
         "pyproject.toml"
       ],
+      "baseline_differences": [
+        "ops/containers/suite_partition.py",
+        "pyproject.toml"
+      ],
+      "running": false,
       "release_changes": [],
       "record_sha256": "2d4cd75823c73fc087722bbc05d53e943fa4e2089c0535efa0e3871ce51b3c52"
     },
@@ -165,6 +221,11 @@
         "ops/containers/suite_partition.py",
         "pyproject.toml"
       ],
+      "baseline_differences": [
+        "ops/containers/suite_partition.py",
+        "pyproject.toml"
+      ],
+      "running": false,
       "release_changes": [],
       "record_sha256": "8ed93b95dda74bf600c4843e44cea143dfffdf9cf3a91e48daac891147104400"
     },
@@ -178,6 +239,11 @@
         "ops/containers/suite_partition.py",
         "pyproject.toml"
       ],
+      "baseline_differences": [
+        "ops/containers/suite_partition.py",
+        "pyproject.toml"
+      ],
+      "running": false,
       "release_changes": [],
       "record_sha256": "dde7153630a4b8c5042c72453f48cc50270b3af0c6a3f175d940f6511e70d67f"
     },
@@ -191,6 +257,11 @@
         "ops/containers/suite_partition.py",
         "pyproject.toml"
       ],
+      "baseline_differences": [
+        "ops/containers/suite_partition.py",
+        "pyproject.toml"
+      ],
+      "running": false,
       "release_changes": [],
       "record_sha256": "f7ab8e2bf42f6da1e33d363973aecb0737cab2d0cc9e5c4c9699df8dc00fd566"
     },
@@ -204,6 +275,11 @@
         "ops/containers/suite_partition.py",
         "pyproject.toml"
       ],
+      "baseline_differences": [
+        "ops/containers/suite_partition.py",
+        "pyproject.toml"
+      ],
+      "running": false,
       "release_changes": [],
       "record_sha256": "f2bd9b3bcf609bfb7b165e044f9f699515ed6d4f78da7e5eb837c919f09eced1"
     },
@@ -217,6 +293,11 @@
         "ops/containers/suite_partition.py",
         "pyproject.toml"
       ],
+      "baseline_differences": [
+        "ops/containers/suite_partition.py",
+        "pyproject.toml"
+      ],
+      "running": false,
       "release_changes": [],
       "record_sha256": "a92e93f8ecfbe02e540405e1f9db9097da51b13fd6acfe1ae24bf7160a9cae03"
     },
@@ -230,6 +311,11 @@
         "ops/containers/suite_partition.py",
         "pyproject.toml"
       ],
+      "baseline_differences": [
+        "ops/containers/suite_partition.py",
+        "pyproject.toml"
+      ],
+      "running": false,
       "release_changes": [],
       "record_sha256": "1284d4804f6b93f2340ff0567bccddc098d628f18fd712874fe8a0bd9d92ac8b"
     },
@@ -243,6 +329,11 @@
         "ops/containers/suite_partition.py",
         "pyproject.toml"
       ],
+      "baseline_differences": [
+        "ops/containers/suite_partition.py",
+        "pyproject.toml"
+      ],
+      "running": false,
       "release_changes": [],
       "record_sha256": "a5bdda006e71cab82f55a6f639429433f88a5222c3406fd74b6a4b2cf89a7ece"
     },
@@ -256,6 +347,11 @@
         "ops/containers/suite_partition.py",
         "pyproject.toml"
       ],
+      "baseline_differences": [
+        "ops/containers/suite_partition.py",
+        "pyproject.toml"
+      ],
+      "running": false,
       "release_changes": [],
       "record_sha256": "01f0247f504f180e3386b9386f6de782583311483dd1c4a0ac51dfd81c4f2bfc"
     },
@@ -269,6 +365,11 @@
         "ops/containers/suite_partition.py",
         "pyproject.toml"
       ],
+      "baseline_differences": [
+        "ops/containers/suite_partition.py",
+        "pyproject.toml"
+      ],
+      "running": false,
       "release_changes": [],
       "record_sha256": "7de317cdcca7435a028cc57d8da81b72189addbfa79eff6d5fa2ea52f46e0b1a"
     },
@@ -282,6 +383,11 @@
         "ops/containers/suite_partition.py",
         "pyproject.toml"
       ],
+      "baseline_differences": [
+        "ops/containers/suite_partition.py",
+        "pyproject.toml"
+      ],
+      "running": false,
       "release_changes": [],
       "record_sha256": "2c4b7bde6b8c1b99d0b8115e376564ccd9eaee5f000fe259763ac9dc78ad922b"
     },
@@ -295,6 +401,11 @@
         "ops/containers/suite_partition.py",
         "pyproject.toml"
       ],
+      "baseline_differences": [
+        "ops/containers/suite_partition.py",
+        "pyproject.toml"
+      ],
+      "running": false,
       "release_changes": [],
       "record_sha256": "afc7ac636a648f136cd48279bed75a50391fb8502ac8c30c1858006d404ed6fb"
     },
@@ -308,6 +419,11 @@
         "ops/containers/suite_partition.py",
         "pyproject.toml"
       ],
+      "baseline_differences": [
+        "ops/containers/suite_partition.py",
+        "pyproject.toml"
+      ],
+      "running": false,
       "release_changes": [],
       "record_sha256": "e2dd16febfd6f74b3c6872d292b40f0da5a6406077aed207b4312b2dc369c24b"
     },
@@ -321,6 +437,11 @@
         "ops/containers/suite_partition.py",
         "pyproject.toml"
       ],
+      "baseline_differences": [
+        "ops/containers/suite_partition.py",
+        "pyproject.toml"
+      ],
+      "running": false,
       "release_changes": [],
       "record_sha256": "4b6344fce4fde75dc308810d95e3893b599ef6ee2a0dddbb23c1269d5d5a74ea"
     },
@@ -334,6 +455,11 @@
         "ops/containers/suite_partition.py",
         "pyproject.toml"
       ],
+      "baseline_differences": [
+        "ops/containers/suite_partition.py",
+        "pyproject.toml"
+      ],
+      "running": false,
       "release_changes": [],
       "record_sha256": "2d4a119389fc2d011cdd426669eb2eeb12eb470d08aa860e2bd254d372ca9376"
     },
@@ -347,6 +473,11 @@
         "ops/containers/suite_partition.py",
         "pyproject.toml"
       ],
+      "baseline_differences": [
+        "ops/containers/suite_partition.py",
+        "pyproject.toml"
+      ],
+      "running": false,
       "release_changes": [],
       "record_sha256": "a0dd4465796206856491eedecb5a432be0270c757b03591f06ab45e7b6311acd"
     },
@@ -360,6 +491,11 @@
         "ops/containers/suite_partition.py",
         "pyproject.toml"
       ],
+      "baseline_differences": [
+        "ops/containers/suite_partition.py",
+        "pyproject.toml"
+      ],
+      "running": false,
       "release_changes": [],
       "record_sha256": "61e89b7e6af6f9805ccad7dff903ff155afffe60e785b22903e2a21918dad40c"
     },
@@ -373,6 +509,11 @@
         "ops/containers/suite_partition.py",
         "pyproject.toml"
       ],
+      "baseline_differences": [
+        "ops/containers/suite_partition.py",
+        "pyproject.toml"
+      ],
+      "running": false,
       "release_changes": [],
       "record_sha256": "c9f6cdbf65141ee793e7ead347f5230086fc2fd9b85c710464b0f054c9a3a487"
     },
@@ -386,6 +527,11 @@
         "ops/containers/suite_partition.py",
         "pyproject.toml"
       ],
+      "baseline_differences": [
+        "ops/containers/suite_partition.py",
+        "pyproject.toml"
+      ],
+      "running": false,
       "release_changes": [],
       "record_sha256": "24c2c30308a89f6c33ea098704cda7dbdb5afe3f1450745457e87054115c90ca"
     },
@@ -399,6 +545,11 @@
         "ops/containers/suite_partition.py",
         "pyproject.toml"
       ],
+      "baseline_differences": [
+        "ops/containers/suite_partition.py",
+        "pyproject.toml"
+      ],
+      "running": false,
       "release_changes": [],
       "record_sha256": "8a68b171b033f1561c82e624ffba2d8da09158a63368941bc2a79b9be620f088"
     },
@@ -412,6 +563,11 @@
         "ops/containers/suite_partition.py",
         "pyproject.toml"
       ],
+      "baseline_differences": [
+        "ops/containers/suite_partition.py",
+        "pyproject.toml"
+      ],
+      "running": false,
       "release_changes": [],
       "record_sha256": "840fb2e4fdb6204cb5b47f83e7820fc0b778aecc95f53785c5a1677fae0b5387"
     },
@@ -425,6 +581,11 @@
         "ops/containers/suite_partition.py",
         "pyproject.toml"
       ],
+      "baseline_differences": [
+        "ops/containers/suite_partition.py",
+        "pyproject.toml"
+      ],
+      "running": false,
       "release_changes": [],
       "record_sha256": "372f58a0bd7c7f034d98a07d3cfa0481e56e1380b870771948163a0faf8861d5"
     },
@@ -438,6 +599,11 @@
         "ops/containers/suite_partition.py",
         "pyproject.toml"
       ],
+      "baseline_differences": [
+        "ops/containers/suite_partition.py",
+        "pyproject.toml"
+      ],
+      "running": false,
       "release_changes": [],
       "record_sha256": "dc448d98222b129c12727d0f2bb6bd5be6270f64ba2dfc358fbd5782577ed02d"
     },
@@ -463,6 +629,23 @@
         "s4d/rwlearn/store.py",
         "scripts/_bootstrap.py"
       ],
+      "baseline_differences": [
+        "mujoco_mig_setup.py",
+        "ops/jobs/run_identity.py",
+        "pyproject.toml",
+        "s4d/realworld/train_store.py",
+        "s4d/rwlearn/deploy/contracts.py",
+        "s4d/rwlearn/deploy/history.py",
+        "s4d/rwlearn/deploy/policy.py",
+        "s4d/rwlearn/deploy/realsense.py",
+        "s4d/rwlearn/deploy/replay.py",
+        "s4d/rwlearn/gate.py",
+        "s4d/rwlearn/inference.py",
+        "s4d/rwlearn/observation.py",
+        "s4d/rwlearn/store.py",
+        "scripts/_bootstrap.py"
+      ],
+      "running": false,
       "release_changes": [],
       "record_sha256": "b3bebba78c6b7f4589a92bf926fea5bc335dc71fab1cf3b54401931522c76443"
     },
@@ -488,6 +671,23 @@
         "s4d/rwlearn/store.py",
         "scripts/_bootstrap.py"
       ],
+      "baseline_differences": [
+        "mujoco_mig_setup.py",
+        "ops/jobs/run_identity.py",
+        "pyproject.toml",
+        "s4d/realworld/train_store.py",
+        "s4d/rwlearn/deploy/contracts.py",
+        "s4d/rwlearn/deploy/history.py",
+        "s4d/rwlearn/deploy/policy.py",
+        "s4d/rwlearn/deploy/realsense.py",
+        "s4d/rwlearn/deploy/replay.py",
+        "s4d/rwlearn/gate.py",
+        "s4d/rwlearn/inference.py",
+        "s4d/rwlearn/observation.py",
+        "s4d/rwlearn/store.py",
+        "scripts/_bootstrap.py"
+      ],
+      "running": false,
       "release_changes": [],
       "record_sha256": "a37c1e110a2d5e4e98e088ee7b0195d866f4c2fef9e4c6e7057398e5b6e98d8d"
     },
@@ -498,6 +698,8 @@
       "files": 0,
       "scope_persisted": false,
       "differences": [],
+      "baseline_differences": [],
+      "running": false,
       "release_changes": [],
       "record_sha256": "adcf550afa69776c476d388c4b70962ffd5af564ac8124e575c1ba35c407a581"
     },
@@ -508,6 +710,8 @@
       "files": 0,
       "scope_persisted": false,
       "differences": [],
+      "baseline_differences": [],
+      "running": false,
       "release_changes": [],
       "record_sha256": "fde3240004e2b55f36f1c2d35a5ff25ae9099220dd57b55d0981f44c5bee3de5"
     },
@@ -518,6 +722,8 @@
       "files": 0,
       "scope_persisted": false,
       "differences": [],
+      "baseline_differences": [],
+      "running": false,
       "release_changes": [],
       "record_sha256": "a5deb0190d0180d7900b78dd0c2e250bb83796d9dde26f7119b53d4116936403"
     },
@@ -528,6 +734,8 @@
       "files": 0,
       "scope_persisted": false,
       "differences": [],
+      "baseline_differences": [],
+      "running": false,
       "release_changes": [],
       "record_sha256": "50e750cf6883330ba78a2fc2d3445eb73aa50a308d88e58136bd594d688e8478"
     },
@@ -538,6 +746,8 @@
       "files": 276,
       "scope_persisted": true,
       "differences": [],
+      "baseline_differences": [],
+      "running": false,
       "release_changes": [],
       "record_sha256": "930b155bdd4789a92b605ca7c87ad6bfc0b318147129cd8368d2c55d67e22b98"
     },
@@ -559,6 +769,19 @@
         "s4d/rwlearn/gate.py",
         "s4d/rwlearn/store.py"
       ],
+      "baseline_differences": [
+        "mujoco_mig_setup.py",
+        "ops/containers/suite_partition.py",
+        "ops/jobs/run_identity.py",
+        "pyproject.toml",
+        "s4d/realworld/train_store.py",
+        "s4d/rwlearn/deploy/history.py",
+        "s4d/rwlearn/deploy/realsense.py",
+        "s4d/rwlearn/deploy/replay.py",
+        "s4d/rwlearn/gate.py",
+        "s4d/rwlearn/store.py"
+      ],
+      "running": false,
       "release_changes": [],
       "record_sha256": "e1f597638adfd52f20695eef326f9a6ffa926956ec244d38686de87c4a46c00f"
     },
@@ -580,6 +803,19 @@
         "s4d/rwlearn/gate.py",
         "s4d/rwlearn/store.py"
       ],
+      "baseline_differences": [
+        "mujoco_mig_setup.py",
+        "ops/containers/suite_partition.py",
+        "ops/jobs/run_identity.py",
+        "pyproject.toml",
+        "s4d/realworld/train_store.py",
+        "s4d/rwlearn/deploy/history.py",
+        "s4d/rwlearn/deploy/realsense.py",
+        "s4d/rwlearn/deploy/replay.py",
+        "s4d/rwlearn/gate.py",
+        "s4d/rwlearn/store.py"
+      ],
+      "running": false,
       "release_changes": [],
       "record_sha256": "e12585847af6655bb1028da1f010abfa4ae39b2712aea3cb7c877c87357b697d"
     },
@@ -601,6 +837,19 @@
         "s4d/rwlearn/gate.py",
         "s4d/rwlearn/store.py"
       ],
+      "baseline_differences": [
+        "mujoco_mig_setup.py",
+        "ops/containers/suite_partition.py",
+        "ops/jobs/run_identity.py",
+        "pyproject.toml",
+        "s4d/realworld/train_store.py",
+        "s4d/rwlearn/deploy/history.py",
+        "s4d/rwlearn/deploy/realsense.py",
+        "s4d/rwlearn/deploy/replay.py",
+        "s4d/rwlearn/gate.py",
+        "s4d/rwlearn/store.py"
+      ],
+      "running": false,
       "release_changes": [],
       "record_sha256": "c51f69a9a35be1f02bd2b24977a1206486840557cd8a096c799c38ef4a9d3e91"
     },
@@ -622,6 +871,19 @@
         "s4d/rwlearn/gate.py",
         "s4d/rwlearn/store.py"
       ],
+      "baseline_differences": [
+        "mujoco_mig_setup.py",
+        "ops/containers/suite_partition.py",
+        "ops/jobs/run_identity.py",
+        "pyproject.toml",
+        "s4d/realworld/train_store.py",
+        "s4d/rwlearn/deploy/history.py",
+        "s4d/rwlearn/deploy/realsense.py",
+        "s4d/rwlearn/deploy/replay.py",
+        "s4d/rwlearn/gate.py",
+        "s4d/rwlearn/store.py"
+      ],
+      "running": false,
       "release_changes": [],
       "record_sha256": "d3d4fb9621b675033eb002ddc71e51850e29c913f7df1acaa88a27058026bb6b"
     },
@@ -643,6 +905,19 @@
         "s4d/rwlearn/gate.py",
         "s4d/rwlearn/store.py"
       ],
+      "baseline_differences": [
+        "mujoco_mig_setup.py",
+        "ops/containers/suite_partition.py",
+        "ops/jobs/run_identity.py",
+        "pyproject.toml",
+        "s4d/realworld/train_store.py",
+        "s4d/rwlearn/deploy/history.py",
+        "s4d/rwlearn/deploy/realsense.py",
+        "s4d/rwlearn/deploy/replay.py",
+        "s4d/rwlearn/gate.py",
+        "s4d/rwlearn/store.py"
+      ],
+      "running": false,
       "release_changes": [],
       "record_sha256": "81bdc0ead74d690620644f666e4f1fda03e8a1f0c2bc9b649c5dd2edf6346507"
     },
@@ -656,6 +931,11 @@
         "ops/containers/suite_partition.py",
         "pyproject.toml"
       ],
+      "baseline_differences": [
+        "ops/containers/suite_partition.py",
+        "pyproject.toml"
+      ],
+      "running": false,
       "release_changes": [],
       "record_sha256": "07c73370a0604e59afb834b1ac3769134dc195b57845ea9ba7ca20b2e64193d7"
     },
@@ -669,6 +949,11 @@
         "ops/containers/suite_partition.py",
         "pyproject.toml"
       ],
+      "baseline_differences": [
+        "ops/containers/suite_partition.py",
+        "pyproject.toml"
+      ],
+      "running": false,
       "release_changes": [],
       "record_sha256": "912c26ccbba4570c33b38090432bc9a9d500fef4f5d3e11399bd2250c001e855"
     },
@@ -682,6 +967,11 @@
         "ops/containers/suite_partition.py",
         "pyproject.toml"
       ],
+      "baseline_differences": [
+        "ops/containers/suite_partition.py",
+        "pyproject.toml"
+      ],
+      "running": false,
       "release_changes": [],
       "record_sha256": "121b9c625cc990a10762b3795e743e2e3f843b4130182d161b986a27dbdc048e"
     },
@@ -703,6 +993,19 @@
         "s4d/rwlearn/gate.py",
         "s4d/rwlearn/store.py"
       ],
+      "baseline_differences": [
+        "mujoco_mig_setup.py",
+        "ops/containers/suite_partition.py",
+        "ops/jobs/run_identity.py",
+        "pyproject.toml",
+        "s4d/realworld/train_store.py",
+        "s4d/rwlearn/deploy/history.py",
+        "s4d/rwlearn/deploy/realsense.py",
+        "s4d/rwlearn/deploy/replay.py",
+        "s4d/rwlearn/gate.py",
+        "s4d/rwlearn/store.py"
+      ],
+      "running": false,
       "release_changes": [],
       "record_sha256": "64e1e64decb318945ee1d3772b300c64ec08dbf3c8806b77405f67e0a585ca78"
     },
@@ -724,6 +1027,19 @@
         "s4d/rwlearn/gate.py",
         "s4d/rwlearn/store.py"
       ],
+      "baseline_differences": [
+        "mujoco_mig_setup.py",
+        "ops/containers/suite_partition.py",
+        "ops/jobs/run_identity.py",
+        "pyproject.toml",
+        "s4d/realworld/train_store.py",
+        "s4d/rwlearn/deploy/history.py",
+        "s4d/rwlearn/deploy/realsense.py",
+        "s4d/rwlearn/deploy/replay.py",
+        "s4d/rwlearn/gate.py",
+        "s4d/rwlearn/store.py"
+      ],
+      "running": false,
       "release_changes": [],
       "record_sha256": "a496b007aa91ff8b41a4b96074a1a3cbe68a5d8da3107936b3ef3948ae5237e9"
     },
@@ -745,6 +1061,19 @@
         "s4d/rwlearn/gate.py",
         "s4d/rwlearn/store.py"
       ],
+      "baseline_differences": [
+        "mujoco_mig_setup.py",
+        "ops/containers/suite_partition.py",
+        "ops/jobs/run_identity.py",
+        "pyproject.toml",
+        "s4d/realworld/train_store.py",
+        "s4d/rwlearn/deploy/history.py",
+        "s4d/rwlearn/deploy/realsense.py",
+        "s4d/rwlearn/deploy/replay.py",
+        "s4d/rwlearn/gate.py",
+        "s4d/rwlearn/store.py"
+      ],
+      "running": false,
       "release_changes": [],
       "record_sha256": "378cc3e0a1982cd78dd43e7564f21c5db38afaa9a7d081770d36f9038eb099cc"
     },
@@ -766,6 +1095,19 @@
         "s4d/rwlearn/gate.py",
         "s4d/rwlearn/store.py"
       ],
+      "baseline_differences": [
+        "mujoco_mig_setup.py",
+        "ops/containers/suite_partition.py",
+        "ops/jobs/run_identity.py",
+        "pyproject.toml",
+        "s4d/realworld/train_store.py",
+        "s4d/rwlearn/deploy/history.py",
+        "s4d/rwlearn/deploy/realsense.py",
+        "s4d/rwlearn/deploy/replay.py",
+        "s4d/rwlearn/gate.py",
+        "s4d/rwlearn/store.py"
+      ],
+      "running": false,
       "release_changes": [],
       "record_sha256": "909507b4ba58c48dfed8df0c1aea22c3a2c6bd6c8adbb946e8f781d6d19ce273"
     },
@@ -787,6 +1129,19 @@
         "s4d/rwlearn/gate.py",
         "s4d/rwlearn/store.py"
       ],
+      "baseline_differences": [
+        "mujoco_mig_setup.py",
+        "ops/containers/suite_partition.py",
+        "ops/jobs/run_identity.py",
+        "pyproject.toml",
+        "s4d/realworld/train_store.py",
+        "s4d/rwlearn/deploy/history.py",
+        "s4d/rwlearn/deploy/realsense.py",
+        "s4d/rwlearn/deploy/replay.py",
+        "s4d/rwlearn/gate.py",
+        "s4d/rwlearn/store.py"
+      ],
+      "running": false,
       "release_changes": [],
       "record_sha256": "2531418ff4648c349aa83c0b6263fc89b4e91a3cb27944a05718fd8cf03be11d"
     },
@@ -808,6 +1163,19 @@
         "s4d/rwlearn/gate.py",
         "s4d/rwlearn/store.py"
       ],
+      "baseline_differences": [
+        "mujoco_mig_setup.py",
+        "ops/containers/suite_partition.py",
+        "ops/jobs/run_identity.py",
+        "pyproject.toml",
+        "s4d/realworld/train_store.py",
+        "s4d/rwlearn/deploy/history.py",
+        "s4d/rwlearn/deploy/realsense.py",
+        "s4d/rwlearn/deploy/replay.py",
+        "s4d/rwlearn/gate.py",
+        "s4d/rwlearn/store.py"
+      ],
+      "running": false,
       "release_changes": [],
       "record_sha256": "49ef3e07ec667a093fb429204100983f4f3b4fec073b7acf4b5d4180dc0e47c5"
     },
@@ -829,6 +1197,19 @@
         "s4d/rwlearn/gate.py",
         "s4d/rwlearn/store.py"
       ],
+      "baseline_differences": [
+        "mujoco_mig_setup.py",
+        "ops/containers/suite_partition.py",
+        "ops/jobs/run_identity.py",
+        "pyproject.toml",
+        "s4d/realworld/train_store.py",
+        "s4d/rwlearn/deploy/history.py",
+        "s4d/rwlearn/deploy/realsense.py",
+        "s4d/rwlearn/deploy/replay.py",
+        "s4d/rwlearn/gate.py",
+        "s4d/rwlearn/store.py"
+      ],
+      "running": false,
       "release_changes": [],
       "record_sha256": "3e75e815ae5473f92e9bc4baa94be6b6d3c47634af0c16204e161717ead9967d"
     },
@@ -850,6 +1231,19 @@
         "s4d/rwlearn/gate.py",
         "s4d/rwlearn/store.py"
       ],
+      "baseline_differences": [
+        "mujoco_mig_setup.py",
+        "ops/containers/suite_partition.py",
+        "ops/jobs/run_identity.py",
+        "pyproject.toml",
+        "s4d/realworld/train_store.py",
+        "s4d/rwlearn/deploy/history.py",
+        "s4d/rwlearn/deploy/realsense.py",
+        "s4d/rwlearn/deploy/replay.py",
+        "s4d/rwlearn/gate.py",
+        "s4d/rwlearn/store.py"
+      ],
+      "running": false,
       "release_changes": [],
       "record_sha256": "bff7e11b808197918afdfb9857a563a6d5d9cb5da6dba2be2d133a14a270faac"
     },
@@ -871,6 +1265,19 @@
         "s4d/rwlearn/gate.py",
         "s4d/rwlearn/store.py"
       ],
+      "baseline_differences": [
+        "mujoco_mig_setup.py",
+        "ops/containers/suite_partition.py",
+        "ops/jobs/run_identity.py",
+        "pyproject.toml",
+        "s4d/realworld/train_store.py",
+        "s4d/rwlearn/deploy/history.py",
+        "s4d/rwlearn/deploy/realsense.py",
+        "s4d/rwlearn/deploy/replay.py",
+        "s4d/rwlearn/gate.py",
+        "s4d/rwlearn/store.py"
+      ],
+      "running": false,
       "release_changes": [],
       "record_sha256": "d6ebb86b72d7eb40b5858e655fc3e2f93798649d33a9e677c360d6c30c446314"
     },
@@ -892,6 +1299,19 @@
         "s4d/rwlearn/gate.py",
         "s4d/rwlearn/store.py"
       ],
+      "baseline_differences": [
+        "mujoco_mig_setup.py",
+        "ops/containers/suite_partition.py",
+        "ops/jobs/run_identity.py",
+        "pyproject.toml",
+        "s4d/realworld/train_store.py",
+        "s4d/rwlearn/deploy/history.py",
+        "s4d/rwlearn/deploy/realsense.py",
+        "s4d/rwlearn/deploy/replay.py",
+        "s4d/rwlearn/gate.py",
+        "s4d/rwlearn/store.py"
+      ],
+      "running": false,
       "release_changes": [],
       "record_sha256": "50266859257355cc98668bd223d671eb78a76560f51b9b32c0bb5ec4fdcc4b8e"
     },
@@ -913,6 +1333,19 @@
         "s4d/rwlearn/gate.py",
         "s4d/rwlearn/store.py"
       ],
+      "baseline_differences": [
+        "mujoco_mig_setup.py",
+        "ops/containers/suite_partition.py",
+        "ops/jobs/run_identity.py",
+        "pyproject.toml",
+        "s4d/realworld/train_store.py",
+        "s4d/rwlearn/deploy/history.py",
+        "s4d/rwlearn/deploy/realsense.py",
+        "s4d/rwlearn/deploy/replay.py",
+        "s4d/rwlearn/gate.py",
+        "s4d/rwlearn/store.py"
+      ],
+      "running": false,
       "release_changes": [],
       "record_sha256": "86c4a423d38345976354b1a562727b743b3b27ab1697740fc58b4c3bb33115cf"
     },
@@ -934,6 +1367,19 @@
         "s4d/rwlearn/gate.py",
         "s4d/rwlearn/store.py"
       ],
+      "baseline_differences": [
+        "mujoco_mig_setup.py",
+        "ops/containers/suite_partition.py",
+        "ops/jobs/run_identity.py",
+        "pyproject.toml",
+        "s4d/realworld/train_store.py",
+        "s4d/rwlearn/deploy/history.py",
+        "s4d/rwlearn/deploy/realsense.py",
+        "s4d/rwlearn/deploy/replay.py",
+        "s4d/rwlearn/gate.py",
+        "s4d/rwlearn/store.py"
+      ],
+      "running": false,
       "release_changes": [],
       "record_sha256": "0bf15452a217b43bcb43194fc084bd60979052255c97c5d65fe425db75cbeff1"
     },
@@ -957,6 +1403,21 @@
         "s4d/rwlearn/store.py",
         "scripts/_bootstrap.py"
       ],
+      "baseline_differences": [
+        "mujoco_mig_setup.py",
+        "ops/jobs/run_identity.py",
+        "pyproject.toml",
+        "s4d/realworld/train_store.py",
+        "s4d/rwlearn/deploy/contracts.py",
+        "s4d/rwlearn/deploy/history.py",
+        "s4d/rwlearn/deploy/realsense.py",
+        "s4d/rwlearn/deploy/replay.py",
+        "s4d/rwlearn/gate.py",
+        "s4d/rwlearn/observation.py",
+        "s4d/rwlearn/store.py",
+        "scripts/_bootstrap.py"
+      ],
+      "running": false,
       "release_changes": [],
       "record_sha256": "8d7c1e6a747a7d0775a1195a41e42e2d75abfce952ea16ea8a5be1bebde49ec2"
     },
@@ -980,6 +1441,21 @@
         "s4d/rwlearn/store.py",
         "scripts/_bootstrap.py"
       ],
+      "baseline_differences": [
+        "mujoco_mig_setup.py",
+        "ops/jobs/run_identity.py",
+        "pyproject.toml",
+        "s4d/realworld/train_store.py",
+        "s4d/rwlearn/deploy/contracts.py",
+        "s4d/rwlearn/deploy/history.py",
+        "s4d/rwlearn/deploy/realsense.py",
+        "s4d/rwlearn/deploy/replay.py",
+        "s4d/rwlearn/gate.py",
+        "s4d/rwlearn/observation.py",
+        "s4d/rwlearn/store.py",
+        "scripts/_bootstrap.py"
+      ],
+      "running": false,
       "release_changes": [],
       "record_sha256": "a9aeb1c38a5399e72a0513fd4a1e80ea199a7bdb925736fb7a162ea761da1ddf"
     },
@@ -1001,6 +1477,19 @@
         "s4d/rwlearn/store.py",
         "scripts/_bootstrap.py"
       ],
+      "baseline_differences": [
+        "mujoco_mig_setup.py",
+        "ops/jobs/run_identity.py",
+        "pyproject.toml",
+        "s4d/realworld/train_store.py",
+        "s4d/rwlearn/deploy/history.py",
+        "s4d/rwlearn/deploy/realsense.py",
+        "s4d/rwlearn/deploy/replay.py",
+        "s4d/rwlearn/gate.py",
+        "s4d/rwlearn/store.py",
+        "scripts/_bootstrap.py"
+      ],
+      "running": false,
       "release_changes": [],
       "record_sha256": "aae4982ab5d8ba1b4f09a215db67a1a9fd6e0fb883c927706957d37abdb11c54"
     },
@@ -1014,6 +1503,11 @@
         "ops/containers/suite_partition.py",
         "pyproject.toml"
       ],
+      "baseline_differences": [
+        "ops/containers/suite_partition.py",
+        "pyproject.toml"
+      ],
+      "running": false,
       "release_changes": [],
       "record_sha256": "ce95a6f8107caeeac03722dae1df08214eaed4afecdf7f259afab52e93a3ee09"
     },
@@ -1027,6 +1521,11 @@
         "ops/containers/suite_partition.py",
         "pyproject.toml"
       ],
+      "baseline_differences": [
+        "ops/containers/suite_partition.py",
+        "pyproject.toml"
+      ],
+      "running": false,
       "release_changes": [],
       "record_sha256": "acb88c03aa0019131eac99dd27b6329dd3e15acf49a25469e2418369e102a702"
     },
@@ -1040,6 +1539,11 @@
         "ops/containers/suite_partition.py",
         "pyproject.toml"
       ],
+      "baseline_differences": [
+        "ops/containers/suite_partition.py",
+        "pyproject.toml"
+      ],
+      "running": false,
       "release_changes": [],
       "record_sha256": "fb8c1cbcaf713f3765aa440f998ff03a1bb9cf1621b7c499e8b55494d4f0364b"
     },
@@ -1061,6 +1565,19 @@
         "s4d/rwlearn/store.py",
         "scripts/_bootstrap.py"
       ],
+      "baseline_differences": [
+        "mujoco_mig_setup.py",
+        "ops/jobs/run_identity.py",
+        "pyproject.toml",
+        "s4d/realworld/train_store.py",
+        "s4d/rwlearn/deploy/history.py",
+        "s4d/rwlearn/deploy/realsense.py",
+        "s4d/rwlearn/deploy/replay.py",
+        "s4d/rwlearn/gate.py",
+        "s4d/rwlearn/store.py",
+        "scripts/_bootstrap.py"
+      ],
+      "running": false,
       "release_changes": [],
       "record_sha256": "4b45a5fc105be68a8e1bfce3f827ca31b1eb3016575ace9801422c8190374f84"
     },
@@ -1082,6 +1599,19 @@
         "s4d/rwlearn/gate.py",
         "s4d/rwlearn/store.py"
       ],
+      "baseline_differences": [
+        "mujoco_mig_setup.py",
+        "ops/containers/suite_partition.py",
+        "ops/jobs/run_identity.py",
+        "pyproject.toml",
+        "s4d/realworld/train_store.py",
+        "s4d/rwlearn/deploy/history.py",
+        "s4d/rwlearn/deploy/realsense.py",
+        "s4d/rwlearn/deploy/replay.py",
+        "s4d/rwlearn/gate.py",
+        "s4d/rwlearn/store.py"
+      ],
+      "running": false,
       "release_changes": [],
       "record_sha256": "e4beeb16df978f8c3f49c977964494ab1aab8a268e241fc8d65a857d63fb7ebc"
     },
@@ -1103,6 +1633,19 @@
         "s4d/rwlearn/gate.py",
         "s4d/rwlearn/store.py"
       ],
+      "baseline_differences": [
+        "mujoco_mig_setup.py",
+        "ops/containers/suite_partition.py",
+        "ops/jobs/run_identity.py",
+        "pyproject.toml",
+        "s4d/realworld/train_store.py",
+        "s4d/rwlearn/deploy/history.py",
+        "s4d/rwlearn/deploy/realsense.py",
+        "s4d/rwlearn/deploy/replay.py",
+        "s4d/rwlearn/gate.py",
+        "s4d/rwlearn/store.py"
+      ],
+      "running": false,
       "release_changes": [],
       "record_sha256": "6a48a54743e126fb3a96fce846cbf0e04589b5567e3816de740848723dd2fce6"
     },
@@ -1124,6 +1667,19 @@
         "s4d/rwlearn/gate.py",
         "s4d/rwlearn/store.py"
       ],
+      "baseline_differences": [
+        "mujoco_mig_setup.py",
+        "ops/containers/suite_partition.py",
+        "ops/jobs/run_identity.py",
+        "pyproject.toml",
+        "s4d/realworld/train_store.py",
+        "s4d/rwlearn/deploy/history.py",
+        "s4d/rwlearn/deploy/realsense.py",
+        "s4d/rwlearn/deploy/replay.py",
+        "s4d/rwlearn/gate.py",
+        "s4d/rwlearn/store.py"
+      ],
+      "running": false,
       "release_changes": [],
       "record_sha256": "f919975d9c656d348d31b1818eda1afacbab42cd925d92ab359fa01d4f52925d"
     },
@@ -1145,6 +1701,19 @@
         "s4d/rwlearn/gate.py",
         "s4d/rwlearn/store.py"
       ],
+      "baseline_differences": [
+        "mujoco_mig_setup.py",
+        "ops/containers/suite_partition.py",
+        "ops/jobs/run_identity.py",
+        "pyproject.toml",
+        "s4d/realworld/train_store.py",
+        "s4d/rwlearn/deploy/history.py",
+        "s4d/rwlearn/deploy/realsense.py",
+        "s4d/rwlearn/deploy/replay.py",
+        "s4d/rwlearn/gate.py",
+        "s4d/rwlearn/store.py"
+      ],
+      "running": false,
       "release_changes": [],
       "record_sha256": "1fa7f9053d539977440ba922bbddcac31f42c39b69a8517548c55e4dd420bea7"
     },
@@ -1166,6 +1735,19 @@
         "s4d/rwlearn/gate.py",
         "s4d/rwlearn/store.py"
       ],
+      "baseline_differences": [
+        "mujoco_mig_setup.py",
+        "ops/containers/suite_partition.py",
+        "ops/jobs/run_identity.py",
+        "pyproject.toml",
+        "s4d/realworld/train_store.py",
+        "s4d/rwlearn/deploy/history.py",
+        "s4d/rwlearn/deploy/realsense.py",
+        "s4d/rwlearn/deploy/replay.py",
+        "s4d/rwlearn/gate.py",
+        "s4d/rwlearn/store.py"
+      ],
+      "running": false,
       "release_changes": [],
       "record_sha256": "7da5deb971558b0c523e67089cdb677b5d3bff6ce8c453f52e71bf7378209eea"
     },
@@ -1180,6 +1762,12 @@
         "pyproject.toml",
         "s4d/rwlearn/configs.py"
       ],
+      "baseline_differences": [
+        "ops/containers/suite_partition.py",
+        "pyproject.toml",
+        "s4d/rwlearn/configs.py"
+      ],
+      "running": false,
       "release_changes": [],
       "record_sha256": "88b2b2d0254b92d4f267aa41da45e325825b232d26e79d1e69e389ef1279d30e"
     },
@@ -1193,6 +1781,11 @@
         "ops/containers/suite_partition.py",
         "pyproject.toml"
       ],
+      "baseline_differences": [
+        "ops/containers/suite_partition.py",
+        "pyproject.toml"
+      ],
+      "running": true,
       "release_changes": [],
       "record_sha256": "1e92cb5f3b8bee2e78b8f5dc4cac43c91a3d4fa16a4fac965dc8a3cb5b3e54f6"
     },
@@ -1206,6 +1799,11 @@
         "ops/containers/suite_partition.py",
         "pyproject.toml"
       ],
+      "baseline_differences": [
+        "ops/containers/suite_partition.py",
+        "pyproject.toml"
+      ],
+      "running": true,
       "release_changes": [],
       "record_sha256": "485a8c9add78530394f6013b83eacceb87af3056ad040e2838c99cf7ca80b5b7"
     },
@@ -1219,6 +1817,11 @@
         "ops/containers/suite_partition.py",
         "pyproject.toml"
       ],
+      "baseline_differences": [
+        "ops/containers/suite_partition.py",
+        "pyproject.toml"
+      ],
+      "running": true,
       "release_changes": [],
       "record_sha256": "7233dd97101d01e10a68e3c6ff07fd692d7ffd937227ab3d83a5ea6db547c2d4"
     },
@@ -1232,6 +1835,11 @@
         "ops/containers/suite_partition.py",
         "pyproject.toml"
       ],
+      "baseline_differences": [
+        "ops/containers/suite_partition.py",
+        "pyproject.toml"
+      ],
+      "running": true,
       "release_changes": [],
       "record_sha256": "b82755d10161ed6326572ca70a137dd991c3c3c81b761c373e2b8c270314513d"
     },
@@ -1245,6 +1853,11 @@
         "ops/containers/suite_partition.py",
         "pyproject.toml"
       ],
+      "baseline_differences": [
+        "ops/containers/suite_partition.py",
+        "pyproject.toml"
+      ],
+      "running": true,
       "release_changes": [],
       "record_sha256": "b0c9c6540125f880e2f05b321c210ab89f02b4192c72afc0a4a972a7bbe3ae3d"
     },
@@ -1258,6 +1871,11 @@
         "ops/containers/suite_partition.py",
         "pyproject.toml"
       ],
+      "baseline_differences": [
+        "ops/containers/suite_partition.py",
+        "pyproject.toml"
+      ],
+      "running": true,
       "release_changes": [],
       "record_sha256": "5f483fc7f74adaa44f4151066470de5934df5aeb71ad7145370e43cddea366c4"
     },
@@ -1272,6 +1890,12 @@
         "pyproject.toml",
         "s4d/rwlearn/configs.py"
       ],
+      "baseline_differences": [
+        "ops/containers/suite_partition.py",
+        "pyproject.toml",
+        "s4d/rwlearn/configs.py"
+      ],
+      "running": false,
       "release_changes": [],
       "record_sha256": "7edc5fb930769a02d66e06f7f825ee73dd72ecf68008250eafc591191f3f8f25"
     },
@@ -1286,6 +1910,12 @@
         "pyproject.toml",
         "s4d/rwlearn/configs.py"
       ],
+      "baseline_differences": [
+        "ops/containers/suite_partition.py",
+        "pyproject.toml",
+        "s4d/rwlearn/configs.py"
+      ],
+      "running": false,
       "release_changes": [],
       "record_sha256": "145b83e6066fbf3fce6a7a41590917ac6b60aa0c33185395ef4e66bb6271e8be"
     },
@@ -1300,6 +1930,12 @@
         "pyproject.toml",
         "s4d/rwlearn/configs.py"
       ],
+      "baseline_differences": [
+        "ops/containers/suite_partition.py",
+        "pyproject.toml",
+        "s4d/rwlearn/configs.py"
+      ],
+      "running": false,
       "release_changes": [],
       "record_sha256": "42d85954cb0749dd5c3263e777220f162c2893ae3e05428f562727d0f088aec6"
     },
@@ -1310,6 +1946,8 @@
       "files": 252,
       "scope_persisted": true,
       "differences": [],
+      "baseline_differences": [],
+      "running": false,
       "release_changes": [],
       "record_sha256": "3e621ca0b59ad8d2de4e76c0ffe8bcb59167a98dddc99e0405f24004269a6c98"
     },
@@ -1324,6 +1962,12 @@
         "pyproject.toml",
         "s4d/rwlearn/configs.py"
       ],
+      "baseline_differences": [
+        "ops/containers/suite_partition.py",
+        "pyproject.toml",
+        "s4d/rwlearn/configs.py"
+      ],
+      "running": false,
       "release_changes": [],
       "record_sha256": "b9b229c7d632073f78868b291e788f1285d450424f0d061199f3970c92a92314"
     },
@@ -1334,6 +1978,8 @@
       "files": 263,
       "scope_persisted": true,
       "differences": [],
+      "baseline_differences": [],
+      "running": false,
       "release_changes": [],
       "record_sha256": "6b384a4d07adf38a43dab8122922372461c163b193aea5f5e4b980dee49ac1a9"
     },
@@ -1344,8 +1990,22 @@
       "files": 265,
       "scope_persisted": true,
       "differences": [],
+      "baseline_differences": [],
+      "running": true,
       "release_changes": [],
       "record_sha256": "1b3a7e7d79885874aee0e3acc09adf2d0c89ceac7e506d32a6c3090b43f6d556"
+    },
+    {
+      "job_id": "rwv2-20261113-pre-ours-pick-and-place-S",
+      "state": "placed",
+      "source_commit": "f2e2f8bbc201e6f878d96a0fe13498a23b357c86",
+      "files": 288,
+      "scope_persisted": true,
+      "differences": [],
+      "baseline_differences": [],
+      "running": false,
+      "release_changes": [],
+      "record_sha256": "2b3159278a3ca495b9f7d3c8ca75f96fcf5488342878bf9d5dc4b6f7d5c72120"
     },
     {
       "job_id": "rwv2-20261113-pre400k-ours-covering-S",
@@ -1354,10 +2014,13 @@
       "files": 292,
       "scope_persisted": true,
       "differences": [],
+      "baseline_differences": [],
+      "running": true,
       "release_changes": [],
       "record_sha256": "19d346e5644474fb093305b88d4683f7bda5754317b65222baff08a5c7219395"
     }
   ],
   "absolute_scope_identical": false,
+  "same_scope_differences_as_main": true,
   "zero_release_changes": true
 }

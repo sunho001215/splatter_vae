@@ -24,7 +24,7 @@ pre/ route, operational queue, registry, placement, ownership or pin was edited.
   priority -4; pre/pre400k have Ours -3 / others 0; export/fqldata/FQL/eval have
   Ours -1 / others 1. Reused existing rows retain their priorities and scripts.
 
-## Persisted-scope blocker inherited from adopted main
+## Persisted-scope history (superseded by the combined release)
 
 `execution-scope-audit.json` compares every ownership record read from adopted
 main against the candidate, including third-party pins and a second comparison
@@ -75,3 +75,25 @@ were unchanged throughout. The sole failure is
 The incompatible digests required by two running rows are recorded in
 [incompatible-live-pins.json](incompatible-live-pins.json). No single file can
 match both values; this is independent of S/SF source changes.
+
+## Combined S/SF and container preprocessing release
+
+The release now merges dsreset-prep-route (01746f4, source fb3baee) into the fixed
+ce8b68e pipeline. Only generated suite-report conflicts needed resolution; the
+reports will be replaced by a fresh combined full-suite run.
+
+The acceptance invariant is relative to main 9c901bf7b0acabe399420c9b5e9a1c2b6bc42479:
+for every persisted placement, candidate-vs-row and main-vs-row mismatch sets must
+be equal, AND every scoped candidate digest must equal main. The latter also
+rejects a third digest that leaves the mismatch filenames unchanged. Covering-S
+still matches its persisted scope absolutely; all eight running rows are exactly
+unchanged from main. Four old placements have no scope and are reported explicitly.
+
+The deterministic ownership fixture is tests/fixtures/dsreset-live-scopes.yaml
+(JSON syntax, YAML extension so the existing suite source fingerprint includes it).
+It captures 89 placements, 85 persisted scopes, 78 inherited mismatches, all eight
+running registry rows, original record SHA256s and registry SHA256. Nineteen unique
+scope maps avoid duplicate fixture content. No operational records were edited.
+The refreshed execution-scope-audit.json records the combined-tree comparison.
+The earlier absolute-compatibility blocker and failed-suite figures above are
+historical; the combined release uses this corrected invariant and fresh evidence.

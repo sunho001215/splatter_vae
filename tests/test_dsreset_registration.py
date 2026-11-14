@@ -364,26 +364,60 @@ with h5py.File(out/'dataset.h5') as f:
     assert result.returncode == 0, result.stderr
 
 
-@pytest.mark.local_host_data
-def test_every_persisted_placement_scope_has_zero_candidate_changes():
-    import subprocess
+@pytest.fixture(scope='module')
+def placement_scope_audit():
     from ops.jobs.dsreset_scope import audit
-    common = Path(subprocess.check_output(['git','rev-parse','--path-format=absolute','--git-common-dir'],
-                                         cwd=REPO,text=True).strip())
-    report = audit(common.parent/'runs/setup/ownership',REPO)
-    assert report['rows'], 'live placement records are required for this release regression check'
+    return audit(REPO/'tests/fixtures/dsreset-live-scopes.yaml',REPO)
+
+
+def test_every_persisted_placement_scope_has_zero_candidate_changes(placement_scope_audit):
+    report = placement_scope_audit
+    assert report['rows'], 'the committed ownership snapshot must include placed rows'
     assert report['zero_release_changes'], [(r['job_id'],r['release_changes']) for r in report['rows'] if r['release_changes']]
     covering = next(r for r in report['rows'] if r['job_id']=='rwv2-20261113-pre400k-ours-covering-S')
     assert covering['scope_persisted'] and not covering['differences'], covering
+    running = [r for r in report['rows'] if r['running']]
+    assert len(running) == 8  # registry snapshot includes all eight running rows
+    assert all(r['scope_persisted'] and not r['release_changes'] for r in running), running
 
 
-@pytest.mark.local_host_data
-def test_every_live_or_placed_persisted_scope_is_identical_to_candidate():
+def test_every_live_or_placed_scope_has_same_differences_as_main(placement_scope_audit):
+    report = placement_scope_audit
+    assert report['baseline'] == '9c901bf7b0acabe399420c9b5e9a1c2b6bc42479'
+    assert len(report['rows']) == 89
+    differences = {r['job_id']:(r['differences'],r['baseline_differences'])
+                   for r in report['rows'] if r['differences'] != r['baseline_differences']}
+    assert report['same_scope_differences_as_main'] and not differences, differences
+    # Four legacy placements have no persisted scope; record rather than invent it.
+    assert sum(not r['scope_persisted'] for r in report['rows']) == 4
+    assert sum(bool(r['baseline_differences']) for r in report['rows']) == 78
+
+
+@pytest.mark.parametrize('baseline_content,candidate_content,same_differences,unchanged',[
+    ('main','main',True,True),       # preserve pre-existing placement drift
+    ('main','third',True,False),     # equal mismatch sets cannot hide a new digest
+    ('main','row',False,False),      # even repairing a pinned mismatch changes scope
+    ('row','third',False,False),     # introducing a new placement mismatch
+])
+def test_scope_audit_compares_baseline_and_exact_candidate_bytes(
+        tmp_path,baseline_content,candidate_content,same_differences,unchanged):
+    import hashlib
     import subprocess
     from ops.jobs.dsreset_scope import audit
-    common = Path(subprocess.check_output(['git','rev-parse','--path-format=absolute','--git-common-dir'],
-                                         cwd=REPO,text=True).strip())
-    report = audit(common.parent/'runs/setup/ownership',REPO)
-    differences = {r['job_id']:r['differences'] for r in report['rows'] if r['differences']}
-    assert not differences, ('Persisted scope differs from candidate; coordinator reconciliation required. '
-                             'See docs/dsreset-20261113/execution-scope-audit.json', differences)
+    candidate = tmp_path/'candidate'
+    candidate.mkdir()
+    subprocess.run(['git','init','-q',str(candidate)],check=True)
+    source = candidate/'shared.py'
+    source.write_text(baseline_content)
+    subprocess.run(['git','-C',str(candidate),'add','shared.py'],check=True)
+    subprocess.run(['git','-C',str(candidate),'-c','user.name=Scope Test',
+                    '-c','user.email=scope@example.invalid','commit','-qm','baseline'],check=True)
+    baseline = subprocess.check_output(['git','-C',str(candidate),'rev-parse','HEAD'],text=True).strip()
+    source.write_text(candidate_content)
+    ownership = tmp_path/'ownership'
+    ownership.mkdir()
+    (ownership/'row.json').write_text(json.dumps(dict(job_id='row',state='placed',
+        execution_scope=dict(source_commit=baseline,files={'shared.py':hashlib.sha256(b'row').hexdigest()}))))
+    report = audit(ownership,candidate,baseline)
+    assert report['same_scope_differences_as_main'] is same_differences
+    assert report['zero_release_changes'] is unchanged

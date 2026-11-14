@@ -1,0 +1,28 @@
+{
+  "offline_only": true,
+  "remote_calls_executed": 0,
+  "local_docker_calls": 0,
+  "compiled_jobs": 248,
+  "counts": {
+    "drawer_success": 98,
+    "drawer_failure": 50,
+    "covering_failure": 50,
+    "pick_and_place_failure": 50
+  },
+  "priority": -4,
+  "source_commit": "fb3baee8c012e848d742081a01b88a03df469b0c",
+  "source_archive_bytes": 1330954240,
+  "launcher_command_checks": [
+    "scheduler admission lock",
+    "rwprep launch lock",
+    "MIG CDI UUID",
+    "candidate worker job + queue SHA",
+    "boot hold inherited from established launcher"
+  ],
+  "external_helper_sha256": {
+    "/home/ws/ws/realworld-ops/pre/tools/rwprep_launch.py": "b27d54350e5f38838016e1819f7bbdc8a231ef4eb06090e9e2da6659f1d4469e",
+    "/home/ws/ws/realworld-ops/pre/tools/rwprep_devices.py": "edf21b3fa019d48e9307989e162f1433f1d87d59272f0d66c0e3ee7dbcfbb03b",
+    "/home/ws/ws/realworld-ops/pre/tools/rwprep_guard.py": "b0850a08d10b2c4f8dae1123d89b5f1a096172354295a508b1cdf175dba53465",
+    "/home/ws/ws/realworld-ops/pre/tools/rwprep_parallel.py": "e2a547066cd397e09c1cf12c2c64be6fbe5f0e023685610a89d919e5c34c6de5"
+  }
+}
