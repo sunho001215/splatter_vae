@@ -97,3 +97,7 @@ scope maps avoid duplicate fixture content. No operational records were edited.
 The refreshed execution-scope-audit.json records the combined-tree comparison.
 The earlier absolute-compatibility blocker and failed-suite figures above are
 historical; the combined release uses this corrected invariant and fresh evidence.
+
+The preprocessing, calibration and followup compilers now also emit priority -4
+directly; the route prepare/attach overrides retain the same priority. These new
+entrypoints are absent from every live persisted execution scope.

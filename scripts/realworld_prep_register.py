@@ -55,7 +55,7 @@ def compile_plans(plans, out, processed, raw, phase='A', rig_map=None):
                           {'kind':'rwprep','argv':['qa','--roots',cfg['output_root'],'--episode',ep,
                            '--out',cfg['output_root']+'/qa.json','--families']}]
             jobs.append(dict(id=f'rwv2-20261113-prep-ours-{ep}-phase{phase}',episode=ep,phase=phase,
-                priority=-3,gpu_profile='1g.24gb',gpu_gib=16 if phase=='A' else 7,
+                priority=-4,gpu_profile='1g.24gb',gpu_gib=16 if phase=='A' else 7,
                 ram_gib=48 if phase=='A' else 16,cpus=4,disk_gib=32,inputs=inputs,deps=[],steps=steps))
             compiled.append({'episode':ep,'config':str(path),'raw_sha256':row['raw_sha256']})
     atomic(out/'jobs.json',jobs)

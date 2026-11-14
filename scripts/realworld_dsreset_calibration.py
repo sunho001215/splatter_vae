@@ -43,7 +43,7 @@ def plan(phase_config,task,out,work,upstream):
     jobs=[]
     def add(name,steps,deps=(),gpu=1,ram=16,**extra):
         jid=prefix+'-'+name
-        jobs.append(dict(id=jid,gpu_profile='1g.24gb',priority=-3,gpu_gib=gpu,ram_gib=ram,cpus=4,
+        jobs.append(dict(id=jid,gpu_profile='1g.24gb',priority=-4,gpu_gib=gpu,ram_gib=ram,cpus=4,
                          disk_gib=16,inputs=inputs,deps=[prefix+'-'+d for d in deps],steps=steps,**extra))
         return name
     def helper(cmd):

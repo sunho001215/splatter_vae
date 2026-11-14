@@ -27,7 +27,7 @@ def main():
     else:
         files += [a.inputs/n for n in ('store.yaml','manifest.json','split_seed0.json','outcomes.json','gate_report.json')]
         argv=['scripts/realworld_dsreset_measure.py','--inputs',str(a.inputs),'--rig',str(a.rig),'--out',str(a.result)]
-    job=dict(id=f'rwv2-20261113-qa-ours-{a.task}-{a.kind}',gpu_profile='1g.24gb',priority=-3,
+    job=dict(id=f'rwv2-20261113-qa-ours-{a.task}-{a.kind}',gpu_profile='1g.24gb',priority=-4,
              gpu_gib=1,ram_gib=16,cpus=4,disk_gib=32,inputs={str(p.resolve()):digest(p) for p in files},
              deps=[],steps=[{'kind':'python','argv':argv}])
     cfg.update(bundle=str(a.out.resolve()),state_dir=str(a.out.resolve()/'state'),jobs=str(a.out.resolve()/'jobs.json'),
