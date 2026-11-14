@@ -120,9 +120,15 @@ def prepare(repo, config, config_path, ingest_path, release, *, preview=False):
                 inputs[str(measurement)] = sha256(measurement)
             for method in methods:
                 b = 'mvp3d' if method.startswith('mvp3d') else method
-                R.require(not pending_scene_parameters(b,task),f'{task}/{b}: measure scene parameters and release first')
+                if pending_scene_parameters(b,task):
+                    from s4d.rwlearn.dsreset_measure import validate_report
+                    measurement=Path(task_cfg['scene_report'])
+                    sf=json.loads((Path(task_cfg['inputs_copy'])/'SF/manifest.json').read_text())
+                    scene=validate_report(json.loads(measurement.read_text()),sf)
+                    task_cfg=dict(task_cfg,scene_parameters=scene)
+                    inputs[str(measurement)]=sha256(measurement)
         task_rows = build_rows(task,directory,release,stage_rows=default_stages(task,directory),rig=task_cfg['rig'],methods=methods,
-                           native_bounds=task_cfg.get('native_bounds'))
+                           native_bounds=task_cfg.get('native_bounds'),scene_parameters=task_cfg.get('scene_parameters'))
         if task_cfg.get('reuse_ours_S'):
             from ops.jobs.dsreset_reuse import aliases,prove_reuse,reuse_rows
             R.require('ours' in methods,'reuse_ours_S requires ours')

@@ -11,6 +11,7 @@ from ops.campaign.rwprep_mig import atomic, digest, validate
 
 def compile_plans(plans, out, processed, raw, phase='A', rig_map=None):
     jobs=[]
+    compiled=[]
     out=Path(out).resolve()
     out.mkdir(parents=True,exist_ok=False)
     (out/'configs').mkdir()
@@ -39,6 +40,11 @@ def compile_plans(plans, out, processed, raw, phase='A', rig_map=None):
             inputs={str(path):digest(path),str(rawfile):row['raw_sha256']}
             if phase=='B':
                 inputs[str(Path(rig).resolve())]=digest(rig)
+                inputs[str(Path(rig).resolve().with_suffix('.reference.npz'))]=digest(Path(rig).with_suffix('.reference.npz'))
+                from s4d.realworld.calib.rig import load_rig,rig_camera_status
+                document,_,_=load_rig(rig)
+                if any(rig_camera_status(document,c)[0]!='validated' for c in document['cameras']):
+                    raise ValueError('phase B rig cameras must be automatically accepted')
             stages='ingest,sensor_depth,foundation_stereo_depth,sam3_masks' if phase=='A' else 'calibrate,track_everything,track_motion,train_data'
             steps=[{'kind':'rwprep','argv':['episode','--pipeline',str(path),'--server',server,
                     '--episode',ep,'--stages',stages]}]
@@ -50,7 +56,9 @@ def compile_plans(plans, out, processed, raw, phase='A', rig_map=None):
             jobs.append(dict(id=f'rwv2-20261113-prep-ours-{ep}-phase{phase}',episode=ep,phase=phase,
                 priority=-3,gpu_profile='1g.24gb',gpu_gib=16 if phase=='A' else 7,
                 ram_gib=48 if phase=='A' else 16,cpus=4,disk_gib=32,inputs=inputs,deps=[],steps=steps))
+            compiled.append({'episode':ep,'config':str(path),'raw_sha256':row['raw_sha256']})
     atomic(out/'jobs.json',jobs)
+    atomic(out/'prep-plan.json',compiled)
     return jobs
 
 
@@ -65,6 +73,7 @@ def main():
     p.add_argument('--host',choices=['local','remote'],default='local')
     p.add_argument('--image',required=True,help='installed prep image immutable sha256 ID')
     p.add_argument('--code',type=Path,default=Path(__file__).resolve().parents[1])
+    p.add_argument('--control-repo',type=Path,default=Path('/home/ws/ws/splatter4d'),help='LIVE queue, registry and driver locks; separate from frozen source')
     p.add_argument('--tools',type=Path,default=Path('/home/ws/ws/realworld-ops/pre/tools/rwprep'))
     p.add_argument('--weights',type=Path,required=True)
     p.add_argument('--assets',type=Path,default=Path('/home/ws/ws/validation-20261031'))
@@ -85,9 +94,9 @@ def main():
         code=str(a.code.resolve()),tools=str(a.tools.resolve()),weights=str(a.weights.resolve()),
         assets=str(a.assets.resolve()),raw=str(a.raw.resolve()),processed=str(a.processed.resolve()),
         bundle=str(a.out),state_dir=str(a.out/'state'),jobs=str(a.out/'jobs.json'),server=str(a.out/'state/server.yaml'),
-        queue=str(a.code/'experiments/queue.yaml'),registry=str(a.code/'experiments/registry.jsonl'),
-        admission_lock=str(a.code/'runs/setup/stage2-driver.lock'),
-        priority_file=str(a.code/'runs/setup/rwprep-mig-priority.json'),
+        queue=str(a.control_repo/'experiments/queue.yaml'),registry=str(a.control_repo/'experiments/registry.jsonl'),
+        admission_lock=str(a.control_repo/'runs/setup/stage2-driver.lock'),
+        priority_file=str(a.control_repo/'runs/setup/rwprep-mig-priority.json'),
         ram_cap_bytes=138_000_000_000 if a.host=='local' else 1000*2**30,
         extra_readonly=list(map(str,a.extra_readonly)))
     validate(config,jobs)

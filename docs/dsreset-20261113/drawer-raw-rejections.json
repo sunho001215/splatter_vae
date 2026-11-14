@@ -1,0 +1,51 @@
+{
+  "excluded": {
+    "drawer-open-v2/episode_000077.h5": {
+      "reason": "/home/ws/data/real_world/drawer-open-v2/success/episode_000077.h5: missing/invalid required action/state schema: \"Unable to synchronously open object (object 'action' doesn't exist)\"",
+      "raw_sha256": "1ead03a339d7c1cf74408b8549c4c92e0185a16d9e8641a12c0ef49100c387ed",
+      "raw_size": 74472,
+      "validator": "dsreset inspect_raw/1"
+    },
+    "drawer-open-v2/episode_000079.h5": {
+      "reason": "/home/ws/data/real_world/drawer-open-v2/success/episode_000079.h5: nonmonotonic/empty 135122073201/frame_timestamp_us",
+      "raw_sha256": "e54b702bb51b6811cf5cd862b7c9a9afdee91e9fb110f8154a09ed3ed8e5584c",
+      "raw_size": 223803144,
+      "validator": "dsreset inspect_raw/1"
+    }
+  },
+  "clock_diagnostics": [
+    {
+      "path": "cameras/cam_135122073201/frame_timestamp_us",
+      "dtype": "float64",
+      "index": 140,
+      "before": 4294944459.0,
+      "after": 43883.0,
+      "delta_plus_2_32": 66720.0
+    },
+    {
+      "path": "cameras/cam_135122073201/sensor_timestamp_us",
+      "dtype": "float64",
+      "index": 140,
+      "before": 4294944376.0,
+      "after": 43800.0,
+      "delta_plus_2_32": 66720.0
+    },
+    {
+      "path": "cameras/cam_135122073201/stereo/frame_timestamp_us",
+      "dtype": "float64",
+      "index": 140,
+      "before": 4294944415.0,
+      "after": 43839.0,
+      "delta_plus_2_32": 66720.0
+    },
+    {
+      "path": "cameras/cam_135122073201/stereo/sensor_timestamp_us",
+      "dtype": "float64",
+      "index": 140,
+      "before": 4294942305.0,
+      "after": 41729.0,
+      "delta_plus_2_32": 66720.0
+    }
+  ],
+  "repair_decision": "Observed four coincident 2^32-wrap candidates at index 140 (66720 us corrected interval). Raw datasets are float64 with no modulus/counter-width contract. Established ingest rejects these fields and no accepted lossless clock-normalization provenance contract exists. Preserve raw, exclude under the binding amendment; do not infer a new clock contract."
+}

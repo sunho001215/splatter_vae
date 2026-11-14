@@ -21,7 +21,7 @@ import time
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
 GIB = 2**30
-ROLE = 'rwprep-mig'
+ROLE = 'rwprep'  # established scheduler co-tenant class; never scheduler-managed
 
 
 def run(argv):
@@ -71,7 +71,9 @@ def ready(jobs, state, stopped=False):
     return [] if stopped else [j for j in jobs if
         state.get(j['id'], {}).get('status', 'pending') in ('pending', 'retry')
         and all(state.get(d, {}).get('status') == 'done' for d in j.get('deps', []))
-        and all(Path(p).is_file() for p in j.get('requires', []))]
+        and all(Path(p).is_file() for p in j.get('requires', []))
+        and all(Path(p).is_file() and all(json.loads(Path(p).read_text())['jobs'].get(i,{}).get('status')=='done'
+                for i in ids) for p,ids in j.get('external_states',{}).items())]
 
 
 def admission(job, snap, config):
@@ -105,6 +107,10 @@ def snapshot(config, live):
     from ops.jobs import scheduler
     from ops.jobs.footprints import ram_gb
     inventory = MIG_DEVICES if config['host'] == 'local' else REMOTE_MIG_DEVICES
+    from ops.resources.mig_inventory import parse_list
+    listed={m['uuid']:(p['uuid'],m['device'],m['profile']) for p in parse_list(run(['nvidia-smi','-L'])) for m in p['mig']}
+    if any(listed.get(u)!=(v[0],v[2],'1g.24gb') for u,v in inventory.items()):
+        raise ValueError('live MIG UUID/profile/parent differs from accepted inventory')
     devices = mig_query(inventory, state_dir=Path(config['state_dir']), timeout=60)
     memory = mb.snapshot()
     queue = scheduler.load_queue(Path(config['queue']))
@@ -125,9 +131,20 @@ def snapshot(config, live):
     disk = shutil.disk_usage(config['processed'])
     # Full container limits are deliberately counted even when their current
     # resident memory is already in memory.current: safe conservative admission.
+    other_ram=other_cpu=0
+    own_names={f"s4d-{j['id']}-a" for j in live}
+    cids=run(['docker','ps','-q','--filter','label=s4d.project=splatter4d','--filter','label=s4d.owner=kaist-sunho']).split()
+    for cid in cids:
+        item=json.loads(run(['docker','inspect',cid]))[0]
+        if any(item['Name'].lstrip('/').startswith(n) for n in own_names):
+            continue
+        cap=item['HostConfig']['Memory'];quota=item['HostConfig'].get('NanoCpus',0)/1e9
+        if cap<=0 or quota<=0:
+            raise ValueError('unbounded campaign co-tenant; no safe growth admission')
+        other_ram+=cap;other_cpu+=quota
     return dict(devices=devices, charge=memory['budget_usage'], growth=growth,
-                available=memory['host_mem_available'], cpu_used=cpu+sum(x['cpus'] for x in live),
-                prep_ram=sum(x['ram_gib']*GIB for x in live), prep_disk=sum(x.get('disk_gib',32)*GIB for x in live),
+                available=memory['host_mem_available'], cpu_used=cpu+other_cpu+sum(x['cpus'] for x in live),
+                prep_ram=other_ram+sum(x['ram_gib']*GIB for x in live), prep_disk=sum(x.get('disk_gib',32)*GIB for x in live),
                 busy={x['gpu'] for x in live}, load=os.getloadavg()[0], idle=idle, psi_cpu=psi,
                 cpus=int(queue['hosts'][config['host']].get('cpu_thread_budget', os.cpu_count() or 1)),
                 disk_free=disk.free, disk_total=disk.total)
@@ -144,7 +161,9 @@ def container_command(config, job, attempt, gpu, jobfile):
             '--device',f'nvidia.com/gpu={gpu}']
     labels = {'s4d.project':'splatter4d','s4d.owner':'kaist-sunho','s4d.role':ROLE,
               's4d.managed':'false','s4d.gpu':gpu,'s4d.rwprep.job':job['id'],
-              's4d.commit':config['commit'],'s4d.queue_sha256':config['queue_sha256']}
+              's4d.commit':config['commit'],'s4d.queue_sha256':config['queue_sha256'],
+              's4d.dispatcher':'rwprep-mig','s4d.mem_bytes':str(int(job['gpu_gib']*GIB)),
+              's4d.ram_bytes':str(int(job['ram_gib']*GIB)),'s4d.disk_bytes':str(int(job.get('disk_gib',32)*GIB))}
     for k,v in labels.items():
         argv += ['--label',f'{k}={v}']
     mounts = [(config['code'],'/opt/src/splatter4d',True),(config['tools'],'/opt/rwprep',True),
@@ -159,6 +178,7 @@ def container_command(config, job, attempt, gpu, jobfile):
                XDG_CACHE_HOME='/ram/cache',TORCH_EXTENSIONS_DIR='/ram/torch-ext',TRITON_CACHE_DIR='/ram/triton',
                PYTHONDONTWRITEBYTECODE='1',NVIDIA_VISIBLE_DEVICES='void',CUDA_VISIBLE_DEVICES=gpu,
                S4D_RWPREP_GPU=gpu,S4D_RWPREP_CONTAINER=name,S4D_RWPREP_IMAGE=config['image'],
+               S4D_HOST_CONFIG='/opt/src/splatter4d/configs/hosts/'+config['host']+'.yaml',
                CC='/opt/envs/sam3/bin/cc-zig',S4D_TE_CUDA_MEMORY_CAP_GIB='5.5',
                OMP_NUM_THREADS=str(job['cpus']),MKL_NUM_THREADS=str(job['cpus']),OPENBLAS_NUM_THREADS=str(job['cpus']))
     for k,v in env.items():
@@ -243,6 +263,8 @@ def tick(config, apply=False):
                     raise ValueError(f'input changed: {path}')
             if run(['git','-C',config['code'],'rev-parse','HEAD']).strip()!=config['commit']:
                 raise ValueError('source release moved')
+            if run(['git','-C',config['code'],'status','--porcelain','--untracked-files=no']).strip():
+                raise ValueError('source release is dirty')
             s = states[job['id']]
             attempt = s['attempt']+1
             s.update(status='launching',attempt=attempt,gpu=gpu,container=f"s4d-{job['id']}-a{attempt}")

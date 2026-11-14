@@ -16,7 +16,7 @@ def row_id(stage, method, task, variant=None, seed=None):
                     + ([f's{seed}'] if seed is not None else []))
 
 
-def build_rows(task, inputs, release, *, stage_rows, rig, methods=METHODS, native_bounds=None):
+def build_rows(task, inputs, release, *, stage_rows, rig, methods=METHODS, native_bounds=None, scene_parameters=None):
     """Build dependencies after bulk prep publishes immutable learning inputs.
 
     Shared prep/calib/qa rows recheck dispatcher evidence at consumption time.
@@ -38,8 +38,8 @@ def build_rows(task, inputs, release, *, stage_rows, rig, methods=METHODS, nativ
     rows = []
     def add(stage, method, variant, script, args, deps, results, *, seed=None, mem=2, ram=8, **extra):
         rid = row_id(stage, method, task, variant, seed)
-        priority = -3 if stage in ('prep', 'calib', 'qa') else (-2 if method == 'ours' else 0) \
-            if stage in ('pre', 'pre400k', 'export') else (-1 if method == 'ours' else 1)
+        priority = -3 if stage in ('prep', 'calib', 'qa') else (-2 if method == 'ours' else -1) \
+            if stage in ('pre', 'pre400k', 'export') else (0 if method == 'ours' else 1)
         role = 'realworld_pretrain' if stage in ('pre', 'pre400k', 'export') or script == 'scripts/compute_workspace_stats.py' \
             else 'realworld_fql'
         rows.append(dict(copy.deepcopy(common), id=rid, script=script, args=args, deps=deps,
@@ -103,6 +103,10 @@ def build_rows(task, inputs, release, *, stage_rows, rig, methods=METHODS, nativ
                 if b == 'mvp3d' and native_bounds is not None:
                     import json
                     sets += ['render.bounds='+json.dumps(native_bounds,separators=(',',':'))]
+                if b == 'snerl' and scene_parameters is not None:
+                    import json
+                    sets += ['data_interface.lookat='+json.dumps(scene_parameters['lookat'],separators=(',',':')),
+                             'data_interface.pose_scale='+str(scene_parameters['pose_scale'])]
                 deps = [qa] + ([native] if b == 'mvp3d' else [])
                 resume = ['--resume','auto'] if b in ('mvp3d','snerl','dynamo') else []
                 mem, ram = {'sincro':(12,24),'reviwo':(4,16),'dynamo':(12,32),'snerl':(16,20),'mvp3d':(12,24)}[b]
