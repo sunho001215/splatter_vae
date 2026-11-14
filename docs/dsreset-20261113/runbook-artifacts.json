@@ -1,0 +1,21 @@
+{
+  "tested_source": "0cb605b9fd24a8633907479082fd0ada599e48ca",
+  "full_suite": {
+    "passed": 3989,
+    "error": 0,
+    "failed": 0,
+    "skipped": 0
+  },
+  "tests_json_sha256": "287e6ff0ec19133f9f0f039945092694497cb8d1e197ef635d1715685ca8d58f",
+  "host_helpers_validation": "syntax only; operations not executed",
+  "files": {
+    "RUNBOOK.md": "2684e86548805ec4fc627947c26eac6765f5df206fadfd1fb2da94237c9c5876",
+    "prepare-prep-host.sh": "e01c14615c9283481151a279c2b8387676f41b5ab88678719b9af061d68e4b47",
+    "launch-prep-controller.sh": "5322143e906071c17a46d91c4b6342d7fc0312fe6b4660627600e83ddbb316ab",
+    "stage-prep-assets.py": "8dc58ca506056090f683a3ac2d239f55ac390e3464d5d7aef051ef3bc301fb31",
+    "dsreset-prep@.service": "9c2c4f04f67dd9ef614c055f6d626cc2d6fd5588f6a9d11af95650c4226f5efe",
+    "local-weight-audit.json": "2b8accf660158049a3ee33ad92c965c847242b5c4bb867710cbb4e2ab1edd031",
+    "registration-preview-final.json": "4b8c25e11b3707e71d7f2c64b5fd6393ccf7e6a40a625ed1d7ba12398f0040d9",
+    "HANDOFF.md": "c10cb0af2469ca2c0bea80256dafe3e91e635bc38601416ceec0847ef1f35e46"
+  }
+}

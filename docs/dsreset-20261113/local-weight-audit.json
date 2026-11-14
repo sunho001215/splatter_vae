@@ -1,0 +1,38 @@
+[
+  {
+    "path": "/home/ws/ws/validation-20261031/downloads/sam3/sam3.pt",
+    "bytes": 3450062241,
+    "expected_sha256": "9999e2341ceef5e136daa386eecb55cb414446a00ac2b55eb2dfd2f7c3cf8c9e",
+    "sha256": "9999e2341ceef5e136daa386eecb55cb414446a00ac2b55eb2dfd2f7c3cf8c9e",
+    "matches": true
+  },
+  {
+    "path": "/home/ws/ws/validation-20261031/downloads/foundation_stereo/23-51-11/cfg.yaml",
+    "bytes": 499,
+    "expected_sha256": "a9d9dd2137c30edc2236194f62df14d222dad5fd3287a33c7540b543bb93853f",
+    "sha256": "a9d9dd2137c30edc2236194f62df14d222dad5fd3287a33c7540b543bb93853f",
+    "matches": true
+  },
+  {
+    "path": "/home/ws/ws/validation-20261031/downloads/foundation_stereo/23-51-11/model_best_bp2.pth",
+    "bytes": 3298527334,
+    "expected_sha256": "60e79bde9c6a00acea551625ff814fe06e5a6806e2c0c9829baee248de87c5f1",
+    "sha256": "60e79bde9c6a00acea551625ff814fe06e5a6806e2c0c9829baee248de87c5f1",
+    "matches": true
+  },
+  {
+    "path": "/home/ws/ws/validation-20261031/downloads/trackeverything/model.pth",
+    "bytes": 546083869,
+    "expected_sha256": "4553975d372096f8c3d7c5fc35fd7025ef8a7611355e6ada8eb251ef1f5feac1",
+    "sha256": "4553975d372096f8c3d7c5fc35fd7025ef8a7611355e6ada8eb251ef1f5feac1",
+    "matches": true
+  },
+  {
+    "missing": "/home/ws/ws/validation-20261031/downloads/torch-hub/checkpoints/dinov2_vits14_pretrain.pth",
+    "expected_sha256": "b938bf1bc15cd2ec0feacfe3a1bb553fe8ea9ca46a7e1d8d00217f29aef60cd9"
+  },
+  {
+    "missing": "/home/ws/ws/validation-20261031/downloads/torch-hub/checkpoints/dino_deitsmall8_pretrain.pth",
+    "expected_sha256": "55c8b267f479b614ec20858947ce361ba804846c193e20be74263a096bb6d75e"
+  }
+]

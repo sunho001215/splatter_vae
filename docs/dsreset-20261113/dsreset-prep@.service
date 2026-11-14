@@ -1,0 +1,17 @@
+[Unit]
+Description=Admitted S/SF preprocessing queue %i
+Requires=docker.service
+After=docker.service
+RequiresMountsFor=/home/ws /home/compu/kaist/sunho/realworld/processed/dsreset-20261113 /home/compu/kaist/sunho/data/real_world
+
+[Service]
+Type=simple
+ExecStartPre=/bin/bash /home/ws/ws/realworld-ops/dsreset-20261113/pipeline/prepare-prep-host.sh
+ExecStart=/bin/bash /home/ws/ws/realworld-ops/dsreset-20261113/pipeline/launch-prep-controller.sh %i
+Restart=always
+RestartSec=15
+KillMode=process
+TimeoutStopSec=20
+
+[Install]
+WantedBy=multi-user.target
