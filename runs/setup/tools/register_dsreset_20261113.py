@@ -18,7 +18,7 @@ from pathlib import Path
 SOURCE = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(SOURCE))
 import yaml
-from ops.jobs.dsreset_plan import METHODS, PAUSE, STEM, build_rows, row_id
+from ops.jobs.dsreset_plan import METHODS, PAUSE, STEM, build_rows as build_reset_rows, row_id
 from s4d.rwlearn import dsreset_gate as gate
 from s4d.rwlearn.dsreset import TASKS, manifest_gate, sha256, validate_manifest
 
@@ -30,6 +30,19 @@ spec.loader.exec_module(R)
 
 
 CANONICAL_SUCCESS = {'covering': 98, 'pick-and-place': 97, 'drawer-open-v2': 98}
+
+
+def build_rows(*args, **kwargs):
+    """Keep future Ours length rows on the task-aware entry point.
+
+    The paired graph currently emits policy artifact evaluations only. Apply this
+    guard at the registrar boundary as well as in the standalone 400k generator.
+    """
+    rows = build_reset_rows(*args, **kwargs)
+    for row in rows:
+        if row['script'] == 'scripts/evaluate_ours_length.py' and row.get('realworld_target') != 'drawer-open':
+            row['script'] = 'scripts/evaluate_ours_task_length.py'
+    return rows
 
 
 def validate_membership(task, docs):

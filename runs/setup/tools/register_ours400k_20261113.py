@@ -257,7 +257,7 @@ def build_rows(task, variant, data_manifest, base200k_source=None, *, current, r
         row = derive(
             template_pre,
             identity,
-            "scripts/evaluate_ours_length.py",
+            "scripts/evaluate_ours_task_length.py",
             [
                 "--name",
                 identity,

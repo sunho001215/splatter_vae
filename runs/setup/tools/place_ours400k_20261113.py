@@ -20,6 +20,26 @@ from ops.jobs import host_roles  # noqa: E402
 from ops.jobs import realworld_local as rw  # noqa: E402
 
 
+def valid_id(identity, by_id=None):
+    if re.fullmatch(
+        r"rwv2-20261113-(?:pre|pre400k|export400k|fqldata400k|fql400k|eval400k)-ours-"
+        r"[a-z0-9-]+-(?:S|SF)(?:-s[012])?", identity
+    ):
+        return True
+    # Other registered non-drawer eval IDs can also be replaced. Admit only rows
+    # actually produced by the task-eval registrar, with their original still present.
+    by_id = by_id or {}
+    row = by_id.get(identity, {})
+    source = by_id.get(row.get("derived_from"), {})
+    return bool(re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*-v2", identity)
+                and identity == source.get("id", "") + "-v2"
+                and row.get("registration_tool") == "runs/setup/tools/register_ours_task_eval_20261115.py"
+                and row.get("script") == "scripts/evaluate_ours_task_length.py"
+                and source.get("script") == "scripts/evaluate_ours_length.py"
+                and row.get("realworld_target") not in (None, "drawer-open")
+                and row.get("local_placement_pause") == reg.LOCAL_PAUSE)
+
+
 def lift_moved(root, moved):
     """Only release an exact set proven to have local queue and ownership records."""
     moved = set(moved)
@@ -61,15 +81,10 @@ def main(argv=None):
     p.add_argument("--execute", action="store_true")
     a = p.parse_args(argv)
     reg.require(Path.cwd().resolve() == ROOT == reg.MAIN, "placement requires released main checkout")
+    queue = reg.reviewed.queue_document((ROOT / "experiments/queue.yaml").read_bytes())
+    by_id = {j["id"]: j for j in queue["jobs"]}
     reg.require(
-        all(
-            re.fullmatch(
-                r"rwv2-20261113-(?:pre|pre400k|export400k|fqldata400k|fql400k|eval400k)-ours-"
-                r"[a-z0-9-]+-(?:S|SF)(?:-s[012])?",
-                i,
-            )
-            for i in a.ids
-        ),
+        all(valid_id(i, by_id) for i in a.ids),
         "unexpected row ID",
     )
     if not a.execute:
