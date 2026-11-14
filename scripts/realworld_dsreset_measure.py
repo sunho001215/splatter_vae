@@ -7,7 +7,7 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from s4d.rwlearn.dsreset_measure import measure
 from s4d.rwlearn.native_depth import build_native_depth
 from s4d.rwlearn.store import open_store
-from ops.campaign.rwprep_mig import atomic
+from ops.jobs.rwprep_mig import atomic
 
 
 def main():

@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 import sys
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
-from ops.campaign.rwprep_mig import atomic,digest,validate,priority_path
+from ops.jobs.rwprep_mig import atomic,digest,validate,priority_path
 
 
 def main():

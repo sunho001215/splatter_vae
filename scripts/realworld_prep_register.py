@@ -7,7 +7,7 @@ import sys
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 import yaml
-from ops.campaign.rwprep_mig import atomic, digest, validate, priority_path
+from ops.jobs.rwprep_mig import atomic, digest, validate, priority_path
 
 
 def compile_plans(plans, out, processed, raw, phase='A', rig_map=None):
@@ -81,7 +81,7 @@ def main():
     p.add_argument('--extra-readonly',type=Path,action='append',default=[])
     a=p.parse_args()
     from ops.resources.gpu_guard import MIG_DEVICES,REMOTE_MIG_DEVICES
-    from ops.campaign.rwprep_mig import run
+    from ops.jobs.rwprep_mig import run
     rigmap=json.loads(a.rig_map.read_text()) if a.rig_map else None
     a.out=a.out.resolve()
     jobs=compile_plans(a.plan,a.out,a.processed,a.raw,a.phase,rigmap)

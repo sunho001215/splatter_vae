@@ -3,7 +3,7 @@ import copy
 import json
 from pathlib import Path
 import pytest
-from ops.campaign import rwprep_mig as P
+from ops.jobs import rwprep_mig as P
 
 
 def snap():

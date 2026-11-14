@@ -768,12 +768,13 @@ RECORDS = {
                  "685fdd216aad8f029a7c584fb9ceb68fc470b32efb93ed29a816af58de980566"),
     "pick-and-place": (97, (14, 80, 101), "AMEND-pick-and-place-97.md", (2, 114),
                        "098231dc642ab448b4c6f40ee63d0baf67d5dca8a72c7dc73541804259a353a5"),
+    "drawer-open-v2": (98, (77, 79), "AMEND-drawer-open-v2-98.md", (1, 117),
+                       "041042f1ff98d220b20dfd5ee159ed113eb79ad29a357134f246e8e5514ccbe7"),
 }
 
 
 def test_the_versioned_amendment_records_are_exactly_the_user_decisions():
-    """configs/realworld/gate_amendments: covering 98 and pick-and-place 97, nothing else (drawer-open / mug-hanging
-    keep the default 100)."""
+    """Exactly the dated, hash-bound decisions, including the binding drawer-v2 raw rejection amendment."""
     assert set(gate.load_amendments()) == set(RECORDS)
 
 
@@ -785,7 +786,8 @@ def test_the_versioned_amendment_record(task):
     rec = loaded["record"]
     assert rec["target"] == len(rec["episodes"]) == target and rec["base_target"] == gate.TARGET
     assert sorted(rec["excluded"]) == [f"{task}/episode_{i:06d}.h5" for i in excluded]
-    assert all(v["validation_reasons"] and v["validator"] == "rw-ingest-validator/1"
+    validator = "dsreset inspect_raw/1" if task == "drawer-open-v2" else "rw-ingest-validator/1"
+    assert all((v.get("validation_reasons") or v.get("reason")) and v["validator"] == validator
                and len(v["raw_sha256"]) == 64 for v in rec["excluded"].values())
     assert rec["document"]["path"].endswith(doc)
     indices = sorted(int(k[-9:-3]) for k in rec["episodes"])

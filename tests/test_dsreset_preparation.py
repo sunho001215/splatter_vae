@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 import pytest
 import yaml
-from ops.campaign.rwprep_mig import validate,ready
+from ops.jobs.rwprep_mig import validate,ready
 from s4d.rwlearn.dsreset_measure import validate_report
 
 REPO=Path(__file__).resolve().parents[1]

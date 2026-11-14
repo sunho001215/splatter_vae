@@ -7,7 +7,7 @@ import sys
 
 SRC=Path('/opt/src/splatter4d')
 sys.path.insert(0,str(SRC))
-from ops.campaign.rwprep_mig import atomic
+from ops.jobs.rwprep_mig import atomic
 
 
 def main():
