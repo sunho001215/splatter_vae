@@ -426,6 +426,17 @@ priority_reservations = PriorityReservations(limits, budgets, lambda: slots, rem
                                             request=request, messages=messages)
 admitted, taken, assigned = [], set(), {}
 _own = {j['id'] for j in candidates}
+_SOURCE_IDENTITY = []
+
+
+def _source_identity():
+    """The checkout's source identity (incl. pinned third-party commits), computed once per pass: localize() needs it
+    to verify a placed row's execution scope; without it third-party scope entries can never match (2026-11-14)."""
+    if not _SOURCE_IDENTITY:
+        _SOURCE_IDENTITY.append(jobs.source_identity())
+    return _SOURCE_IDENTITY[0]
+
+
 for job in sorted(candidates + _other_ready, key=lambda j: (j.get('priority', 5), j['id'] in _own)):
     if job['script'] == 'scripts/eval_rl.py':
         trainer = job['id'].removesuffix('-eval')
@@ -434,7 +445,8 @@ for job in sorted(candidates + _other_ready, key=lambda j: (j.get('priority', 5)
             continue
     if host_roles.remote_resident(job, _roles, _context):
         try:
-            realworld_local.localize(job, state, roles=_roles, by_id=_context, ownership=_ownership)
+            realworld_local.localize(job, state, roles=_roles, by_id=_context, ownership=_ownership,
+                                     source_identity=_source_identity())
         except realworld_local.LocalInputError as exc:
             priority_reservations.log(job, f'not ready: {exc}')
             continue
