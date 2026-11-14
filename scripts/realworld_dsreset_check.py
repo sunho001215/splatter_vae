@@ -10,6 +10,10 @@ import os
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+if __name__ == '__main__':
+    from s4d.rwlearn.dsreset_runtime import install
+    install()
+
 from s4d.rwlearn.baseline_data import check_gate
 from s4d.rwlearn.dsreset import validate_manifest
 from s4d.rwlearn.identity import store_identities

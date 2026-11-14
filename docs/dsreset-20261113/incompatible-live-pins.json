@@ -1,0 +1,16 @@
+{
+  "rwv2-20261113-pre400k-ours-covering-S": {
+    "source_commit": "f2e2f8bbc201e6f878d96a0fe13498a23b357c86",
+    "files": {
+      "pyproject.toml": "f816378a9a27ffdd99e64eb4f7075caf51d3727091fb72ccdb1d744a64ae6fd8",
+      "ops/containers/suite_partition.py": "0e5700918fe9654ba0b118a0973ea88650dd08700b3ceab449f50da13c50c5d7"
+    }
+  },
+  "rwnt-20261110-fql-e2e_cnn_noaug-pick-and-place-s0": {
+    "source_commit": "47a66b1a0ada809f152adf6f3e211bfa5a087cd5",
+    "files": {
+      "pyproject.toml": "dcca808b6aa54e0224bcec0b0d3d0b9fb8351229f583bce256e4393e659abb28",
+      "ops/containers/suite_partition.py": "94337e45de43e542c1e4923b698b0548ce9215c934139aff882d8386bc9eb8bd"
+    }
+  }
+}

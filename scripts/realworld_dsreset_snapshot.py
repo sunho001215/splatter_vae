@@ -11,6 +11,7 @@ from pathlib import Path
 import sys
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from ops.jobs.rwprep_mig import atomic,digest
+from s4d.rwlearn.dsreset_identity import recording_label
 
 
 def stages(root,ep,sha,commit,config_sha,host):
@@ -60,16 +61,25 @@ def main():
         manifest=json.loads(mp.read_text())
         if manifest['variant']!='SF':raise ValueError('one SF manifest per task')
         for r in manifest['episodes']+manifest.get('excluded',[]):
-            matches=[(k,e) for k,e in doc['episodes'].items() if e.get('task')==manifest['task'] and e.get('sha256')==r['sha256']]
+            matches = []
+            for key, entry in doc['episodes'].items():
+                path = (entry.get('source') or {}).get('path') or entry.get('filename') or key
+                identity = (entry.get('task'), entry.get('episode_label') or recording_label(path), Path(path).name)
+                if identity == (manifest['task'], r['label'], r['filename']):
+                    matches.append((key, entry))
             if len(matches)>1:raise ValueError('duplicate ingest raw identity')
-            if matches and r['id'] not in configs:continue  # explicit existing success reuse
-            if digest(r['path'])!=r['sha256']:raise ValueError('raw changed since immutable manifest')
+            if matches and matches[0][1].get('sha256') not in (None, r['sha256']):
+                raise ValueError('ingest raw sha256 differs from immutable manifest')
             excluded=r.get('split')=='excluded'
+            if matches and not excluded and r['id'] not in configs:continue  # explicit existing success reuse
+            if digest(r['path'])!=r['sha256']:raise ValueError('raw changed since immutable manifest')
             if not excluded and proofs.get(r['sha256'])!=r['sha256']:raise ValueError('missing exact remote raw verification proof')
             v=V.validate(r['path'],grace_s=0,task_names=[manifest['task']])
             if not excluded and v['status']!='valid':raise ValueError(f"raw rejected: {r['id']}: {v}")
             if excluded and v['status']=='valid':raise ValueError('amended exclusion is no longer invalid')
             key=matches[0][0] if matches else r['id']
+            if not matches and key in doc['episodes']:
+                raise ValueError('snapshot key already belongs to another raw identity')
             e=copy.deepcopy(matches[0][1]) if matches else {}
             e.update(key=key,task=manifest['task'],filename=r['filename'],sha256=r['sha256'],
                 source={'path':r['path'],'present':True},episode_id=r['id'],episode_label=r['label'],

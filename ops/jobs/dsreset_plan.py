@@ -38,8 +38,9 @@ def build_rows(task, inputs, release, *, stage_rows, rig, methods=METHODS, nativ
     rows = []
     def add(stage, method, variant, script, args, deps, results, *, seed=None, mem=2, ram=8, **extra):
         rid = row_id(stage, method, task, variant, seed)
-        priority = -3 if stage in ('prep', 'calib', 'qa') else (-2 if method == 'ours' else -1) \
-            if stage in ('pre', 'pre400k', 'export') else (0 if method == 'ours' else 1)
+        priority = (-4 if stage in ('prep', 'calib', 'qa') else
+                    (-3 if method == 'ours' else 0) if stage in ('pre', 'pre400k') else
+                    (-1 if method == 'ours' else 1))
         role = 'realworld_pretrain' if stage in ('pre', 'pre400k', 'export') or script == 'scripts/compute_workspace_stats.py' \
             else 'realworld_fql'
         rows.append(dict(copy.deepcopy(common), id=rid, script=script, args=args, deps=deps,
@@ -51,7 +52,7 @@ def build_rows(task, inputs, release, *, stage_rows, rig, methods=METHODS, nativ
         if not row.get('script', '').startswith('scripts/') or not row.get('args') or not row.get('required_results'):
             raise ValueError(f'{stage}: script, args, required_results required')
         rid = row_id(stage, 'ours', task)
-        rows.append({**common, 'role':'realworld_preprocess', 'priority':-3, 'mem_gb':8, 'ram_gb':16,
+        rows.append({**common, 'role':'realworld_preprocess', 'priority':-4, 'mem_gb':8, 'ram_gb':16,
                          **{k:v for k,v in row.items() if k not in common and k not in ('id','deps','priority','role')},
                          'id':rid, 'deps':previous})
         previous = [rid]
@@ -150,4 +151,8 @@ def build_rows(task, inputs, release, *, stage_rows, rig, methods=METHODS, nativ
                 add('eval',method,variant,'scripts/realworld_dsreset_artifact.py',
                     ['--source',f'runs/{fql}/policy.pt','--kind','policy','--out',f'runs/{ev}/evaluation.json'],
                     [fql],['evaluation.json'],seed=seed)
+    from s4d.rwlearn.dsreset_entrypoints import ENTRYPOINTS
+    paired = {original: new for new, original in ENTRYPOINTS.items()}
+    for row in rows:
+        row["script"] = paired.get(row["script"], row["script"])
     return rows

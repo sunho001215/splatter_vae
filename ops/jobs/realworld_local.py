@@ -41,6 +41,7 @@ if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
 from ops.jobs import host_roles  # noqa: E402
+from s4d.rwlearn.dsreset_entrypoints import legacy_row
 from s4d.rwlearn.configs import REMOTE_REALWORLD_ROOT  # noqa: E402
 
 REMOTE_PREFIX = REMOTE_REALWORLD_ROOT
@@ -166,6 +167,7 @@ def _value(arg) -> str:
 
 def has_resolver(job: dict) -> bool:
     """Whether the script/regime has a resolver; validation of its complete argv happens before launch."""
+    job = legacy_row(job)
     script = job.get("script")
     if script not in RESOLVERS:
         return False
@@ -189,6 +191,7 @@ def applies(job: dict, roles: dict, by_id: dict | None = None) -> bool:
 
 def _arguments(job: dict):
     """Strict parsing for the additional resolvers. FQL retains its existing parser/argument behaviour."""
+    job = legacy_row(job)
     script = job.get("script")
     if script == "scripts/train_realworld_fql.py":
         return None
@@ -354,6 +357,7 @@ def _native_store_arg(value, job: dict, what: str) -> str:
 
 
 def needed_inputs(job: dict, *, remote_prefix: str = REMOTE_PREFIX) -> dict:
+    job = legacy_row(job)
     mirror, dependencies = set(), set()
     known = _arguments(job)
     outputs = RESOLVERS[job["script"]]["outputs"]
@@ -875,6 +879,7 @@ def _native_store(dep: str, path: Path, runs: Path, mirror: Path, files: dict, c
 def _inputs(job: dict, state: dict, mirror: Path, manifest: Path, runs: Path,
             remote_prefix: str = REMOTE_PREFIX, root: Path = REPO, finished_dir: Path = FINISHED_DIR
             ) -> tuple[list, dict]:
+    job = legacy_row(job)
     needed = needed_inputs(job, remote_prefix=remote_prefix)
     teacher = _baseline_fields(job, root, remote_prefix) if job.get("script") in BASELINE_OPTIONS else None
     checked = {f"runs/{dep}" + (f"/{relative}" if relative != "." else "")

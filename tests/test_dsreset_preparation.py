@@ -92,8 +92,79 @@ def test_scene_runtime_settings_are_identical_across_variants_and_stage_priority
     rows=build_rows('drawer-open-v2',inputs,{'commit':'a'*40,'image':'sha256:'+'b'*64},
         stage_rows=r.default_stages('drawer-open-v2',inputs),rig='/rig/drawer-open-v2.json',
         scene_parameters={'lookat':[.3,0,.4],'pose_scale':3.7})
-    snerl=[j for j in rows if j['script']=='scripts/train_snerl.py']
+    snerl=[j for j in rows if j['script']=='scripts/dsreset_train_snerl.py']
     assert len(snerl)==2 and all('data_interface.lookat=[0.3,0,0.4]' in j['args'] for j in snerl)
-    pre=[j['priority'] for j in rows if j['script'].split('/')[-1].startswith('train_') and 'fql' not in j['script']]
-    fql=[j['priority'] for j in rows if j['script']=='scripts/train_realworld_fql.py']
-    assert max(pre)<min(fql)
+    for method in ('ours','snerl','dynamo','sincro','reviwo','mvp3d_multiview'):
+        pre = [j['priority'] for j in rows if f'-pre-{method}-' in j['id'] or f'-pre400k-{method}-' in j['id']]
+        fql = [j['priority'] for j in rows if f'-fql-{method}-' in j['id']]
+        assert pre and fql and max(pre)<min(fql)
+
+
+
+def test_snapshot_reuses_all_five_unhashed_exclusions_and_preserves_keys(tmp_path, monkeypatch):
+    import copy
+    import hashlib
+    import json
+    import sys
+    import types
+    from scripts import realworld_dsreset_snapshot as snapshot
+    from s4d.rwlearn.dsreset import manifest_gate, paired_manifests
+    from tests.test_rwlearn_gate import entry
+    source = {'episodes': {}}
+    args = ['snapshot', '--source', str(tmp_path/'source.json'), '--remote-hashes', str(tmp_path/'hashes.json'),
+            '--prep-config', str(tmp_path/'dispatcher.json'), '--out-dir', str(tmp_path/'out')]
+    manifests = []
+    keys = []
+    for task, excluded_indices in [('covering',(57,61)), ('pick-and-place',(14,80,101))]:
+        roots = {}
+        indices = sorted(set(range(100)) | set(excluded_indices))
+        while len(indices)>100:
+            indices.remove(next(n for n in reversed(indices) if n not in excluded_indices))
+        names = [f'episode_{n:06d}.h5' for n in indices]  # exactly 100 success files, with interleaved counters
+        for label in ('success','failure'):
+            directory = tmp_path/task/label
+            directory.mkdir(parents=True)
+            roots[label] = directory
+            Path(str(directory)+'.VERIFIED').touch()
+            for name in names if label=='success' else names[:50]:
+                (directory/name).write_text(f'{task}:{label}:{name}')
+        omitted = {f'{task}/episode_{i:06d}.h5': {'reason':'invalid raw schema',
+                   'raw_sha256':hashlib.sha256((roots['success']/f'episode_{i:06d}.h5').read_bytes()).hexdigest()}
+                   for i in excluded_indices}
+        hashes = {f'{task}/{path.name}':hashlib.sha256(path.read_bytes()).hexdigest()
+                  for path in roots['success'].iterdir() if f'{task}/{path.name}' not in omitted}
+        amendment = dict(format='rw-gate-amendment/1', task=task, base_target=100,target=len(hashes),
+                         episodes=hashes,excluded=omitted,decided_by='user',decision='exclude invalid')
+        m = paired_manifests(task,roots,inspect=lambda p:{},amendment=amendment)['SF']
+        manifests.append(m)
+        for row in m['episodes']:
+            source['episodes'][row['id']] = dict(entry(task,int(row['filename'][8:14]),sha=row['sha256'],validated=True),
+                source={'path':row['path']},filename=row['filename'],episode_label=row['label'])
+        for row in m['excluded']:
+            key = f"original/{task}/{row['filename']}"
+            keys.append(key)
+            source['episodes'][key] = dict(task=task, filename=row['filename'], source={'path':row['path']},
+                                           sha256=None,validation={'status':'invalid'}, key=key)
+        mp = tmp_path/f'{task}.json'
+        mp.write_text(json.dumps(m))
+        args += ['--manifest', str(mp)]
+    (tmp_path/'source.json').write_text(json.dumps(source))
+    (tmp_path/'hashes.json').write_text('{}')
+    (tmp_path/'jobs.json').write_text('[]')
+    (tmp_path/'dispatcher.json').write_text(json.dumps({'jobs':str(tmp_path/'jobs.json')}))
+    monkeypatch.setitem(sys.modules,'episode_validator',types.SimpleNamespace(validate=lambda *a,**kw:{'status':'invalid'}))
+    monkeypatch.setattr(sys,'argv',args)
+    snapshot.main()
+    result = json.loads((tmp_path/'out/manifest.json').read_text())
+    assert set(result['episodes']) == set(source['episodes'])
+    assert len(keys) == 5
+    for key in keys:
+        assert result['episodes'][key]['key'] == key and result['episodes'][key]['sha256']
+        assert result['episodes'][key]['validation']['status'] == 'invalid'
+    assert json.loads((tmp_path/'source.json').read_text()) == source
+    for m in manifests: assert manifest_gate(m,result)['passed']
+    # Already-duplicated identities must fail instead of silently choosing a key.
+    duplicate = copy.deepcopy(source)
+    duplicate['episodes']['duplicate'] = dict(duplicate['episodes'][keys[0]])
+    (tmp_path/'source.json').write_text(json.dumps(duplicate))
+    with pytest.raises(ValueError,match='duplicate ingest raw identity'): snapshot.main()

@@ -379,12 +379,10 @@ def evaluate(manifest: dict, tasks, *, required_stages=REQUIRED_STAGES, target: 
                 problems.append(f"{key}: sha256 differs from the gate amendment's")
                 continue
             idx = e.get("episode_index")
-            index_identity = (e.get("episode_label", "success"), idx)
-            if (e.get("episode_label", "success") not in ("success", "failure")
-                    or not isinstance(idx, int) or index_identity in indices):
+            if not isinstance(idx, int) or idx in indices:
                 problems.append(f"{key}: missing or duplicate episode index {idx!r}")
                 continue
-            indices.add(index_identity)
+            indices.add(idx)
             pre = e.get("preprocessing") or {}
             stages = pre.get("stages") or {}
             # aggregate: every recorded stage done (or skipped) EXCEPT the hold stages, which only gate geometry-

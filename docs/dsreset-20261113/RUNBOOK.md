@@ -523,7 +523,8 @@ DSRESET_IMAGE=$(.venv/bin/python -c 'import json; print(json.load(open("runs/set
 No preview substitutes for this complete dry run. The required pause makes append
 safe; queue dependencies/shared barriers re-audit data. Ours follows Original200k
 + one full-state warm restart to400k; final400k only feeds FQL. Priorities for NEW
-rows: prep/calib/qa -3; all pretraining/export ours-2, others-1; FQL ours0, others1.
+rows: prep/calib/qa -4; pre/pre400k Ours -3, others 0;
+export/fqldata/FQL/eval Ours -1, others 1. Existing rows retain their priorities.
 Existing reused/running rows retain their exact priorities and release pins.
 
 Run standard placement plan with `--allow-pause dsreset-await-placement-20261113`,

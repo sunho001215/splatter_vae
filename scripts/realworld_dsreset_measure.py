@@ -4,6 +4,10 @@ import json
 from pathlib import Path
 import sys
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
+if __name__ == '__main__':
+    from s4d.rwlearn.dsreset_runtime import install
+    install()
+
 from s4d.rwlearn.dsreset_measure import measure
 from s4d.rwlearn.native_depth import build_native_depth
 from s4d.rwlearn.store import open_store

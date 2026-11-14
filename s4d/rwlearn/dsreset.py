@@ -247,8 +247,8 @@ def learning_inputs(manifest, ingest, store):
     The exact raw hashes and selected label set replace the old 100-only count;
     every validation, QA family and calibration check is still gate.evaluate's.
     """
-    from s4d.rwlearn import gate
-    from s4d.rwlearn.identity import store_identities
+    from s4d.rwlearn import dsreset_gate as gate
+    from s4d.rwlearn.dsreset_identity import store_identities
     validate_manifest(manifest)
     task = manifest['task']
     rows = manifest['episodes']
@@ -279,7 +279,7 @@ def learning_inputs(manifest, ingest, store):
 
 def validate_manifest(m):
     """Validate a saved manifest without trusting its cached split/outcome maps."""
-    from s4d.rwlearn.identity import recording_label
+    from s4d.rwlearn.dsreset_identity import recording_label
     if m.get('schema') != 'dsreset-episodes/v1' or m.get('task') not in TASKS or m.get('variant') not in ('S','SF'):
         raise ValueError('not a dsreset episode manifest')
     rows = m.get('episodes', [])
@@ -317,12 +317,12 @@ def validate_manifest(m):
 
 def manifest_gate(manifest, ingest):
     """Evaluate the established QA rules on the exact immutable variant membership."""
-    from s4d.rwlearn import gate
+    from s4d.rwlearn import dsreset_gate as gate
     validate_manifest(manifest)
     task, rows = manifest['task'], manifest['episodes']
     selected = {}
     for r in manifest.get('excluded',[]):
-        from s4d.rwlearn.identity import recording_label
+        from s4d.rwlearn.dsreset_identity import recording_label
         # ING rejects invalid recordings before hashing/transferring them. The
         # accepted amendment + rehashed manifest supplies their content identity;
         # retain the ordinary gate's requirement that this exact source stays invalid.
@@ -409,7 +409,7 @@ def verified_success_from_ingest(ingest, task):
     paired_manifests rehashes every local file and requires exact set equality.
     Invalid amended recordings still need transfer integrity, not training QA.
     """
-    from s4d.rwlearn.identity import recording_label
+    from s4d.rwlearn.dsreset_identity import recording_label
     verified = {}
     for key,e in ingest['episodes'].items():
         path = e.get('filename') or e.get('source',{}).get('path') or key

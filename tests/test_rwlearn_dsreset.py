@@ -167,7 +167,7 @@ def test_provisional_prep_is_not_a_training_manifest(tmp_path):
 
 
 def test_label_aware_raw_identity_supports_overlapping_counters():
-    from s4d.rwlearn.identity import match_recordings, raw_identity
+    from s4d.rwlearn.dsreset_identity import match_recordings, raw_identity
     a = raw_identity('covering','/raw/covering/episode_000001.h5','a'*64)
     b = raw_identity('covering','/raw/covering-failure/episode_000001.h5','b'*64)
     expected = {'s':a,'f':b}

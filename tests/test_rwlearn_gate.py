@@ -373,7 +373,7 @@ def measured_scenes(monkeypatch):
         monkeypatch.setitem(configs.SCENE_PARAMETERS, task, dict(configs.SCENE_PARAMETERS["drawer-open"]))
 
 
-NEW_TASKS = ("covering", "pick-and-place", "drawer-open-v2")
+NEW_TASKS = ("covering", "pick-and-place")
 SCENE_IDS = {f"rw-{b}-{{t}}-pre" for b in ("snerl", "mvp3d")} | {f"rw-fql-{c}-{{t}}" for c in
                                                                  ("snerl", "mvp3d_multiview", "mvp3d_single")}
 

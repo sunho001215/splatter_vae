@@ -171,7 +171,7 @@ METAWORLD_TASKS = _metaworld_tasks()
 # Real-world campaign tasks (user directive 2026-11-06 item 3; covering and pick-and-place 2026-11-09), read from the
 # learning registry s4d/rwlearn/tasks.py; drawer-open is also a Meta-World task, so a task flag alone cannot place a
 # row that names it.
-REALWORLD_TASKS = frozenset(TARGETS)
+REALWORLD_TASKS = frozenset((*TARGETS, "drawer-open-v2"))
 
 
 def _named_domains(text: str) -> set[str]:

@@ -49,7 +49,6 @@ PICK_AND_PLACE_POSE_SCALE = 3.74
 # containment, foreground near/far coverage; docs/realworld_baselines.md), set the measured values here, regenerate
 # the configs and release. Until then the planner refuses the scene-dependent consumers (``pending_scene_parameters``).
 SCENE_PARAMETERS = {
-    "drawer-open-v2": {"lookat": None, "pose_scale": None, "bounds": None},
     "drawer-open": {"lookat": SNERL_LOOKAT, "pose_scale": SNERL_POSE_SCALE, "bounds": MVP3D_BOUNDS},
     "mug-hanging": {"lookat": SNERL_LOOKAT, "pose_scale": SNERL_POSE_SCALE, "bounds": MVP3D_BOUNDS},
     "covering": {"lookat": COVERING_LOOKAT, "pose_scale": COVERING_POSE_SCALE, "bounds": MVP3D_BOUNDS},

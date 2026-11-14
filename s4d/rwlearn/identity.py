@@ -18,12 +18,6 @@ def raw_identity(task, recording, sha256=None) -> dict:
     return {"task": task, "raw_recording": recording, "raw_sha256": sha256}
 
 
-def recording_label(recording: str) -> str:
-    """Directory label; legacy success layouts keep their existing identity/output."""
-    parts = Path(recording).parts[:-1]
-    return "failure" if any(p == "failure" or p.endswith("-failure") for p in parts) else "success"
-
-
 def match_recordings(expected: dict, actual: dict, *, complete: bool = True) -> dict[str, str]:
     """Return actual key -> expected key. Relocated paths may match by basename within a task; every recorded
     hash must agree. Duplicate names/content and absent identities fail closed, even when episode keys agree."""
@@ -31,7 +25,7 @@ def match_recordings(expected: dict, actual: dict, *, complete: bool = True) -> 
         names, hashes, identities = {}, {}, {}
         for key, rec in records.items():
             r = raw_identity(rec.get("task"), rec.get("raw_recording"), rec.get("raw_sha256"))
-            name = (r["task"], recording_label(r["raw_recording"]), Path(r["raw_recording"]).name)
+            name = (r["task"], Path(r["raw_recording"]).name)
             sha = (r["task"], r["raw_sha256"])
             if name in names or (sha[1] and sha in hashes):
                 raise RuntimeError(f"duplicate raw identity for {key}")
@@ -44,7 +38,7 @@ def match_recordings(expected: dict, actual: dict, *, complete: bool = True) -> 
     _, actual_ids = index(actual)
     matched = {}
     for key, rec in actual_ids.items():
-        name = (rec["task"], recording_label(rec["raw_recording"]), Path(rec["raw_recording"]).name)
+        name = (rec["task"], Path(rec["raw_recording"]).name)
         other = expected_names.get(name)
         if other is None:
             raise RuntimeError(f"{key}: raw identity not found in the validated episode set: {name}")

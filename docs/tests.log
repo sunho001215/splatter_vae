@@ -1,13 +1,11 @@
-Collecting authoritative suite; CPU budget=16, CPU shards=6, GPU shards=1
-Collected 3962 tests; 1 exclusive serial shard(s) with 16 threads, then 7 parallel shards, 2 threads each
-Shard 0 (serial): exit=0, seconds=213.1
-Shard 4 (cpu): exit=0, seconds=51.8
-Shard 7 (cpu): exit=0, seconds=88.8
-Shard 6 (cpu): exit=0, seconds=95.8
-Shard 2 (cpu): exit=0, seconds=118.1
-Shard 3 (cpu): exit=0, seconds=137.9
-Shard 5 (cpu): exit=0, seconds=227.1
-Shard 1 (gpu): exit=0, seconds=563.2
+Collecting authoritative suite; CPU budget=32, CPU shards=4, GPU shards=1
+Collected 3967 tests; 1 exclusive serial shard(s) with 32 threads, then 5 parallel shards, 6 threads each
+Shard 0 (serial): exit=0, seconds=218.3
+Shard 4 (cpu): exit=0, seconds=85.3
+Shard 2 (cpu): exit=0, seconds=181.1
+Shard 5 (cpu): exit=0, seconds=280.7
+Shard 3 (cpu): exit=1, seconds=281.8
+Shard 1 (gpu): exit=0, seconds=546.4
 
 ===== collection =====
 [gpu_guard] cuda:0 -> MIG-c3511b41-5f78-52f1-9b93-9c6794cdbbdd (NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition MIG 1g.24gb)
@@ -618,12 +616,20 @@ tests/test_dsreset_preparation.py::test_calibration_graph_has_real_stages_and_on
 tests/test_dsreset_preparation.py::test_native_scene_report_binds_membership_and_containment
 tests/test_dsreset_preparation.py::test_automatic_publication_uses_the_established_frozen_verdict_contract
 tests/test_dsreset_preparation.py::test_scene_runtime_settings_are_identical_across_variants_and_stage_priority_dominates
+tests/test_dsreset_preparation.py::test_snapshot_reuses_all_five_unhashed_exclusions_and_preserves_keys
 tests/test_dsreset_registration.py::test_complete_paired_graph_supports_both_hosts_and_no_retired_tasks
 tests/test_dsreset_registration.py::test_pretrain_science_differs_only_in_manifest_derived_inputs
 tests/test_dsreset_registration.py::test_preview_is_read_only_and_cannot_publish
 tests/test_dsreset_registration.py::test_bound_inputs_reject_label_split_and_live_calibration_mutations
 tests/test_dsreset_registration.py::test_ours_exports_only_final_single_cycle_400k
 tests/test_dsreset_registration.py::test_existing_ours_S_chain_reuse_requires_identical_hashes_split_and_science
+tests/test_dsreset_registration.py::test_canonical_registration_membership_and_amendment_evidence[covering]
+tests/test_dsreset_registration.py::test_canonical_registration_membership_and_amendment_evidence[pick-and-place]
+tests/test_dsreset_registration.py::test_canonical_registration_membership_and_amendment_evidence[drawer-open-v2]
+tests/test_dsreset_registration.py::test_registrar_rejects_small_self_consistent_pair_before_qa
+tests/test_dsreset_registration.py::test_paired_runtime_is_isolated_and_used_by_all_new_entrypoints
+tests/test_dsreset_registration.py::test_every_persisted_placement_scope_has_zero_candidate_changes
+tests/test_dsreset_registration.py::test_every_live_or_placed_persisted_scope_is_identical_to_candidate
 tests/test_encoder.py::test_visible_mask_retains_highest_motion_half_and_random_remainder
 tests/test_encoder.py::test_static_samples_choose_patches_randomly_not_by_location
 tests/test_encoder.py::test_zero_mask_ratio_keeps_all_patches
@@ -3707,7 +3713,6 @@ tests/test_rwlearn_gate.py::test_unknown_qa_schema_is_never_treated_as_legacy[]
 tests/test_rwlearn_gate.py::test_every_singleview_fql_condition_ignores_cross_camera_family_but_keeps_geometry
 tests/test_rwlearn_gate.py::test_new_tasks_have_an_independent_100_episode_gate[covering]
 tests/test_rwlearn_gate.py::test_new_tasks_have_an_independent_100_episode_gate[pick-and-place]
-tests/test_rwlearn_gate.py::test_new_tasks_have_an_independent_100_episode_gate[drawer-open-v2]
 tests/test_rwlearn_gate.py::test_documented_training_plan_is_the_preview
 tests/test_rwlearn_gate.py::test_amendment_releases_exactly_its_episodes_and_keeps_every_other_check
 tests/test_rwlearn_gate.py::test_amendment_is_task_specific_and_the_default_stays_100
@@ -3766,12 +3771,10 @@ tests/test_rwlearn_ours.py::test_committed_configs_equal_the_generator[drawer-op
 tests/test_rwlearn_ours.py::test_committed_configs_equal_the_generator[mug-hanging]
 tests/test_rwlearn_ours.py::test_committed_configs_equal_the_generator[covering]
 tests/test_rwlearn_ours.py::test_committed_configs_equal_the_generator[pick-and-place]
-tests/test_rwlearn_ours.py::test_committed_configs_equal_the_generator[drawer-open-v2]
 tests/test_rwlearn_ours.py::test_config_differs_from_the_simulation_original_in_exactly_the_listed_keys[drawer-open]
 tests/test_rwlearn_ours.py::test_config_differs_from_the_simulation_original_in_exactly_the_listed_keys[mug-hanging]
 tests/test_rwlearn_ours.py::test_config_differs_from_the_simulation_original_in_exactly_the_listed_keys[covering]
 tests/test_rwlearn_ours.py::test_config_differs_from_the_simulation_original_in_exactly_the_listed_keys[pick-and-place]
-tests/test_rwlearn_ours.py::test_config_differs_from_the_simulation_original_in_exactly_the_listed_keys[drawer-open-v2]
 tests/test_rwlearn_ours.py::test_simulation_original_is_the_arm4_recommended_configuration
 tests/test_rwlearn_ours.py::test_simulation_original_matches_the_registered_reference_runs
 tests/test_rwlearn_ours.py::test_metaworld_training_modules_never_import_the_realworld_learning_package
@@ -3974,7 +3977,7 @@ tests/test_watch.py::test_heartbeat_never_uses_local_pid_for_remote_jobs
 tests/test_watch.py::test_heartbeat_flags_stale_running_jobs_and_dead_watcher
 tests/test_workers.py::test_fork_safe_iteration_collects_freezes_only_while_forking_and_yields_the_same_batches
 
-3962 tests collected in 12.73s
+3967 tests collected in 16.24s
 
 ===== shard-0 =====
 [gpu_guard] cuda:0 -> MIG-c3511b41-5f78-52f1-9b93-9c6794cdbbdd (NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition MIG 1g.24gb)
@@ -3989,187 +3992,183 @@ tests/test_workers.py::test_fork_safe_iteration_collects_freezes_only_while_fork
 ........................................................................ [ 84%]
 ........................................................................ [ 94%]
 ...........................................                              [100%]
-736 passed, 27 subtests passed in 208.86s (0:03:28)
+736 passed, 27 subtests passed in 214.27s (0:03:34)
 
 ===== shard-1 =====
 [gpu_guard] cuda:0 -> MIG-c3511b41-5f78-52f1-9b93-9c6794cdbbdd (NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition MIG 1g.24gb)
 ........................................................................ [ 16%]
 ........................................................................ [ 32%]
-........................................................................ [ 48%]
+........................................................................ [ 49%]
 ........................................................................ [ 65%]
 ........................................................................ [ 81%]
-........................................................................ [ 97%]
-..........                                                               [100%]
+........................................................................ [ 98%]
+........                                                                 [100%]
 =============================== warnings summary ===============================
 tests/test_rwlearn_trainers_gpu.py::test_dataset_build_training_lossless_resume_and_policy[e2e_cnn-none]
 tests/test_rwlearn_trainers_gpu.py::test_dataset_build_training_lossless_resume_and_policy[dynamo-none]
 tests/test_rwlearn_trainers_gpu.py::test_dataset_build_training_lossless_resume_and_policy[dynamo-train_standardize]
 tests/test_rwlearn_ours.py::test_gate_refusals
 tests/test_rwlearn_ours.py::test_split_must_partition_the_store_also_for_smoke_runs
-  /home/ws/ws/splatter4d/.worktrees/dsreset/s4d/rwlearn/store.py:401: UserWarning: training store built from MOCK model outputs (tests only)
+  /home/ws/ws/splatter4d/.worktrees/dsreset-release/s4d/rwlearn/store.py:401: UserWarning: training store built from MOCK model outputs (tests only)
     return module.CompactStore(spec["paths"])
 
 tests/test_baselines_snerl.py::test_official_get_rays_keep_rig_intrinsics_and_integer_samples_at_camera_z_depth
-  /home/ws/ws/splatter4d/.worktrees/dsreset/.venv/lib/python3.10/site-packages/torch/functional.py:505: UserWarning: torch.meshgrid: in an upcoming release, it will be required to pass the indexing argument. (Triggered internally at /pytorch/aten/src/ATen/native/TensorShape.cpp:4381.)
+  /home/ws/ws/splatter4d/.venv/lib/python3.10/site-packages/torch/functional.py:505: UserWarning: torch.meshgrid: in an upcoming release, it will be required to pass the indexing argument. (Triggered internally at /pytorch/aten/src/ATen/native/TensorShape.cpp:4381.)
     return _VF.meshgrid(tensors, **kwargs)  # type: ignore[attr-defined]
 
 tests/test_baselines_snerl.py::test_heldout_semantic_ground_truth_is_native_stored_state_replay
-  /home/ws/ws/splatter4d/.worktrees/dsreset/.venv/lib/python3.10/site-packages/gymnasium/utils/passive_env_checker.py:34: UserWarning: [33mWARN: A Box observation space maximum and minimum values are equal.[0m
+  /home/ws/ws/splatter4d/.venv/lib/python3.10/site-packages/gymnasium/utils/passive_env_checker.py:34: UserWarning: [33mWARN: A Box observation space maximum and minimum values are equal.[0m
     logger.warn("A Box observation space maximum and minimum values are equal.")
 
 tests/test_baselines_snerl.py::test_heldout_semantic_ground_truth_is_native_stored_state_replay
-  /home/ws/ws/splatter4d/.worktrees/dsreset/.venv/lib/python3.10/site-packages/gymnasium/utils/passive_env_checker.py:157: UserWarning: [33mWARN: The obs returned by the `reset()` method is not within the observation space.[0m
+  /home/ws/ws/splatter4d/.venv/lib/python3.10/site-packages/gymnasium/utils/passive_env_checker.py:157: UserWarning: [33mWARN: The obs returned by the `reset()` method is not within the observation space.[0m
     logger.warn(f"{pre} is not within the observation space.")
 
 tests/test_rl.py::test_exploitation_target_and_expectile_match_the_official_code_on_a_fixed_batch
-  /home/ws/ws/splatter4d/.worktrees/dsreset/tests/test_rl.py:219: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
+  /home/ws/ws/splatter4d/.worktrees/dsreset-release/tests/test_rl.py:219: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
   Consider using tensor.detach() first. (Triggered internally at /pytorch/torch/csrc/autograd/generated/python_variable_methods.cpp:836.)
     assert float(agent.update_predictor(obs, proprio, action)["predictor_loss"]) == pytest.approx(float(loss), rel=1e-6)
 
 tests/test_baseline_representation.py: 1222 warnings
 tests/test_stop_step.py: 24 warnings
 tests/test_heldout.py: 27 warnings
-  /home/ws/ws/splatter4d/.worktrees/dsreset/.venv/lib/python3.10/site-packages/torch/utils/data/_utils/pin_memory.py:57: DeprecationWarning: The argument 'device' of Tensor.pin_memory() is deprecated. Please do not pass this argument. (Triggered internally at /pytorch/aten/src/ATen/native/Memory.cpp:46.)
+  /home/ws/ws/splatter4d/.venv/lib/python3.10/site-packages/torch/utils/data/_utils/pin_memory.py:57: DeprecationWarning: The argument 'device' of Tensor.pin_memory() is deprecated. Please do not pass this argument. (Triggered internally at /pytorch/aten/src/ATen/native/Memory.cpp:46.)
     return data.pin_memory(device)
 
 tests/test_baseline_representation.py: 1222 warnings
 tests/test_stop_step.py: 24 warnings
 tests/test_heldout.py: 27 warnings
-  /home/ws/ws/splatter4d/.worktrees/dsreset/.venv/lib/python3.10/site-packages/torch/utils/data/_utils/pin_memory.py:57: DeprecationWarning: The argument 'device' of Tensor.is_pinned() is deprecated. Please do not pass this argument. (Triggered internally at /pytorch/aten/src/ATen/native/Memory.cpp:31.)
+  /home/ws/ws/splatter4d/.venv/lib/python3.10/site-packages/torch/utils/data/_utils/pin_memory.py:57: DeprecationWarning: The argument 'device' of Tensor.is_pinned() is deprecated. Please do not pass this argument. (Triggered internally at /pytorch/aten/src/ATen/native/Memory.cpp:31.)
     return data.pin_memory(device)
 
 tests/test_rwlearn_ours.py::test_window_sampling_rules_stride_uniformity_and_spread_validation_order
-  /home/ws/ws/splatter4d/.worktrees/dsreset/s4d/realworld/train_windows.py:141: UserWarning: training store built from MOCK model outputs (tests only)
+  /home/ws/ws/splatter4d/.worktrees/dsreset-release/s4d/realworld/train_windows.py:141: UserWarning: training store built from MOCK model outputs (tests only)
     self.store = store if isinstance(store, CompactStore) else CompactStore(store)
 
 tests/test_workers.py::test_fork_safe_iteration_collects_freezes_only_while_forking_and_yields_the_same_batches
-  /home/ws/ws/splatter4d/.worktrees/dsreset/tests/test_workers.py:42: FutureWarning: `torch.distributed.reduce_op` is deprecated, please use `torch.distributed.ReduceOp` instead
+  /home/ws/ws/splatter4d/.worktrees/dsreset-release/tests/test_workers.py:42: FutureWarning: `torch.distributed.reduce_op` is deprecated, please use `torch.distributed.ReduceOp` instead
     assert not any(isinstance(o, dict) and "tensor" in o and o.get("self") is o for o in gc.get_objects())
 
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
-442 passed, 2557 warnings in 553.77s (0:09:13)
+440 passed, 2557 warnings in 538.01s (0:08:58)
 
 ===== shard-2 =====
 [gpu_guard] cuda:0 -> MIG-c3511b41-5f78-52f1-9b93-9c6794cdbbdd (NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition MIG 1g.24gb)
+........................................................................ [ 16%]
 ........................................................................ [ 32%]
-........................................................................ [ 65%]
-........................................................................ [ 98%]
-...                                                                      [100%]
-219 passed in 108.87s (0:01:48)
+........................................................................ [ 48%]
+........................................................................ [ 64%]
+........................................................................ [ 80%]
+........................................................................ [ 97%]
+.............                                                            [100%]
+=============================== warnings summary ===============================
+tests/test_droid_largescale.py: 294 warnings
+  /home/ws/ws/splatter4d/.venv/lib/python3.10/site-packages/torch/utils/data/_utils/pin_memory.py:57: DeprecationWarning: The argument 'device' of Tensor.pin_memory() is deprecated. Please do not pass this argument. (Triggered internally at /pytorch/aten/src/ATen/native/Memory.cpp:46.)
+    return data.pin_memory(device)
+
+tests/test_droid_largescale.py: 294 warnings
+  /home/ws/ws/splatter4d/.venv/lib/python3.10/site-packages/torch/utils/data/_utils/pin_memory.py:57: DeprecationWarning: The argument 'device' of Tensor.is_pinned() is deprecated. Please do not pass this argument. (Triggered internally at /pytorch/aten/src/ATen/native/Memory.cpp:31.)
+    return data.pin_memory(device)
+
+tests/test_realworld_rgbd.py::test_panda_metadata_uses_recorded_calibration_and_timestamps
+  /home/ws/ws/splatter4d/.worktrees/dsreset-release/tests/test_realworld_rgbd.py:259: UserWarning: panda: recorder task_name 'test' disagrees with the dataset folder 'test_panda_metadata_uses_recor0' (the folder decides the task)
+    meta = p.adapter.read_meta("panda")
+
+tests/test_realworld_rgbd.py::test_panda_drops_colour_frames_without_a_stereo_record
+  /home/ws/ws/splatter4d/.worktrees/dsreset-release/tests/test_realworld_rgbd.py:340: UserWarning: panda: recorder task_name 'test' disagrees with the dataset folder 'test_panda_drops_colour_frames0' (the folder decides the task)
+    meta = panda_file.adapter.read_meta("panda")
+
+tests/test_realworld_rgbd.py::test_panda_drops_colour_frames_without_a_stereo_record
+  /home/ws/ws/splatter4d/.worktrees/dsreset-release/s4d/realworld/pipeline.py:83: UserWarning: panda: recorder task_name 'test' disagrees with the dataset folder 'test_panda_drops_colour_frames0' (the folder decides the task)
+    meta = adapter.read_meta(episode_id)
+
+tests/test_realworld_rgbd.py::test_sensor_depth_local_runner_resumes_only_remaining_chunks
+  /home/ws/ws/splatter4d/.worktrees/dsreset-release/s4d/realworld/pipeline.py:83: UserWarning: panda: recorder task_name 'test' disagrees with the dataset folder 'test_sensor_depth_local_runner0' (the folder decides the task)
+    meta = adapter.read_meta(episode_id)
+
+tests/test_rwlearn_store_baselines.py::test_sincro_per_sample_cameras_equal_the_reference_for_one_rig_and_differ_otherwise
+  /home/ws/ws/splatter4d/.venv/lib/python3.10/site-packages/torch/functional.py:505: UserWarning: torch.meshgrid: in an upcoming release, it will be required to pass the indexing argument. (Triggered internally at /pytorch/aten/src/ATen/native/TensorShape.cpp:4381.)
+    return _VF.meshgrid(tensors, **kwargs)  # type: ignore[attr-defined]
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+445 passed, 593 warnings in 173.47s (0:02:53)
 
 ===== shard-3 =====
-[gpu_guard] cuda:0 -> MIG-c3511b41-5f78-52f1-9b93-9c6794cdbbdd (NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition MIG 1g.24gb)
-........................................................................ [ 11%]
-........................................................................ [ 23%]
-........................................................................ [ 35%]
-........................................................................ [ 47%]
-........................................................................ [ 59%]
-........................................................................ [ 71%]
-........................................................................ [ 83%]
-........................................................................ [ 95%]
-.............................                                            [100%]
-=============================== warnings summary ===============================
-tests/test_droid_crop.py: 580 warnings
-  /home/ws/ws/splatter4d/.worktrees/dsreset/.venv/lib/python3.10/site-packages/torch/utils/data/_utils/pin_memory.py:57: DeprecationWarning: The argument 'device' of Tensor.pin_memory() is deprecated. Please do not pass this argument. (Triggered internally at /pytorch/aten/src/ATen/native/Memory.cpp:46.)
-    return data.pin_memory(device)
-
-tests/test_droid_crop.py: 580 warnings
-  /home/ws/ws/splatter4d/.worktrees/dsreset/.venv/lib/python3.10/site-packages/torch/utils/data/_utils/pin_memory.py:57: DeprecationWarning: The argument 'device' of Tensor.is_pinned() is deprecated. Please do not pass this argument. (Triggered internally at /pytorch/aten/src/ATen/native/Memory.cpp:31.)
-    return data.pin_memory(device)
-
--- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
-605 passed, 1160 warnings in 129.10s (0:02:09)
-
-===== shard-4 =====
-[gpu_guard] cuda:0 -> MIG-c3511b41-5f78-52f1-9b93-9c6794cdbbdd (NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition MIG 1g.24gb)
-........................................................................ [ 22%]
-........................................................................ [ 45%]
-........................................................................ [ 67%]
-........................................................................ [ 90%]
-...............................                                          [100%]
-319 passed in 42.86s
-
-===== shard-5 =====
-[gpu_guard] cuda:0 -> MIG-c3511b41-5f78-52f1-9b93-9c6794cdbbdd (NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition MIG 1g.24gb)
-........................................................................ [ 24%]
-........................................................................ [ 48%]
-........................................................................ [ 72%]
-........................................................................ [ 97%]
-........                                                                 [100%]
-=============================== warnings summary ===============================
-tests/test_masking_perframe.py::test_decoder_features_and_zero_initialised_branch_give_persistence
-  /home/ws/ws/splatter4d/.worktrees/dsreset/tests/test_masking_perframe.py:192: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
-  Consider using tensor.detach() first. (Triggered internally at /pytorch/torch/csrc/autograd/generated/python_variable_methods.cpp:836.)
-    assert d.shape == (4, 6, 3) and float(d.abs().sum()) == 0.0
-
--- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
-296 passed, 1 warning in 217.94s (0:03:37)
-
-===== shard-6 =====
 [gpu_guard] cuda:0 -> MIG-c3511b41-5f78-52f1-9b93-9c6794cdbbdd (NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition MIG 1g.24gb)
 ........................................................................ [ 10%]
 ........................................................................ [ 21%]
 ........................................................................ [ 31%]
 ........................................................................ [ 42%]
-........................................................................ [ 53%]
-........................................................................ [ 63%]
-........................................................................ [ 74%]
+........................................................................ [ 52%]
+........................................F............................... [ 63%]
+........................................................................ [ 73%]
 ........................................................................ [ 84%]
-........................................................................ [ 95%]
-..............................                                           [100%]
-=============================== warnings summary ===============================
-tests/test_droid_largescale.py: 294 warnings
-  /home/ws/ws/splatter4d/.worktrees/dsreset/.venv/lib/python3.10/site-packages/torch/utils/data/_utils/pin_memory.py:57: DeprecationWarning: The argument 'device' of Tensor.pin_memory() is deprecated. Please do not pass this argument. (Triggered internally at /pytorch/aten/src/ATen/native/Memory.cpp:46.)
-    return data.pin_memory(device)
+........................................................................ [ 94%]
+.....................................                                    [100%]
+=================================== FAILURES ===================================
+_____ test_every_live_or_placed_persisted_scope_is_identical_to_candidate ______
+tests/test_dsreset_registration.py:388: in test_every_live_or_placed_persisted_scope_is_identical_to_candidate
+    assert not differences, ('Persisted scope differs from candidate; coordinator reconciliation required. '
+E   AssertionError: ('Persisted scope differs from candidate; coordinator reconciliation required. See docs/dsreset-20261113/execution-sco...roject.toml'], 'rwa100-20261111-fql-dynamo-covering-s2': ['ops/containers/suite_partition.py', 'pyproject.toml'], ...})
+E   assert not {'ourx-20261113-ours-drawer-open-pre300k': ['scripts/train_ours_continuation.py'], 'rwa100-20261111-fql-dynamo-coverin...project.toml'], 'rwa100-20261111-fql-dynamo-covering-s2': ['ops/containers/suite_partition.py', 'pyproject.toml'], ...}
+=========================== short test summary info ============================
+FAILED tests/test_dsreset_registration.py::test_every_live_or_placed_persisted_scope_is_identical_to_candidate
+1 failed, 684 passed in 274.20s (0:04:34)
 
-tests/test_droid_largescale.py: 294 warnings
-  /home/ws/ws/splatter4d/.worktrees/dsreset/.venv/lib/python3.10/site-packages/torch/utils/data/_utils/pin_memory.py:57: DeprecationWarning: The argument 'device' of Tensor.is_pinned() is deprecated. Please do not pass this argument. (Triggered internally at /pytorch/aten/src/ATen/native/Memory.cpp:31.)
-    return data.pin_memory(device)
-
--- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
-678 passed, 588 warnings in 86.13s (0:01:26)
-
-===== shard-7 =====
+===== shard-4 =====
 [gpu_guard] cuda:0 -> MIG-c3511b41-5f78-52f1-9b93-9c6794cdbbdd (NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition MIG 1g.24gb)
-........................................................................ [ 10%]
-........................................................................ [ 21%]
-........................................................................ [ 32%]
-........................................................................ [ 43%]
-........................................................................ [ 53%]
-........................................................................ [ 64%]
-........................................................................ [ 75%]
-........................................................................ [ 86%]
-........................................................................ [ 97%]
-...................                                                      [100%]
+........................................................................ [  9%]
+........................................................................ [ 18%]
+........................................................................ [ 27%]
+........................................................................ [ 36%]
+........................................................................ [ 45%]
+........................................................................ [ 54%]
+........................................................................ [ 63%]
+........................................................................ [ 73%]
+........................................................................ [ 82%]
+........................................................................ [ 91%]
+....................................................................     [100%]
 =============================== warnings summary ===============================
-tests/test_ours_continuation.py: 62 warnings
-  /home/ws/ws/splatter4d/.worktrees/dsreset/.venv/lib/python3.10/site-packages/torch/utils/data/_utils/pin_memory.py:57: DeprecationWarning: The argument 'device' of Tensor.pin_memory() is deprecated. Please do not pass this argument. (Triggered internally at /pytorch/aten/src/ATen/native/Memory.cpp:46.)
+tests/test_droid_crop.py: 580 warnings
+  /home/ws/ws/splatter4d/.venv/lib/python3.10/site-packages/torch/utils/data/_utils/pin_memory.py:57: DeprecationWarning: The argument 'device' of Tensor.pin_memory() is deprecated. Please do not pass this argument. (Triggered internally at /pytorch/aten/src/ATen/native/Memory.cpp:46.)
     return data.pin_memory(device)
 
-tests/test_ours_continuation.py: 62 warnings
-  /home/ws/ws/splatter4d/.worktrees/dsreset/.venv/lib/python3.10/site-packages/torch/utils/data/_utils/pin_memory.py:57: DeprecationWarning: The argument 'device' of Tensor.is_pinned() is deprecated. Please do not pass this argument. (Triggered internally at /pytorch/aten/src/ATen/native/Memory.cpp:31.)
+tests/test_droid_crop.py: 580 warnings
+  /home/ws/ws/splatter4d/.venv/lib/python3.10/site-packages/torch/utils/data/_utils/pin_memory.py:57: DeprecationWarning: The argument 'device' of Tensor.is_pinned() is deprecated. Please do not pass this argument. (Triggered internally at /pytorch/aten/src/ATen/native/Memory.cpp:31.)
     return data.pin_memory(device)
-
-tests/test_realworld_rgbd.py::test_panda_metadata_uses_recorded_calibration_and_timestamps
-  /home/ws/ws/splatter4d/.worktrees/dsreset/tests/test_realworld_rgbd.py:259: UserWarning: panda: recorder task_name 'test' disagrees with the dataset folder 'test_panda_metadata_uses_recor0' (the folder decides the task)
-    meta = p.adapter.read_meta("panda")
-
-tests/test_realworld_rgbd.py::test_panda_drops_colour_frames_without_a_stereo_record
-  /home/ws/ws/splatter4d/.worktrees/dsreset/tests/test_realworld_rgbd.py:340: UserWarning: panda: recorder task_name 'test' disagrees with the dataset folder 'test_panda_drops_colour_frames0' (the folder decides the task)
-    meta = panda_file.adapter.read_meta("panda")
-
-tests/test_realworld_rgbd.py::test_panda_drops_colour_frames_without_a_stereo_record
-  /home/ws/ws/splatter4d/.worktrees/dsreset/s4d/realworld/pipeline.py:83: UserWarning: panda: recorder task_name 'test' disagrees with the dataset folder 'test_panda_drops_colour_frames0' (the folder decides the task)
-    meta = adapter.read_meta(episode_id)
-
-tests/test_realworld_rgbd.py::test_sensor_depth_local_runner_resumes_only_remaining_chunks
-  /home/ws/ws/splatter4d/.worktrees/dsreset/s4d/realworld/pipeline.py:83: UserWarning: panda: recorder task_name 'test' disagrees with the dataset folder 'test_sensor_depth_local_runner0' (the folder decides the task)
-    meta = adapter.read_meta(episode_id)
-
-tests/test_rwlearn_store_baselines.py::test_sincro_per_sample_cameras_equal_the_reference_for_one_rig_and_differ_otherwise
-  /home/ws/ws/splatter4d/.worktrees/dsreset/.venv/lib/python3.10/site-packages/torch/functional.py:505: UserWarning: torch.meshgrid: in an upcoming release, it will be required to pass the indexing argument. (Triggered internally at /pytorch/aten/src/ATen/native/TensorShape.cpp:4381.)
-    return _VF.meshgrid(tensors, **kwargs)  # type: ignore[attr-defined]
 
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
-667 passed, 129 warnings in 79.53s (0:01:19)
-{"counts": {"passed": 3989, "error": 0, "failed": 0, "skipped": 0}, "total": 3989, "exit_code": 0, "full_suite_passed": true}
+788 passed, 1160 warnings in 77.49s (0:01:17)
+
+===== shard-5 =====
+[gpu_guard] cuda:0 -> MIG-c3511b41-5f78-52f1-9b93-9c6794cdbbdd (NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition MIG 1g.24gb)
+........................................................................ [  8%]
+........................................................................ [ 16%]
+........................................................................ [ 24%]
+........................................................................ [ 32%]
+........................................................................ [ 41%]
+........................................................................ [ 49%]
+........................................................................ [ 57%]
+........................................................................ [ 65%]
+........................................................................ [ 74%]
+........................................................................ [ 82%]
+........................................................................ [ 90%]
+........................................................................ [ 98%]
+.........                                                                [100%]
+=============================== warnings summary ===============================
+tests/test_ours_continuation.py: 57 warnings
+  /home/ws/ws/splatter4d/.venv/lib/python3.10/site-packages/torch/utils/data/_utils/pin_memory.py:57: DeprecationWarning: The argument 'device' of Tensor.pin_memory() is deprecated. Please do not pass this argument. (Triggered internally at /pytorch/aten/src/ATen/native/Memory.cpp:46.)
+    return data.pin_memory(device)
+
+tests/test_ours_continuation.py: 57 warnings
+  /home/ws/ws/splatter4d/.venv/lib/python3.10/site-packages/torch/utils/data/_utils/pin_memory.py:57: DeprecationWarning: The argument 'device' of Tensor.is_pinned() is deprecated. Please do not pass this argument. (Triggered internally at /pytorch/aten/src/ATen/native/Memory.cpp:31.)
+    return data.pin_memory(device)
+
+tests/test_masking_perframe.py::test_decoder_features_and_zero_initialised_branch_give_persistence
+  /home/ws/ws/splatter4d/.worktrees/dsreset-release/tests/test_masking_perframe.py:192: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
+  Consider using tensor.detach() first. (Triggered internally at /pytorch/torch/csrc/autograd/generated/python_variable_methods.cpp:836.)
+    assert d.shape == (4, 6, 3) and float(d.abs().sum()) == 0.0
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+873 passed, 115 warnings in 273.21s (0:04:33)
+{"counts": {"passed": 3993, "error": 0, "failed": 1, "skipped": 0}, "total": 3994, "exit_code": 1, "full_suite_passed": false}

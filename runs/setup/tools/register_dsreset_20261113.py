@@ -19,7 +19,7 @@ SOURCE = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(SOURCE))
 import yaml
 from ops.jobs.dsreset_plan import METHODS, PAUSE, STEM, build_rows, row_id
-from s4d.rwlearn import gate
+from s4d.rwlearn import dsreset_gate as gate
 from s4d.rwlearn.dsreset import TASKS, manifest_gate, sha256, validate_manifest
 
 MAIN = Path('/home/ws/ws/splatter4d')
@@ -29,12 +29,53 @@ R = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(R)
 
 
+CANONICAL_SUCCESS = {'covering': 98, 'pick-and-place': 97, 'drawer-open-v2': 98}
+
+
+def validate_membership(task, docs):
+    """Bind both variants to the released amended set, never their own counts."""
+    approved = gate.load_amendments()[task]['record']
+    R.require(approved['target'] == CANONICAL_SUCCESS[task], 'canonical success target changed')
+    wanted = {Path(k).name: sha for k, sha in approved['episodes'].items()}
+    excluded = {Path(k).name: value for k, value in approved['excluded'].items()}
+    for variant, m in docs.items():
+        R.require(m['amendment'] == approved, 'canonical amendment evidence differs')
+        success = [r for r in m['episodes'] if r['label'] == 'success']
+        R.require(len(success) == CANONICAL_SUCCESS[task] and
+                  {r['filename']: r['sha256'] for r in success} == wanted,
+                  'canonical amended success set differs')
+        failures = [r for r in m['episodes'] if r['label'] == 'failure']
+        R.require(len(failures) == (50 if variant == 'SF' else 0), 'SF requires exactly 50 failures; S none')
+        omissions = m.get('excluded', [])
+        R.require(len(omissions) == len(excluded) and
+                  {r['filename']: r['sha256'] for r in omissions} ==
+                  {name: rec['raw_sha256'] for name, rec in excluded.items()} and
+                  all(r.get('task') == task and r.get('label') == 'success' and r.get('split') == 'excluded'
+                      and r.get('id') == f"{task}-success-{Path(r['filename']).stem}"
+                      and Path(r['path']).name == r['filename']
+                      and r.get('qa') == {'status': 'excluded', 'reason': excluded[r['filename']]['reason']}
+                      for r in omissions), 'canonical exclusion evidence differs')
+    R.require(docs['S']['episodes'] == [r for r in docs['SF']['episodes'] if r['label'] == 'success'],
+              'S must be exactly the success subset of SF with identical splits')
+    R.require(docs['S'].get('excluded') == docs['SF'].get('excluded') and
+              docs['S'].get('amendment') == docs['SF'].get('amendment'),
+              'S/SF amendment/exclusion evidence differs')
+
+
 def validate_inputs(task, path, ingest):
     docs = {}
     hashes = {}
+    snapshots = {}
+    for variant in ('S', 'SF'):
+        directory = Path(path)/variant
+        snapshots[variant] = {'manifest.json':(directory/'manifest.json').read_bytes()}
+        m = validate_manifest(json.loads(snapshots[variant]['manifest.json']))
+        R.require(m['task']==task and m['variant']==variant, 'task/variant differs from directory')
+        docs[variant] = m
+    validate_membership(task, docs)
     for variant in ('S','SF'):
         directory = Path(path)/variant
-        blobs = {n:(directory/n).read_bytes() for n in ('manifest.json','store.yaml','split_seed0.json','outcomes.json','gate_report.json')}
+        blobs = {**snapshots[variant], **{n:(directory/n).read_bytes() for n in ('store.yaml','split_seed0.json','outcomes.json','gate_report.json')}}
         hashes.update({str(directory/n):R.sha(b) for n,b in blobs.items()})
         m = validate_manifest(json.loads(blobs['manifest.json']))
         R.require(m['task']==task and m['variant']==variant, 'task/variant differs from directory')
@@ -96,7 +137,7 @@ def prepare(repo, config, config_path, ingest_path, release, *, preview=False):
     registry = (repo/'experiments/registry.jsonl').read_bytes()
     current = {r['id']:r for r in R.queue_document(before)['jobs']}
     rows, reused = [], []
-    from s4d.rwlearn.configs import pending_scene_parameters
+    from s4d.rwlearn.dsreset_configs import pending_scene_parameters
     for task, task_cfg in config['tasks'].items():
         directory = task_cfg['inputs'].rstrip('/')
         R.require(directory.startswith('/home/compu/kaist/sunho/realworld/'), 'inputs must be under verified remote root')

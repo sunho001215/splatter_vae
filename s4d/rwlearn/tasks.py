@@ -6,5 +6,5 @@ its encoder, its seeded episode split and its 100-episode full-data gate. coveri
 imports: ``s4d.rwlearn.configs`` re-exports these names and ``ops.jobs.host_roles`` reads ``TARGETS``.
 """
 
-TARGETS = ("drawer-open", "mug-hanging", "covering", "pick-and-place", "drawer-open-v2")
+TARGETS = ("drawer-open", "mug-hanging", "covering", "pick-and-place")
 TARGET_TASKS = {task: (task,) for task in TARGETS}  # target -> the tasks in its store (task-specific: itself)

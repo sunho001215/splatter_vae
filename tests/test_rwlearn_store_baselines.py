@@ -359,9 +359,9 @@ def test_new_task_registry_and_scene_measurement_hooks():
     from s4d.rwlearn import launch
     from s4d.rwlearn.tasks import TARGET_TASKS, TARGETS
 
-    assert TARGETS == ("drawer-open", "mug-hanging", "covering", "pick-and-place", "drawer-open-v2")
+    assert TARGETS == ("drawer-open", "mug-hanging", "covering", "pick-and-place")
     assert C.TARGETS is launch.TASKS is TARGETS  # one registry, imported everywhere
-    assert C.TARGET_TASKS is launch.TARGET_TASKS is TARGET_TASKS and REALWORLD_TASKS == frozenset(TARGETS)
+    assert C.TARGET_TASKS is launch.TARGET_TASKS is TARGET_TASKS and REALWORLD_TASKS == frozenset((*TARGETS, "drawer-open-v2"))
     assert TARGET_TASKS == {t: (t,) for t in TARGETS}  # task-specific encoders only
     for task in ("drawer-open", "mug-hanging"):  # exactly the measured values of the existing tasks
         assert C.SCENE_PARAMETERS[task] == {"lookat": C.SNERL_LOOKAT, "pose_scale": C.SNERL_POSE_SCALE,

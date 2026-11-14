@@ -30,7 +30,10 @@ def test_complete_paired_graph_supports_both_hosts_and_no_retired_tasks(tmp_path
             assert all(d in byid for d in row['deps'])
             L.needed_inputs(row)  # exact local argv validation, including outputs and declared exports
             assert L.has_resolver(row)
-            assert row['priority'] in (-3,-2,-1,0,1)
+            stage = row['id'].split('-')[2]
+            ours = '-ours-' in row['id']
+            expected = -4 if stage in ('prep','calib','qa') else (-3 if ours else 0) if stage in ('pre','pre400k') else (-1 if ours else 1)
+            assert row['priority'] == expected
         for variant in ('S','SF'):
             for method in METHODS:
                 for seed in (0,1,2):
@@ -87,9 +90,12 @@ def test_bound_inputs_reject_label_split_and_live_calibration_mutations(tmp_path
     from tests.test_rwlearn_dsreset import fixture_roots
     from tests.test_rwlearn_gate import entry
     r = registrar()
-    manifests = paired_manifests('covering',fixture_roots(tmp_path),inspect=lambda p:{})
+    manifests = canonical_manifests('covering')
     ingest = {'episodes':{ep['id']:entry('covering',int(ep['filename'][8:14]),sha=ep['sha256'],validated=True)
                           for ep in manifests['SF']['episodes']}}
+    for ep in manifests['SF']['excluded']:
+        ingest['episodes'][ep['id']] = {'task': 'covering', 'filename': ep['filename'],
+            'source': {'path': ep['path']}, 'sha256': None, 'validation': {'status': 'invalid'}}
     class Identities:
         def __init__(self,rows): self.rows={ep['id']:ep for ep in rows}
         def episodes(self): return list(self.rows)
@@ -205,3 +211,179 @@ def test_existing_ours_S_chain_reuse_requires_identical_hashes_split_and_science
     ev=next(r for r in rewritten if r['id']==row_id('eval','ours',task,'S',0))
     assert ev['deps']==[row_id('fql400k','ours',task,'S',0)]
     assert f"runs/{ev['deps'][0]}/policy.pt" in ev['args']
+
+
+def canonical_manifests(task):
+    """Canonical success identities plus synthetic, distinct failure hashes; no raw I/O."""
+    import copy
+    import hashlib
+    from s4d.rwlearn import gate
+    amendment = gate.load_amendments()[task]['record']
+    def row(name, sha, label, index):
+        return dict(id=f'{task}-{label}-{Path(name).stem}',task=task,label=label,filename=Path(name).name,
+                    path=f'/raw/{task}/{label}/{Path(name).name}',sha256=sha,qa={},
+                    split='validation' if index % 10 == 0 else 'train')
+    success = [row(name, sha, 'success', i) for i,(name,sha) in enumerate(amendment['episodes'].items())]
+    failure = [row(f'episode_{i:06d}.h5',hashlib.sha256(f'{task}:failure:{i}'.encode()).hexdigest(), 'failure',i)
+               for i in range(50)]
+    excluded = [dict(row(name,rec['raw_sha256'],'success',i), split='excluded',
+                     qa={'status':'excluded','reason':rec['reason']})
+                for i,(name,rec) in enumerate(amendment['excluded'].items())]
+    result = {}
+    for variant,episodes in [('S',success),('SF',success+failure)]:
+        result[variant] = dict(schema='dsreset-episodes/v1',task=task,variant=variant,seed=0,validation_fraction=.1,
+            episodes=copy.deepcopy(episodes),amendment=copy.deepcopy(amendment),excluded=copy.deepcopy(excluded),
+            split={s:[r['id'] for r in episodes if r['split']==s] for s in ('train','validation')},
+            outcomes={r['id']:r['label']=='success' for r in episodes})
+    return result
+
+
+@pytest.mark.parametrize('task', ['covering','pick-and-place','drawer-open-v2'])
+def test_canonical_registration_membership_and_amendment_evidence(task):
+    import copy
+    from s4d.rwlearn.dsreset import validate_manifest
+    r = registrar()
+    docs = canonical_manifests(task)
+    for manifest in docs.values(): validate_manifest(manifest)
+    r.validate_membership(task, docs)
+    def reject(mutate, message):
+        broken = copy.deepcopy(docs)
+        mutate(broken)
+        with pytest.raises(r.R.Refused, match=message): r.validate_membership(task, broken)
+    reject(lambda d: d['S'].update(episodes=d['S']['episodes'][:10]), 'success set')
+    reject(lambda d: d['SF'].update(episodes=d['SF']['episodes'][:-1]), '50 failures')
+    reject(lambda d: d['SF'].update(episodes=[e for e in d['SF']['episodes'] if e['label']=='success']), '50 failures')
+    reject(lambda d: d['SF']['episodes'].append(dict(d['SF']['episodes'][-1])), '50 failures')
+    reject(lambda d: d['S']['amendment'].update(decision='unapproved'), 'amendment evidence')
+    reject(lambda d: d['S']['excluded'][0]['qa'].update(reason='not the documented reason'), 'exclusion evidence')
+    reject(lambda d: d['S']['excluded'][0].update(path='/another/success/'+d['S']['excluded'][0]['filename']),
+           'S/SF amendment/exclusion evidence')
+    reject(lambda d: d['S']['episodes'][0].update(split='train' if d['S']['episodes'][0]['split']=='validation' else 'validation'), 'success subset')
+    # A count-correct replacement is still not the approved success set.
+    reject(lambda d: d['S']['episodes'][0].update(sha256='f'*64), 'success set')
+
+
+def test_registrar_rejects_small_self_consistent_pair_before_qa(tmp_path):
+    from s4d.rwlearn.dsreset import paired_manifests
+    from tests.test_rwlearn_dsreset import fixture_roots
+    r = registrar()
+    docs = paired_manifests('covering',fixture_roots(tmp_path),inspect=lambda p:{})
+    # Includes the independent review's zero-failure counterexample.
+    docs['SF'] = dict(docs['S'], variant='SF')
+    for variant, manifest in docs.items():
+        directory = tmp_path/'inputs'/variant
+        directory.mkdir(parents=True)
+        (directory/'manifest.json').write_text(json.dumps(manifest))
+    with pytest.raises(r.R.Refused, match='amendment evidence'):
+        r.validate_inputs('covering',tmp_path/'inputs',{'episodes':{}})
+
+
+def test_paired_runtime_is_isolated_and_used_by_all_new_entrypoints(tmp_path):
+    import os
+    import subprocess
+    import sys
+    from s4d.rwlearn.dsreset_entrypoints import ENTRYPOINTS
+    from ops.jobs.migration import import_closure, tree_reader
+    read, _ = tree_reader(REPO)
+    for paired, legacy in ENTRYPOINTS.items():
+        closure = import_closure([paired], read)
+        assert legacy in closure
+        assert 's4d/rwlearn/dsreset_runtime.py' in closure
+        assert 's4d/rwlearn/dsreset_identity.py' in closure
+    # Process isolation is part of the contract: installing cannot contaminate
+    # test/scheduler processes which have already imported legacy trainers.
+    code = '''
+from s4d.rwlearn import gate, identity, tasks, configs
+from s4d.rwlearn import dsreset_gate, dsreset_identity, dsreset_configs
+assert tasks.TARGETS == ("drawer-open", "mug-hanging", "covering", "pick-and-place")
+assert "drawer-open-v2" not in configs.SCENE_PARAMETERS
+assert gate.match_recordings is identity.match_recordings
+assert dsreset_gate.match_recordings is dsreset_identity.match_recordings
+from s4d.rwlearn.dsreset_runtime import install
+install()
+from s4d.rwlearn import gate as paired, identity as ids, tasks as ts, configs as cs
+from s4d.rwlearn import baseline_data, store, fql_data
+assert paired is not gate and ids is not identity
+assert "drawer-open-v2" in ts.TARGETS and "drawer-open-v2" in cs.TARGET_TASKS
+assert cs.pending_scene_parameters("snerl", "drawer-open-v2") == ["lookat", "pose_scale"]
+from pathlib import Path
+for baseline in cs.BASELINES:
+    assert cs.render(baseline, 'drawer-open-v2') == (Path.cwd()/'configs/realworld/baselines'/baseline/'drawer-open-v2.yaml').read_text()
+a=ids.raw_identity("covering", "/raw/success/episode_000001.h5", "a"*64)
+b=ids.raw_identity("covering", "/raw/failure/episode_000001.h5", "b"*64)
+assert paired.match_recordings({"s":a,"f":b},{"s":a,"f":b}) == {"s":"s","f":"f"}
+assert gate.match_recordings is identity.match_recordings
+try: identity.match_recordings({"s":a,"f":b},{"s":a,"f":b})
+except RuntimeError: pass
+else: raise AssertionError("legacy behavior mutated")
+'''
+    code += r"""
+import copy, hashlib, json
+from pathlib import Path
+import sys
+import h5py
+import numpy as np
+from s4d.rwlearn import actions as A
+from tests.test_rwlearn_fql_pipeline import store_on_fixture, FIXTURE
+from tests.test_rwlearn_gate import entry
+out = Path(sys.argv[1])
+eps = {}
+for label in ('success', 'failure'):
+    raw = A.raw_from_arrays(np.load(FIXTURE))
+    for camera in raw.cameras.values():
+        camera['t'], camera['segment'] = camera['t'][:8], camera['segment'][:8]
+    raw.gripper_command = np.clip(raw.gripper_command + (.01 if label=='failure' else 0),0,1)
+    directory = out/label
+    directory.mkdir()
+    path = directory/'episode_000001.npz'
+    np.savez(path, **A.raw_to_arrays(raw))
+    item = copy.deepcopy(next(iter(store_on_fixture(n=8,hw=8)._eps.values())))
+    item.update(task='drawer-open-v2',raw=str(path),raw_sha256=hashlib.sha256(path.read_bytes()).hexdigest())
+    eps[label] = item
+memory = store.MemoryStore(eps,(8,8))
+live = {}
+for label, item in eps.items():
+    live[label] = dict(entry('drawer-open-v2',1,sha=item['raw_sha256'],validated=True),
+                       filename=item['raw'],source={'path':item['raw']},episode_label=label)
+report = paired.evaluate({'schema':paired.SCHEMA,'schema_version':paired.SCHEMA_VERSION,'episodes':live,
+                          'counts':{'drawer-open-v2':{'target':2,'complete':True}}}, ['drawer-open-v2'],target=2,amendments={})
+assert report['passed'], report
+split = {'train':['success'],'validation':['failure']}
+checked = baseline_data.check_gate(memory,report,steps=200000,split=split,target='drawer-open-v2',consumer='e2e_cnn')
+bound = paired.bind_store_episodes(report,{'drawer-open-v2':memory.episodes()},ids.store_identities(memory))
+fql_data.build_fql_dataset(memory,'e2e_cnn',None,out/'dataset.h5',episodes=memory.episodes(),outcomes={'success':True,'failure':False})
+paired.check_dataset_gate(out/'dataset.h5',bound,steps=1000000,split=split)
+with h5py.File(out/'dataset.h5') as f:
+    for label in eps:
+        for cam in f['episodes'][label].values():
+            final = np.flatnonzero(cam['transition_ok'][:])[-1]
+            assert cam['mask'][final] == (label=='failure')
+            assert cam['reward'][final] == (-1 if label=='failure' else 0)
+"""
+    result = subprocess.run([sys.executable,'-c',code,str(tmp_path)],cwd=REPO,capture_output=True,text=True,env=os.environ)
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.local_host_data
+def test_every_persisted_placement_scope_has_zero_candidate_changes():
+    import subprocess
+    from ops.jobs.dsreset_scope import audit
+    common = Path(subprocess.check_output(['git','rev-parse','--path-format=absolute','--git-common-dir'],
+                                         cwd=REPO,text=True).strip())
+    report = audit(common.parent/'runs/setup/ownership',REPO)
+    assert report['rows'], 'live placement records are required for this release regression check'
+    assert report['zero_release_changes'], [(r['job_id'],r['release_changes']) for r in report['rows'] if r['release_changes']]
+    covering = next(r for r in report['rows'] if r['job_id']=='rwv2-20261113-pre400k-ours-covering-S')
+    assert covering['scope_persisted'] and not covering['differences'], covering
+
+
+@pytest.mark.local_host_data
+def test_every_live_or_placed_persisted_scope_is_identical_to_candidate():
+    import subprocess
+    from ops.jobs.dsreset_scope import audit
+    common = Path(subprocess.check_output(['git','rev-parse','--path-format=absolute','--git-common-dir'],
+                                         cwd=REPO,text=True).strip())
+    report = audit(common.parent/'runs/setup/ownership',REPO)
+    differences = {r['job_id']:r['differences'] for r in report['rows'] if r['differences']}
+    assert not differences, ('Persisted scope differs from candidate; coordinator reconciliation required. '
+                             'See docs/dsreset-20261113/execution-scope-audit.json', differences)

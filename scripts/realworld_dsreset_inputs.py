@@ -9,6 +9,10 @@ import argparse
 import json
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+if __name__ == '__main__':
+    from s4d.rwlearn.dsreset_runtime import install
+    install()
+
 import yaml
 from s4d.rwlearn.dsreset import learning_inputs
 from s4d.rwlearn.store import open_store
