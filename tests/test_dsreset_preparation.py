@@ -73,6 +73,18 @@ def test_native_scene_report_binds_membership_and_containment():
         with pytest.raises(ValueError):validate_report({**report,**change},manifest)
 
 
+def test_automatic_publication_uses_the_established_frozen_verdict_contract(tmp_path):
+    from tests.test_realworld_calibration_release import _fake_results
+    from s4d.realworld.calib.loma.publish import load_results,release_verdict,check_against_frozen
+    _,fixed,_=_fake_results(tmp_path/'results')
+    verdict=release_verdict(load_results(tmp_path/'results'),fixed)
+    frozen=script('realworld_dsreset_calibration').freeze_release1(verdict)
+    check_against_frozen(verdict,frozen)
+    next(iter(frozen['samfree'].values()))['corr_challenge_all_rejected']=False
+    with pytest.raises(SystemExit,match='SAM-free challenge'):
+        check_against_frozen(verdict,frozen)
+
+
 def test_scene_runtime_settings_are_identical_across_variants_and_stage_priority_dominates():
     from ops.jobs.dsreset_plan import build_rows
     from tests.test_dsreset_registration import registrar

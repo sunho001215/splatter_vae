@@ -141,6 +141,13 @@ def init(spec):
     raise ValueError('task-local mask-free initialisation could not produce all camera poses')
 
 
+def freeze_release1(verdict):
+    """The established publisher rechecks this schema, including the SAM-free G6."""
+    return {'rig_dw_gates':{c:v['base'] for c,v in verdict.items()},
+            'samfree':{c:{'corr_challenge_all_rejected':v['diagnostics']['g6_samfree']['all_rejected']}
+                       for c,v in verdict.items()}}
+
+
 def publish(spec,specpath):
     import numpy as np
     from s4d.realworld.calib import criteria as C
@@ -148,7 +155,7 @@ def publish(spec,specpath):
     from s4d.realworld.calib.rig import publish_rig,rig_camera_status
     w=Path(spec['work']);R=load_results(w/'results');fixed=json.loads((w/'fixedness.json').read_text())
     static=json.loads((w/'static.json').read_text());C.check_static_eval(static,w/'results/full.json')
-    verdict=release_verdict(R,fixed)
+    verdict=freeze_release1(release_verdict(R,fixed))
     atomic(w/'verdict-release1.json',verdict)
     ref=np.load(w/'fixedness.reference.npz')
     sources={k:{'path':str(p),'sha256':digest(p)} for k,p in {
