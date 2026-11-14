@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[3]  # runs/setup/tools -> repository root (remote release bundles exclude runs/)
 SPEC = importlib.util.spec_from_file_location(
     "ours_task_eval_reg", ROOT / "runs/setup/tools/register_ours_task_eval_20261115.py"
 )
