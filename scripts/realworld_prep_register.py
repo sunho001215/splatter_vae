@@ -1,12 +1,13 @@
 """Compile immutable prep plans into a host-local MIG queue; never launch jobs."""
 import argparse
 import json
+import os
 from pathlib import Path
 import sys
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 import yaml
-from ops.campaign.rwprep_mig import atomic, digest, validate
+from ops.campaign.rwprep_mig import atomic, digest, validate, priority_path
 
 
 def compile_plans(plans, out, processed, raw, phase='A', rig_map=None):
@@ -90,13 +91,13 @@ def main():
     server=yaml.safe_load((a.tools/'configs/rwprep_server.yaml').read_text())
     server.update(gpu_allowlist=list(inventory),mig_parents={u:v[0] for u,v in inventory.items()})
     (a.out/'state/server.yaml').write_text(yaml.safe_dump(server))
-    config=dict(host=a.host,image=a.image,commit=run(['git','-C',a.code,'rev-parse','HEAD']).strip(),
+    config=dict(host=a.host,image=a.image,uid=os.getuid(),gid=os.getgid(),commit=run(['git','-C',a.code,'rev-parse','HEAD']).strip(),
         code=str(a.code.resolve()),tools=str(a.tools.resolve()),weights=str(a.weights.resolve()),
         assets=str(a.assets.resolve()),raw=str(a.raw.resolve()),processed=str(a.processed.resolve()),
         bundle=str(a.out),state_dir=str(a.out/'state'),jobs=str(a.out/'jobs.json'),server=str(a.out/'state/server.yaml'),
         queue=str(a.control_repo/'experiments/queue.yaml'),registry=str(a.control_repo/'experiments/registry.jsonl'),
         admission_lock=str(a.control_repo/'runs/setup/stage2-driver.lock'),
-        priority_file=str(a.control_repo/'runs/setup/rwprep-mig-priority.json'),
+        priority_file=priority_path(a.control_repo/'runs/setup/rwprep-mig-priority.d',a.out/'state'),
         ram_cap_bytes=138_000_000_000 if a.host=='local' else 1000*2**30,
         extra_readonly=list(map(str,a.extra_readonly)))
     validate(config,jobs)

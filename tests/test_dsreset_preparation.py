@@ -42,7 +42,7 @@ def test_calibration_graph_has_real_stages_and_one_bounded_matcher_per_MIG(tmp_p
         c.write_text(yaml.safe_dump({'output_root':str(tmp_path/f'p{n}')}))
         source.append({'id':f'rwv2-20261113-prep-ours-{ep}','episode':ep,'inputs':{str(c):'a'*64}})
     jobs=tmp_path/'source.json';jobs.write_text(json.dumps(source))
-    cfg=dict(host='local',image='sha256:'+'a'*64,commit='b'*40,jobs=str(jobs),state_dir=str(tmp_path/'phase-state'))
+    cfg=dict(host='local',image='sha256:'+'a'*64,commit='b'*40,jobs=str(jobs),state_dir=str(tmp_path/'phase-state'),priority_file=str(tmp_path/'holds/phaseA.json'))
     config=tmp_path/'config.json';config.write_text(json.dumps(cfg))
     out=tmp_path/'calib'
     count=script('realworld_dsreset_calibration').plan(config,'drawer-open-v2',out,tmp_path/'work',tmp_path/'upstream')

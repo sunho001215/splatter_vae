@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 import sys
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
-from ops.campaign.rwprep_mig import atomic,digest,validate
+from ops.campaign.rwprep_mig import atomic,digest,validate,priority_path
 
 
 def main():
@@ -31,6 +31,7 @@ def main():
              gpu_gib=1,ram_gib=16,cpus=4,disk_gib=32,inputs={str(p.resolve()):digest(p) for p in files},
              deps=[],steps=[{'kind':'python','argv':argv}])
     cfg.update(bundle=str(a.out.resolve()),state_dir=str(a.out.resolve()/'state'),jobs=str(a.out.resolve()/'jobs.json'),
+               priority_file=priority_path(Path(cfg['priority_file']).parent,a.out.resolve()/'state'),
                extra_readonly=list(dict.fromkeys([*cfg.get('extra_readonly',[]),*[str(p.resolve().parent) for p in files]])))
     validate(cfg,[job]);Path(cfg['state_dir']).mkdir()
     atomic(a.out/'jobs.json',[job]);atomic(a.out/'dispatcher.json',cfg)

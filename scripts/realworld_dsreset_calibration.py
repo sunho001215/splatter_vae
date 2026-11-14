@@ -4,7 +4,7 @@ import argparse
 import json
 import sys
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
-from ops.campaign.rwprep_mig import atomic,digest
+from ops.campaign.rwprep_mig import atomic,digest,priority_path
 
 CAMS=['135122070988/color','135122073201/color','135122076054/color']
 TE='/opt/envs/trackeverything/bin/python'
@@ -104,6 +104,7 @@ def plan(phase_config,task,out,work,upstream):
     add('publish',[helper('publish')],[*solves,'static'],ram=16)
     atomic(out/'jobs.json',jobs)
     config={**cfg,'bundle':str(out),'jobs':str(out/'jobs.json'),'state_dir':str(out/'state'),
+        'priority_file':priority_path(Path(cfg['priority_file']).parent,out/'state'),
         'extra_readonly':list(dict.fromkeys([*cfg.get('extra_readonly',[]),str(Path(upstream).resolve()),str(Path(cfg['state_dir']))]))}
     Path(config['state_dir']).mkdir()
     atomic(out/'dispatcher.json',config)

@@ -8,15 +8,17 @@ from pathlib import Path
 
 FILE = Path('/home/ws/ws/splatter4d/runs/setup/admission-pauses.json')
 PREP_PRIORITY = Path('/home/ws/ws/splatter4d/runs/setup/rwprep-mig-priority.json')
+PREP_PRIORITY_DIR = Path('/home/ws/ws/splatter4d/runs/setup/rwprep-mig-priority.d')
 
 
 def snapshot() -> list[dict]:
     spec = json.loads(FILE.read_text()) if FILE.is_file() else {'pauses': []}
     pauses = [p for p in spec['pauses'] if p.get('active') is True]
-    if PREP_PRIORITY.exists():
-        prep = json.loads(PREP_PRIORITY.read_text())
+    prep_files = ([PREP_PRIORITY] if PREP_PRIORITY.exists() else []) + sorted(PREP_PRIORITY_DIR.glob('*.json'))
+    for path in prep_files:
+        prep = json.loads(path.read_text())
         if prep['active'] is True:
-            pauses.append({'name':'rwprep-mig-priority','prefixes':['']})
+            pauses.append({'name':'rwprep-mig-priority:'+path.stem,'prefixes':['']})
     return pauses
 
 

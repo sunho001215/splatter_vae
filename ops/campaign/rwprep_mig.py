@@ -47,6 +47,10 @@ def digest(path):
     return h.hexdigest()
 
 
+def priority_path(directory,state_dir):
+    return str(Path(directory)/(hashlib.sha256(str(state_dir).encode()).hexdigest()[:24]+'.json'))
+
+
 def validate(config, jobs):
     if config['host'] not in ('local', 'remote') or not re.fullmatch('sha256:[0-9a-f]{64}', config['image']):
         raise ValueError('host and immutable local Docker image ID required')

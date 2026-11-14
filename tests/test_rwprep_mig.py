@@ -54,10 +54,14 @@ def test_priority_is_live_and_fail_closed(tmp_path,monkeypatch):
     from ops.jobs import admission_pause as A
     monkeypatch.setattr(A,'FILE',tmp_path/'pauses')
     monkeypatch.setattr(A,'PREP_PRIORITY',tmp_path/'prep')
+    monkeypatch.setattr(A,'PREP_PRIORITY_DIR',tmp_path/'holds')
     P.atomic(A.PREP_PRIORITY,{'active':True})
     assert A.paused('any-pretrain') and A.paused('any-fql')
     P.atomic(A.PREP_PRIORITY,{'active':False})
     assert not A.paused('any-pretrain')
+    P.atomic(A.PREP_PRIORITY_DIR/'calibration.json',{'active':True})
+    assert A.paused('any-pretrain')  # a drained phase A cannot clear calibration's hold
+    P.atomic(A.PREP_PRIORITY_DIR/'calibration.json',{'active':False})
     A.PREP_PRIORITY.write_text('{broken')
     with pytest.raises(ValueError):A.paused('any-pretrain')
 
