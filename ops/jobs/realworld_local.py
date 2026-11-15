@@ -326,16 +326,18 @@ def _arguments(job: dict):
         if len(parts) != 3 or parts[0] != "runs" or parts[1] not in job.get("deps", []) or parts[2] != expected:
             raise LocalInputError("dsreset artifact source must be an export/policy of a declared dependency")
     if script == FQL_DATASET:
+        from s4d.rwlearn.rgb_inputs import bundle_paths
+        rgb_paths = bundle_paths(job)
         if known.condition not in LOCAL_DATASET_CONDITIONS:
             raise LocalInputError(f"local dataset construction supports {LOCAL_DATASET_CONDITIONS} only")
         if _rel(known.out) != f"runs/{job['id']}/dataset.h5":
             raise LocalInputError("local dataset --out must be runs/<own id>/dataset.h5")
         if known.condition in NATIVE_STORE_CONDITIONS:
             _native_store_arg(known.store, job, f"local {known.condition} dataset --store")
-        elif _mapped(known.store) is None or PurePosixPath(known.store).name != "store.yaml":
+        elif known.store not in rgb_paths and (_mapped(known.store) is None or PurePosixPath(known.store).name != "store.yaml"):
             raise LocalInputError("local dataset --store must name a mirrored compact store.yaml")
         for option, value in (("--gate-report", known.gate_report), ("--outcomes", known.outcomes)):
-            if value is None or _mapped(value) is None:
+            if value not in rgb_paths and (value is None or _mapped(value) is None):
                 raise LocalInputError(f"local dataset {option} must name a mirrored remote input")
         if known.export is not None:
             parts = PurePosixPath(_rel(known.export)).parts
@@ -370,6 +372,8 @@ def needed_inputs(job: dict, *, remote_prefix: str = REMOTE_PREFIX) -> dict:
         from ops.jobs.local_phase_a import scheduler_inputs
         scheduler_inputs(job)
         return {"mirror": [], "dependency_files": []}
+    from s4d.rwlearn.rgb_inputs import bundle_paths
+    rgb_paths = bundle_paths(job)
     mirror, dependencies = set(), set()
     known = _arguments(job)
     outputs = RESOLVERS[job["script"]]["outputs"]
@@ -381,7 +385,7 @@ def needed_inputs(job: dict, *, remote_prefix: str = REMOTE_PREFIX) -> dict:
         relative = _mapped(value, remote_prefix)
         if relative is not None:
             mirror.add(relative)
-        elif value.startswith("/"):
+        elif value.startswith("/") and value not in rgb_paths:
             # Inputs of remote-resident rows are mirrored remote files or declared dependency outputs (relative runs/
             # paths); an absolute local path would be read without verification.
             raise LocalInputError(f"absolute local input paths are not supported for remote-resident rows: {value}")
@@ -776,13 +780,15 @@ def _baseline_fields(job: dict, root: Path, remote_prefix: str) -> dict | None:
         raise LocalInputError(f"cannot resolve the trainer configuration: {exc}") from exc
     native = job.get("script") == "scripts/train_mvp3d.py" and str(
         (cfg.get("dataset") or {}).get("hdf5_path")).startswith("runs/")
+    from s4d.rwlearn.rgb_inputs import bundle_paths
+    rgb_paths = bundle_paths(job)
     for section, key in BASELINE_INPUT_FIELDS:
         value = (cfg.get(section) or {}).get(key)
         if native and (section, key) == ("dataset", "hdf5_path"):
             # 3D-MVP trains on the native-depth descriptor of its LOCAL realworld_native_depth dependency
             _native_store_arg(value, job, "dataset.hdf5_path")
             continue
-        if not isinstance(value, str) or _mapped(value, remote_prefix) is None:
+        if not isinstance(value, str) or (value not in rgb_paths and _mapped(value, remote_prefix) is None):
             raise LocalInputError(f"{section}.{key} must name a mirrored remote input, not {value!r}")
     if not native and PurePosixPath(cfg["dataset"]["hdf5_path"]).name != "store.yaml":
         raise LocalInputError("dataset.hdf5_path must name a mirrored compact store.yaml")
@@ -903,6 +909,10 @@ def _inputs(job: dict, state: dict, mirror: Path, manifest: Path, runs: Path,
     checked = {f"runs/{dep}" + (f"/{relative}" if relative != "." else "")
                for dep, relative in needed["dependency_files"]} | {
         remote_prefix + ("" if relative == "." else "/" + relative) for relative in needed["mirror"]}
+    from s4d.rwlearn.rgb_inputs import bundle_paths, verify as verify_rgb
+    rgb_paths = bundle_paths(job)
+    rgb_closure = verify_rgb(job["rgb_bundle"], job["rgb_publication_sha256"]) if rgb_paths else {}
+    checked |= rgb_paths
     hidden = sorted(_resolved_paths(job, root, remote_prefix) - checked)
     if hidden:
         raise LocalInputError(f"input paths the trainer resolves are not plain checked arguments: {hidden[:3]}")
@@ -928,7 +938,7 @@ def _inputs(job: dict, state: dict, mirror: Path, manifest: Path, runs: Path,
             else:
                 _regular(path)
                 dependencies[name] = _hash(path)
-                if job.get("script") in CLOSEOUT_CONSUMERS:
+                if job.get("script") in CLOSEOUT_CONSUMERS or rgb_paths:
                     if _closeout(dep, finished_dir)["files"].get(relative) != dependencies[name]:
                         raise LocalInputError(f"local dependency differs from its closeout record: {name}")
                 if relative == NATIVE_STORE_NAME:
@@ -950,7 +960,7 @@ def _inputs(job: dict, state: dict, mirror: Path, manifest: Path, runs: Path,
                 or (remote_files is not None and remote_files.get(relative) != digest)):
             raise LocalInputError(f"dependency dataset sha256 mismatch or unverified backup: {name}")
         dependencies[name] = digest
-    if job.get("script") in CLOSEOUT_CONSUMERS:
+    if job.get("script") in CLOSEOUT_CONSUMERS or rgb_paths:
         # every LOCAL dependency, also an ordering-only one (e2e datasets wait for both baselines without reading
         # their files), must have passed its closeout before a dependent starts (Codex review)
         for dep in job.get("deps", []):
@@ -973,12 +983,13 @@ def _inputs(job: dict, state: dict, mirror: Path, manifest: Path, runs: Path,
         # each episode's recorded raw identity before use (scripts/realworld_fql_dataset.py --raw-root)
         if not LOCAL_RAW_ROOT.is_dir() or any(p.is_symlink() for p in (LOCAL_RAW_ROOT, *LOCAL_RAW_ROOT.parents)):
             raise LocalInputError(f"local raw recordings root missing or a symlink: {LOCAL_RAW_ROOT}")
-        raw_map = {"from": REMOTE_RAW_ROOT, "to": str(LOCAL_RAW_ROOT)}
-        effective += ["--raw-root", f"{REMOTE_RAW_ROOT}={LOCAL_RAW_ROOT}"]
+        raw_from = str(LOCAL_RAW_ROOT) if rgb_paths else REMOTE_RAW_ROOT
+        raw_map = {"from": raw_from, "to": str(LOCAL_RAW_ROOT)}
+        effective += ["--raw-root", f"{raw_from}={LOCAL_RAW_ROOT}"]
     # The configuration the trainer will ACTUALLY resolve (config files + the effective, mapped arguments) may hold no
     # unmapped remote path, no absolute path outside the verified mirror inputs and no run output other than a checked
     # dependency file: an unused --set spelling cannot stand in for a consumed configuration value.
-    mapped_inputs = {str(mirror) + "/" + relative for relative in needed["mirror"]}
+    mapped_inputs = {str(mirror) + "/" + relative for relative in needed["mirror"]} | rgb_paths
     for found in sorted(_resolved_paths({**job, "args": effective}, root, remote_prefix, absolute=True)):
         normal = found[2:] if found.startswith("./runs/") else found
         if remote_prefix in found or found.startswith("/home/compu/"):
@@ -991,7 +1002,7 @@ def _inputs(job: dict, state: dict, mirror: Path, manifest: Path, runs: Path,
                        **({"pretrained_weights": teacher} if teacher else {}),
                        "manifest_sha256": _sha(raw or b""),
                        "inputs": inputs, "dependency_inputs": dependencies,
-                       "input_closure": {name: files[name]["sha256"] for name in sorted(closure)}}
+                       "input_closure": {**{name: files[name]["sha256"] for name in sorted(closure)}, **rgb_closure}}
 
 
 def placement_scope(job: dict, *, root: Path = REPO) -> dict:

@@ -27,6 +27,8 @@ def build_rows(task, inputs, release, *, stage_rows, rig, methods=METHODS, nativ
     variants = selected_variants(variants)
     if task not in TASKS or not set(methods) <= set(METHODS) or not methods:
         raise ValueError('invalid task/method selection')
+    if tuple(variants) not in (('S',), ('S', 'SF')):
+        raise ValueError('variants must be S-only or historical paired S/SF')
     if set(stage_rows) != {'prep', 'calib', 'qa'}:
         raise ValueError('supply prep/calib/qa evidence barriers')
     common = dict(host='remote', pin_host='remote', remote_host='192.168.10.22', gpu='any',
