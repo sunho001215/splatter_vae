@@ -15,7 +15,7 @@ from ops.jobs import local_phase_a as a
 from ops.jobs import local_phase_a_gate as gate
 from ops.jobs import host_roles, realworld_local
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = next(p for p in Path(__file__).resolve().parents if (p / 's4d').is_dir())
 
 
 def tool(name):
