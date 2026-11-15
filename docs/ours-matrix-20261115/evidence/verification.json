@@ -1,0 +1,49 @@
+{
+  "tested_source_commit": "5a4cb5381f93476b23c835d825c8acb032e5ac25",
+  "evidence_worktree": "/home/ws/ws/rwm",
+  "full_suite": {
+    "counts": {
+      "passed": 4049,
+      "error": 0,
+      "failed": 0,
+      "skipped": 0
+    },
+    "total": 4049,
+    "collected_total": 4022,
+    "exit_code": 0,
+    "full_suite_passed": true,
+    "source_changed_during_suite": false,
+    "duration_seconds": 851.1779131821822,
+    "partition": null
+  },
+  "source_fingerprints_match_candidate": true,
+  "source_fingerprints_match_evidence": true,
+  "fingerprint_sha256": "01c7c4b7f54d6dd2bd2fa3590b7729e635b483c7aa3209829b8beb3269748fb6",
+  "focused_tests_passed": 108,
+  "registrar_compatibility_tests_passed": 86,
+  "test_layout_tests_passed": 55,
+  "matrix_rows": 84,
+  "new_continuation_eval_rows": 1,
+  "local_ready_pretrains": 4,
+  "deferred_dependencies": [
+    "rwv2-20261113-prep-ours-covering-SF",
+    "rwv2-20261113-prep-ours-drawer-open-v2-S",
+    "rwv2-20261113-prep-ours-drawer-open-v2-SF",
+    "rwv2-20261113-prep-ours-pick-and-place-SF",
+    "rwv2-20261113-qa-ours-covering",
+    "rwv2-20261113-qa-ours-drawer-open-v2",
+    "rwv2-20261113-qa-ours-pick-and-place"
+  ],
+  "old_rows_modified": 0,
+  "old_rows_removed": 0,
+  "ownership_records": 97,
+  "zero_release_scope_changes": true,
+  "scope_differences_same_as_main": true,
+  "policy_hooks": 42,
+  "pushed": false,
+  "adopted": false,
+  "registered": false,
+  "placed": false,
+  "launched": false,
+  "persisted_scopes": 93
+}

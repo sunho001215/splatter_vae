@@ -1,0 +1,70 @@
+{
+  "rows_checked": 85,
+  "hosts": [
+    "local",
+    "remote"
+  ],
+  "scopes": [
+    {
+      "id": "rwv3-20261115-pre-ours-drawer-open-v2-S-orig-scratch400k",
+      "script": "scripts/dsreset_train.py",
+      "files": 297,
+      "source_commit": "5a4cb5381f93476b23c835d825c8acb032e5ac25"
+    },
+    {
+      "id": "rwv3-20261115-export-ours-drawer-open-v2-S-orig-scratch400k",
+      "script": "scripts/dsreset_export_encoder.py",
+      "files": 158,
+      "source_commit": "5a4cb5381f93476b23c835d825c8acb032e5ac25"
+    },
+    {
+      "id": "rwv3-20261115-fqldata-ours-drawer-open-v2-S-orig-scratch400k",
+      "script": "scripts/dsreset_realworld_fql_dataset.py",
+      "files": 268,
+      "source_commit": "5a4cb5381f93476b23c835d825c8acb032e5ac25"
+    },
+    {
+      "id": "rwv3-20261115-fql-ours-drawer-open-v2-S-orig-scratch400k-s0",
+      "script": "scripts/dsreset_train_realworld_fql.py",
+      "files": 266,
+      "source_commit": "5a4cb5381f93476b23c835d825c8acb032e5ac25"
+    },
+    {
+      "id": "rwv3-20261115-eval-ours-drawer-open-v2-S-orig-scratch400k",
+      "script": "scripts/dsreset_evaluate_ours_task_length.py",
+      "files": 301,
+      "source_commit": "5a4cb5381f93476b23c835d825c8acb032e5ac25"
+    },
+    {
+      "id": "rwv3-20261115-pre-ours-covering-S-orig-scratch400k",
+      "script": "scripts/train.py",
+      "files": 288,
+      "source_commit": "5a4cb5381f93476b23c835d825c8acb032e5ac25"
+    },
+    {
+      "id": "rwv3-20261115-export-ours-covering-S-orig-scratch400k",
+      "script": "scripts/export_encoder.py",
+      "files": 143,
+      "source_commit": "5a4cb5381f93476b23c835d825c8acb032e5ac25"
+    },
+    {
+      "id": "rwv3-20261115-fqldata-ours-covering-S-orig-scratch400k",
+      "script": "scripts/realworld_fql_dataset.py",
+      "files": 259,
+      "source_commit": "5a4cb5381f93476b23c835d825c8acb032e5ac25"
+    },
+    {
+      "id": "rwv3-20261115-fql-ours-covering-S-orig-scratch400k-s0",
+      "script": "scripts/train_realworld_fql.py",
+      "files": 256,
+      "source_commit": "5a4cb5381f93476b23c835d825c8acb032e5ac25"
+    },
+    {
+      "id": "rwv3-20261115-eval-ours-covering-S-orig-scratch400k",
+      "script": "scripts/evaluate_ours_task_length.py",
+      "files": 292,
+      "source_commit": "5a4cb5381f93476b23c835d825c8acb032e5ac25"
+    }
+  ],
+  "passed": true
+}

@@ -16,6 +16,9 @@ refuses any pre-existing proposed run path or queue/registry ID. The only arm
 change is `loss.chamfer=0.1`; Original keeps its implicit zero. The existing
 `s4d/losses/chamfer.py::chamfer_loss` is bidirectional and the unchanged training
 loop uses the existing cloud voxel/point defaults (0.01 m, 4096 points).
+The historical Arm B definition in `runs/setup/arm4-definition-20261106.json` used
+coefficient 5.0; this matrix uses the explicitly requested 0.1 with the same loss
+implementation and sampling, while retaining every other loss.
 RGB, SSIM, hard depth, depth gradient, motion, invariance, consistency, coverage,
 visibility, 50% motion-aware tube masking, augmentation and architecture stay intact.
 The registrar validates the exact resolved differences on every plan, including
@@ -51,6 +54,15 @@ placement hold. Publication reuses the reviewed append-only transaction. The
 new placement helper and finite loop reuse normal locks, scope verification,
 mirror/dependency closeout, priority/capacity accounting and per-ID hold lifting.
 They do not launch training. Existing controllers and their files are unchanged.
+
+The existing dsreset reward tests confirm bit-identical S tensors and the same
+success tensors inside SF. Both use the established step-cost reward (-1 until
+success, final success 0). A failed episode never gets the success reward; its
+final transition retains bootstrap mask 1 (truncation), while success has mask 0.
+The legacy `terminal` flag marks both episode boundaries; it is not the absorbing
+mask. Failed actions are ordinary Q-learning transitions, with no separate
+per-action negative-label objective. No reward, FQL loss or existing dataset
+builder implementation is changed.
 
 The per-seed `deployment_hook` contract names task, dataset, arm, protocol,
 checkpoint, seed, exact policy path, linked evaluation ID and owner

@@ -1,0 +1,33 @@
+{
+  "source_commit": "5a4cb5381f93476b23c835d825c8acb032e5ac25",
+  "worktree": "/home/ws/ws/rwm",
+  "python": "/home/ws/ws/splatter4d/.venv/bin/python",
+  "environment": {
+    "CUDA_VISIBLE_DEVICES": "MIG-c3511b41-5f78-52f1-9b93-9c6794cdbbdd",
+    "S4D_TEST_CPU_THREADS": "32"
+  },
+  "command": [
+    "scripts/run_tests.py",
+    "--partition",
+    "all",
+    "--shards-cpu",
+    "4",
+    "--shards-gpu",
+    "1"
+  ],
+  "dino_weights": {
+    "path": "/home/ws/ws/rwm/.cache/torch/hub/checkpoints/dino_deitsmall8_pretrain.pth",
+    "sha256": "55c8b267f479b614ec20858947ce361ba804846c193e20be74263a096bb6d75e"
+  },
+  "submodules": [
+    " 7c446df5b9f45747937fb0d72314eb9f7b66930a third_party/dino (heads/main)",
+    " 62874039e5d3fc663b0fccd2083b2dd2c8d9935e third_party/dynamo (heads/main)",
+    " 367995a1a2169b6352bf4e8b0ed405890462a3a0 third_party/rvt (heads/master)",
+    " 231a1ac6b0a179cff53c1d403d379260b9f05f2f third_party/rvt/rvt/libs/PyRep (4.1.0~7)",
+    " 587a6a0e6dc8cd36612a208724eb275fe8cb4470 third_party/rvt/rvt/libs/RLBench (1.1.0-103-g587a6a0e)",
+    " f4aaeea183321e6b526166249119071e64252ad2 third_party/rvt/rvt/libs/YARR (f4aaeea)",
+    " 5c2988edb961d67d7a921cbbc638f69947debff8 third_party/rvt/rvt/libs/peract (v1.0.0-13-g5c2988e)",
+    " 3d1e573aa688e5989a82e3c5ac93d83f0f37accb third_party/rvt/rvt/libs/peract_colab/peract_colab (heads/master)",
+    " d01533b673ebcea1705b15d5e4549c67c757d9a9 third_party/snerl (heads/main)"
+  ]
+}

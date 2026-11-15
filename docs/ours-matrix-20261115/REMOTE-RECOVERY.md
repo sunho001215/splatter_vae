@@ -36,7 +36,8 @@ was performed by the matrix implementer.
    splits and rewards match the success subset of SF. Failure episodes receive
    no success reward and end with truncation; actions are ordinary transitions,
    not per-action negatives. Publish **both** variants atomically with the dsreset
-   registrar's checks. The matrix's dependency IDs are the standard
+   registrar's checks, using `ours_input_barriers_only=true` so it does not add
+   new legacy Ours continuation runs. The matrix's dependency IDs are the standard
    `rwv2-20261113-qa-ours-<task>` publication barriers and
    `rwv2-20261113-prep-ours-<task>-<S|SF>` statistics producers. Do not create fake
    `done` events for them. Complete the normal local mirror and producer closeout
