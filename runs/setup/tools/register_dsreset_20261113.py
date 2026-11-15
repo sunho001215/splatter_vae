@@ -139,6 +139,7 @@ def default_stages(task, directory):
 def prepare(repo, config, config_path, ingest_path, release, *, preview=False):
     R.require(re.fullmatch('[0-9a-f]{40}',release['commit'] or ''), 'full commit required')
     R.require(re.fullmatch('sha256:[0-9a-f]{64}',release['image'] or ''), 'image digest required')
+    R.require(type(config.get('ours_input_barriers_only', False)) is bool, 'ours_input_barriers_only must be boolean')
     methods = tuple(config.get('methods',METHODS))
     R.require(len(set(methods))==len(methods) and set(methods)<=set(METHODS), 'invalid methods')
     R.require(config.get('tasks') and set(config['tasks'])<=set(TASKS), 'only the three reset tasks are allowed')
@@ -205,6 +206,11 @@ def prepare(repo, config, config_path, ingest_path, release, *, preview=False):
             else:
                 reused.append({'task':task,'variant':'S','method':'ours','aliases':aliases(task),'unchecked_preview':True})
             task_rows=reuse_rows(task_rows,task,current)
+        if config.get('ours_input_barriers_only', False):
+            # The 2026-11-15 scratch matrix owns NEW Ours learning rows. Retain
+            # publication/QA and per-variant train-only stats, plus other methods.
+            task_rows = [r for r in task_rows if '-ours-' not in r['id']
+                         or r['id'].split('-')[2] in ('prep', 'calib', 'qa')]
         rows += task_rows
     R.require(len({r['id'] for r in rows})==len(rows),'duplicate row IDs')
     # Validate every argv against the same resolver used at placement; no hidden inputs.
@@ -225,7 +231,8 @@ def prepare(repo, config, config_path, ingest_path, release, *, preview=False):
     candidate = R.queue_candidate(before,rows)
     return {'schema':'dsreset-registration/v1','registered':False,'status':'preview' if preview else 'dry-run',
             'repo':str(repo.resolve()),'release':release,'rows':rows,'rows_sha256':R.json_sha(rows),
-            'methods':list(methods),'input_sha256':inputs,'tool_sha256':sha256(Path(__file__)),
+            'methods':list(methods),'ours_input_barriers_only':config.get('ours_input_barriers_only',False),
+            'input_sha256':inputs,'tool_sha256':sha256(Path(__file__)),
             'queue_sha256_before':R.sha(before),'queue_sha256_after':R.sha(candidate),
             'registry_sha256':R.sha(registry),'required_pause':PAUSE,
             'prep_policy':'reuse established dispatcher outputs; queue prep/calib/qa rows are read-only readiness audits',

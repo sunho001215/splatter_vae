@@ -35,7 +35,8 @@ readiness; actual capacity is rechecked by the official placement transaction.
 Drawer S and all SF chains wait on canonical dsreset QA/publication and per-variant
 train-only stats. These IDs may be absent until the separate dsreset publication
 registration; the scheduler's missing dependencies fail closed and become ready
-on normal producer completion. The dsreset publication worker must keep these
+on normal producer completion. The dsreset publication worker must set `ours_input_barriers_only=true` in
+its registration spec to suppress new legacy Ours learning chains, keep these
 standard IDs, publish the accepted five-file bundles, mirror them and close out
 local producers through the existing route. No hashes or completion evidence are
 invented for unpublished data. The label-aware dsreset train/export/dataset/FQL

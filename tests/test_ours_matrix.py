@@ -106,3 +106,29 @@ def test_recipe_drift_is_rejected(tmp_path):
     path.write_text(path.read_text().replace('depth_hard: 0.5','depth_hard: 0.0'))
     with pytest.raises(RuntimeError,match='unapproved recipe drift'):
         reg.validate_recipes(tmp_path)
+
+
+def test_dsreset_matrix_mode_publishes_dependencies_without_new_continuations(tmp_path):
+    import importlib.util
+    spec=importlib.util.spec_from_file_location('matrix_dsreset_publication',TOOLS/'register_dsreset_20261113.py')
+    module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+    (tmp_path/'experiments').mkdir()
+    (tmp_path/'experiments/queue.yaml').write_text('jobs: []\n')
+    (tmp_path/'experiments/registry.jsonl').write_text('')
+    cfg=dict(methods=['ours'],ours_input_barriers_only=True,tasks={task:dict(
+        inputs=f'/home/compu/kaist/sunho/realworld/learning_inputs/dsreset/{task}',
+        inputs_copy='/not-published',rig=f'/rig/{task}.json') for task in reg.TASKS})
+    path=tmp_path/'spec.json';path.write_text(json.dumps(cfg))
+    release=dict(commit='a'*40,image='sha256:'+'b'*64,source='local',evidence_manifest=reg.R.LOCAL_EVIDENCE)
+    record=module.prepare(tmp_path,cfg,path,tmp_path/'ingest.json',release,preview=True)
+    assert record['ours_input_barriers_only'] and not record['registered']
+    rows=record['rows']
+    assert len(rows)==15  # 3 task barriers + 2 stats, per task; S reuse removes 2 stats in the real spec
+    assert all(r['id'].split('-')[2] in ('prep','calib','qa') for r in rows)
+    assert all(r['priority']==-4 for r in rows)
+    ids={r['id'] for r in rows}
+    templates=dict(jobs=json.loads((ROOT/'tests/fixtures/ours400k_templates.json').read_text()))
+    matrix=reg.build_rows(templates,release)
+    deferred={d for r in matrix if r.get('learning_input_publication') and '-pre-' in r['id'] for d in r['deps']}
+    assert deferred<=ids
+    assert record['status']=='preview'
