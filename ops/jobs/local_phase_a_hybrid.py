@@ -17,6 +17,7 @@ from ops.jobs import local_phase_a as a
 MODE = 'qualified-local-three/1'
 STAGES = a.STAGES[:3]
 SUFFIX = 'hybridA'
+GPU_CAP_GIB = 7  # strictly below the 8 GiB scheduler declaration
 REPORT = 'hybrid-equivalence.json'
 LEDGERS = (a.MAIN/'runs/setup/remote-ledger/latest.json',
            a.MAIN/'runs/setup/remote-ledger/pre-outage-ledger.json',

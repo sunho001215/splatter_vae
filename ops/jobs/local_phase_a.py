@@ -286,6 +286,7 @@ def execute(bundle, jobfile, expected, gpu_gib=12, gate_sha=None, stages=STAGES)
     if h.is_hybrid(job):
         require(tuple(stages) in (STAGES, h.STAGES), 'hybrid jobs permit only qualified stages')
         stages = h.STAGES
+        gpu_gib = min(gpu_gib, h.GPU_CAP_GIB)
         require(gate_sha is not None, 'hybrid execution requires its three-stage gate')
     if gate_sha is not None:
         require_job_gate(bundle, gate_sha, job)
