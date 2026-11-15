@@ -15,6 +15,7 @@ sys.path[:0] = [str(ROOT), str(Path(__file__).resolve().parent)]
 from ops.jobs import local_phase_a_hybrid as h
 from ops.jobs import local_phase_a as a  # noqa: E402
 import register_ours_ext_20261113 as reviewed  # noqa: E402
+from ops.jobs.scheduler import input_verification_pass  # noqa: E402
 
 PAUSE = 'dsreset-local-phaseA-await-placement-20261115'
 TOOL = 'runs/setup/tools/register_local_phase_a_20261115.py'
@@ -52,6 +53,7 @@ def build_rows(payloads, bundle, release, gate_sha, footprints):
     return rows
 
 
+@input_verification_pass()
 def publish(root, rows, release, bundle, gate_sha):
     a.require(root.resolve() == ROOT == a.MAIN and Path.cwd().resolve() == a.MAIN, 'execute only from adopted main')
     a.require(a.git(root, 'symbolic-ref', '--short', 'HEAD') == 'main', 'execute requires main')
@@ -102,6 +104,7 @@ def publish(root, rows, release, bundle, gate_sha):
                         'queue_after_sha256': a.sha(root / 'experiments/queue.yaml'), 'launched': False})
 
 
+@input_verification_pass()
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--bundle', type=Path, required=True)

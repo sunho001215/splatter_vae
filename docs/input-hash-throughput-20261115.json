@@ -1,0 +1,41 @@
+{
+  "rows": 98,
+  "identical_decisions": true,
+  "candidate_matches_placed_scope": false,
+  "candidate_matches_snapshot": true,
+  "baseline_scope_differences": [
+    "ops/jobs/realworld_local.py",
+    "ops/jobs/rwprep_mig.py",
+    "ops/resources/memory_budget.py"
+  ],
+  "candidate_scope_differences": [
+    "ops/jobs/realworld_local.py",
+    "ops/jobs/rwprep_mig.py",
+    "ops/resources/memory_budget.py"
+  ],
+  "before": {
+    "hashes": {
+      "bytes": 1761837208386,
+      "calls": 377888,
+      "evidence_bytes": 1041728131808,
+      "frozen_bytes": 700000638092,
+      "hits": 0,
+      "raw_bytes": 20108438486
+    },
+    "seconds": 1337.3927408270538
+  },
+  "after": {
+    "seconds": 54.06409614998847,
+    "hashes": {
+      "calls": 377888,
+      "hits": 373839,
+      "bytes": 37881174420,
+      "evidence_bytes": 10629872280,
+      "frozen_bytes": 7142863654,
+      "raw_bytes": 20108438486
+    }
+  },
+  "snapshot_directory": "/tmp/hcache-queue-benchmark",
+  "final_replay_directory": "/tmp/hcache-queue-benchmark-verified",
+  "baseline_commit": "cbf883351a297e48389f3960e3148a6fa0cb6d6e"
+}

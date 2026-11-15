@@ -22,6 +22,8 @@ import signal
 import subprocess
 import sys
 import time
+from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
 
 import yaml
@@ -81,6 +83,67 @@ RESERVING = {RUNNING, "launching"}
 # metrics, checkpoints, exports); bulk evaluation media follow in scripts/sync_media.py (2026-10-27).
 ESSENTIAL = "essential"
 HOST_EVENT_ID = "__host_remote__"
+
+
+_input_hash_cache: ContextVar[dict | None] = ContextVar("input_hashes", default=None)
+
+
+@contextmanager
+def input_verification_pass():
+    """Reuse SHA256 within one pass without changing release-pinned resolvers.
+
+    The two existing digest functions are temporarily adapted here, in the
+    scheduler's established operational scope. Expected hashes, inventories,
+    permissions and source-scope comparisons remain in the original resolvers.
+    A caller's test doubles are left intact. Outside this context the adapter
+    performs a complete SHA read, including when called from another thread.
+    """
+    if _input_hash_cache.get() is not None:
+        yield
+        return
+    from ops.jobs import local_phase_a
+
+    token = _input_hash_cache.set({})
+    adapted = []
+    try:
+        for module, name in ((realworld_local, "_hash"), (local_phase_a, "sha")):
+            original = getattr(module, name)
+            if (getattr(original, "__module__", None) == module.__name__
+                    and getattr(original, "__name__", None) == name):
+                adapted.append((module, name, original))
+                setattr(module, name, input_sha256)
+        yield
+    finally:
+        for module, name, original in reversed(adapted):
+            if getattr(module, name) is input_sha256:
+                setattr(module, name, original)
+        _input_hash_cache.reset(token)
+
+
+def _input_file_identity(stat):
+    return (stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns)
+
+
+def input_sha256(path):
+    path = Path(path)
+    cache = _input_hash_cache.get()
+    before = _input_file_identity(path.stat())
+    if cache is not None and before in cache:
+        return cache[before]
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        if _input_file_identity(os.fstat(stream.fileno())) != before:
+            raise ValueError(f"input changed before hashing: {path}")
+        for block in iter(lambda: stream.read(8 * 2**20), b""):
+            digest.update(block)
+        if _input_file_identity(os.fstat(stream.fileno())) != before:
+            raise ValueError(f"input changed during hashing: {path}")
+    if _input_file_identity(path.stat()) != before:
+        raise ValueError(f"input replaced during hashing: {path}")
+    result = digest.hexdigest()
+    if cache is not None:
+        cache[before] = result
+    return result
 
 
 def load_queue(path: Path = QUEUE) -> dict:
@@ -1202,6 +1265,7 @@ def _charge_cotenants(resources: dict, state: dict, jobs: dict, messages: list[s
                         "free after pending reservations)" for uuid, charge in sorted(charges["gpus"].items())))
 
 
+@input_verification_pass()
 def tick(queue_path: Path = QUEUE, registry: Path = REGISTRY, runs: Path = RUNS, usage=None,
          available_gb: float | None = None, disk_bytes: tuple[int, int] | None = None, remote_backend=None,
          scope: set[str] | None = None, reservation_path: Path | None = None) -> list[str]:

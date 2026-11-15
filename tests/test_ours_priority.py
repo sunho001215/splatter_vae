@@ -9,6 +9,7 @@ from types import SimpleNamespace
 import pytest
 
 from ops.jobs.priority import PriorityReservations
+from ops.jobs.scheduler import input_verification_pass
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -292,6 +293,7 @@ def test_baseline_driver_passes_cpu_disk_and_other_drivers_reservations_to_fair_
                   disk_gb=1,script='scripts/train.py')
     by_id = {j['id']:j for j in (high_row,low,active)}
     jobs = SimpleNamespace(RESERVING={'running'},ACTIVE={'running'},DONE='done',
+                           input_verification_pass=input_verification_pass,
                            reservation=lambda s,r,k: max(s.get(k,0),r.get(k,0)),
                            eligible=lambda *a: [high_row,low],disk_usage=lambda _: (100*2**30,90*2**30))
     from ops.jobs import fair_share

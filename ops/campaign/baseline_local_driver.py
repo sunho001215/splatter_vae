@@ -321,16 +321,17 @@ from ops.jobs.priority import log_unready  # noqa: E402
 _source_identity = jobs.source_identity() if any(host_roles.remote_resident(by_queue[r['id']], _roles, by_queue)
                                                  for r in fair_candidates) else None
 ready_candidates = []
-for r in fair_candidates:
-    j = by_queue[r['id']]
-    if host_roles.remote_resident(j, _roles, by_queue):
-        try:
-            realworld_local.localize(j, state, roles=_roles, by_id=by_queue, ownership=_ownership,
-                                     source_identity=_source_identity)
-        except realworld_local.LocalInputError as exc:
-            messages.append(f"{j['id']}: not ready: {exc}; no priority reservation")
-            continue
-    ready_candidates.append(r)
+with jobs.input_verification_pass():
+    for r in fair_candidates:
+        j = by_queue[r['id']]
+        if host_roles.remote_resident(j, _roles, by_queue):
+            try:
+                realworld_local.localize(j, state, roles=_roles, by_id=by_queue, ownership=_ownership,
+                                         source_identity=_source_identity)
+            except realworld_local.LocalInputError as exc:
+                messages.append(f"{j['id']}: not ready: {exc}; no priority reservation")
+                continue
+        ready_candidates.append(r)
 log_unready([j for j in queue['jobs'] if j.get('host', 'local') == 'local'],
             {r['id'] for r in ready_candidates}, state, messages)
 _host = queue['hosts']['local']

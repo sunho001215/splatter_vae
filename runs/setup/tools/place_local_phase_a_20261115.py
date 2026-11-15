@@ -12,6 +12,7 @@ from ops.jobs import host_roles, realworld_local as rw  # noqa: E402
 import register_local_phase_a_20261115 as reg  # noqa: E402
 
 
+@reg.input_verification_pass()
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('ids', nargs='+')
