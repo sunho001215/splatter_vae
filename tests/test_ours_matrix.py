@@ -16,14 +16,26 @@ pytestmark = pytest.mark.local_host_data
 ROOT=Path(__file__).resolve().parents[1]
 TOOLS=ROOT/'runs/setup/tools'
 sys.path.insert(0,str(TOOLS))
-import register_ours_matrix_20261115 as reg
-import place_ours_matrix_loop_20261115 as loop
 from ops.jobs.realworld_local import needed_inputs
 from ops.jobs import scheduler
 
 
+@pytest.fixture(scope='module')
+def reg():
+    # Local-only tools can be hidden by the remote release container's runs bind.
+    # Import after marker deselection, so remote collection stays independent.
+    import register_ours_matrix_20261115
+    return register_ours_matrix_20261115
+
+
+@pytest.fixture(scope='module')
+def loop(reg):
+    import place_ours_matrix_loop_20261115
+    return place_ours_matrix_loop_20261115
+
+
 @pytest.fixture
-def rows():
+def rows(reg):
     current=dict(jobs=json.loads((ROOT/'tests/fixtures/ours400k_templates.json').read_text()))
     before=copy.deepcopy(current)
     release=dict(commit='a'*40,image='sha256:'+'b'*64,source='local',evidence_manifest=reg.R.LOCAL_EVIDENCE)
@@ -32,9 +44,9 @@ def rows():
     return result
 
 
-@pytest.mark.parametrize('task',reg.TASKS)
+@pytest.mark.parametrize('task',('drawer-open-v2','covering','pick-and-place'))
 @pytest.mark.parametrize('variant',['S','SF'])
-def test_only_approved_science_changes_and_single_schedule(task,variant):
+def test_only_approved_science_changes_and_single_schedule(task,variant,reg):
     reg.validate_recipes(ROOT)
     orig=load_config([ROOT/f'{reg.CONFIG}/{task}-{variant}-orig-scratch400k.yaml'])
     cham=load_config([ROOT/f'{reg.CONFIG}/{task}-{variant}-ch01-scratch400k.yaml'])
@@ -51,7 +63,7 @@ def test_only_approved_science_changes_and_single_schedule(task,variant):
     assert all(lr(s)>lr(s+10000) for s in range(10000,400000,10000))
 
 
-def test_complete_graph_protocol_paths_and_rewards_entrypoints(rows):
+def test_complete_graph_protocol_paths_and_rewards_entrypoints(rows,reg):
     assert len(rows)==84 and len({r['id'] for r in rows})==84
     by_id={r['id']:r for r in rows}
     for row in rows:
@@ -87,7 +99,7 @@ def test_complete_graph_protocol_paths_and_rewards_entrypoints(rows):
     assert len(scheduler.eligible(pre,state))==12
 
 
-def test_loop_does_not_touch_unrelated_continuations_and_recovers_lift(rows):
+def test_loop_does_not_touch_unrelated_continuations_and_recovers_lift(rows,reg,loop):
     queue=dict(jobs=rows+[dict(id='unrelated',host='remote')])
     ids=loop.pending_ids(queue,{},dict(pauses=[]))
     assert set(ids)=={r['id'] for r in rows}
@@ -99,7 +111,7 @@ def test_loop_does_not_touch_unrelated_continuations_and_recovers_lift(rows):
     assert loop.pending_ids(queue,owned,pauses)==[placed['id']]
 
 
-def test_recipe_drift_is_rejected(tmp_path):
+def test_recipe_drift_is_rejected(tmp_path,reg):
     import shutil
     shutil.copytree(ROOT/'configs',tmp_path/'configs')
     path=tmp_path/f'{reg.CONFIG}/covering-S-ch01-scratch400k.yaml'
@@ -108,7 +120,7 @@ def test_recipe_drift_is_rejected(tmp_path):
         reg.validate_recipes(tmp_path)
 
 
-def test_dsreset_matrix_mode_publishes_dependencies_without_new_continuations(tmp_path):
+def test_dsreset_matrix_mode_publishes_dependencies_without_new_continuations(tmp_path,reg):
     import importlib.util
     spec=importlib.util.spec_from_file_location('matrix_dsreset_publication',TOOLS/'register_dsreset_20261113.py')
     module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
