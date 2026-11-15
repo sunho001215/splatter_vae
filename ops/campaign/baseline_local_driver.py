@@ -347,6 +347,15 @@ admitted = [by_id[i] for i in fair['admitted']]
 total = fair['total_ram_bytes']
 trainer_blocked = fair['blocked']
 print('FAIR_SHARE ' + json.dumps(fair['report'], sort_keys=True))
+unguarded = {}
+for _job in admitted:  # isolate a launch-precondition failure to its own row (user 2026-11-15)
+    try:
+        jobs.check_guarded(_job['script'])
+    except ValueError as exc:
+        unguarded[_job['id']] = str(exc)
+if unguarded:
+    admitted = [j for j in admitted if j['id'] not in unguarded]
+    messages.extend(f"{i}: not launched: {why}" for i, why in unguarded.items())
 if admitted and not DRY:
     source = jobs.source_identity()
     report = json.loads((ROOT / 'docs/tests.json').read_text())
