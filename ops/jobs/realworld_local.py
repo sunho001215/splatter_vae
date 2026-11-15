@@ -171,6 +171,8 @@ def has_resolver(job: dict) -> bool:
     """Whether the script/regime has a resolver; validation of its complete argv happens before launch."""
     job = legacy_row(job)
     script = job.get("script")
+    if script == "scripts/realworld_local_phase_a.py":
+        return True
     if script not in RESOLVERS:
         return False
     args = host_roles._normalized(job.get("args", []))
@@ -360,6 +362,10 @@ def _native_store_arg(value, job: dict, what: str) -> str:
 
 def needed_inputs(job: dict, *, remote_prefix: str = REMOTE_PREFIX) -> dict:
     job = legacy_row(job)
+    if job.get("script") == "scripts/realworld_local_phase_a.py":
+        from ops.jobs.local_phase_a import scheduler_inputs
+        scheduler_inputs(job)
+        return {"mirror": [], "dependency_files": []}
     mirror, dependencies = set(), set()
     known = _arguments(job)
     outputs = RESOLVERS[job["script"]]["outputs"]
@@ -882,6 +888,12 @@ def _inputs(job: dict, state: dict, mirror: Path, manifest: Path, runs: Path,
             remote_prefix: str = REMOTE_PREFIX, root: Path = REPO, finished_dir: Path = FINISHED_DIR
             ) -> tuple[list, dict]:
     job = legacy_row(job)
+    if job.get("script") == "scripts/realworld_local_phase_a.py":
+        from ops.jobs.local_phase_a import scheduler_inputs
+        try:
+            return scheduler_inputs(job, root)
+        except (OSError, ValueError, KeyError) as exc:
+            raise LocalInputError(str(exc)) from exc
     needed = needed_inputs(job, remote_prefix=remote_prefix)
     teacher = _baseline_fields(job, root, remote_prefix) if job.get("script") in BASELINE_OPTIONS else None
     checked = {f"runs/{dep}" + (f"/{relative}" if relative != "." else "")

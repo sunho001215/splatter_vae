@@ -407,7 +407,7 @@ def refusal(job: dict, host: str, roles: dict, ownership: dict | None = None, by
     # Dataset reset readiness rows only read verified prep outputs (bulk workers
     # remain under their established host policy). The user authorized either host.
     if (not allowed and host == "local" and found.cls == "realworld_preprocess"
-            and job.get("script") == "scripts/realworld_dsreset_check.py"
+            and job.get("script") in ("scripts/realworld_dsreset_check.py", "scripts/realworld_local_phase_a.py")
             and str(job.get("id", "")).startswith("rwv2-20261113-")):
         allowed = True
     if not allowed and retry_in_place(job["id"], host, current, exceptions):

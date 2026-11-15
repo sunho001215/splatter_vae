@@ -1,0 +1,148 @@
+"""Integrity, science gate, scheduler integration and atomic publication refusals."""
+import hashlib
+import importlib.util
+import io
+import json
+from pathlib import Path
+import subprocess
+import sys
+import tarfile
+
+import numpy as np
+import pytest
+
+from ops.jobs import local_phase_a as a
+from ops.jobs import local_phase_a_gate as gate
+from ops.jobs import host_roles, realworld_local
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def tool(name):
+    p = ROOT / 'runs/setup/tools' / name
+    spec = importlib.util.spec_from_file_location(p.stem, p)
+    mod = importlib.util.module_from_spec(spec)
+    sys.path.insert(0, str(p.parent))
+    try:
+        spec.loader.exec_module(mod)
+    finally:
+        sys.path.remove(str(p.parent))
+    return mod
+
+
+@pytest.mark.parametrize('bad', ['covering-000000', 'covering-success-../../foo', 'mug-hanging-success-episode_000000',
+                                 'drawer-open-success-episode_000000', 'covering-discarded-episode_000000'])
+def test_identity_rejects_old_ambiguous_or_unsafe_names(bad):
+    with pytest.raises(ValueError):
+        a.identity(bad)
+
+
+def test_success_and_failure_same_number_have_distinct_paths():
+    assert a.identity('drawer-open-v2-success-episode_000002') != a.identity('drawer-open-v2-failure-episode_000002')
+
+
+def test_depth_absolute_relative_validity_and_nonfinite():
+    r = np.array([[[1., 2., 0.]]], np.float32)
+    c = np.array([[[1.001, 2., 0.]]], np.float32)
+    m = gate.metrics_depth(r, c)
+    assert .00049 < m['mean_abs_m'] < .00051
+    assert .00098 < m['p99_rel'] < .00101
+    assert m['valid_iou'] == 1 and not m['bitwise']
+    assert gate.metrics_depth(r, r)['bitwise']
+    with pytest.raises(ValueError, match='nonfinite'):
+        gate.metrics_depth(r, np.full_like(r, np.nan))
+
+
+def test_mask_gate_exposes_missing_foreground_without_empty_class_inflation():
+    r = np.array([[[1, 1], [0, 0]]], np.uint8)
+    c = np.array([[[1, 0], [0, 0]]], np.uint8)
+    m = gate.metrics_masks(r, c)
+    assert m['mean_iou'] == .5 and m['min_iou'] == .5 and m['absent_both'] == 2
+
+
+def test_readonly_inventory_detects_content_changes_and_symlinks(tmp_path):
+    frozen = tmp_path / 'frozen'
+    (frozen/'source').mkdir(parents=True)
+    f = frozen/'source/code.py'; f.write_text('first')
+    doc = {'files': a.inventory(frozen), 'frozen': str(frozen), 'commit': 'pin', 'upstream_pins': {}, 'environment_files': {}}
+    a.atomic(tmp_path/'envelope.json', doc)
+    checksum = a.sha(tmp_path/'envelope.json')
+    a.readonly(frozen)
+    from unittest.mock import patch
+    with patch.object(a, 'git', return_value='pin'):
+        assert a.verify_envelope(tmp_path, checksum) == doc
+        f.chmod(0o644); f.write_text('second'); f.chmod(0o444)
+        with pytest.raises(ValueError, match='SHA drift'):
+            a.verify_envelope(tmp_path, checksum)
+    frozen.chmod(0o755)
+    (frozen/'link').symlink_to(f)
+    with pytest.raises(ValueError, match='symlink'):
+        a.inventory(frozen)
+
+
+@pytest.mark.parametrize('coverage,qualified', [('cpu-only', True), ('full-two-episodes', False), ('short-smoke', True)])
+def test_partial_or_failed_gate_never_authorizes_bulk(tmp_path, coverage, qualified):
+    (tmp_path/'envelope.json').write_text('{}')
+    d = {'qualified': qualified, 'coverage': coverage, 'envelope_sha256': a.sha(tmp_path/'envelope.json'), 'episodes': []}
+    a.atomic(tmp_path/'equivalence.json', d)
+    with pytest.raises(ValueError):
+        a.require_gate(tmp_path, a.sha(tmp_path/'equivalence.json'))
+
+
+def test_local_preprocess_exception_still_requires_registered_verified_inputs(tmp_path):
+    row = {'id': 'rwv2-20261113-prep-ours-covering-failure-episode_000001-localA', 'script': a.SCRIPT,
+           'args': [], 'role': 'realworld_preprocess'}
+    roles = host_roles.load_roles()
+    assert realworld_local.has_resolver(row)
+    assert host_roles.refusal(row, 'local', roles, {}) is None
+    with pytest.raises(realworld_local.LocalInputError, match='invalid phase-A argv'):
+        realworld_local._inputs(row, {}, tmp_path, tmp_path/'missing.json', tmp_path)
+    assert host_roles.refusal({**row, 'script': 'scripts/realworld_ingest.py'}, 'local', roles, {})
+
+
+def test_rows_preserve_priority_profile_labels_and_never_launch(tmp_path):
+    reg = tool('register_local_phase_a_20261115.py')
+    ep = 'covering-failure-episode_000001'
+    payload = {'episode': ep, 'envelope_sha256': 'e'*64}
+    rows = reg.build_rows([payload], tmp_path, {'commit': 'a'*40, 'image': 'sha256:test', 'evidence_manifest': 'suite'}, 'f'*64, {})
+    r = rows[0]
+    assert r['priority'] == -4 and r['gpu_profile'] == '1g.24gb' and r['host'] == 'remote'
+    assert r['local_placement_pause'] == reg.PAUSE and r['max_restarts'] == 0
+    assert r['args'][-1] == 'f'*64 and r['cpu_threads'] == 4
+
+
+def archive(path, data, unsafe=False):
+    with tarfile.open(path, 'w') as tar:
+        for name, body in data.items():
+            info = tarfile.TarInfo('../escape' if unsafe else name); info.size = len(body)
+            tar.addfile(info, io.BytesIO(body))
+
+
+def installer(tmp_path):
+    mod = tool('upload_local_phase_a_20261115.py')
+    return mod.REMOTE_INSTALL.replace('/home/compu/kaist/sunho/realworld/processed/dsreset-20261113/', str(tmp_path/'remote') + '/')
+
+
+def test_atomic_publication_checks_every_file_and_refuses_existing_conflict(tmp_path):
+    body = b'output'
+    manifest = {'files': {'data': hashlib.sha256(body).hexdigest()}}
+    packed = tmp_path/'episode.tar'
+    archive(packed, {'data': body, '.publication.json': json.dumps(manifest).encode()})
+    target = tmp_path/'remote/covering/success/episode_000000'
+    cmd = [sys.executable, '-I', '-c', installer(tmp_path), str(packed), str(target), a.sha(packed)]
+    assert subprocess.run(cmd, capture_output=True).returncode == 0
+    assert (target/'data').read_bytes() == body
+    assert subprocess.run(cmd, capture_output=True).returncode == 0  # idempotent
+    (target/'data').write_bytes(b'canonical-conflict')
+    assert subprocess.run(cmd, capture_output=True).returncode != 0
+    assert (target/'data').read_bytes() == b'canonical-conflict'
+
+
+@pytest.mark.parametrize('unsafe,wrong_digest', [(True, False), (False, True)])
+def test_publication_rejects_escape_and_wrong_payload_sha(tmp_path, unsafe, wrong_digest):
+    packed = tmp_path/'bad.tar'
+    manifest = {'files': {'data': '0'*64}}
+    archive(packed, {'data': b'data', '.publication.json': json.dumps(manifest).encode()}, unsafe)
+    target = tmp_path/'remote/covering/success/episode_000000'
+    result = subprocess.run([sys.executable, '-I', '-c', installer(tmp_path), str(packed), str(target), a.sha(packed)], capture_output=True)
+    assert result.returncode != 0 and not target.exists() and not (tmp_path/'escape').exists()
