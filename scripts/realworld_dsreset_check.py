@@ -10,6 +10,9 @@ import os
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from ops.resources.gpu_guard import enforce_allowed_gpus  # noqa: E402
+
+enforce_allowed_gpus()
 if __name__ == '__main__':
     from s4d.rwlearn.dsreset_runtime import install
     install()
