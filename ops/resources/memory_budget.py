@@ -1,4 +1,4 @@
-"""Local memory-budget accounting (user decision 2026-10-21, option (b)): the 225 GB local budget counts every byte of the
+"""Local memory-budget accounting (user decision 2026-10-21, option (b)): the configured budget counts every byte of the
 container's cgroup except verified reclaimable, clean, disk-backed file cache, whether on the active or the inactive
 LRU generations.
 
@@ -13,7 +13,9 @@ can drop at any time without writeback. (Earlier definitions, kept in memory_bud
 set max(0, memory.current - inactive_file), which counted clean active dataset cache; that share swung 2.6-62 GB with
 the multi-generational LRU's aging.)
 
-Temporary ceiling (user 2026-11-15): 225,000,000,000 bytes. A fixed 2,000,000,000-byte policy-staging
+Temporary ceiling (user 2026-11-15): up to 400,000,000,000 bytes via runs/setup/local-memory-budget.json.
+Missing, unreadable or invalid control falls back to the original 150 GB ceiling; consumers reread it on access.
+A fixed 2,000,000,000-byte policy-staging
 reserve sits inside that budget. Training/suite admission uses TRAINING_CEILING
 (ceiling minus transient overhead minus staging reserve); staging measures actual
 budget usage, fits within STAGING_RESERVE, retains transient overhead, and must
@@ -30,13 +32,39 @@ and training speed are monitored (memory_watch.py line / alert). No cache is for
 """
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 CGROUP = Path('/sys/fs/cgroup')
-CEILING = 225_000_000_000
+CONTROL = Path(__file__).resolve().parents[2] / 'runs/setup/local-memory-budget.json'
+SAFE_CEILING = 150_000_000_000
+MAX_CEILING = 400_000_000_000
+
+
+def read_ceiling(path: Path | None = None) -> int:
+    """Read host-local policy, never job code; malformed policy always lowers admission."""
+    try:
+        data = json.loads((CONTROL if path is None else path).read_text())
+        value = data['ceiling_bytes']
+        if (set(data) == {'ceiling_bytes'} and type(value) is int
+                and SAFE_CEILING <= value <= MAX_CEILING):
+            return value
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
+    return SAFE_CEILING
+
+
+def __getattr__(name: str) -> int:
+    # Preserve the shared API while making rollback visible in long-lived consumers.
+    if name == 'CEILING':
+        return read_ceiling()
+    if name == 'TRAINING_CEILING':
+        return read_ceiling() - TRANSIENT_OVERHEAD - STAGING_RESERVE
+    raise AttributeError(name)
+
+
 TRANSIENT_OVERHEAD = 10_000_000_000  # the previous 140 GB admission ceiling kept the same 10 GB margin
 STAGING_RESERVE = 2_000_000_000
-TRAINING_CEILING = CEILING - TRANSIENT_OVERHEAD - STAGING_RESERVE
 SUITE_RESERVE = 40_000_000_000  # full native suite (scripts/run_tests.py): +40 GB measured 2026-10-21
 SUITE_HEADROOM = 10_000_000_000
 HOST_RESERVE = 60 * 2**30  # the scheduler's host MemAvailable reserve
@@ -124,7 +152,7 @@ def snapshot() -> dict:
             'unevictable': stat.get('unevictable', 0), 'inactive_file': stat.get('inactive_file', 0),
             'active_file': stat.get('active_file', 0), 'pressure': _pressure(CGROUP / 'memory.pressure'),
             'io_pressure': _pressure(CGROUP / 'io.pressure'), 'host_mem_available': host_available,
-            'ceiling': CEILING}
+            'ceiling': read_ceiling()}
 
 
 def budget_usage() -> int:

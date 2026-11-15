@@ -1891,7 +1891,7 @@ def test_live_backfill_ram_only_capacity_measures_missing_resources(mirrored, mo
                  jobs=[head, low, active])
     state = {**f.state, 'active': dict(host='local', status='running', pid=12345, gpu=g0,
                                       mem_gb=0, ram_gb=0, cpu_threads=0, disk_gb=0)}
-    monkeypatch.setattr(mb, 'TRAINING_CEILING', 64 * 2**30)
+    monkeypatch.setattr(mb, 'read_ceiling', lambda: 64 * 2**30 + mb.TRANSIENT_OVERHEAD + mb.STAGING_RESERVE)
     # The caller's free RAM overrides this snapshot's 64 GiB; it must not become the total budget.
     monkeypatch.setattr(mb, 'snapshot', lambda: dict(budget_usage=0))
     monkeypatch.setattr(mb, 'session_nonfile_pss', lambda: {})
@@ -1921,7 +1921,7 @@ def test_placement_measures_missing_free_ram(mirrored, monkeypatch):
     from ops.resources import memory_budget as mb
 
     f = mirrored
-    monkeypatch.setattr(mb, 'TRAINING_CEILING', 64 * 2**30)
+    monkeypatch.setattr(mb, 'read_ceiling', lambda: 64 * 2**30 + mb.TRANSIENT_OVERHEAD + mb.STAGING_RESERVE)
     monkeypatch.setattr(mb, 'snapshot', lambda: dict(budget_usage=64 * 2**30))
     monkeypatch.setattr(mb, 'session_nonfile_pss', lambda: {})
     monkeypatch.setattr(rw.shutil, 'disk_usage', lambda _: SimpleNamespace(total=128 * 2**30, free=100 * 2**30))

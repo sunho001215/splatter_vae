@@ -4,6 +4,13 @@ Measured on GPU 4 / GPU 5 (RTX PRO 6000 Blackwell, 96 GB each), 384 CPU cores on
 availability was ~140 GB RAM and 5.0 TB free disk; neither is a guaranteed campaign allocation. Current conservative
 memory correction and pending acceptance are below. Workload numbers come from scheduler jobs in `runs/`.
 
+Current local override (user 2026-11-15 ~20:00 KST): 400 decimal GB, 16 MIGs on GPUs 4-7;
+training admission 388 GB, alert threshold 397 GB, host MemAvailable reserve still 60 GiB.
+`ops/resources/memory_budget.py` reads `runs/setup/local-memory-budget.json`; missing/invalid policy means 150 GB.
+Accounting excludes only verified clean disk-backed file cache (2026-10-21 option b).
+One-step rollback restores 150 GB and eight queue limits on GPUs 4/5 without a code release:
+see `runs/setup/tools/ROLLBACK-local-mig16-20261115.md`. Earlier measurements and budgets below are historical.
+
 ## Hard campaign budgets (user update, 2026-10-10)
 
 - **Local hard ceiling: 150,000,000,000 bytes (150 decimal GB), steady target 130,000,000,000 bytes.**

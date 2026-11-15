@@ -108,6 +108,13 @@ def admission(job, snap, config):
     return (None if reasons else devices[0]), reasons
 
 
+def eligible_devices(devices, queue, host):
+    """Local prep follows the same effective device limits as training and rollback."""
+    if host == 'local':
+        return {u: d for u, d in devices.items() if u in queue['hosts']['local']['limits']}
+    return devices
+
+
 def snapshot(config, live):
     from ops.resources.gpu_guard import MIG_DEVICES, REMOTE_MIG_DEVICES
     from ops.resources.nvidia_query import mig_query
@@ -122,6 +129,7 @@ def snapshot(config, live):
     devices = mig_query(inventory, state_dir=Path(config['state_dir']), timeout=60)
     memory = mb.snapshot()
     queue = scheduler.load_queue(Path(config['queue']))
+    devices = eligible_devices(devices, queue, config['host'])
     registry = scheduler.read_registry(Path(config['registry']))
     rows = {j['id']: j for j in queue['jobs']}
     pss = mb.session_nonfile_pss()

@@ -35,3 +35,6 @@ experiments/HOLD
 .claude/
 
 runs/realworld-inputs/
+
+# Host-local RAM policy survives code adoption; apply/rollback manages it atomically.
+runs/setup/local-memory-budget.json

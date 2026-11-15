@@ -1,4 +1,5 @@
-"""Established local placement followed by exact-ID hold release; dry-run default."""
+"""Established local placement followed by exact-ID hold release; dry-run default.
+RAM capacity comes from realworld_local and the shared runtime memory_budget control."""
 import argparse
 import json
 from pathlib import Path

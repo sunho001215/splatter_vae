@@ -1,43 +1,54 @@
-Temporary user authorization: 2026-11-15 15:00 KST, 16 MIGs on GPUs 4-7 and 225 GB.
+Temporary user authorization: 2026-11-15 ~20:00 KST, 16 MIGs on GPUs 4-7 and 400 decimal GB.
 
-From the candidate worktree, one step prepares rollback:
+The host-local, git-ignored `runs/setup/local-memory-budget.json` is the single RAM control:
+`{"ceiling_bytes": 400000000000}`. Only an integer in [150000000000, 400000000000], with exactly
+that key, is accepted. Missing, unreadable or invalid data means 150 GB. No environment override exists.
+Training admission subtracts 10 GB transient overhead and 2 GB staging: 388 GB when applied,
+138 GB after rollback. Host MemAvailable must retain 60 GiB in both modes. Clean-cache accounting,
+validation reservations, queue-specific preprocessing caps and other resource checks still apply.
+The watchdog alert follows the current ceiling minus 3 GB (397 / 147 GB).
 
-```bash
-bash runs/setup/tools/rollback_local_mig16_20261115.sh /home/ws/ws/splatter4d
-```
-
-The queue tool first takes stage2-driver.lock then experiments/registry.lock, lists and refuses any
-running/launching/reserving job or visible process on a GPU 6/7 MIG, and atomically removes only the eight
-new local limits with a timestamped backup. Repeated application is harmless. No job row is rewritten.
-It then creates a new worktree from current main and commits `git revert` of the expansion commit there.
-Conflicts stop preparation for review. It never adopts the revert, kills jobs or changes MIG topology.
-Run the full suite on an original GPU 4/5 MIG in that rollback candidate and adopt through the normal
-reviewed evidence path. Existing GPU 6/7 jobs must finish before rollback; no automatic migration occurs.
-The expansion remains authorized until the revert is adopted. GPU topology remains a coordinator operation.
-
-Apply after adoption (dry-run is the default):
+From this candidate, publish and adopt (coordinator only):
 
 ```bash
-/home/ws/ws/splatter4d/.venv/bin/python runs/setup/tools/apply_local_mig16_20261115.py --root /home/ws/ws/splatter4d
-/home/ws/ws/splatter4d/.venv/bin/python runs/setup/tools/apply_local_mig16_20261115.py --root /home/ws/ws/splatter4d --apply
+worktree=/home/ws/ws/splatter4d/.worktrees/ram400
+python_bin=/home/ws/ws/splatter4d/.venv/bin/python
+candidate=$(git -C "$worktree" rev-parse HEAD)
+base=fe462a15b16552600610ca83cda54a4bb4d0a162
+git -C "$worktree" push origin "$candidate:main"
+"$python_bin" "$worktree/runs/setup/tools/merge_adopt_local_mig16_20261115.py" "$candidate" "$base" "$worktree"
 ```
 
-Device eligibility intersects the planned release's literal local guard/config allowlist with the actual script
-checkout's allowlist and current authorization. Old pinned rows use only their original devices; new pinned rows
-may use all sixteen. Reservations, fair-share, placement, scheduler selection and the final launch guard use the
-same check. Pinned entry points receive their own host config, avoiding old guards rejecting a new main config.
+The adoption helper requires complete passing native evidence in this worktree's `docs/tests.json`,
+no failures/errors/skips, unchanged exact source fingerprints, authorized suite GPU, origin/main at the
+candidate, and adopted main still at the base. It leaves the live queue and remote holds untouched.
+If main advances, integrate it in this candidate and rerun the full suite.
 
-Adoption (coordinator only, after publishing the candidate as origin/main):
+After adoption, one command applies 400 GB plus all sixteen MIG limits:
 
 ```bash
-candidate=$(git -C /home/ws/ws/splatter4d/.worktrees/mig16 rev-parse HEAD)
-base=736d821ee0e1e8cdc46cf1c88b2b52bb97c4f197
-/home/ws/ws/splatter4d/.venv/bin/python /home/ws/ws/splatter4d/.worktrees/mig16/runs/setup/tools/merge_adopt_local_mig16_20261115.py "$candidate" "$base" /home/ws/ws/splatter4d/.worktrees/mig16
+/home/ws/ws/splatter4d/.venv/bin/python /home/ws/ws/splatter4d/runs/setup/tools/apply_local_mig16_20261115.py --root /home/ws/ws/splatter4d --apply-ram400
 ```
 
-This is the existing local adoption flow with the candidate's expanded GPU authorization and no remote queue rewrite.
-The older 2026-11-12 tool checks the pre-merge main guard (eight devices), so it cannot adopt evidence from GPU 6/7.
-The new tool preserves its pushed-candidate, clean-source, complete-suite, exact-fingerprint and driver-lock gates.
-It leaves all queue limits untouched; run the apply command above only after adoption. If main advances, integrate
-it in the candidate and rerun the full suite before adoption. The branch began at ee85ad9 and incorporated main's
-four already-adopted commits through 736d821 in the isolated worktree to keep the handoff fast-forwardable.
+One command restores **150 GB + GPUs 4/5 (eight MIG limits)**, without a code release:
+
+```bash
+/home/ws/ws/splatter4d/.venv/bin/python /home/ws/ws/splatter4d/runs/setup/tools/apply_local_mig16_20261115.py --root /home/ws/ws/splatter4d --rollback
+# Equivalent entry point:
+bash /home/ws/ws/splatter4d/runs/setup/tools/rollback_local_mig16_20261115.sh /home/ws/ws/splatter4d
+```
+
+Rollback refuses and lists reserving/running/launching jobs or visible CUDA processes on GPU 6/7 MIGs.
+Allow them to finish before retrying; no job is signalled or migrated. Both modes take stage2-driver.lock
+then experiments/registry.lock. They validate before writing, preserve job rows and remote fields, and use
+fsync plus atomic replacement; queue changes retain timestamped backups. Rollback lowers RAM before removing
+limits; apply adds limits before raising RAM. If interrupted, rerun the same idempotent command.
+Without mutation flags the tool previews adding limits without writing queue/control files (it takes locks).
+Legacy `--apply` still adds limits only; use `--apply-ram400` to set the RAM policy too.
+The control is deliberately not tracked: adoption cannot overwrite an operator's rollback or dirty source evidence.
+Drivers read after acquiring admission locks; long-lived resource consumers reread on access. Local preprocessing
+also intersects devices with effective local queue limits. No MIG topology or GPU authorization file changes.
+
+Execution identity stays strict: the actual training import closure excludes memory_budget, memory_watch,
+realworld_local, rwprep_mig and this JSON. No fingerprint exemption was added. `tests/test_memory_admission.py`
+compares execution scope to fe462a1, proves placement against that pin, and checks all sixteen device admissions.

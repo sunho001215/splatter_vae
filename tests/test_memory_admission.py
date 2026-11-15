@@ -11,16 +11,24 @@ from ops.resources import memory_budget as mb
 from ops.resources import memory_watch as watch
 
 
+@pytest.fixture(autouse=True)
+def memory_control(tmp_path, monkeypatch):
+    control = tmp_path / 'local-memory-budget.json'
+    control.write_text(json.dumps({'ceiling_bytes': 400_000_000_000}))
+    monkeypatch.setattr(mb, 'CONTROL', control)
+    return control
+
+
 @pytest.mark.parametrize('mode,usage,growth,extra,host,expected', [
-    ('fits', 64e9, 30e9, 119e9, 200e9, True),
-    ('fits', 64e9, 30e9, 119e9 + 1, 200e9, False),
-    ('fits-staging', 213e9, 100e9, 2e9, 200e9, True),
-    ('fits-staging', 213e9 + 1, 0, 2e9, 200e9, False),
-    ('fits-staging', 64e9, 100e9, 2e9 + 1, 200e9, False),
+    ('fits', 64e9, 30e9, 294e9, 500e9, True),
+    ('fits', 64e9, 30e9, 294e9 + 1, 500e9, False),
+    ('fits-staging', 388e9, 100e9, 2e9, 500e9, True),
+    ('fits-staging', 388e9 + 1, 0, 2e9, 500e9, False),
+    ('fits-staging', 64e9, 100e9, 2e9 + 1, 500e9, False),
     ('fits-staging', 64e9, 100e9, 2e9, mb.HOST_RESERVE + 2e9 - 1, False),
     ('fits-staging', 64e9, 100e9, 2e9, mb.HOST_RESERVE + 2e9, True),
     ('fits', 64e9, 0, 2e9, mb.HOST_RESERVE + 2e9 - 1, False),
-    ('fits-staging', 1e9, 0, -1, 200e9, False),
+    ('fits-staging', 1e9, 0, -1, 500e9, False),
 ])
 def test_modes(monkeypatch, capsys, mode, usage, growth, extra, host, expected):
     monkeypatch.setattr(mb, 'snapshot', lambda: dict(budget_usage=int(usage), host_mem_available=int(host),
@@ -34,7 +42,7 @@ def test_modes(monkeypatch, capsys, mode, usage, growth, extra, host, expected):
     assert watch.main() == (0 if expected else 1)
     data = json.loads(capsys.readouterr().out)
     assert data['fits'] is expected and data['mode'] == mode
-    assert data['staging_reserve'] == 2_000_000_000 and data['ceiling'] == 225_000_000_000
+    assert data['staging_reserve'] == 2_000_000_000 and data['ceiling'] == 400_000_000_000
     assert data['remaining_growth'] == (0 if mode == 'fits-staging' else growth)
 
 
@@ -73,16 +81,16 @@ def test_driver_cap_arithmetic(filename):
         isinstance(t, ast.Name) and t.id == 'CAP' for t in n.targets))
     names = {'mb': mb, 'VALIDATION_RESERVATION': 7_000_000_000}
     exec(compile(ast.Module(body=[node], type_ignores=[]), str(source), 'exec'), names)
-    assert mb.CEILING == 225_000_000_000
-    assert mb.TRAINING_CEILING == 213_000_000_000
-    assert names['CAP'] == 206_000_000_000
+    assert mb.CEILING == 400_000_000_000
+    assert mb.TRAINING_CEILING == 388_000_000_000
+    assert names['CAP'] == 381_000_000_000
 
 
 def test_realworld_capacity_withholds_staging(monkeypatch):
     from ops.jobs import realworld_local
     monkeypatch.setattr(mb, 'snapshot', lambda: {'budget_usage': 64_000_000_000})
     monkeypatch.setattr(mb, 'session_nonfile_pss', lambda: {})
-    assert realworld_local._capacity({'jobs': []}, {}) == {'ram_free_bytes': 149_000_000_000}
+    assert realworld_local._capacity({'jobs': []}, {}) == {'ram_free_bytes': 324_000_000_000}
 
 
 @pytest.mark.parametrize('job,recorded_ram,footprint', [
@@ -104,3 +112,63 @@ def test_realworld_capacity_matches_current_queue_growth(monkeypatch, job, recor
     assert growth == footprint - 2**30
     assert realworld_local._capacity(queue, {'active': current}) == {
         'ram_free_bytes': mb.TRAINING_CEILING - 64_000_000_000 - growth}
+
+
+@pytest.mark.parametrize('contents', [None, '', '{', 'null', '[]', '400000000000',
+    '{"ceiling_bytes": true}', '{"ceiling_bytes": "400000000000"}',
+    '{"ceiling_bytes": 400000000000.0}', '{"ceiling_bytes": 149999999999}',
+    '{"ceiling_bytes": 400000000001}', '{"ceiling_bytes": -1}',
+    '{"ceiling_bytes": 400000000000, "unexpected": 1}', '{}'])
+def test_invalid_control_fails_safe(memory_control, contents):
+    if contents is None:
+        memory_control.unlink()
+    else:
+        memory_control.write_text(contents)
+    assert mb.CEILING == 150_000_000_000
+    assert mb.TRAINING_CEILING == 138_000_000_000
+
+
+@pytest.mark.parametrize('ceiling', [150_000_000_000, 225_000_000_000, 400_000_000_000])
+def test_control_bounds(memory_control, ceiling):
+    memory_control.write_text(json.dumps({'ceiling_bytes': ceiling}))
+    assert mb.CEILING == ceiling
+    assert mb.TRAINING_CEILING == ceiling - 12_000_000_000
+    assert mb.HOST_RESERVE == 60 * 2**30
+
+
+def test_unreadable_control_fails_safe(memory_control, monkeypatch):
+    def refused(*args, **kwargs):
+        raise PermissionError('unreadable')
+    monkeypatch.setattr(Path, 'read_text', refused)
+    assert mb.CEILING == 150_000_000_000
+
+
+def test_alert_rereads_control(memory_control, monkeypatch, capsys):
+    monkeypatch.setattr(mb, 'snapshot', lambda: dict(budget_usage=200_000_000_000,
+        host_mem_available=500_000_000_000, current=200_000_000_000, pressure={}, io_pressure={}))
+    monkeypatch.setattr(sys, 'argv', ['memory_watch', 'alert'])
+    assert watch.main() == 1
+    memory_control.write_text('{"ceiling_bytes": 150000000000}')
+    assert watch.main() == 0
+    assert 'MEMORY_ALERT' in capsys.readouterr().out
+
+
+def test_fe462a1_execution_scope_excludes_scheduler_policy():
+    from ops.jobs import local_devices, migration, realworld_local
+    from ops.resources.gpu_guard import APPROVED_HOST_GPUS
+    root = Path(__file__).resolve().parents[1]
+    pin = migration._git(root, 'rev-parse', 'fe462a1').decode().strip()
+    scripts = ['scripts/train.py', 'scripts/train_rl.py', 'scripts/train_realworld_fql.py',
+               'scripts/train_snerl.py', 'scripts/eval_realworld_fql.py']
+    scope = migration.execution_scope(scripts, pin, root)
+    assert scope['identical'], scope['differences']
+    for path in ['ops/resources/memory_budget.py', 'ops/resources/memory_watch.py',
+                 'ops/jobs/realworld_local.py', 'ops/jobs/rwprep_mig.py']:
+        assert path not in scope['files']
+    # Exercise the actual pin admission predicate and placement proof, not just a hash comparison.
+    row = dict(id='ram400-pin-proof', host='local', planned_commit=pin,
+               script='scripts/train_realworld_fql.py', args=[])
+    proof = realworld_local.placement_scope(row, root=root)
+    assert proof['source_commit'] == pin
+    assert 'ops/resources/memory_budget.py' not in proof['files']
+    assert all(local_devices.allows(row, gpu, root) for gpu in APPROVED_HOST_GPUS['local'])

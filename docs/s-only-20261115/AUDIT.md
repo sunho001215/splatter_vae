@@ -61,7 +61,7 @@ third-party comparison. Its existing operational exclusions are unchanged.
 
 This same `allows()` gate is used by scheduling, launch, packing, fair share and
 priority reservations. State, dependency, admission-pause, input-closure, closeout,
-225 GB RAM, GPU memory and CPU admission rules still apply. The change does not
+The shared configured RAM ceiling (up to 400 GB; 150 GB fail-safe), GPU memory and CPU admission rules still apply. The change does not
 start, retry, stop or reclassify a running/exited job. A never-launched row awaiting
 its first verified placement does not borrow another row's proof: that placement
 must still pass the normal official route, and may wait for an original-device

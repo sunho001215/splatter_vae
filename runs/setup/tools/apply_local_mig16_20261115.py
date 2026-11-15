@@ -1,6 +1,6 @@
-"""Temporary local MIG expansion (user 2026-11-15). Dry-run unless --apply or --rollback.
+"""Temporary local MIG expansion (user 2026-11-15). Dry-run unless --apply, --apply-ram400 or --rollback.
 
-Only the effective local limits mapping changes (legacy limits: or hosts.local.limits).
+Only the RAM policy and effective local limits mapping change (legacy limits: or hosts.local.limits).
 Lock order matches placement: local admission, then registry/queue lock. No job row, process or GPU topology is modified.
 """
 from __future__ import annotations
@@ -20,6 +20,7 @@ import yaml
 
 REPO = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO))
+from ops.resources import memory_budget as mb  # noqa: E402
 from ops.resources.gpu_guard import APPROVED_HOST_GPUS  # noqa: E402
 
 NEW_MIGS = APPROVED_HOST_GPUS['local'][8:]
@@ -84,9 +85,32 @@ def rewrite(before: bytes, rollback: bool) -> bytes:
     return after.encode()
 
 
-def update(root: Path, *, apply=False, rollback=False, live=live_jobs) -> dict:
+def atomic(path: Path, data: bytes):
+    fd, tmp = tempfile.mkstemp(prefix='.' + path.name + '-', dir=path.parent)
+    try:
+        with os.fdopen(fd, 'wb') as stream:
+            os.fchmod(stream.fileno(), path.stat().st_mode & 0o777 if path.exists() else 0o644)
+            stream.write(data)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(tmp, path)
+        directory = os.open(path.parent, os.O_DIRECTORY)
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+    finally:
+        Path(tmp).unlink(missing_ok=True)
+
+
+def update(root: Path, *, apply=False, apply_ram400=False, rollback=False, live=live_jobs) -> dict:
+    if sum(map(bool, (apply, apply_ram400, rollback))) > 1:
+        raise ValueError('choose one mutation mode')
     root = Path(root).resolve()
     queue = root / 'experiments/queue.yaml'
+    control = root / 'runs/setup/local-memory-budget.json'
+    target = mb.SAFE_CEILING if rollback else mb.MAX_CEILING if apply_ram400 else None
+    policy = (json.dumps({'ceiling_bytes': target}, indent=2) + '\n').encode() if target else None
     with ExitStack() as stack:
         for path in (root / 'runs/setup/stage2-driver.lock', root / 'experiments/registry.lock'):
             lock = stack.enter_context(path.open('a'))
@@ -97,31 +121,27 @@ def update(root: Path, *, apply=False, rollback=False, live=live_jobs) -> dict:
                 raise ValueError('rollback refused: GPU 6/7 jobs still live:\n' + json.dumps(active, indent=2))
         before = queue.read_bytes()
         after = rewrite(before, rollback)
-        result = {'mode': 'rollback' if rollback else 'apply' if apply else 'dry-run',
-                  'changed': after != before, 'gpus': list(NEW_MIGS)}
-        if after != before and (apply or rollback):
-            stamp = datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S-%f')
-            backup = queue.with_name(queue.name + f'.before-local-mig16-{stamp}')
-            with backup.open('xb') as stream:
-                stream.write(before)
-                stream.flush()
-                os.fsync(stream.fileno())
-            fd, tmp = tempfile.mkstemp(prefix='.queue-mig16-', dir=queue.parent)
-            try:
-                with os.fdopen(fd, 'wb') as stream:
-                    os.fchmod(stream.fileno(), queue.stat().st_mode & 0o777)
-                    stream.write(after)
+        policy_changed = policy is not None and (not control.exists() or control.read_bytes() != policy)
+        result = {'mode': 'rollback' if rollback else 'apply-ram400' if apply_ram400 else 'apply' if apply else 'dry-run',
+                  'changed': after != before or policy_changed, 'gpus': list(NEW_MIGS),
+                  'ceiling_bytes': target if target else mb.read_ceiling(control)}
+        if apply or apply_ram400 or rollback:
+            if after != before:
+                stamp = datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S-%f')
+                backup = queue.with_name(queue.name + f'.before-local-mig16-{stamp}')
+                with backup.open('xb') as stream:
+                    stream.write(before)
                     stream.flush()
                     os.fsync(stream.fileno())
-                os.replace(tmp, queue)
-                directory = os.open(queue.parent, os.O_DIRECTORY)
-                try:
-                    os.fsync(directory)
-                finally:
-                    os.close(directory)
-            finally:
-                Path(tmp).unlink(missing_ok=True)
-            result['backup'] = str(backup)
+                result['backup'] = str(backup)
+            # Lower RAM before removing devices; raise it only after adding devices.
+            # Both locks cover both files. If interrupted, rerun the same command.
+            if rollback and policy_changed:
+                atomic(control, policy)
+            if after != before:
+                atomic(queue, after)
+            if apply_ram400 and policy_changed:
+                atomic(control, policy)
         return result
 
 
@@ -129,11 +149,13 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument('--apply', action='store_true')
-    mode.add_argument('--rollback', action='store_true')
+    mode.add_argument('--apply-ram400', action='store_true', help='400 GB RAM and 16 MIGs on GPUs 4-7')
+    mode.add_argument('--rollback', action='store_true', help='150 GB RAM and 8 MIGs on GPUs 4/5')
     parser.add_argument('--root', type=Path, default=REPO)
     args = parser.parse_args()
     try:
-        print(json.dumps(update(args.root, apply=args.apply, rollback=args.rollback), indent=2))
+        result = update(args.root, apply=args.apply, apply_ram400=args.apply_ram400, rollback=args.rollback)
+        print(json.dumps(result, indent=2))
     except (OSError, ValueError, KeyError, yaml.YAMLError) as exc:
         parser.exit(1, f'{exc}\n')
 

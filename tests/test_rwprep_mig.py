@@ -292,7 +292,11 @@ def test_local_stop_after_slow_worker_upload_prevents_launch(tmp_path, monkeypat
     assert not calls
 
 
-def test_local_prep_uses_shared_training_ceiling_and_retains_declared_caps():
+def test_local_prep_uses_shared_training_ceiling_and_retains_declared_caps(tmp_path, monkeypatch):
+    from ops.resources import memory_budget as mb
+    control = tmp_path / 'local-memory-budget.json'
+    control.write_text('{"ceiling_bytes": 400000000000}')
+    monkeypatch.setattr(mb, 'CONTROL', control)
     from ops.resources.memory_budget import TRAINING_CEILING
 
     state = snap()

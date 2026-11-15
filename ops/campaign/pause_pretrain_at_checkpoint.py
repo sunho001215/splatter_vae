@@ -1,4 +1,4 @@
-"""Lossless checkpoint pause of owned local pretraining runs for the temporary local 225 GB ceiling (user 2026-11-15;
+"""Lossless checkpoint pause of owned local pretraining runs for the configured local ceiling (user 2026-11-15;
 checkpoint-pause authorization 2026-10-10). Signals a run only after (1) step_<N>.pt and latest.pt are published at the
 next save boundary N, (2) the scheduled validation at N is in metrics.jsonl, and (3) no training step after N has been
 logged. Resume via scripts/jobs.py (--resume auto) restores step N exactly; nothing logged is lost or duplicated.

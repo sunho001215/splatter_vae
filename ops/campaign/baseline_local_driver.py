@@ -1,6 +1,6 @@
 """One pass of local admission for the new-baseline jobs (registrations listed below), job by job under the local
 full-charge cap through the scheduler. Same accounting as stage2_local_driver.py (cgroup budget usage + remaining
-growth of every active local job, 225 GB budget less transient, fixed 2 GB staging, and validation reservations)
+growth of every active local job, configured local budget less transient, fixed 2 GB staging, and validation reservations)
 and the same lock file, so the two drivers never admit at the same time. Never deletes anything.
 
     python -I baseline_local_driver.py [--dry-run]
@@ -25,8 +25,8 @@ sys.path.insert(0, str(ROOT / 'runs/setup/tools'))
 from ops.resources import memory_budget as mb  # noqa: E402
 from ops.resources.reservations import validation_reservation as _validation_reservation  # noqa: E402
 
-# Local budget (user instruction 2026-10-21): the cgroup working set max(0, memory.current - inactive_file) against the
-# 225 GB ceiling, minus a transient-overhead margin; see runs/setup/tools/memory_budget.py.
+# Local budget (user instruction 2026-10-21): the cgroup charge minus verified clean disk file cache against the
+# configured local ceiling, minus a transient-overhead margin; see runs/setup/tools/memory_budget.py.
 # Temporary local validation reservation (user 2026-11-02): RAM withheld from local admission for the real-world/DROID
 # validation and the integration suite (scripts/run_tests.py, +40 GB). runs/setup/local-validation-reservation.json
 # {"ram_bytes": N, "expires_unix": T, "reason": ...}; absent or expired = 0. GPUs are reserved by leaving them out of
@@ -34,7 +34,6 @@ from ops.resources.reservations import validation_reservation as _validation_res
 
 
 VALIDATION_RESERVATION = _validation_reservation()
-CAP = mb.TRAINING_CEILING - VALIDATION_RESERVATION
 # The local sanity set moved to the remote (baselines-sanity-remote-registration-20261016.json). Only the evaluator of the
 # kept local pair `bxs-dynamo-hammer-rand-s1000` (trainer done locally) is still admitted here (2026-10-17).
 # Eight-task runs (2026-10-17): the local rows of baselines-eight-task-registration-20261017.json (DynaMo and 3D-MVP
@@ -107,6 +106,9 @@ try:
 except BlockingIOError:
     print('BASELINE_DRIVER the Stage 2 driver (or another pass) holds the admission lock; skipped')
     raise SystemExit(0) from None
+
+# Read policy only after acquiring the admission lock shared with apply/rollback.
+CAP = mb.TRAINING_CEILING - VALIDATION_RESERVATION
 
 queue = jobs.load_queue()
 by_queue = {j['id']: j for j in queue['jobs']}

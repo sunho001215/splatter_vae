@@ -1,5 +1,5 @@
 """One pass of the local Stage 2 driver: verify finished pretraining/evaluations/exports/RL, prepare evaluation configs,
-admit eligible jobs one by one under TRAINING_CEILING (225 GB less transient
+admit eligible jobs one by one under TRAINING_CEILING (configured ceiling less transient
 overhead and the fixed 2 GB policy-staging reserve), less validation reservations, through scripts/jobs.py.
 Never deletes anything.
 
@@ -26,7 +26,7 @@ sys.path.insert(0, str(ROOT / 'runs/setup/tools'))
 from ops.resources import memory_budget as mb  # noqa: E402
 from ops.resources.reservations import validation_reservation as _validation_reservation  # noqa: E402
 
-# Local budget (user instruction 2026-10-21): cgroup working set max(0, memory.current - inactive_file) vs 225 GB,
+# Local budget (user instruction 2026-10-21): cgroup charge minus verified clean disk file cache vs the configured ceiling,
 # minus the transient-overhead margin (runs/setup/tools/memory_budget.py)
 # Temporary local validation reservation (user 2026-11-02): RAM withheld from local admission for the real-world/DROID
 # validation and the integration suite (scripts/run_tests.py, +40 GB). runs/setup/local-validation-reservation.json
@@ -35,7 +35,6 @@ from ops.resources.reservations import validation_reservation as _validation_res
 
 
 VALIDATION_RESERVATION = _validation_reservation()
-CAP = mb.TRAINING_CEILING - VALIDATION_RESERVATION
 TRAINER_PSS = 10.77e9  # measured trainer peak PSS (user rule)
 # Measured splatter4d DrM peaks (2026-10-14): trainer RSS <= 2.65 GB at 1M (runs/s3-drm-splatter4d-*/final.json),
 # local session PSS 2.80 GB at 667k; evaluator session PSS 3.5-3.8 GB. ~25% margin. Other jobs: declared ram_gb.
@@ -58,6 +57,9 @@ try:
 except BlockingIOError:
     print('STAGE2_DRIVER another pass is running; skipped')
     raise SystemExit(0) from None
+
+# Read policy only after acquiring the admission lock shared with apply/rollback.
+CAP = mb.TRAINING_CEILING - VALIDATION_RESERVATION
 
 
 def sha(path):

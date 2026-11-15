@@ -1,6 +1,6 @@
 # Real-world offline FQL on frozen baseline representations and end-to-end
 
-Unified pool (directive 2026-11-11 ~20:15 KST): LOCAL (8 MIG slices, 150 GB RAM budget) and REMOTE are
+Unified pool (directive 2026-11-11 ~20:15 KST): LOCAL (temporarily 16 MIG slices on GPUs 4-7, up to 400 GB RAM via `runs/setup/local-memory-budget.json`; rollback: 8 slices / 150 GB) and REMOTE are
 interchangeable training hosts for Meta-World, real-world and DROID (`configs/hosts/roles.yaml`, version 2).
 Data locality still applies: preprocessing and typed release verification stay remote; remote-resident training
 runs locally only with a verified resolver in `ops/jobs/realworld_local.py`. Resolvers cover FQL training,

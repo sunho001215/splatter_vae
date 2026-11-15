@@ -8,7 +8,7 @@ memory.current minus verified clean disk-backed file cache).
                                     SUITE_HEADROOM) fit: budget usage + the running jobs' remaining growth + BYTES <=
                                     TRAINING_CEILING, and host MemAvailable - BYTES >= the host reserve
     memory_watch.py fits-staging BYTES  policy staging: BYTES <= STAGING_RESERVE, actual budget usage + BYTES +
-                                    transient overhead <= the temporary 225 GB ceiling, and the same host reserve.
+                                    transient overhead <= the configured ceiling, and the same host reserve.
                                     Measured actual usage includes staging; unused training reservations do not block it.
     memory_watch.py alert           print MEMORY_ALERT and exit 0 when budget usage >= ceiling minus 3 GB, memory pressure
                                     (PSI full avg60) >= 5 %, I/O pressure (PSI full avg60) >= 20 %, or host
@@ -24,7 +24,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'runs/setup/tools')
 from ops.resources import memory_budget as mb  # noqa: E402
 
 ROOT = Path('/home/ws/ws/splatter4d')
-ALERT_BUDGET = mb.CEILING - 3_000_000_000
 ALERT_PSI_FULL_AVG60 = 5.0
 ALERT_IO_FULL_AVG60 = 20.0
 from ops.jobs.footprints import local_footprint  # noqa: E402
@@ -102,7 +101,7 @@ def main():
         return 0 if ok else 1
     if mode == 'alert':
         reasons = []
-        if s['budget_usage'] >= ALERT_BUDGET:
+        if s['budget_usage'] >= mb.CEILING - 3_000_000_000:
             reasons.append(f"budget_usage={s['budget_usage']}")
         if full >= ALERT_PSI_FULL_AVG60:
             reasons.append(f'psi_full_avg60={full}')

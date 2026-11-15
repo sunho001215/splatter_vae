@@ -1,6 +1,6 @@
 Temporary local MIG16 expansion — 2026-11-15
 
-User authorization: 16 x MIG 1g.24gb on GPUs 4-7, RAM ceiling 225,000,000,000 bytes.
+User authorization: 16 x MIG 1g.24gb on GPUs 4-7, RAM ceiling now up to 400,000,000,000 bytes (user update ~20:00 KST; see docs/local-ram400-verification.md).
 The branch was created from ee85ad9 as requested, then fast-forwarded inside the isolated worktree to
 736d821 (four already-adopted main commits) before committing the expansion. Main itself was not changed.
 
@@ -14,14 +14,14 @@ The committed-new-release test accepts all sixteen. Remote container launch cont
 its local exclusion set derives from APPROVED_HOST_GPUS and all four LOCAL_MIG_PARENTS.
 
 Memory accounting keeps clean-file-cache exclusion, 10 GB transient overhead, 2 GB staging reserve and the
-60 GiB host reserve. Training/preprocessing admission follows the shared 213 GB training ceiling; explicit
+60 GiB host reserve. Training/preprocessing admission follows the shared configured training ceiling (388 GB at RAM400); explicit
 preprocessing queue caps remain binding. Device and fair-share capacities derive from the configured limits.
 
 Queue tools: legacy top-level limits and nested hosts.local.limits are both supported; dry-run by default; --apply adds only eight local limits (max_jobs: 3, max_mem_gb: 22).
---rollback refuses and lists live GPU 6/7 jobs/processes, then removes those limits. Both mutation modes use
+--apply-ram400 sets 400 GB and all sixteen limits. --rollback refuses and lists live GPU 6/7 jobs/processes, then restores 150 GB and removes those limits. Both mutation modes use
 stage2-driver.lock followed by experiments/registry.lock, timestamped backups, fsync and atomic replacement.
 Job rows are preserved byte-for-byte. No reserved queue key is introduced.
-The shell rollback prepares a git revert in a separate candidate worktree for normal review/adoption.
+The shell rollback invokes the tested runtime rollback directly; no code release is needed.
 The candidate-aware adoption helper retains complete-suite, pushed-origin/main, source-fingerprint and driver-lock
 checks, accepts evidence from the new MIGs, and leaves the queue and remote holds untouched.
 See runs/setup/tools/ROLLBACK-local-mig16-20261115.md for exact adoption, apply and rollback commands.

@@ -65,3 +65,62 @@ def test_conflicting_limit_is_never_overwritten(root):
     with pytest.raises(ValueError, match='conflicting'):
         tool.update(root, apply=True)
     assert queue.read_bytes() == before
+
+
+def test_ram400_and_one_step_rollback(root, monkeypatch):
+    from ops.jobs import realworld_local, rwprep_mig
+    from ops.resources import memory_budget as mb
+    from ops.resources import memory_watch as watch
+    queue = root / 'experiments/queue.yaml'
+    # Start from the real original eight-MIG configuration, with all rows and remote fields preserved.
+    queue.write_bytes(queue.read_bytes().replace(b'old: {max_jobs: 3, max_mem_gb: 22}',
+        ('\n' + '\n'.join('      ' + gpu + ': {max_jobs: 3, max_mem_gb: 22}'
+                           for gpu in tool.APPROVED_HOST_GPUS['local'][:8])).encode()))
+    before = yaml.safe_load(queue.read_bytes())
+    control = root / 'runs/setup/local-memory-budget.json'
+    monkeypatch.setattr(mb, 'CONTROL', control)
+    monkeypatch.setattr(mb, 'snapshot', lambda: {'budget_usage': 0})
+    monkeypatch.setattr(mb, 'session_nonfile_pss', lambda: {})
+    assert mb.CEILING == 150_000_000_000
+    tool.update(root)
+    assert not control.exists()
+    for mode, ceiling, slots in [('apply_ram400', 400_000_000_000, 16),
+                                 ('rollback', 150_000_000_000, 8)]:
+        result = tool.update(root, **{mode: True}, live=lambda _: [])
+        assert result['ceiling_bytes'] == mb.CEILING == ceiling
+        assert mb.TRAINING_CEILING == ceiling - 12_000_000_000
+        assert realworld_local._capacity({'jobs': []}, {})['ram_free_bytes'] == mb.TRAINING_CEILING
+        after = yaml.safe_load(queue.read_bytes())
+        assert len(local_limits(after)) == slots
+        normalized = {'hosts': {'local': {'limits': local_limits(after)}}}
+        assert len(rwprep_mig.eligible_devices(dict.fromkeys(tool.APPROVED_HOST_GPUS['local']),
+                                              normalized, 'local')) == slots
+        assert after['jobs'] == before['jobs'] and after['hosts']['remote'] == before['hosts']['remote']
+        assert not tool.update(root, **{mode: True}, live=lambda _: [])['changed']
+    assert yaml.safe_load(queue.read_bytes()) == before
+    assert watch.mb is mb
+
+
+def test_ram400_live_rollback_refusal_preserves_both_files(root):
+    tool.update(root, apply_ram400=True)
+    paths = [root / 'experiments/queue.yaml', root / 'runs/setup/local-memory-budget.json']
+    before = [p.read_bytes() for p in paths]
+    with pytest.raises(ValueError, match='rollback refused'):
+        tool.update(root, rollback=True, live=lambda _: [{'id': 'busy'}])
+    assert [p.read_bytes() for p in paths] == before
+
+
+def test_ram400_cli_and_shell_rollback(root):
+    import json
+    import subprocess
+    import sys
+    script = Path(tool.__file__)
+    # Isolate process discovery: the suite itself runs on GPU 6/7 and must not permit a real rollback.
+    code = ("import importlib.util, sys; spec = importlib.util.spec_from_file_location('tool', sys.argv.pop(1)); "
+            "m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m); "
+            "m.update.__kwdefaults__['live'] = lambda _: []; m.main()")
+    for flag, ceiling in [('--apply-ram400', 400_000_000_000), ('--rollback', 150_000_000_000)]:
+        result = subprocess.run([sys.executable, '-c', code, str(script), '--root', str(root), flag],
+                                capture_output=True, text=True, check=True)
+        assert json.loads(result.stdout)['ceiling_bytes'] == ceiling
+    subprocess.run(['bash', '-n', str(script.with_name('rollback_local_mig16_20261115.sh'))], check=True)

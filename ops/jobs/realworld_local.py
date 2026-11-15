@@ -13,7 +13,7 @@ mtime at admission, small files are hashed again. ``verify`` can audit every byt
 
 Placement compares the pinned release's execution scope once, under the placement locks, and records the digests in
 both ownership and pool records. Launch compares that scope against the tick's source identity without git reads.
-Training capacity uses TRAINING_CEILING, leaving the fixed 2 GB staging reserve inside 225 GB.
+Training capacity uses TRAINING_CEILING, leaving the fixed 2 GB staging reserve inside the configured local ceiling.
 No campaign driver is imported here. Network access is confined to the explicitly requested plan/fetch operations;
 remote commands only read files, and downloads use RemoteClient's shared budget and verified atomic placement.
 """
