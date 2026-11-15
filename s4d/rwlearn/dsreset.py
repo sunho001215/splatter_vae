@@ -28,6 +28,14 @@ def sha256(path):
     return h.hexdigest()
 
 
+def selected_variants(variants=('S', 'SF')):
+    """Only the historical pair or an independent success publication is supported."""
+    value = tuple(variants)
+    if value not in (('S',), ('S', 'SF')):
+        raise ValueError('variants must be [S] or [S, SF]')
+    return value
+
+
 def raw_roots(root, task):
     if task not in TASKS:
         raise ValueError(f'unsupported task: {task}')
@@ -89,13 +97,16 @@ def inspect_raw(path):
 
 
 def paired_manifests(task, roots, *, seed=0, validation_fraction=.1, expected=None,
-                     require_verified=True, inspect=inspect_raw, success_split=None, amendment=None, verified_success=None):
+                     require_verified=True, inspect=inspect_raw, success_split=None, amendment=None, verified_success=None,
+                     variants=('S', 'SF')):
     """Split each label independently; adding failures cannot change success membership.
 
     ``success_split`` can preserve a validated legacy split, keyed by filenames.
     Missing files/markers or wrong counts fail closed, including while transfers arrive.
     """
-    if task not in TASKS or set(roots) != set(LABELS):
+    variants = selected_variants(variants)
+    labels = LABELS if 'SF' in variants else ('success',)
+    if task not in TASKS or not set(labels) <= set(roots):
         raise ValueError('task/label roots must be explicit')
     if not 0 < validation_fraction < 1:
         raise ValueError('validation_fraction must lie in (0,1)')
@@ -111,7 +122,7 @@ def paired_manifests(task, roots, *, seed=0, validation_fraction=.1, expected=No
         # Their accepted amendment hashes prove identity, without admitting them.
         verified_success = {**{Path(k).name:v['raw_sha256'] for k,v in amendment['excluded'].items()},
                             **verified_success}
-    for label in LABELS:
+    for label in labels:
         root = Path(roots[label])
         if root.is_symlink() or 'discarded' in root.parts or not root.is_dir():
             raise ValueError(f'missing/unsafe {label} root: {root}')
@@ -179,7 +190,7 @@ def paired_manifests(task, roots, *, seed=0, validation_fraction=.1, expected=No
                     amendment=copy.deepcopy(amendment),
                     split={s: [r['id'] for r in eps if r['split'] == s] for s in ('train', 'validation')},
                     outcomes={r['id']: r['label'] == 'success' for r in eps})
-    return {v: manifest(v) for v in ('S', 'SF')}
+    return {v: manifest(v) for v in variants}
 
 
 def prep_bundle(manifests, template, output_root, *, rig_by_episode=None, reuse=None):
@@ -189,10 +200,13 @@ def prep_bundle(manifests, template, output_root, *, rig_by_episode=None, reuse=
     the raw identity; its existing QA/calibration gate must still pass downstream.
     ``rig_by_episode`` permits PNP's accepted per-session documents.
     """
-    task = manifests['SF']['task']
+    if not manifests or not set(manifests) <= {'S','SF'}:
+        raise ValueError('S or historical paired manifests required')
+    selected = manifests['SF' if 'SF' in manifests else 'S']
+    task = selected['task']
     reuse, rig_by_episode = reuse or {}, rig_by_episode or {}
     rows = []
-    for ep in manifests['SF']['episodes']:
+    for ep in selected['episodes']:
         identity = ep['id']
         if identity in reuse:
             old = reuse[identity]
@@ -352,17 +366,19 @@ def manifest_gate(manifest, ingest):
     return report
 
 
-def available_preprocessing(task, roots, *, inspect=inspect_raw):
+def available_preprocessing(task, roots, *, inspect=inspect_raw, variants=('S', 'SF')):
     """Provisional prep inventory while verified transfers arrive; never a training split.
 
     Only complete filenames are opened. Invalid raw QA is reported per episode so
     one rejected recording does not prevent phase-A prep of other complete files.
     Final manifests still require exact counts, transfer markers and all raw QA.
     """
-    if task not in TASKS or set(roots) != set(LABELS):
+    variants = selected_variants(variants)
+    labels = LABELS if 'SF' in variants else ('success',)
+    if task not in TASKS or not set(labels) <= set(roots):
         raise ValueError('task/label roots must be explicit')
     rows, rejected = [], []
-    for label in LABELS:
+    for label in labels:
         root = Path(roots[label])
         if root.is_symlink() or 'discarded' in root.parts:
             raise ValueError('unsafe raw root')
@@ -383,7 +399,7 @@ def available_preprocessing(task, roots, *, inspect=inspect_raw):
                                  path=str(path.resolve()),sha256=digest,qa=qa))
             except (ValueError, OSError, KeyError, TypeError) as exc:
                 rejected.append(dict(path=str(path),label=label,reason=str(exc)))
-    return {'SF':{'task':task,'episodes':rows}}, rejected
+    return {variants[-1]:{'task':task,'episodes':rows}}, rejected
 
 
 def reuse_from_ingest(manifest, ingest):

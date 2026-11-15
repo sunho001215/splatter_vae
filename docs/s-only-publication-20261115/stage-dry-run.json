@@ -1,0 +1,26 @@
+{
+  "status": "dry-run",
+  "network": false,
+  "variants": [
+    "S"
+  ],
+  "files": {
+    "learning_inputs/dsreset-s-only-20261115/covering/S/manifest.json": "4a3b76d7f9ca7d14569445c7f3cb2ce3e2001d57b3dbf0c58d143f6cb6f99054",
+    "_remote/learning_inputs/dsreset-s-only-20261115/covering/S/store.yaml": "c22c70309ee739080eef58dc56ba1c21262d3379fe1a861d73f342df6b69335a",
+    "learning_inputs/dsreset-s-only-20261115/covering/S/store.yaml": "5a29b11c3ae32e0fc1f98fa4b16da53763f85d7c4b6cd1b08a33bf44ef9b084e",
+    "learning_inputs/dsreset-s-only-20261115/covering/S/gate_report.json": "4bf8970cc0f2327c45394c2edfbe08ab164efb3f9bc76ea174acb70929d13bb9",
+    "learning_inputs/dsreset-s-only-20261115/covering/S/split_seed0.json": "fe108b431b8e5ae1bf7c7d7acb1df4677173cc7c21c16cf507e4ac35c7bbe4fb",
+    "learning_inputs/dsreset-s-only-20261115/covering/S/outcomes.json": "402825f246229572bd4459d83546ecdcee02b38640dce21e766daeff4edc2b23",
+    "learning_inputs/dsreset-s-only-20261115/pick-and-place/S/manifest.json": "98499ca9d3ec97789cdb5cda248721a13eda867d6605d0e962b32230fd739ade",
+    "_remote/learning_inputs/dsreset-s-only-20261115/pick-and-place/S/store.yaml": "009a8cdc22f9981156e58983bd636628179dceb51551d0a2477fc5ba74ce3943",
+    "learning_inputs/dsreset-s-only-20261115/pick-and-place/S/store.yaml": "9f984072439b790ca4212a7f7377693bb7a9e1c64bb6de900219731a2b5060a0",
+    "learning_inputs/dsreset-s-only-20261115/pick-and-place/S/gate_report.json": "ea45080b5e21a732b63bb72239621156dca7a328f0f8a83053f82cc68e9c1b14",
+    "learning_inputs/dsreset-s-only-20261115/pick-and-place/S/split_seed0.json": "7453ad90ada9f87d9f1841011866bf820d7f2531ef602d3e3137101ccda6ce90",
+    "learning_inputs/dsreset-s-only-20261115/pick-and-place/S/outcomes.json": "6a5716dc58398c16a4a0b70328f4c4e96694b431d794cc3b96af86d0051253a9",
+    "configs/s-only-20261115/rig-loma-covering-fx.json": "952eea909043a1d932a5aafbd813d8bbdcb8c2aa8d96ad0cc05bc6795540ccc6",
+    "configs/s-only-20261115/rig-loma-covering-fx.reference.npz": "8740f96c067c7fdc4f98671cdd7521a0a7ee6956e2ca9bfe7a6984f91eea2b54",
+    "configs/calrel-6c3b9ec/rig/rig-loma-pick-and-place-a935aef-c2-fx.json": "1fe7954119ab6a2b9028042d6ded96e4293f216ff35635b8172380fd18ab64c1",
+    "configs/calrel-6c3b9ec/rig/rig-loma-pick-and-place-a935aef-c2-fx.reference.npz": "71a82419e76644909a73a6a5347468ff1c9df516ac47ac4e04576357e042a7e8"
+  },
+  "verified_compact_files": 390
+}

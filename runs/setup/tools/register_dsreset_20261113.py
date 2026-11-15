@@ -1,4 +1,4 @@
-"""Paired S/SF registration. Dry-run by default; only the coordinator runs --execute.
+"""S-only registration with read-only historical paired previews. Dry-run by default; only the coordinator runs --execute.
 
 Bulk prep remains in the established dispatcher, using realworld_dsreset.py's
 per-episode configs. The prep/calib/qa queue rows audit those completed artifacts.
@@ -6,6 +6,8 @@ No import of campaign drivers, no network, no launch or placement calls.
 """
 from __future__ import annotations
 import argparse
+from contextlib import contextmanager
+import fcntl
 import importlib.util
 import json
 import math
@@ -20,7 +22,7 @@ sys.path.insert(0, str(SOURCE))
 import yaml
 from ops.jobs.dsreset_plan import METHODS, PAUSE, STEM, build_rows as build_reset_rows, row_id
 from s4d.rwlearn import dsreset_gate as gate
-from s4d.rwlearn.dsreset import TASKS, manifest_gate, sha256, validate_manifest
+from s4d.rwlearn.dsreset import TASKS, manifest_gate, sha256, validate_manifest, selected_variants
 
 MAIN = Path('/home/ws/ws/splatter4d')
 TOOL = 'runs/setup/tools/register_dsreset_20261113.py'
@@ -45,8 +47,10 @@ def build_rows(*args, **kwargs):
     return rows
 
 
-def validate_membership(task, docs):
-    """Bind both variants to the released amended set, never their own counts."""
+def validate_membership(task, docs, variants=('S', 'SF')):
+    """Bind each selected manifest to the released amended set, never its own count."""
+    variants = selected_variants(variants)
+    R.require(set(docs) == set(variants), 'selected manifest set differs')
     approved = gate.load_amendments()[task]['record']
     R.require(approved['target'] == CANONICAL_SUCCESS[task], 'canonical success target changed')
     wanted = {Path(k).name: sha for k, sha in approved['episodes'].items()}
@@ -68,31 +72,37 @@ def validate_membership(task, docs):
                       and Path(r['path']).name == r['filename']
                       and r.get('qa') == {'status': 'excluded', 'reason': excluded[r['filename']]['reason']}
                       for r in omissions), 'canonical exclusion evidence differs')
-    R.require(docs['S']['episodes'] == [r for r in docs['SF']['episodes'] if r['label'] == 'success'],
-              'S must be exactly the success subset of SF with identical splits')
-    R.require(docs['S'].get('excluded') == docs['SF'].get('excluded') and
-              docs['S'].get('amendment') == docs['SF'].get('amendment'),
-              'S/SF amendment/exclusion evidence differs')
+    if 'SF' in variants:
+        R.require(docs['S']['episodes'] == [r for r in docs['SF']['episodes'] if r['label'] == 'success'],
+                  'S must be exactly the success subset of SF with identical splits')
+        R.require(docs['S'].get('excluded') == docs['SF'].get('excluded') and
+                  docs['S'].get('amendment') == docs['SF'].get('amendment'),
+                  'S/SF amendment/exclusion evidence differs')
 
 
-def validate_inputs(task, path, ingest):
+def validate_inputs(task, path, ingest, variants=('S', 'SF')):
+    variants = selected_variants(variants)
     docs = {}
     hashes = {}
     snapshots = {}
-    for variant in ('S', 'SF'):
+    for variant in variants:
         directory = Path(path)/variant
         snapshots[variant] = {'manifest.json':(directory/'manifest.json').read_bytes()}
         m = validate_manifest(json.loads(snapshots[variant]['manifest.json']))
         R.require(m['task']==task and m['variant']==variant, 'task/variant differs from directory')
         docs[variant] = m
-    validate_membership(task, docs)
-    for variant in ('S','SF'):
+    validate_membership(task, docs, variants)
+    for variant in variants:
         directory = Path(path)/variant
         blobs = {**snapshots[variant], **{n:(directory/n).read_bytes() for n in ('store.yaml','split_seed0.json','outcomes.json','gate_report.json')}}
         hashes.update({str(directory/n):R.sha(b) for n,b in blobs.items()})
         m = validate_manifest(json.loads(blobs['manifest.json']))
         R.require(m['task']==task and m['variant']==variant, 'task/variant differs from directory')
         report = json.loads(blobs['gate_report.json'])
+        if variants == ('S',):
+            import hashlib
+            R.require(report.get('dataset_manifest_sha256') == hashlib.sha256(
+                json.dumps(m,sort_keys=True).encode()).hexdigest(), 'S QA report manifest hash differs')
         live = manifest_gate(m, ingest)
         saved = report['tasks'][task]
         eps = saved['store_episodes']
@@ -120,13 +130,11 @@ def validate_inputs(task, path, ingest):
         for c in ('ours','sincro','reviwo','dynamo','snerl','mvp3d','e2e_cnn'):
             R.require(gate.task_passed(report,task,c),f'{task}/{variant}: QA not passed for {c}')
         docs[variant] = m
-    success = [r for r in docs['SF']['episodes'] if r['label']=='success']
-    R.require(docs['S']['episodes']==success, 'S must be exactly the success subset of SF with identical splits')
     return hashes
 
 
-def default_stages(task, directory):
-    inputs = directory+'/SF'
+def default_stages(task, directory, variants=('S', 'SF')):
+    inputs = directory+'/'+selected_variants(variants)[-1]
     common = ['--store',inputs+'/store.yaml','--manifest',inputs+'/manifest.json',
               '--split',inputs+'/split_seed0.json','--outcomes',inputs+'/outcomes.json',
               '--gate-report',inputs+'/gate_report.json']
@@ -140,6 +148,7 @@ def prepare(repo, config, config_path, ingest_path, release, *, preview=False):
     R.require(re.fullmatch('[0-9a-f]{40}',release['commit'] or ''), 'full commit required')
     R.require(re.fullmatch('sha256:[0-9a-f]{64}',release['image'] or ''), 'image digest required')
     R.require(type(config.get('ours_input_barriers_only', False)) is bool, 'ours_input_barriers_only must be boolean')
+    variants = selected_variants(config.get('variants', ('S', 'SF')))
     methods = tuple(config.get('methods',METHODS))
     R.require(len(set(methods))==len(methods) and set(methods)<=set(METHODS), 'invalid methods')
     R.require(config.get('tasks') and set(config['tasks'])<=set(TASKS), 'only the three reset tasks are allowed')
@@ -157,33 +166,55 @@ def prepare(repo, config, config_path, ingest_path, release, *, preview=False):
         R.require(directory.startswith('/home/compu/kaist/sunho/realworld/'), 'inputs must be under verified remote root')
         R.require(task in task_cfg['rig'], 'per-task rig document required')
         if not preview:
-            inputs.update(validate_inputs(task,task_cfg['inputs_copy'],ingest))
+            inputs.update(validate_inputs(task,task_cfg['inputs_copy'],ingest,variants))
+            rig_digest=None
+            if variants == ('S',) and any(m=='snerl' or m.startswith('mvp3d_') for m in methods):
+                from ops.jobs.realworld_local import REMOTE_PREFIX, _mapped, _regular
+                from s4d.realworld.calib.rig import load_rig
+                relative=_mapped(task_cfg['rig'],REMOTE_PREFIX)
+                R.require(relative is not None,'scene rig must name a mirror namespace path')
+                rig_path=Path(config.get('local_publication_files',{}).get(
+                    task_cfg['rig'],repo/'runs/realworld-inputs'/relative))
+                _regular(rig_path)
+                load_rig(rig_path)
+                reference=rig_path.with_suffix('.reference.npz')
+                inputs.update({str(p):sha256(p) for p in (rig_path,reference)})
+                rig_digest=sha256(rig_path)
             if any(method.startswith('mvp3d_') for method in methods):
                 measurement = Path(task_cfg['native_bounds_report'])
                 b = json.loads(measurement.read_text())
-                sf = json.loads((Path(task_cfg['inputs_copy'])/'SF/manifest.json').read_text())
+                selected = json.loads((Path(task_cfg['inputs_copy'])/variants[-1]/'manifest.json').read_text())
                 import hashlib
-                digest = hashlib.sha256(json.dumps(sf,sort_keys=True).encode()).hexdigest()
+                digest = hashlib.sha256(json.dumps(selected,sort_keys=True).encode()).hexdigest()
                 bounds = b.get('bounds',[])
                 R.require(b.get('task')==task and b.get('depth_source')=='native_realsense'
                           and b.get('manifest_sha256')==digest and b.get('accepted') is True
                           and len(bounds)==6 and all(type(v) in (int,float) and math.isfinite(v) for v in bounds)
                           and all(bounds[i]<bounds[i+3] for i in range(3))
-                          and sorted(b.get('episodes',[]))==sorted(sf['split']['train'])
-                          and bool(b.get('scene_statistics')), 'native-depth bounds need accepted train-only SF measurements')
+                          and sorted(b.get('episodes',[]))==sorted(selected['split']['train'])
+                          and bool(b.get('scene_statistics')), 'native-depth bounds need accepted train-only selected-manifest measurements')
+                if variants == ('S',):
+                    from s4d.rwlearn.dsreset_measure import validate_report
+                    validate_report(b,selected)
+                    R.require(b.get('native_provenance',{}).get('rig_document_sha256')==rig_digest,
+                              'S scene measurement rig differs from selected rig')
                 task_cfg = dict(task_cfg,native_bounds=bounds)
                 inputs[str(measurement)] = sha256(measurement)
             for method in methods:
                 b = 'mvp3d' if method.startswith('mvp3d') else method
-                if pending_scene_parameters(b,task):
+                if pending_scene_parameters(b,task) or (variants == ('S',) and b == 'snerl'):
                     from s4d.rwlearn.dsreset_measure import validate_report
                     measurement=Path(task_cfg['scene_report'])
-                    sf=json.loads((Path(task_cfg['inputs_copy'])/'SF/manifest.json').read_text())
-                    scene=validate_report(json.loads(measurement.read_text()),sf)
+                    selected=json.loads((Path(task_cfg['inputs_copy'])/variants[-1]/'manifest.json').read_text())
+                    report=json.loads(measurement.read_text())
+                    scene=validate_report(report,selected)
+                    if variants == ('S',):
+                        R.require(report.get('native_provenance',{}).get('rig_document_sha256')==rig_digest,
+                                  'S scene measurement rig differs from selected rig')
                     task_cfg=dict(task_cfg,scene_parameters=scene)
                     inputs[str(measurement)]=sha256(measurement)
-        task_rows = build_rows(task,directory,release,stage_rows=default_stages(task,directory),rig=task_cfg['rig'],methods=methods,
-                           native_bounds=task_cfg.get('native_bounds'),scene_parameters=task_cfg.get('scene_parameters'))
+        task_rows = build_rows(task,directory,release,stage_rows=default_stages(task,directory,variants),rig=task_cfg['rig'],methods=methods,
+                           native_bounds=task_cfg.get('native_bounds'),scene_parameters=task_cfg.get('scene_parameters'),variants=variants)
         if task_cfg.get('reuse_ours_S'):
             from ops.jobs.dsreset_reuse import aliases,prove_reuse,reuse_rows
             R.require('ours' in methods,'reuse_ours_S requires ours')
@@ -231,7 +262,7 @@ def prepare(repo, config, config_path, ingest_path, release, *, preview=False):
     candidate = R.queue_candidate(before,rows)
     return {'schema':'dsreset-registration/v1','registered':False,'status':'preview' if preview else 'dry-run',
             'repo':str(repo.resolve()),'release':release,'rows':rows,'rows_sha256':R.json_sha(rows),
-            'methods':list(methods),'ours_input_barriers_only':config.get('ours_input_barriers_only',False),
+            'variants':list(variants),'methods':list(methods),'ours_input_barriers_only':config.get('ours_input_barriers_only',False),
             'input_sha256':inputs,'tool_sha256':sha256(Path(__file__)),
             'queue_sha256_before':R.sha(before),'queue_sha256_after':R.sha(candidate),
             'registry_sha256':R.sha(registry),'required_pause':PAUSE,
@@ -240,12 +271,40 @@ def prepare(repo, config, config_path, ingest_path, release, *, preview=False):
             'reuse_reason':'existing chains require exact raw/split/store and science proof; otherwise new S rows'}
 
 
+def pause_candidate(raw, rows):
+    """Hold only this publication's exact S IDs before the queue becomes visible."""
+    doc=json.loads(raw)
+    holds=[p for p in doc['pauses'] if p.get('name')==PAUSE]
+    R.require(len(holds)<=1,'duplicate dsreset placement pause')
+    if holds:
+        hold=holds[0]
+        R.require(not hold.get('prefixes'),'S publication requires an exact-ID placement pause')
+    else:
+        hold=dict(name=PAUSE,ids=[],reason='S publication awaits verified local placement')
+        doc['pauses'].append(hold)
+    hold['ids']=list(dict.fromkeys([*hold['ids'],*[r['id'] for r in rows]]))
+    hold['active']=True
+    return R.json_bytes(doc)
+
+
+@contextmanager
+def publication_locks(repo):
+    with (repo/'runs/setup/stage2-driver.lock').open('a') as local, \
+         (repo/'runs/setup/remote-driver.lock').open('a') as remote, \
+         (repo/'experiments/registry.lock').open('a') as registry:
+        for lock in (remote,local,registry):fcntl.flock(lock,fcntl.LOCK_EX)
+        yield
+
+
 def execute(repo, record):
     R.require(repo.resolve()==MAIN and Path(__file__).resolve()==MAIN/TOOL,'only coordinator released main copy may execute')
     R.require(record['status']=='dry-run','preview cannot be executed')
+    R.require(record.get('variants') == ['S'], 'SF publication is cancelled; select variants: [S]')
     setup = repo/'runs/setup'
-    pending, proof = setup/f'{STEM}.pending.json', setup/f'{STEM}.registration.json'
-    def check():
+    journal = STEM + ('-S-'+record['rows_sha256'][:16] if record.get('variants') == ['S'] else '')
+    pending, proof = setup/f'{journal}.pending.json', setup/f'{journal}.registration.json'
+    pauses=repo/'runs/setup/admission-pauses.json'
+    def check(*, paused=False):
         R.require(R.current_pin(repo,record['release'])==record['release'],'release differs from adopted sources')
         if record['release'].get('source')!='local':
             R.require((repo/f"runs/remote/acceptance/{record['release']['commit'][:7]}-cc/manifest.json").is_file(),
@@ -256,16 +315,22 @@ def execute(repo, record):
         R.require(all(sha256(Path(p))==v for p,v in record['input_sha256'].items()),'inputs changed')
         R.require(all(not (repo/'runs'/r['id']).exists() and not (repo/'runs'/r['id']).is_symlink() for r in record['rows']),
                   'run output appeared')
-        from ops.jobs.admission_pause import active_pauses
-        R.require(all(PAUSE in active_pauses(r['id']) for r in record['rows']),f'publish only under active {PAUSE} pause')
+        if paused:
+            from ops.jobs.admission_pause import active_pauses
+            R.require(all(PAUSE in active_pauses(r['id']) for r in record['rows']),f'publish only under active {PAUSE} pause')
         R.require(R.json_sha(record['rows'])==record['rows_sha256'],'rows changed')
-    with R.locks(repo):
+    with publication_locks(repo):
         R.require(not pending.exists() and not proof.exists(),'existing journal/proof requires inspection')
         check()
         candidate = R.queue_candidate((repo/'experiments/queue.yaml').read_bytes(),record['rows'])
         R.require(R.sha(candidate)==record['queue_sha256_after'],'candidate changed')
+        pause_before=pauses.read_bytes()
+        pause_after=pause_candidate(pause_before,record['rows'])
+        record=dict(record,pause_sha256_before=R.sha(pause_before),pause_sha256_after=R.sha(pause_after))
         R.atomic_write(pending,R.json_bytes(record))
-        check()
+        R.require(pauses.read_bytes()==pause_before,'pauses changed under locks')
+        R.atomic_write(pauses,pause_after)
+        check(paused=True)
         R.atomic_write(repo/'experiments/queue.yaml',candidate)
         record = dict(record,status='published',registered=True,registered_at=R.now())
         R.atomic_write(proof,R.json_bytes(record))

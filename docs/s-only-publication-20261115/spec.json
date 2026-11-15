@@ -1,0 +1,32 @@
+{
+  "variants": [
+    "S"
+  ],
+  "ours_input_barriers_only": true,
+  "tasks": {
+    "covering": {
+      "inputs": "/home/compu/kaist/sunho/realworld/learning_inputs/dsreset-s-only-20261115/covering",
+      "inputs_copy": "/home/ws/ws/splatter4d/.worktrees/dsrs/docs/s-only-publication-20261115/inputs/covering",
+      "rig": "/home/compu/kaist/sunho/realworld/configs/s-only-20261115/rig-loma-covering-fx.json",
+      "native_bounds_report": "/home/ws/ws/splatter4d/.worktrees/dsrs/docs/s-only-publication-20261115/scene-covering-S.json",
+      "scene_report": "/home/ws/ws/splatter4d/.worktrees/dsrs/docs/s-only-publication-20261115/scene-covering-S.json",
+      "reuse_ours_S": true,
+      "reuse_ours_S_inputs_copy": "/home/ws/ws/realworld-ops/rwx/results/inputs/learning_inputs/covering"
+    },
+    "pick-and-place": {
+      "inputs": "/home/compu/kaist/sunho/realworld/learning_inputs/dsreset-s-only-20261115/pick-and-place",
+      "inputs_copy": "/home/ws/ws/splatter4d/.worktrees/dsrs/docs/s-only-publication-20261115/inputs/pick-and-place",
+      "rig": "/home/compu/kaist/sunho/realworld/configs/calrel-6c3b9ec/rig/rig-loma-pick-and-place-a935aef-c2-fx.json",
+      "native_bounds_report": "/home/ws/ws/splatter4d/.worktrees/dsrs/docs/s-only-publication-20261115/scene-pick-and-place-S.json",
+      "scene_report": "/home/ws/ws/splatter4d/.worktrees/dsrs/docs/s-only-publication-20261115/scene-pick-and-place-S.json",
+      "reuse_ours_S": true,
+      "reuse_ours_S_inputs_copy": "/home/ws/ws/realworld-ops/rwx/results/inputs/learning_inputs-geo/pick-and-place"
+    }
+  },
+  "local_publication_files": {
+    "/home/compu/kaist/sunho/realworld/configs/s-only-20261115/rig-loma-covering-fx.json": "/home/ws/ws/realworld-ops/rwx/rig/rig-loma-covering-fx.json",
+    "/home/compu/kaist/sunho/realworld/configs/s-only-20261115/rig-loma-covering-fx.reference.npz": "/home/ws/ws/realworld-ops/rwx/rig/rig-loma-covering-fx.reference.npz",
+    "/home/compu/kaist/sunho/realworld/configs/calrel-6c3b9ec/rig/rig-loma-pick-and-place-a935aef-c2-fx.json": "/home/ws/ws/splatter4d/runs/realworld-inputs/configs/calrel-6c3b9ec/rig/rig-loma-pick-and-place-a935aef-c2-fx.json",
+    "/home/compu/kaist/sunho/realworld/configs/calrel-6c3b9ec/rig/rig-loma-pick-and-place-a935aef-c2-fx.reference.npz": "/home/ws/ws/splatter4d/runs/realworld-inputs/configs/calrel-6c3b9ec/rig/rig-loma-pick-and-place-a935aef-c2-fx.reference.npz"
+  }
+}

@@ -86,10 +86,10 @@ def reused():
     print('195 exact reused compact directories verified')
 
 
-def raw_proof():
-    rows=[r for t in TASKS for r in manifest(t)['episodes']]
+def raw_proof(variants=('S', 'SF')):
+    rows=[r for t in TASKS for r in manifest(t,variants[-1])['episodes']]
     expected={str(Path('/home/compu/kaist/sunho/data/real_world')/r['path'].split('/real_world/',1)[1]):r['sha256'] for r in rows}
-    assert len(expected)==443
+    assert len(expected)==(293 if variants==('S',) else 443)
     code='''import hashlib,json,pathlib
 expected=EXPECTED
 out={}
@@ -105,9 +105,9 @@ for name,want in expected.items():
 print(json.dumps(out))
 '''.replace('EXPECTED',repr(expected))
     result=remote_json(client(),code)
-    assert len(result)==443 and all(k==v for k,v in result.items())
+    assert len(result)==len(expected) and all(k==v for k,v in result.items())
     write(P/'remote-raw-hashes.json',result,new=True)
-    print('443 independent remote raw SHA proofs recorded')
+    print(len(result),'independent remote raw SHA proofs recorded')
 
 
 def upstream():
@@ -164,12 +164,13 @@ def mount_reuse():
     print('Read-only reused compact roots added to unstarted measurement bundles')
 
 
-def publish():
+def publish(variants=('S', 'SF')):
     c=client();pairs=[]
     for task in TASKS:
         config=read(P/f'local-phaseB-{task}/dispatcher.json')
         states=read(Path(config['state_dir'])/'state.json')['jobs']
         jobs=read(config['jobs'])
+        if variants==('S',):jobs=[j for j in jobs if '-success-' in j['episode']]
         assert all(states.get(j['id'],{}).get('status')=='done' for j in jobs),'phase B not complete'
         for j in jobs:
             cp=next(p for p in j['inputs'] if p.endswith('.yaml'))
@@ -178,9 +179,11 @@ def publish():
             assert root.is_relative_to(X) and (root/'_COMPLETE.json').is_file() and (root/'episode.h5').is_file()
             pairs.extend((f,f) for f in root.iterdir() if f.is_file() and not f.is_symlink())
         rig=X/'calibration'/task/f'rig-{task}-accepted.json'
-        assert read(X/'measurements'/task/'scene.json')['accepted'] is True
+        scene=read(X/'measurements'/task/('S' if variants==('S',) else '')/'scene.json')
+        from s4d.rwlearn.dsreset_measure import validate_report
+        validate_report(scene,manifest(task,variants[-1]))
         pairs += [(rig,rig),(rig.with_suffix('.reference.npz'),rig.with_suffix('.reference.npz'))]
-        for v in ('S','SF'):
+        for v in variants:
             pairs += [(P/'learning-inputs'/task/v/n,R/'learning_inputs/dsreset'/task/v/n)
                       for n in ('store.yaml','manifest.json','split_seed0.json','outcomes.json','gate_report.json')]
     inventory={str(remote):sha(local) for local,remote in pairs}
@@ -225,9 +228,15 @@ if h.hexdigest()!=want:raise ValueError('publication conflict')
     print('New compact stores, rig documents and paired inputs published without overwrite')
 
 
-def spec():
+def spec(variants=('S', 'SF')):
     d=read(P/'registration-spec.example.json')
-    for task in TASKS:d['tasks'][task]['rig']=str(X/'calibration'/task/f'rig-{task}-accepted.json')
+    d['variants']=list(variants)
+    if variants==('S',):d['ours_input_barriers_only']=True
+    for task in TASKS:
+        d['tasks'][task]['rig']=str(X/'calibration'/task/f'rig-{task}-accepted.json')
+        if variants==('S',):
+            report=str(X/'measurements'/task/'S/scene.json')
+            d['tasks'][task].update(native_bounds_report=report,scene_report=report)
     write(P/'registration-spec.json',d,new=True)
 
 
@@ -261,7 +270,12 @@ def pause(active):
 def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('command',choices=['reused','raw-proof','upstream','mount-reuse','publish','spec','pause','unpause'])
+    p.add_argument('--success-only',action='store_true',help='select S before publication or raw inventory')
     a=p.parse_args()
+    if a.command in ('publish','raw-proof','spec'):
+        if not a.success_only:p.error('SF work is cancelled; --success-only is required')
+        globals()[a.command.replace('-','_')](('S',))
+        return
     if a.command in ('pause','unpause'):pause(a.command=='pause')
     else:globals()[a.command.replace('-','_')]()
 

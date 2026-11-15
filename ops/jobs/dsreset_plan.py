@@ -1,7 +1,7 @@
 """Pure queue-row construction for paired real-world datasets. No scheduling calls."""
 from __future__ import annotations
 
-from s4d.rwlearn.dsreset import TASKS, sha256
+from s4d.rwlearn.dsreset import TASKS, sha256, selected_variants
 from pathlib import Path
 
 METHODS = ('ours', 'sincro', 'reviwo', 'dynamo', 'snerl', 'mvp3d_single', 'mvp3d_multiview',
@@ -16,7 +16,7 @@ def row_id(stage, method, task, variant=None, seed=None):
                     + ([f's{seed}'] if seed is not None else []))
 
 
-def build_rows(task, inputs, release, *, stage_rows, rig, methods=METHODS, native_bounds=None, scene_parameters=None):
+def build_rows(task, inputs, release, *, stage_rows, rig, methods=METHODS, native_bounds=None, scene_parameters=None, variants=('S', 'SF')):
     """Build dependencies after bulk prep publishes immutable learning inputs.
 
     Shared prep/calib/qa rows recheck dispatcher evidence at consumption time.
@@ -24,6 +24,7 @@ def build_rows(task, inputs, release, *, stage_rows, rig, methods=METHODS, nativ
     runnable independently from realworld_dsreset.py's per-episode configs.
     """
     import copy
+    variants = selected_variants(variants)
     if task not in TASKS or not set(methods) <= set(METHODS) or not methods:
         raise ValueError('invalid task/method selection')
     if set(stage_rows) != {'prep', 'calib', 'qa'}:
@@ -57,7 +58,7 @@ def build_rows(task, inputs, release, *, stage_rows, rig, methods=METHODS, nativ
                          'id':rid, 'deps':previous})
         previous = [rid]
     qa = previous[0]
-    for variant in ('S', 'SF'):
+    for variant in variants:
         directory = f'{inputs}/{variant}'
         store, split, gate = [f'{directory}/{name}' for name in ('store.yaml','split_seed0.json','gate_report.json')]
         native = None

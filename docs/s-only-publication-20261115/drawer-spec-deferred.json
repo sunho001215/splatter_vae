@@ -1,0 +1,15 @@
+{
+  "variants": [
+    "S"
+  ],
+  "ours_input_barriers_only": true,
+  "tasks": {
+    "drawer-open-v2": {
+      "inputs": "/home/compu/kaist/sunho/realworld/learning_inputs/dsreset/drawer-open-v2",
+      "inputs_copy": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/learning-inputs/drawer-open-v2",
+      "rig": "/home/compu/kaist/sunho/realworld/rig/ACCEPTED-drawer-open-v2.json",
+      "native_bounds_report": "/home/ws/data/realworld-processed/dsreset-20261113/measurements/drawer-open-v2/S/scene.json",
+      "scene_report": "/home/ws/data/realworld-processed/dsreset-20261113/measurements/drawer-open-v2/S/scene.json"
+    }
+  }
+}

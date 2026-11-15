@@ -10,6 +10,7 @@ from s4d.rwlearn.dsreset import TASKS, available_preprocessing, paired_manifests
 
 def main():
     p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument('--success-only', action='store_true', help='select S before any failure inventory or hashing')
     p.add_argument('--task', choices=TASKS, required=True)
     p.add_argument('--raw-root', type=Path, default=Path('/home/ws/data/real_world'))
     p.add_argument('--template', type=Path, required=True, help='accepted task prep template; supplies SAM prompts/workers')
@@ -28,24 +29,25 @@ def main():
     a = p.parse_args()
     def read(path):
         return json.loads(path.read_text()) if path else None
+    variants = ('S',) if a.success_only else ('S', 'SF')
     rejected = []
     if a.prep_only_available:
-        manifests, rejected = available_preprocessing(a.task, raw_roots(a.raw_root,a.task))
+        manifests, rejected = available_preprocessing(a.task, raw_roots(a.raw_root,a.task), variants=variants)
     else:
         manifests = paired_manifests(a.task, raw_roots(a.raw_root, a.task), seed=a.seed,
-                                expected={'success': a.success_count, 'failure': a.failure_count},
+                                expected={'success': a.success_count, 'failure': a.failure_count}, variants=variants,
                                 success_split=read(a.success_split), amendment=read(a.amendment),
                                 verified_success=verified_success_from_ingest(read(a.reuse_ingest),a.task)
                                 if a.reuse_ingest else None)
     template = yaml.safe_load(a.template.read_text())
     template['stages']['calibrate']['rig_calibration'] = a.rig
-    reuse = reuse_from_ingest(manifests['SF'], read(a.reuse_ingest)) if a.reuse_ingest else {}
+    reuse = reuse_from_ingest(manifests[variants[-1]], read(a.reuse_ingest)) if a.reuse_ingest else {}
     reuse.update(read(a.reuse) or {})
     prep = prep_bundle(manifests, template, a.processed_root, rig_by_episode=read(a.rig_map), reuse=reuse)
     write_bundle(a.out, {} if a.prep_only_available else manifests, prep)
     if a.prep_only_available:
         (a.out/'provisional-inventory.json').write_text(json.dumps({'training_ready':False,
-            'episodes':manifests['SF']['episodes'],'rejected':rejected},indent=2)+'\n')
+            'episodes':manifests[variants[-1]]['episodes'],'rejected':rejected},indent=2)+'\n')
     print(json.dumps({'task': a.task, 'episodes': len(prep), 'out': str(a.out), 'launched': False}))
 
 

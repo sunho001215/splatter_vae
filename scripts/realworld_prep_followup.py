@@ -13,7 +13,7 @@ def main():
     p.add_argument('--base-config',type=Path,required=True)
     p.add_argument('--task',required=True)
     p.add_argument('--rig',type=Path,required=True)
-    p.add_argument('--inputs',type=Path,help='SF learning inputs for measure')
+    p.add_argument('--inputs',type=Path,help='explicitly selected learning inputs for measure')
     p.add_argument('--manifest',type=Path,help='ingest snapshot for records')
     p.add_argument('--out',type=Path,required=True,help='new queue bundle')
     p.add_argument('--result',type=Path,required=True,help='output under the processed mount')

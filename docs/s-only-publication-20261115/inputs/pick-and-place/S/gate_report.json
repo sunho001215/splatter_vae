@@ -1,0 +1,1724 @@
+{
+  "passed": true,
+  "geometry_passed": true,
+  "checked_at_unix": 1794748575.4427454,
+  "schema": "rw-ingest-manifest",
+  "required_stages": [
+    "normalized",
+    "calibrate",
+    "foundation_stereo_depth",
+    "sam3_masks",
+    "qa",
+    "train_data"
+  ],
+  "calibration_stage": "calibration_validated",
+  "target": 97,
+  "tasks": {
+    "pick-and-place": {
+      "passed": true,
+      "valid_and_preprocessed": 97,
+      "excluded": [],
+      "target": 97,
+      "amendment": null,
+      "problems": [],
+      "problem_count": 0,
+      "episodes": [
+        "pick-and-place-success-episode_000002",
+        "pick-and-place-success-episode_000004",
+        "pick-and-place-success-episode_000005",
+        "pick-and-place-success-episode_000009",
+        "pick-and-place-success-episode_000010",
+        "pick-and-place-success-episode_000011",
+        "pick-and-place-success-episode_000012",
+        "pick-and-place-success-episode_000013",
+        "pick-and-place-success-episode_000015",
+        "pick-and-place-success-episode_000016",
+        "pick-and-place-success-episode_000019",
+        "pick-and-place-success-episode_000021",
+        "pick-and-place-success-episode_000022",
+        "pick-and-place-success-episode_000023",
+        "pick-and-place-success-episode_000024",
+        "pick-and-place-success-episode_000025",
+        "pick-and-place-success-episode_000026",
+        "pick-and-place-success-episode_000027",
+        "pick-and-place-success-episode_000029",
+        "pick-and-place-success-episode_000030",
+        "pick-and-place-success-episode_000031",
+        "pick-and-place-success-episode_000032",
+        "pick-and-place-success-episode_000034",
+        "pick-and-place-success-episode_000035",
+        "pick-and-place-success-episode_000036",
+        "pick-and-place-success-episode_000037",
+        "pick-and-place-success-episode_000038",
+        "pick-and-place-success-episode_000039",
+        "pick-and-place-success-episode_000040",
+        "pick-and-place-success-episode_000041",
+        "pick-and-place-success-episode_000042",
+        "pick-and-place-success-episode_000043",
+        "pick-and-place-success-episode_000044",
+        "pick-and-place-success-episode_000045",
+        "pick-and-place-success-episode_000046",
+        "pick-and-place-success-episode_000047",
+        "pick-and-place-success-episode_000048",
+        "pick-and-place-success-episode_000049",
+        "pick-and-place-success-episode_000050",
+        "pick-and-place-success-episode_000051",
+        "pick-and-place-success-episode_000052",
+        "pick-and-place-success-episode_000053",
+        "pick-and-place-success-episode_000054",
+        "pick-and-place-success-episode_000055",
+        "pick-and-place-success-episode_000056",
+        "pick-and-place-success-episode_000057",
+        "pick-and-place-success-episode_000058",
+        "pick-and-place-success-episode_000059",
+        "pick-and-place-success-episode_000060",
+        "pick-and-place-success-episode_000061",
+        "pick-and-place-success-episode_000063",
+        "pick-and-place-success-episode_000064",
+        "pick-and-place-success-episode_000066",
+        "pick-and-place-success-episode_000067",
+        "pick-and-place-success-episode_000068",
+        "pick-and-place-success-episode_000069",
+        "pick-and-place-success-episode_000070",
+        "pick-and-place-success-episode_000071",
+        "pick-and-place-success-episode_000072",
+        "pick-and-place-success-episode_000073",
+        "pick-and-place-success-episode_000074",
+        "pick-and-place-success-episode_000075",
+        "pick-and-place-success-episode_000076",
+        "pick-and-place-success-episode_000077",
+        "pick-and-place-success-episode_000078",
+        "pick-and-place-success-episode_000079",
+        "pick-and-place-success-episode_000081",
+        "pick-and-place-success-episode_000082",
+        "pick-and-place-success-episode_000083",
+        "pick-and-place-success-episode_000084",
+        "pick-and-place-success-episode_000085",
+        "pick-and-place-success-episode_000086",
+        "pick-and-place-success-episode_000087",
+        "pick-and-place-success-episode_000088",
+        "pick-and-place-success-episode_000089",
+        "pick-and-place-success-episode_000090",
+        "pick-and-place-success-episode_000091",
+        "pick-and-place-success-episode_000092",
+        "pick-and-place-success-episode_000093",
+        "pick-and-place-success-episode_000094",
+        "pick-and-place-success-episode_000095",
+        "pick-and-place-success-episode_000096",
+        "pick-and-place-success-episode_000097",
+        "pick-and-place-success-episode_000098",
+        "pick-and-place-success-episode_000099",
+        "pick-and-place-success-episode_000100",
+        "pick-and-place-success-episode_000102",
+        "pick-and-place-success-episode_000103",
+        "pick-and-place-success-episode_000104",
+        "pick-and-place-success-episode_000105",
+        "pick-and-place-success-episode_000106",
+        "pick-and-place-success-episode_000107",
+        "pick-and-place-success-episode_000108",
+        "pick-and-place-success-episode_000109",
+        "pick-and-place-success-episode_000110",
+        "pick-and-place-success-episode_000113",
+        "pick-and-place-success-episode_000114"
+      ],
+      "episode_identities": {
+        "pick-and-place-success-episode_000002": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000002.h5",
+          "raw_sha256": "c1d6cf7ca39440b598017973b57df012b2ee892bffd78f7c75f19de7cee1c821",
+          "store_episode": "pick-and-place/pick-and-place-000002"
+        },
+        "pick-and-place-success-episode_000004": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000004.h5",
+          "raw_sha256": "b7e9a6c275c3f4c64eac8e9c70e9464774f1b457e194c05996c2e5ed2392d13e",
+          "store_episode": "pick-and-place/pick-and-place-000004"
+        },
+        "pick-and-place-success-episode_000005": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000005.h5",
+          "raw_sha256": "9ad89278a8989b8e733bf622fad4106e6837b68dfa945a063b5d862ec61226e1",
+          "store_episode": "pick-and-place/pick-and-place-000005"
+        },
+        "pick-and-place-success-episode_000009": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000009.h5",
+          "raw_sha256": "b484df14d8c5ad5284c0c916a6460dd33e1fd744f170240899835e334b5ddd96",
+          "store_episode": "pick-and-place/pick-and-place-000009"
+        },
+        "pick-and-place-success-episode_000010": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000010.h5",
+          "raw_sha256": "95f4db5bc9fdbe2dbe79f66b72a6a48e86801716a5a7b12f42fc551cc97b9b31",
+          "store_episode": "pick-and-place/pick-and-place-000010"
+        },
+        "pick-and-place-success-episode_000011": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000011.h5",
+          "raw_sha256": "0bc9690ec6126e5d2d07fa0bb7ae6a076d54bb1b140e370e46f6833449b7323e",
+          "store_episode": "pick-and-place/pick-and-place-000011"
+        },
+        "pick-and-place-success-episode_000012": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000012.h5",
+          "raw_sha256": "b1df6903c993dd1bea804edbf9fef66195872a73882cf3f1557d455ec38651be",
+          "store_episode": "pick-and-place/pick-and-place-000012"
+        },
+        "pick-and-place-success-episode_000013": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000013.h5",
+          "raw_sha256": "6e340f65eb362548be522c80adeefb9a59db15c328c36e25a7e989719fa02dc4",
+          "store_episode": "pick-and-place/pick-and-place-000013"
+        },
+        "pick-and-place-success-episode_000015": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000015.h5",
+          "raw_sha256": "0cdfff3620738581a23ec31737324155efe464c7144cab2e8f4c8145808ead55",
+          "store_episode": "pick-and-place/pick-and-place-000015"
+        },
+        "pick-and-place-success-episode_000016": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000016.h5",
+          "raw_sha256": "a7d25a404556ed06efc16bb6cf66da8f06857ca9ba08e6dd1fc1d786b50faea7",
+          "store_episode": "pick-and-place/pick-and-place-000016"
+        },
+        "pick-and-place-success-episode_000019": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000019.h5",
+          "raw_sha256": "d403956f96c7926b0b6cfedbb1562a6c81005eee6a3a429b9b88d2a34e7b4752",
+          "store_episode": "pick-and-place/pick-and-place-000019"
+        },
+        "pick-and-place-success-episode_000021": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000021.h5",
+          "raw_sha256": "0d5610acd1f60d10eb0362ce669a4a00b461ba43345e8dbcc5a69f3dd652ec56",
+          "store_episode": "pick-and-place/pick-and-place-000021"
+        },
+        "pick-and-place-success-episode_000022": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000022.h5",
+          "raw_sha256": "b1810d7fbb3b7903ad53e6a16b21aaf4e4d29ee695b378d890b359e75dad550b",
+          "store_episode": "pick-and-place/pick-and-place-000022"
+        },
+        "pick-and-place-success-episode_000023": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000023.h5",
+          "raw_sha256": "2eacad067f1dc49b0726a9f5836fa0890781b4c087f5e1e02030c533029e1b27",
+          "store_episode": "pick-and-place/pick-and-place-000023"
+        },
+        "pick-and-place-success-episode_000024": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000024.h5",
+          "raw_sha256": "5d3ea5ddaac589d3a7dc4c7f3a110b059ab3d72e1f26627b0e229bfd4a050ca4",
+          "store_episode": "pick-and-place/pick-and-place-000024"
+        },
+        "pick-and-place-success-episode_000025": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000025.h5",
+          "raw_sha256": "191c1fc7d3e6cb401f157f5997edabaddb9b98d993ec9b5ae54a6dc821a0ae76",
+          "store_episode": "pick-and-place/pick-and-place-000025"
+        },
+        "pick-and-place-success-episode_000026": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000026.h5",
+          "raw_sha256": "400e41d913d8eaf7e57acf91e381e290171d413eda5db63e20ac00a773fb411f",
+          "store_episode": "pick-and-place/pick-and-place-000026"
+        },
+        "pick-and-place-success-episode_000027": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000027.h5",
+          "raw_sha256": "21f5b2ca9aceb095368808e8b568721c1be2f06fb5fa09ed13e041923c2467b4",
+          "store_episode": "pick-and-place/pick-and-place-000027"
+        },
+        "pick-and-place-success-episode_000029": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000029.h5",
+          "raw_sha256": "dec90914dc77fd4f31870446d27c60899379f3e351a26efe2116f9df9c0eb894",
+          "store_episode": "pick-and-place/pick-and-place-000029"
+        },
+        "pick-and-place-success-episode_000030": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000030.h5",
+          "raw_sha256": "d4128eee7e69366b6e87b905df96ee0fde55226f2a6db89270b3b8927c52e92b",
+          "store_episode": "pick-and-place/pick-and-place-000030"
+        },
+        "pick-and-place-success-episode_000031": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000031.h5",
+          "raw_sha256": "88a3d6e270031d21f1851c7fb6264d5e4e6f20b5621222089da524eb91e0ad52",
+          "store_episode": "pick-and-place/pick-and-place-000031"
+        },
+        "pick-and-place-success-episode_000032": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000032.h5",
+          "raw_sha256": "5ee58ea48f54517956f423f83a97af8adc002f4af8baf899824c3a77d82fc1f9",
+          "store_episode": "pick-and-place/pick-and-place-000032"
+        },
+        "pick-and-place-success-episode_000034": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000034.h5",
+          "raw_sha256": "c1cfa84fdc0706b1547e417476d780a7d2fa58592b337a0a91cff2f761dc65e6",
+          "store_episode": "pick-and-place/pick-and-place-000034"
+        },
+        "pick-and-place-success-episode_000035": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000035.h5",
+          "raw_sha256": "4e60c559c83da8c6d126ebac67290e9344f2a856fc16ab4bfabc67e27c3d0609",
+          "store_episode": "pick-and-place/pick-and-place-000035"
+        },
+        "pick-and-place-success-episode_000036": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000036.h5",
+          "raw_sha256": "63e1b3603672cdcdf0c7a0480c7fb4a6b06386bdbfe428daff7c510ce703a1bd",
+          "store_episode": "pick-and-place/pick-and-place-000036"
+        },
+        "pick-and-place-success-episode_000037": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000037.h5",
+          "raw_sha256": "f45e7204563f369132702da0a4a0b0420d903b1abe671a6ea5557918e6597690",
+          "store_episode": "pick-and-place/pick-and-place-000037"
+        },
+        "pick-and-place-success-episode_000038": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000038.h5",
+          "raw_sha256": "a662d4b7d026b45577b011b169f6033cedda043dbce9b792aef4e05b7e3fc704",
+          "store_episode": "pick-and-place/pick-and-place-000038"
+        },
+        "pick-and-place-success-episode_000039": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000039.h5",
+          "raw_sha256": "566ee50c303b2f9bd98e0385ad3ab8be3327f6eeafe1695d719bd0847cda113b",
+          "store_episode": "pick-and-place/pick-and-place-000039"
+        },
+        "pick-and-place-success-episode_000040": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000040.h5",
+          "raw_sha256": "a482ee78db4fe7400dd789c7442ad8a591212679b5366ff06857bae39ee3c97c",
+          "store_episode": "pick-and-place/pick-and-place-000040"
+        },
+        "pick-and-place-success-episode_000041": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000041.h5",
+          "raw_sha256": "b1d25439d8f04d93de6fa7b1fc1544298906b627ca18e3463cb35d82c05ec146",
+          "store_episode": "pick-and-place/pick-and-place-000041"
+        },
+        "pick-and-place-success-episode_000042": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000042.h5",
+          "raw_sha256": "440ad5f7a1601677630f11ae1ff70c15253acf39ee049e3432c5b0d60bcffa3d",
+          "store_episode": "pick-and-place/pick-and-place-000042"
+        },
+        "pick-and-place-success-episode_000043": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000043.h5",
+          "raw_sha256": "278f53e0dd8f6d1d68c8b672642635bd26b668a93598eaa5bde4ec3d85ea965b",
+          "store_episode": "pick-and-place/pick-and-place-000043"
+        },
+        "pick-and-place-success-episode_000044": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000044.h5",
+          "raw_sha256": "29cb43f68c9e2ada347ed3956746c87e6f8da1d9039feb6e12eaeb437a2008ea",
+          "store_episode": "pick-and-place/pick-and-place-000044"
+        },
+        "pick-and-place-success-episode_000045": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000045.h5",
+          "raw_sha256": "3e19842129f4bb43bfe93e9ab5ce3315e07f58afdd985c6169a9a7736cc7e31b",
+          "store_episode": "pick-and-place/pick-and-place-000045"
+        },
+        "pick-and-place-success-episode_000046": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000046.h5",
+          "raw_sha256": "68e81f493bfe5dcd958d3d4268e3079d2f93da56ae197f2bb10679b6c14d8f1a",
+          "store_episode": "pick-and-place/pick-and-place-000046"
+        },
+        "pick-and-place-success-episode_000047": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000047.h5",
+          "raw_sha256": "26550f04f926555d0a55526d54d86e3607b7a2313110c4bf666b6414bda0ce63",
+          "store_episode": "pick-and-place/pick-and-place-000047"
+        },
+        "pick-and-place-success-episode_000048": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000048.h5",
+          "raw_sha256": "fcf19a1a5811485b8103435349f6d0ab09d7abd82130c023a6bda30dd8c369a1",
+          "store_episode": "pick-and-place/pick-and-place-000048"
+        },
+        "pick-and-place-success-episode_000049": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000049.h5",
+          "raw_sha256": "1ed3814525d898bb896f9fad8e16d89e875abc97642314e0aca03043e7badf31",
+          "store_episode": "pick-and-place/pick-and-place-000049"
+        },
+        "pick-and-place-success-episode_000050": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000050.h5",
+          "raw_sha256": "f19e151493379c01bbf408098b9300b48ea1fc29a199feab06090f141e6edb11",
+          "store_episode": "pick-and-place/pick-and-place-000050"
+        },
+        "pick-and-place-success-episode_000051": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000051.h5",
+          "raw_sha256": "5b9f92b984276884dcc5096fa1634c1666b844837d143b3d5a6673e364eb4502",
+          "store_episode": "pick-and-place/pick-and-place-000051"
+        },
+        "pick-and-place-success-episode_000052": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000052.h5",
+          "raw_sha256": "0817d303f5cd11d9f0bc6cd5a437c735e8bf9380e77a30fa6385417f64c010e1",
+          "store_episode": "pick-and-place/pick-and-place-000052"
+        },
+        "pick-and-place-success-episode_000053": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000053.h5",
+          "raw_sha256": "0cd3c5d7a7b3d3ad78d8bd74b22da6158d27c28f0cfccb2ff8652b4ad30c1678",
+          "store_episode": "pick-and-place/pick-and-place-000053"
+        },
+        "pick-and-place-success-episode_000054": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000054.h5",
+          "raw_sha256": "8e76db1ea75d9db560f23daa41b60f58b3d173e76fde1564a741ccf62fa5dcef",
+          "store_episode": "pick-and-place/pick-and-place-000054"
+        },
+        "pick-and-place-success-episode_000055": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000055.h5",
+          "raw_sha256": "fe53dff0644b43ed43d8df9c5d5658de289269026d22ec8da21220c6e35c812d",
+          "store_episode": "pick-and-place/pick-and-place-000055"
+        },
+        "pick-and-place-success-episode_000056": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000056.h5",
+          "raw_sha256": "7ff00984536bbffff57bbd660ec28af8876e5e4d77a963037bba33b131b1f34e",
+          "store_episode": "pick-and-place/pick-and-place-000056"
+        },
+        "pick-and-place-success-episode_000057": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000057.h5",
+          "raw_sha256": "4bb59c13e687a72ee3a23bee4d2cd803d411c259769f12c5cb052d6dac241e22",
+          "store_episode": "pick-and-place/pick-and-place-000057"
+        },
+        "pick-and-place-success-episode_000058": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000058.h5",
+          "raw_sha256": "9d40f555ffa6a2d708ffe09766299b5ee5eaa7b1d306ac5e7a4e79974e601982",
+          "store_episode": "pick-and-place/pick-and-place-000058"
+        },
+        "pick-and-place-success-episode_000059": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000059.h5",
+          "raw_sha256": "bb5ac95f47fdc93ed2130277a954c39130828f15a53e5e996ad1fdb2812c6d42",
+          "store_episode": "pick-and-place/pick-and-place-000059"
+        },
+        "pick-and-place-success-episode_000060": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000060.h5",
+          "raw_sha256": "d3c88471aa56e4aa7055e2e1dfdc49fa1870bad09b63de7ff7e3ec4900c178a4",
+          "store_episode": "pick-and-place/pick-and-place-000060"
+        },
+        "pick-and-place-success-episode_000061": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000061.h5",
+          "raw_sha256": "e50da592ff1842504f500cd3320bd6dde4daa9bcbf467b94ee5ad9324a8b9879",
+          "store_episode": "pick-and-place/pick-and-place-000061"
+        },
+        "pick-and-place-success-episode_000063": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000063.h5",
+          "raw_sha256": "67fed2ee50ab4e0f872244acd771f2b742852bd837bc61891954e232a0137a0a",
+          "store_episode": "pick-and-place/pick-and-place-000063"
+        },
+        "pick-and-place-success-episode_000064": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000064.h5",
+          "raw_sha256": "7547a84c13a3501e2b06923975cb90c45c5a925e617e2e9eff36646f3f0c6a11",
+          "store_episode": "pick-and-place/pick-and-place-000064"
+        },
+        "pick-and-place-success-episode_000066": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000066.h5",
+          "raw_sha256": "0ec2425f9d266ebba8e0b4d509eb7b4d820b28339f86a65ed00cab57728a7dcb",
+          "store_episode": "pick-and-place/pick-and-place-000066"
+        },
+        "pick-and-place-success-episode_000067": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000067.h5",
+          "raw_sha256": "f1bd9e0cb09952ace4aa814ea481dec021c82d24cb04b2fdf6027970e67c9289",
+          "store_episode": "pick-and-place/pick-and-place-000067"
+        },
+        "pick-and-place-success-episode_000068": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000068.h5",
+          "raw_sha256": "2a9127cf65a6349a8964a428ac16ec0635762c4cb8316820cda34427498f037a",
+          "store_episode": "pick-and-place/pick-and-place-000068"
+        },
+        "pick-and-place-success-episode_000069": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000069.h5",
+          "raw_sha256": "63c42287f4c255b09d89a1bb1f00bf711df444529b6ec3c9d431bb71d32e7061",
+          "store_episode": "pick-and-place/pick-and-place-000069"
+        },
+        "pick-and-place-success-episode_000070": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000070.h5",
+          "raw_sha256": "17dfdddcbfb712cdd7e0ac7b7ec0e6e66cbfbba44a1561001e050ca3afe54c2f",
+          "store_episode": "pick-and-place/pick-and-place-000070"
+        },
+        "pick-and-place-success-episode_000071": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000071.h5",
+          "raw_sha256": "e7ffe71956896bbf03d6c74b0f8f8eb5f854a19d386118b0ec2f1b1b50f3159a",
+          "store_episode": "pick-and-place/pick-and-place-000071"
+        },
+        "pick-and-place-success-episode_000072": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000072.h5",
+          "raw_sha256": "ed9af3abbb62b0a3154414bf59b628f95a37b24a7a929b69b6023e32c0225b66",
+          "store_episode": "pick-and-place/pick-and-place-000072"
+        },
+        "pick-and-place-success-episode_000073": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000073.h5",
+          "raw_sha256": "bfde073770052e93b078680d99ec04d876731ba4ddc5761f8f310f0751f88dc1",
+          "store_episode": "pick-and-place/pick-and-place-000073"
+        },
+        "pick-and-place-success-episode_000074": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000074.h5",
+          "raw_sha256": "b024a0ace7c4d6154e751cee2ca2c16ed1fa198880160ffee29f5574532c90d4",
+          "store_episode": "pick-and-place/pick-and-place-000074"
+        },
+        "pick-and-place-success-episode_000075": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000075.h5",
+          "raw_sha256": "895436d97645adccfdb4de941ba47df231a8103c0ad6b42e810699c0a29965ec",
+          "store_episode": "pick-and-place/pick-and-place-000075"
+        },
+        "pick-and-place-success-episode_000076": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000076.h5",
+          "raw_sha256": "c4e2c20c61a2e1632891b44572f544c20b654f235f954bde06d28be9e2af6271",
+          "store_episode": "pick-and-place/pick-and-place-000076"
+        },
+        "pick-and-place-success-episode_000077": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000077.h5",
+          "raw_sha256": "71af2900c53386969db3ced1fcdecd2aba8132d20e4bf93e0254c1685a4701e7",
+          "store_episode": "pick-and-place/pick-and-place-000077"
+        },
+        "pick-and-place-success-episode_000078": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000078.h5",
+          "raw_sha256": "8dda76eff670bf837e58d2b44a470174e98eced88da7dbf37f75106725e8f34d",
+          "store_episode": "pick-and-place/pick-and-place-000078"
+        },
+        "pick-and-place-success-episode_000079": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000079.h5",
+          "raw_sha256": "b5d66f61ee35be8ef53551e5e63d508ef1a06b7c234a135416e7f57a0b24af42",
+          "store_episode": "pick-and-place/pick-and-place-000079"
+        },
+        "pick-and-place-success-episode_000081": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000081.h5",
+          "raw_sha256": "b1b64c53af11547cee239c223ebfcf8a6bc3c46a21548f218bf9f8f0572cea63",
+          "store_episode": "pick-and-place/pick-and-place-000081"
+        },
+        "pick-and-place-success-episode_000082": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000082.h5",
+          "raw_sha256": "da3604d1754efb775da0ac928a88aadeae2a50c98f19cf1cb95187ad3b5c99d7",
+          "store_episode": "pick-and-place/pick-and-place-000082"
+        },
+        "pick-and-place-success-episode_000083": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000083.h5",
+          "raw_sha256": "42a5219bdcec88a29709b1170e1663a0b391ddee4e2e029072bd6b61a804af90",
+          "store_episode": "pick-and-place/pick-and-place-000083"
+        },
+        "pick-and-place-success-episode_000084": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000084.h5",
+          "raw_sha256": "f8c6ee3c76fbea99a1803d9305ffdf935c5d9339ad1570eeb9f13a6568947a93",
+          "store_episode": "pick-and-place/pick-and-place-000084"
+        },
+        "pick-and-place-success-episode_000085": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000085.h5",
+          "raw_sha256": "7c138504d8dcf614c5cfc5d8c4357f70df03226fe86206c60d2d1e81821e4f3d",
+          "store_episode": "pick-and-place/pick-and-place-000085"
+        },
+        "pick-and-place-success-episode_000086": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000086.h5",
+          "raw_sha256": "28d0250862047b9039707370fb77ccc6cc88009d5a30672b908bebc9d89c4534",
+          "store_episode": "pick-and-place/pick-and-place-000086"
+        },
+        "pick-and-place-success-episode_000087": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000087.h5",
+          "raw_sha256": "c53c81fce1510c060cf9626bcb40c131a1e9e81a3d7c995e4fbda63e1bef3a94",
+          "store_episode": "pick-and-place/pick-and-place-000087"
+        },
+        "pick-and-place-success-episode_000088": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000088.h5",
+          "raw_sha256": "eebbf6918e71e3678867d0f06f8e5f2c5d0a3af8db0fdd5e70cca5399a021f5d",
+          "store_episode": "pick-and-place/pick-and-place-000088"
+        },
+        "pick-and-place-success-episode_000089": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000089.h5",
+          "raw_sha256": "094b194da6209576b131fa6335eeb2260c417bc7e7f84219a1105057d92563a4",
+          "store_episode": "pick-and-place/pick-and-place-000089"
+        },
+        "pick-and-place-success-episode_000090": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000090.h5",
+          "raw_sha256": "45f3335ca504ccd4105fd0aaedbff04fcd0dbf0fd5b2fd3b20e585eb3f86d065",
+          "store_episode": "pick-and-place/pick-and-place-000090"
+        },
+        "pick-and-place-success-episode_000091": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000091.h5",
+          "raw_sha256": "fb452f74191a58e4d6b1c431701f5f4e459e9e97bfaa3dd1fbc0061853e0c620",
+          "store_episode": "pick-and-place/pick-and-place-000091"
+        },
+        "pick-and-place-success-episode_000092": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000092.h5",
+          "raw_sha256": "5092f253cee0db68e2d57bf64659e5186a6a973488640a385ed5547ead3aa992",
+          "store_episode": "pick-and-place/pick-and-place-000092"
+        },
+        "pick-and-place-success-episode_000093": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000093.h5",
+          "raw_sha256": "f9474aab75faed6a1a48abc0843a8935610c552d2260d0d5437e6c8929b5829a",
+          "store_episode": "pick-and-place/pick-and-place-000093"
+        },
+        "pick-and-place-success-episode_000094": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000094.h5",
+          "raw_sha256": "d6513b35e36dba9e8e0024fcdf20e83cf08663fec22dfe46a750fbda23e42999",
+          "store_episode": "pick-and-place/pick-and-place-000094"
+        },
+        "pick-and-place-success-episode_000095": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000095.h5",
+          "raw_sha256": "70e22cc66088aa0d3bf9665e62cce5c104ee0d01e75030110dffad0cc52dc6ac",
+          "store_episode": "pick-and-place/pick-and-place-000095"
+        },
+        "pick-and-place-success-episode_000096": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000096.h5",
+          "raw_sha256": "0e6501d2a4d3cfc1b132b74e1d3164a66baa06510ff2864279b99b76516e2ff1",
+          "store_episode": "pick-and-place/pick-and-place-000096"
+        },
+        "pick-and-place-success-episode_000097": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000097.h5",
+          "raw_sha256": "ae7d5dff68998780daf0ac4f19199350615a128b7fe3352727b8ebcbd9c4d999",
+          "store_episode": "pick-and-place/pick-and-place-000097"
+        },
+        "pick-and-place-success-episode_000098": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000098.h5",
+          "raw_sha256": "9cf54dfc4d9678a5704cfc139d0972968ef20db169854954694b3b0d170eef24",
+          "store_episode": "pick-and-place/pick-and-place-000098"
+        },
+        "pick-and-place-success-episode_000099": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000099.h5",
+          "raw_sha256": "9d11c93ac7c477db235e8ce08f5e85ad44ccad11215966f1186fbbdca7b21c3e",
+          "store_episode": "pick-and-place/pick-and-place-000099"
+        },
+        "pick-and-place-success-episode_000100": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000100.h5",
+          "raw_sha256": "eabba0def68475f5a3725bceb6a9d4575e4a029a222383d143e035bba4a8ec80",
+          "store_episode": "pick-and-place/pick-and-place-000100"
+        },
+        "pick-and-place-success-episode_000102": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000102.h5",
+          "raw_sha256": "0f04409aa28b866290dc0633d2ebbdf6a861511316357dc9bddba0306a644833",
+          "store_episode": "pick-and-place/pick-and-place-000102"
+        },
+        "pick-and-place-success-episode_000103": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000103.h5",
+          "raw_sha256": "8ddfd2106dd9e475924fefcc3d17dd5923ad5ad39f6ae9755c986e1a0b0eaafa",
+          "store_episode": "pick-and-place/pick-and-place-000103"
+        },
+        "pick-and-place-success-episode_000104": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000104.h5",
+          "raw_sha256": "a8d24c3d90d09e0fbd10739211756c059528e2b930c6abd93cf7827214142020",
+          "store_episode": "pick-and-place/pick-and-place-000104"
+        },
+        "pick-and-place-success-episode_000105": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000105.h5",
+          "raw_sha256": "fd44f41a1c411b25bd348da1a41188a7d5ecf4177cdaba76b0281d768ae9569a",
+          "store_episode": "pick-and-place/pick-and-place-000105"
+        },
+        "pick-and-place-success-episode_000106": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000106.h5",
+          "raw_sha256": "048de564ed8678918bc03befd1357b923e2221f58cc3577dacc91930a2a274f0",
+          "store_episode": "pick-and-place/pick-and-place-000106"
+        },
+        "pick-and-place-success-episode_000107": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000107.h5",
+          "raw_sha256": "b393bb97f3fd90a9c52a4f73277cf9172f0830b6421495bd8956b040654e796b",
+          "store_episode": "pick-and-place/pick-and-place-000107"
+        },
+        "pick-and-place-success-episode_000108": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000108.h5",
+          "raw_sha256": "a0b694b7b9e6734fe05049e4f5c7ec365eadb4a7ef3dcc004b1dd4a636b8b24f",
+          "store_episode": "pick-and-place/pick-and-place-000108"
+        },
+        "pick-and-place-success-episode_000109": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000109.h5",
+          "raw_sha256": "ecc6f6eb1e7ce76333f2c4b91af2116c82964326154a0a908e1f0a47ea61bf8e",
+          "store_episode": "pick-and-place/pick-and-place-000109"
+        },
+        "pick-and-place-success-episode_000110": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000110.h5",
+          "raw_sha256": "c0c5f2142a629c4054332ea5056ea0aa7fdaaa8c26114b9a575ceaf6591d080e",
+          "store_episode": "pick-and-place/pick-and-place-000110"
+        },
+        "pick-and-place-success-episode_000113": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000113.h5",
+          "raw_sha256": "94fca2b00a12a9e594eb9087a3299aecee4792d984824aa0c44a584a32bbc5a9",
+          "store_episode": "pick-and-place/pick-and-place-000113"
+        },
+        "pick-and-place-success-episode_000114": {
+          "task": "pick-and-place",
+          "raw_recording": "/home/ws/data/real_world/pick-and-place/episode_000114.h5",
+          "raw_sha256": "f7ac90408b9228c49b277c1e7a45cf396d879a9c05febcfa43f75137e4fa18aa",
+          "store_episode": "pick-and-place/pick-and-place-000114"
+        }
+      },
+      "store_episodes": [
+        "pick-and-place/pick-and-place-000002",
+        "pick-and-place/pick-and-place-000004",
+        "pick-and-place/pick-and-place-000005",
+        "pick-and-place/pick-and-place-000009",
+        "pick-and-place/pick-and-place-000010",
+        "pick-and-place/pick-and-place-000011",
+        "pick-and-place/pick-and-place-000012",
+        "pick-and-place/pick-and-place-000013",
+        "pick-and-place/pick-and-place-000015",
+        "pick-and-place/pick-and-place-000016",
+        "pick-and-place/pick-and-place-000019",
+        "pick-and-place/pick-and-place-000021",
+        "pick-and-place/pick-and-place-000022",
+        "pick-and-place/pick-and-place-000023",
+        "pick-and-place/pick-and-place-000024",
+        "pick-and-place/pick-and-place-000025",
+        "pick-and-place/pick-and-place-000026",
+        "pick-and-place/pick-and-place-000027",
+        "pick-and-place/pick-and-place-000029",
+        "pick-and-place/pick-and-place-000030",
+        "pick-and-place/pick-and-place-000031",
+        "pick-and-place/pick-and-place-000032",
+        "pick-and-place/pick-and-place-000034",
+        "pick-and-place/pick-and-place-000035",
+        "pick-and-place/pick-and-place-000036",
+        "pick-and-place/pick-and-place-000037",
+        "pick-and-place/pick-and-place-000038",
+        "pick-and-place/pick-and-place-000039",
+        "pick-and-place/pick-and-place-000040",
+        "pick-and-place/pick-and-place-000041",
+        "pick-and-place/pick-and-place-000042",
+        "pick-and-place/pick-and-place-000043",
+        "pick-and-place/pick-and-place-000044",
+        "pick-and-place/pick-and-place-000045",
+        "pick-and-place/pick-and-place-000046",
+        "pick-and-place/pick-and-place-000047",
+        "pick-and-place/pick-and-place-000048",
+        "pick-and-place/pick-and-place-000049",
+        "pick-and-place/pick-and-place-000050",
+        "pick-and-place/pick-and-place-000051",
+        "pick-and-place/pick-and-place-000052",
+        "pick-and-place/pick-and-place-000053",
+        "pick-and-place/pick-and-place-000054",
+        "pick-and-place/pick-and-place-000055",
+        "pick-and-place/pick-and-place-000056",
+        "pick-and-place/pick-and-place-000057",
+        "pick-and-place/pick-and-place-000058",
+        "pick-and-place/pick-and-place-000059",
+        "pick-and-place/pick-and-place-000060",
+        "pick-and-place/pick-and-place-000061",
+        "pick-and-place/pick-and-place-000063",
+        "pick-and-place/pick-and-place-000064",
+        "pick-and-place/pick-and-place-000066",
+        "pick-and-place/pick-and-place-000067",
+        "pick-and-place/pick-and-place-000068",
+        "pick-and-place/pick-and-place-000069",
+        "pick-and-place/pick-and-place-000070",
+        "pick-and-place/pick-and-place-000071",
+        "pick-and-place/pick-and-place-000072",
+        "pick-and-place/pick-and-place-000073",
+        "pick-and-place/pick-and-place-000074",
+        "pick-and-place/pick-and-place-000075",
+        "pick-and-place/pick-and-place-000076",
+        "pick-and-place/pick-and-place-000077",
+        "pick-and-place/pick-and-place-000078",
+        "pick-and-place/pick-and-place-000079",
+        "pick-and-place/pick-and-place-000081",
+        "pick-and-place/pick-and-place-000082",
+        "pick-and-place/pick-and-place-000083",
+        "pick-and-place/pick-and-place-000084",
+        "pick-and-place/pick-and-place-000085",
+        "pick-and-place/pick-and-place-000086",
+        "pick-and-place/pick-and-place-000087",
+        "pick-and-place/pick-and-place-000088",
+        "pick-and-place/pick-and-place-000089",
+        "pick-and-place/pick-and-place-000090",
+        "pick-and-place/pick-and-place-000091",
+        "pick-and-place/pick-and-place-000092",
+        "pick-and-place/pick-and-place-000093",
+        "pick-and-place/pick-and-place-000094",
+        "pick-and-place/pick-and-place-000095",
+        "pick-and-place/pick-and-place-000096",
+        "pick-and-place/pick-and-place-000097",
+        "pick-and-place/pick-and-place-000098",
+        "pick-and-place/pick-and-place-000099",
+        "pick-and-place/pick-and-place-000100",
+        "pick-and-place/pick-and-place-000102",
+        "pick-and-place/pick-and-place-000103",
+        "pick-and-place/pick-and-place-000104",
+        "pick-and-place/pick-and-place-000105",
+        "pick-and-place/pick-and-place-000106",
+        "pick-and-place/pick-and-place-000107",
+        "pick-and-place/pick-and-place-000108",
+        "pick-and-place/pick-and-place-000109",
+        "pick-and-place/pick-and-place-000110",
+        "pick-and-place/pick-and-place-000113",
+        "pick-and-place/pick-and-place-000114"
+      ]
+    }
+  },
+  "calibration_hold": {
+    "pick-and-place": {
+      "passed": true,
+      "validated": 97,
+      "problems": [],
+      "problem_count": 0,
+      "episodes": {
+        "pick-and-place/pick-and-place-000002": {
+          "calibrate_build_id": "b022b310c7194f9288142fe2acced65f",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000004": {
+          "calibrate_build_id": "8cdc7c9e14504709ba0e294fc64edbcc",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000005": {
+          "calibrate_build_id": "8295885082184306ad08b210f37f5ee5",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000009": {
+          "calibrate_build_id": "52217804f5514ebb80691b0db340e5a5",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000010": {
+          "calibrate_build_id": "7fafce11f0c7432a963da4f64074931b",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000011": {
+          "calibrate_build_id": "a0dedb40223b406f89a732fb9b8d6c63",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000012": {
+          "calibrate_build_id": "19e647771ccc411fbfdc40d04e6bb087",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000013": {
+          "calibrate_build_id": "1e3787988a624c28b99e8ffcc696a881",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000015": {
+          "calibrate_build_id": "4665bf9c2a31430db4b57beb4f617b18",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000016": {
+          "calibrate_build_id": "2044e4a447ba4f3c8a70d61f0b264565",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000019": {
+          "calibrate_build_id": "4d77b3bb45d1440299e6709f14911e2f",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000021": {
+          "calibrate_build_id": "859dc7f234564e86ab2be08b996a3fe2",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000022": {
+          "calibrate_build_id": "4e3f8cc2072748209fa414caa4b0081f",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000023": {
+          "calibrate_build_id": "e4111b27fcdc4ffba6bdb64aae797298",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000024": {
+          "calibrate_build_id": "aaa2f71d31c84100b0b8916989fc6963",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000025": {
+          "calibrate_build_id": "25a5c0e42b184946909743b55154a879",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000026": {
+          "calibrate_build_id": "329f3ae7e628497d8db5610b5745f28e",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000027": {
+          "calibrate_build_id": "296d4ccaa1134befbe8837639b64e3c8",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000029": {
+          "calibrate_build_id": "89537f6352c94f6f83c88ede385fc93b",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000030": {
+          "calibrate_build_id": "50e1e516fab84f998daf58a1fc945d93",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000031": {
+          "calibrate_build_id": "5b4b58e6753046fcbf4f54777b04a21d",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000032": {
+          "calibrate_build_id": "423a5830bdd044c095dd7e0001eb356d",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000034": {
+          "calibrate_build_id": "d9e9c25b04d645b691bf74e976a76f3b",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000035": {
+          "calibrate_build_id": "f160702ba6e549ac936b80a44ca2eeb3",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000036": {
+          "calibrate_build_id": "a2a3354f64f14cfabe872cd66f45ddc7",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000037": {
+          "calibrate_build_id": "cb35a72ce2634b30afe552916c225b40",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000038": {
+          "calibrate_build_id": "1943a75d415c447eb2413108f6f79abb",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000039": {
+          "calibrate_build_id": "2c4a1b60b4e048d0b0069e621c9bc563",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000040": {
+          "calibrate_build_id": "429ff86cb6d240f3b18e974314a4e521",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000041": {
+          "calibrate_build_id": "e9bd934b66474ed9839bd40658026f1c",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000042": {
+          "calibrate_build_id": "f1fcffebaea34b52a28e4de621906995",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000043": {
+          "calibrate_build_id": "524c41b33e644331a6054c2e61db4176",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000044": {
+          "calibrate_build_id": "3bda050c02654162aafbcc26391638ab",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000045": {
+          "calibrate_build_id": "27daab1af1124156acbdfe25eaacc863",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000046": {
+          "calibrate_build_id": "eaebf9ee439940bea6205c5766868b14",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000047": {
+          "calibrate_build_id": "ecb7a859c0914c59b00cf9c15ae35799",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000048": {
+          "calibrate_build_id": "a325d22274e94122a31afa80f99acc73",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000049": {
+          "calibrate_build_id": "5d6a455b847644d88178f4a4ac0a52be",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000050": {
+          "calibrate_build_id": "30ede33cf537462691c82541fcae0ecb",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000051": {
+          "calibrate_build_id": "35c09a76dcc643539657b99e603477c4",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000052": {
+          "calibrate_build_id": "2255f70c497c4545a980774b7a149146",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000053": {
+          "calibrate_build_id": "dd2e6e1b1f23452cac62a5051d754b52",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000054": {
+          "calibrate_build_id": "896e888148cd421c94651b2cb69dd787",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000055": {
+          "calibrate_build_id": "f2c536f34c5649ff8edf15605517b4ee",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000056": {
+          "calibrate_build_id": "3486a0d3383d4a628dfa547c0a504eed",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000057": {
+          "calibrate_build_id": "37cf9d2fe46b48ab817b37f6162943f2",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000058": {
+          "calibrate_build_id": "b8846700a9a048749fc9e9949e3017d2",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000059": {
+          "calibrate_build_id": "8355dfa5084d40959abf96cfd591a628",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000060": {
+          "calibrate_build_id": "df3472f3787a478eab0aa56b856bb91b",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000061": {
+          "calibrate_build_id": "2993721674f142a7b219a30bef0487fc",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000063": {
+          "calibrate_build_id": "f73c2e0cb9c04a2c998bc02872a04d90",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000064": {
+          "calibrate_build_id": "96c6af7f06d04c91853780a4cdbf488c",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000066": {
+          "calibrate_build_id": "cd4e699c6bdc45fa9ac76afa2eeeca66",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000067": {
+          "calibrate_build_id": "3a899ab375474ff585954c92e0a992c0",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000068": {
+          "calibrate_build_id": "63e98053973f40cab89f6b9799fbdf39",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000069": {
+          "calibrate_build_id": "3a86292320544fd2a7503b76b3e9a7e1",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000070": {
+          "calibrate_build_id": "8f10612a948342b1aee5f0a3688065d5",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000071": {
+          "calibrate_build_id": "4cb124a3e06e4393a031898d32c0480e",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000072": {
+          "calibrate_build_id": "36b5a9230f3b4604b2b0317a4200e7aa",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000073": {
+          "calibrate_build_id": "b2293f814bc744c5a1208192dc3221e1",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000074": {
+          "calibrate_build_id": "dd4a76fe219942afa9fbbf73b767e882",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000075": {
+          "calibrate_build_id": "afe79829c970439fbd174ec5c7135a1d",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000076": {
+          "calibrate_build_id": "028b90e73cb84ee99bbc51fa202b5aaf",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000077": {
+          "calibrate_build_id": "6478104e440b42b0810917eef39b9c8b",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000078": {
+          "calibrate_build_id": "52806efab5944e46a96d09588a999250",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000079": {
+          "calibrate_build_id": "bb40ea67e8694782b09a7f81ebc4f772",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000081": {
+          "calibrate_build_id": "95ba47b3679c4f42b1bdd98ce4ff0f3c",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000082": {
+          "calibrate_build_id": "88d6534b1d9c4f2d8dae2392f1f8c76e",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000083": {
+          "calibrate_build_id": "a7d029cdf92848eb8c31107774a293f5",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000084": {
+          "calibrate_build_id": "feec884ae21144a6a60326c67f0787af",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000085": {
+          "calibrate_build_id": "15c68733b7e24dce849001419f69ffc4",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000086": {
+          "calibrate_build_id": "e30cf134e6cf44a69d34315ecd23ad2d",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000087": {
+          "calibrate_build_id": "f80d359719744ac39a534dd4ea2a22ec",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000088": {
+          "calibrate_build_id": "55ec5bc33d9a40a4af9ba1885224cee4",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000089": {
+          "calibrate_build_id": "1ef9f82b0f1a4c559a9ddddb357a3009",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000090": {
+          "calibrate_build_id": "70b3666fad9c4e8ca90d082c1622e1ca",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000091": {
+          "calibrate_build_id": "3578dfcecbda4bae9f4588089f2e7752",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000092": {
+          "calibrate_build_id": "94f87c65434a4845ada28dd0fb82e263",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000093": {
+          "calibrate_build_id": "ab34eb26b1a34ff1a327acd5c7723949",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000094": {
+          "calibrate_build_id": "8f9607c58cbf4fd6aebf91af3f7b9900",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000095": {
+          "calibrate_build_id": "41430bc8074a4c44866da3aebdb9becc",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000096": {
+          "calibrate_build_id": "c783782272d5460bbbf9180905e883bb",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000097": {
+          "calibrate_build_id": "12563ae5f17b4d9e861ff567a39262f2",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000098": {
+          "calibrate_build_id": "2d649bd871cb481e933b88abf9ef98d3",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000099": {
+          "calibrate_build_id": "0e7327f002be448ba16370e2fdb24499",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000100": {
+          "calibrate_build_id": "b1efbab6bba847ddb0ba714f04a2b499",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000102": {
+          "calibrate_build_id": "8d144b3f755e4156a5a793ad6caa5cb7",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000103": {
+          "calibrate_build_id": "f6443a835172452f94c74460a8fd6f53",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000104": {
+          "calibrate_build_id": "5f69ac5c930b4087b22e6d097cd798b4",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000105": {
+          "calibrate_build_id": "1818a68e338a489a874e899bebdc4dd0",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000106": {
+          "calibrate_build_id": "8d865ad3b3434f068b321da887cb1596",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000107": {
+          "calibrate_build_id": "392df11fa3464b4291594ceeadf6d44c",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000108": {
+          "calibrate_build_id": "8175654647084f928e6176a8dd11f839",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000109": {
+          "calibrate_build_id": "734cbcdad09d47db9be7d2237eee67dd",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000110": {
+          "calibrate_build_id": "7b050ec18c8745f8a7e0c40cf9efc3c8",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000113": {
+          "calibrate_build_id": "94da17eb86f642a7b697625d12e7c597",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        },
+        "pick-and-place/pick-and-place-000114": {
+          "calibrate_build_id": "10a22dc4dd714994972dd9b9141b8200",
+          "cameras": [
+            "135122070988",
+            "135122073201",
+            "135122076054"
+          ]
+        }
+      }
+    }
+  },
+  "families": {
+    "pick-and-place": {
+      "singleview": {
+        "passed": true,
+        "failed_count": 0,
+        "failed_episodes": []
+      },
+      "multiview": {
+        "passed": true,
+        "failed_count": 0,
+        "failed_episodes": []
+      },
+      "geometry": {
+        "passed": true,
+        "failed_count": 0,
+        "failed_episodes": []
+      },
+      "multiview_sets": {
+        "passed": true,
+        "failed_count": 0,
+        "failed_episodes": []
+      }
+    }
+  },
+  "consumer_families": {
+    "ours": [
+      "singleview",
+      "multiview",
+      "geometry"
+    ],
+    "snerl": [
+      "singleview",
+      "multiview",
+      "geometry"
+    ],
+    "mvp3d": [
+      "singleview",
+      "multiview",
+      "geometry"
+    ],
+    "sincro": [
+      "singleview",
+      "multiview",
+      "geometry"
+    ],
+    "reviwo": [
+      "singleview",
+      "multiview_sets"
+    ],
+    "dynamo": [
+      "singleview"
+    ],
+    "e2e_cnn": [
+      "singleview"
+    ],
+    "fql_reviwo": [
+      "singleview"
+    ],
+    "fql_sincro": [
+      "singleview",
+      "geometry"
+    ],
+    "fql_ours": [
+      "singleview",
+      "geometry"
+    ],
+    "mvp3d_single": [
+      "singleview",
+      "geometry"
+    ]
+  },
+  "consumers": {
+    "ours": {
+      "geometry_dependent": true,
+      "uses": "dynamic 3D tracks in the robot base frame, depth fused across cameras, camera poses",
+      "reason": "tracks are lifted to the base frame and depth is fused with the camera-to-robot extrinsics (Original pretraining s4d/rwlearn/ours.py; offline FQL reads its export, consumer fql_ours)"
+    },
+    "snerl": {
+      "geometry_dependent": true,
+      "uses": "3 RGB views + normalised camera poses (encoder input); RGB / semantic / DINO targets rendered along rays",
+      "reason": "the encoder input poses and every rendered ray come from the extrinsics; a wrong calibration changes inputs and targets"
+    },
+    "mvp3d": {
+      "geometry_dependent": true,
+      "uses": "RGB-D back-projected into the robot base frame, base-frame scene bounds",
+      "reason": "the fused point cloud and its bounds are built with the extrinsics"
+    },
+    "sincro": {
+      "geometry_dependent": true,
+      "uses": "RGB windows + per-sample K / c2w rays for its rendering loss",
+      "reason": "the rendering targets are cast along rays from the extrinsics (sincro_forward_per_sample_cameras); its encoder is therefore trained on calibration-dependent targets"
+    },
+    "reviwo": {
+      "geometry_dependent": false,
+      "uses": "synchronised multi-view RGB (timestamps only)",
+      "reason": "no camera pose, depth or track enters inputs or targets"
+    },
+    "dynamo": {
+      "geometry_dependent": false,
+      "uses": "single-camera RGB videos",
+      "reason": "no camera pose, depth or track enters inputs or targets"
+    },
+    "e2e_cnn": {
+      "geometry_dependent": false,
+      "uses": "single-view RGB history + proprioception + recorded commands",
+      "reason": "pixels, the robot's own kinematics and the sent commands only"
+    },
+    "fql_reviwo": {
+      "geometry_dependent": false,
+      "uses": "synchronised multi-view RGB (timestamps only)",
+      "reason": "no camera pose, depth or track enters inputs or targets"
+    },
+    "fql_sincro": {
+      "geometry_dependent": true,
+      "uses": "RGB windows + per-sample K / c2w rays for its rendering loss",
+      "reason": "the rendering targets are cast along rays from the extrinsics (sincro_forward_per_sample_cameras); its encoder is therefore trained on calibration-dependent targets"
+    },
+    "fql_ours": {
+      "geometry_dependent": true,
+      "uses": "dynamic 3D tracks in the robot base frame, depth fused across cameras, camera poses",
+      "reason": "tracks are lifted to the base frame and depth is fused with the camera-to-robot extrinsics (Original pretraining s4d/rwlearn/ours.py; offline FQL reads its export, consumer fql_ours)"
+    },
+    "mvp3d_single": {
+      "geometry_dependent": true,
+      "uses": "RGB-D back-projected into the robot base frame, base-frame scene bounds",
+      "reason": "the fused point cloud and its bounds are built with the extrinsics"
+    }
+  },
+  "dataset_manifest_sha256": "ec2452153b9a6eea85147aa040fffb9a6f7c3e511a324bd200f2a72d274994a6"
+}
