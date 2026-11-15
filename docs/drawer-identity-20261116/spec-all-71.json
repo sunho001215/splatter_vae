@@ -1,0 +1,19 @@
+{
+  "variants": [
+    "S"
+  ],
+  "ours_input_barriers_only": true,
+  "tasks": {
+    "drawer-open-v2": {
+      "inputs": "/home/compu/kaist/sunho/realworld/learning_inputs/drawer-s-20261116/drawer-open-v2",
+      "inputs_copy": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-s-20261116/learning-inputs/drawer-open-v2",
+      "rig": "/home/compu/kaist/sunho/realworld/configs/drawer-s-20261116/rig-drawer-open-v2-accepted.json",
+      "native_bounds_report": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-s-20261116/measurement/scene.json",
+      "scene_report": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-s-20261116/measurement/scene.json"
+    }
+  },
+  "local_publication_files": {
+    "/home/compu/kaist/sunho/realworld/configs/drawer-s-20261116/rig-drawer-open-v2-accepted.json": "/home/ws/data/realworld-processed/dsreset-20261113/calibration/drawer-open-v2/rig-drawer-open-v2-accepted.json",
+    "/home/compu/kaist/sunho/realworld/configs/drawer-s-20261116/rig-drawer-open-v2-accepted.reference.npz": "/home/ws/data/realworld-processed/dsreset-20261113/calibration/drawer-open-v2/rig-drawer-open-v2-accepted.reference.npz"
+  }
+}

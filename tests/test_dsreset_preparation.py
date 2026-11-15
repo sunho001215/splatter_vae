@@ -152,7 +152,8 @@ def test_snapshot_reuses_all_five_unhashed_exclusions_and_preserves_keys(tmp_pat
     (tmp_path/'hashes.json').write_text('{}')
     (tmp_path/'jobs.json').write_text('[]')
     (tmp_path/'dispatcher.json').write_text(json.dumps({'jobs':str(tmp_path/'jobs.json')}))
-    monkeypatch.setitem(sys.modules,'episode_validator',types.SimpleNamespace(validate=lambda *a,**kw:{'status':'invalid'}))
+    monkeypatch.setitem(sys.modules,'episode_validator',types.SimpleNamespace(validate=lambda *a,**kw:{
+        'status':'invalid','reasons':['invalid raw schema']}))
     monkeypatch.setattr(sys,'argv',args)
     snapshot.main()
     result = json.loads((tmp_path/'out/manifest.json').read_text())
@@ -168,3 +169,81 @@ def test_snapshot_reuses_all_five_unhashed_exclusions_and_preserves_keys(tmp_pat
     duplicate['episodes']['duplicate'] = dict(duplicate['episodes'][keys[0]])
     (tmp_path/'source.json').write_text(json.dumps(duplicate))
     with pytest.raises(ValueError,match='duplicate ingest raw identity'): snapshot.main()
+
+
+def s_snapshot_fixture(tmp_path, monkeypatch, *, exclusion_status='failed'):
+    import sys
+    import types
+    from scripts import realworld_dsreset_snapshot as snapshot
+    from s4d.rwlearn import dsreset as D, dsreset_gate as gate
+    task='drawer-open-v2'
+    root=tmp_path/task/'success';root.mkdir(parents=True)
+    for n in range(1,101):(root/f'episode_{n:06d}.h5').write_text(f'synthetic raw {n}')
+    excluded={f'{task}/episode_{n:06d}.h5':dict(raw_sha256=D.sha256(root/f'episode_{n:06d}.h5'),
+                  reason='synthetic raw schema rejection') for n in (77,79)}
+    amendment=dict(format='rw-gate-amendment/1',task=task,target=98,base_target=100,
+        decided_by='synthetic test',decision='exclude synthetic rejects',excluded=excluded,
+        episodes={f'{task}/{p.name}':D.sha256(p) for p in root.iterdir() if f'{task}/{p.name}' not in excluded})
+    m=D.paired_manifests(task,{'success':root},require_verified=False,inspect=lambda p:{},
+                         amendment=amendment,variants=('S',))['S']
+    monkeypatch.setattr(gate,'load_amendments',lambda:{task:{'record':amendment}})
+    mp=tmp_path/'S.json';mp.write_text(json.dumps(m))
+    source={'schema':'rw-ingest-manifest','schema_version':2,'episodes':{'old':{'task':'drawer-open','opaque':'preserved'}}}
+    (tmp_path/'source.json').write_text(json.dumps(source))
+    (tmp_path/'hashes.json').write_text(json.dumps({r['sha256']:r['sha256'] for r in m['episodes']}))
+    # An unselected failure job must not cause its absent config to be read.
+    (tmp_path/'jobs.json').write_text(json.dumps([{'episode':'drawer-open-v2-failure-episode_000001'}]))
+    (tmp_path/'dispatcher.json').write_text(json.dumps({'jobs':str(tmp_path/'jobs.json')}))
+    def validate(path, **kw):
+        rejected=Path(path).name in ('episode_000077.h5','episode_000079.h5')
+        return {'status':exclusion_status if rejected else 'valid',
+                'reasons':['synthetic raw schema rejection'] if rejected else []}
+    monkeypatch.setitem(sys.modules,'episode_validator',types.SimpleNamespace(validate=validate))
+    args=['snapshot','--success-only','--source',str(tmp_path/'source.json'),'--manifest',str(mp),
+          '--prep-config',str(tmp_path/'dispatcher.json'),'--remote-hashes',str(tmp_path/'hashes.json'),
+          '--out-dir',str(tmp_path/'out')]
+    monkeypatch.setattr(sys,'argv',args)
+    return snapshot,m,source
+
+
+def test_s_snapshot_fills_absent_catalog_without_accepting_missing_preprocessing(tmp_path,monkeypatch):
+    from s4d.rwlearn.dsreset import manifest_gate
+    snapshot,m,source=s_snapshot_fixture(tmp_path,monkeypatch)
+    with pytest.raises(ValueError,match='episode_000077.h5: 0 matching records'):manifest_gate(m,source)
+    snapshot.main()
+    result=json.loads((tmp_path/'out/manifest.json').read_text())
+    assert result['episodes']['old']==source['episodes']['old']
+    assert len(result['episodes'])==101 and json.loads((tmp_path/'source.json').read_text())==source
+    assert not (tmp_path/'drawer-open-v2/failure').exists()
+    for r in m['excluded']:
+        e=result['episodes'][r['id']]
+        assert e['validation']['status']=='invalid' and e['validation']['validator_status']=='failed'
+        assert e['transfer']['status']=='excluded' and e['sha256']==r['sha256']
+    with pytest.raises(ValueError,match='QA gate failed'):manifest_gate(m,result)
+
+
+@pytest.mark.parametrize('status',['valid','waiting','missing','incomplete'])
+def test_s_snapshot_requires_conclusive_exclusion_rejection(tmp_path,monkeypatch,status):
+    snapshot,_,_=s_snapshot_fixture(tmp_path,monkeypatch,exclusion_status=status)
+    with pytest.raises(ValueError,match='conclusive raw rejection'):snapshot.main()
+    assert not (tmp_path/'out').exists()
+
+
+@pytest.mark.parametrize('mutation,reason',[
+    ('amendment','released hash-bound'),('raw','raw changed'),('proof','remote raw verification'),
+    ('variant','one S manifest'),('duplicate','duplicate ingest raw identity')])
+def test_s_snapshot_keeps_identity_amendment_and_transfer_guards(tmp_path,monkeypatch,mutation,reason):
+    snapshot,m,source=s_snapshot_fixture(tmp_path,monkeypatch)
+    if mutation=='amendment':
+        m['amendment']['decision']='unapproved'
+        (tmp_path/'S.json').write_text(json.dumps(m))
+    elif mutation=='raw':Path(m['episodes'][0]['path']).write_text('changed')
+    elif mutation=='proof':(tmp_path/'hashes.json').write_text('{}')
+    elif mutation=='variant':
+        m['variant']='SF';(tmp_path/'S.json').write_text(json.dumps(m))
+    else:
+        r=m['episodes'][0]
+        for k in ('one','two'):source['episodes'][k]=dict(task=m['task'],source={'path':r['path']},sha256=r['sha256'])
+        (tmp_path/'source.json').write_text(json.dumps(source))
+    with pytest.raises(ValueError,match=reason):snapshot.main()
+    assert not (tmp_path/'out').exists()

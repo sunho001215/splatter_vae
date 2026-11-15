@@ -16,8 +16,11 @@ checks for all families on covering 98/98 and pick-and-place 97/97 episodes.
 a deferred graph preview. `smoke.json` records an isolated mirror that was removed
 after validation; its hashes describe the verified smoke, not a live publication.
 
-Drawer's canonical 98-success manifest currently fails the live ingest exclusion
-identity gate. None of its new learning rows has complete accepted local inputs.
+Drawer's canonical 98-success manifest fails the live ingest exclusion identity
+gate because live ING has no drawer-open-v2 records. Its released amendment is
+correct; use the new S-only snapshot path and commands in
+`docs/drawer-identity-20261116/COORDINATOR.md`. None of its new learning rows has
+complete accepted local inputs.
 Its 98 S hybrid phase-A rows are already registered; their further audit belongs
 to the parallel nosam worktree. The deferred 71-row S graph retains the shared
 prep → calibration → QA barriers and its new S-only stats dependency. Do not

@@ -347,7 +347,9 @@ def manifest_gate(manifest, ingest):
                     and recording_label(path)=='success' and e.get('sha256') in (None,r['sha256'])):
                 matches.append(e)
         if len(matches)!=1 or matches[0].get('validation',{}).get('status')!='invalid':
-            raise ValueError('excluded task-amendment episode must remain invalid in live ingest')
+            raise ValueError('excluded task-amendment episode must remain invalid in live ingest: '
+                             f"{task}/success/{r['filename']}: {len(matches)} matching records; "
+                             f"statuses={[e.get('validation',{}).get('status') for e in matches]}")
     for r in rows:
         candidates = [e for e in ingest['episodes'].values()
                       if e.get('task') == task and e.get('sha256') == r['sha256']]

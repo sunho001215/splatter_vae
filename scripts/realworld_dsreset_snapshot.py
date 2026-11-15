@@ -6,12 +6,32 @@ then updated only through established calibration_release/ingest_worker.set_stag
 import argparse
 import copy
 from datetime import datetime,timezone
+import hashlib
 import json
 from pathlib import Path
 import sys
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from ops.jobs.rwprep_mig import atomic,digest
 from s4d.rwlearn.dsreset_identity import recording_label
+from s4d.rwlearn.dsreset import validate_manifest
+
+
+def read_manifest(path, *, success_only=False):
+    manifest = validate_manifest(json.loads(path.read_text()))
+    if manifest['variant'] != ('S' if success_only else 'SF'):
+        raise ValueError('one S manifest per task with --success-only; otherwise one SF manifest per task')
+    if success_only:
+        from s4d.rwlearn import dsreset_gate as gate
+        approved = gate.load_amendments()[manifest['task']]['record']
+        if (manifest.get('amendment') != approved
+                or {r['filename']:r['sha256'] for r in manifest['episodes']} !=
+                   {Path(k).name:v for k,v in approved['episodes'].items()}
+                or len(manifest['episodes']) != approved['target']
+                or len(manifest.get('excluded',[])) != len(approved['excluded'])
+                or {r['filename']:r['sha256'] for r in manifest.get('excluded',[])} !=
+                   {Path(k).name:v['raw_sha256'] for k,v in approved['excluded'].items()}):
+            raise ValueError('S snapshot requires the released hash-bound amendment and exact membership')
+    return manifest
 
 
 def stages(root,ep,sha,commit,config_sha,host):
@@ -43,23 +63,29 @@ def main():
     import yaml
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--source',type=Path,required=True)
-    p.add_argument('--manifest',type=Path,action='append',required=True,help='each task SF manifest')
+    p.add_argument('--success-only',action='store_true',help='select S before reading any failure inventory; retains all validation/transfer/QA gates')
+    p.add_argument('--manifest',type=Path,action='append',required=True,help='each task S manifest with --success-only, otherwise historical SF')
     p.add_argument('--prep-config',type=Path,action='append',required=True,help='phase-A or B dispatcher configs')
     p.add_argument('--remote-hashes',type=Path,required=True,help='JSON {raw sha256: same verified remote sha256}')
     p.add_argument('--out-dir',type=Path,required=True)
     a=p.parse_args()
     sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'runs/setup/tools/realworld_ingest_20261106'))
     import episode_validator as V
-    source=json.loads(a.source.read_text());doc=copy.deepcopy(source)
-    proofs=json.loads(a.remote_hashes.read_text());configs={}
+    # Validate the selected manifests before opening dispatcher/proof inventories.
+    manifest_hashes={str(mp):digest(mp) for mp in a.manifest}
+    manifests = [read_manifest(mp,success_only=a.success_only) for mp in a.manifest]
+    if len({m['task'] for m in manifests}) != len(manifests):
+        raise ValueError('one selected manifest per task')
+    selected_ids = {r['id'] for m in manifests for r in m['episodes']}
+    source_bytes=a.source.read_bytes();source=json.loads(source_bytes);doc=copy.deepcopy(source)
+    proof_bytes=a.remote_hashes.read_bytes();proofs=json.loads(proof_bytes);configs={}
     for dispatcher in a.prep_config:
         d=json.loads(dispatcher.read_text())
         for job in json.loads(Path(d['jobs']).read_text()):
             ep=job.get('episode')
+            if a.success_only and ep not in selected_ids:continue
             if ep:configs[ep]=(d,job,next(p for p in job['inputs'] if p.endswith('.yaml')))
-    for mp in a.manifest:
-        manifest=json.loads(mp.read_text())
-        if manifest['variant']!='SF':raise ValueError('one SF manifest per task')
+    for manifest in manifests:
         for r in manifest['episodes']+manifest.get('excluded',[]):
             matches = []
             for key, entry in doc['episodes'].items():
@@ -72,11 +98,16 @@ def main():
                 raise ValueError('ingest raw sha256 differs from immutable manifest')
             excluded=r.get('split')=='excluded'
             if matches and not excluded and r['id'] not in configs:continue  # explicit existing success reuse
+            before=Path(r['path']).stat()
             if digest(r['path'])!=r['sha256']:raise ValueError('raw changed since immutable manifest')
             if not excluded and proofs.get(r['sha256'])!=r['sha256']:raise ValueError('missing exact remote raw verification proof')
             v=V.validate(r['path'],grace_s=0,task_names=[manifest['task']])
             if not excluded and v['status']!='valid':raise ValueError(f"raw rejected: {r['id']}: {v}")
-            if excluded and v['status']=='valid':raise ValueError('amended exclusion is no longer invalid')
+            if excluded and (v['status'] not in ('failed','invalid') or not v.get('reasons')):
+                raise ValueError('amended exclusion needs a conclusive raw rejection')
+            after=Path(r['path']).stat()
+            if (before.st_size,before.st_mtime_ns,before.st_ctime_ns) != (after.st_size,after.st_mtime_ns,after.st_ctime_ns):
+                raise ValueError('raw changed during snapshot validation')
             key=matches[0][0] if matches else r['id']
             if not matches and key in doc['episodes']:
                 raise ValueError('snapshot key already belongs to another raw identity')
@@ -84,7 +115,7 @@ def main():
             e.update(key=key,task=manifest['task'],filename=r['filename'],sha256=r['sha256'],
                 source={'path':r['path'],'present':True},episode_id=r['id'],episode_label=r['label'],
                 episode_index=int(r['filename'][8:14]),file_index=int(r['filename'][8:14]),flags={},
-                validation={**v,'status':'invalid' if excluded else 'valid'},
+                validation={**v,'validator_status':v['status'],'status':'invalid' if excluded else 'valid'},
                 transfer={'status':'verified' if not excluded else 'excluded','remote_sha256':r['sha256'] if not excluded else None})
             if r['id'] in configs:
                 d,j,cp=configs[r['id']];cfg=yaml.safe_load(Path(cp).read_text())
@@ -93,10 +124,13 @@ def main():
                     'failed' if any(x['status']=='failed' for x in recs.values()) else 'done','stages':recs}
             else:e.setdefault('preprocessing',{'schema':'rw-preprocess','schema_version':1,'status':'pending','stages':{}})
             doc['episodes'][key]=e
+    if any(digest(mp)!=manifest_hashes[str(mp)] for mp in a.manifest):
+        raise ValueError('selected manifest changed during snapshot')
     a.out_dir.mkdir(parents=True,exist_ok=False)
     atomic(a.out_dir/'manifest.json',doc)
-    atomic(a.out_dir/'provenance.json',{'source':{str(a.source):digest(a.source)},
-        'manifests':{str(p):digest(p) for p in a.manifest},'remote_hashes_sha256':digest(a.remote_hashes)})
+    atomic(a.out_dir/'provenance.json',{'source':{str(a.source):hashlib.sha256(source_bytes).hexdigest()},
+        'manifests':manifest_hashes,'remote_hashes_sha256':hashlib.sha256(proof_bytes).hexdigest(),
+        'selection':'S' if a.success_only else 'SF'})
 
 
 if __name__=='__main__':main()
