@@ -17,7 +17,8 @@ from ops.jobs import local_phase_a as a
 # Declared before inference; no fitting thresholds to observed differences.
 TOLERANCES = {'depth_mean_abs_m': 0.002, 'depth_p99_abs_m': 0.01,
               'depth_p99_rel': 0.01, 'depth_valid_iou_min': 0.995,
-              'mask_mean_iou_min': 0.99, 'mask_min_iou_min': 0.95}
+              'mask_mean_iou_min': 0.99, 'mask_min_iou_min': 0.95,
+              'mask_score_max_abs': 0.005, 'mask_box_max_abs_px': 1.0}
 REFERENCES = (
     ('covering', 'covering-000000', 'episode_000000'),
     ('pick-and-place', 'pick-and-place-000002', 'episode_000002'),
@@ -58,6 +59,35 @@ def metrics_masks(reference, candidate):
             'absent_both': absent, 'bitwise': bool(np.array_equal(reference, candidate))}
 
 
+def compare_instances(reference, candidate):
+    """Raw SAM outputs: identity/counts exact, instance IoU and score/box bounds."""
+    a.require(set(reference['chunks']) == set(candidate['chunks']), 'SAM chunk inventory differs')
+    ious, score_error, box_error = [], 0., 0.
+    for name in reference['chunks']:
+        r, c = reference['chunks'][name], candidate['chunks'][name]
+        a.require(set(r) == set(c), 'SAM raw datasets differ')
+        for key in ('frame', 'prompt_index', 'instance_id', 'count'):
+            a.require(np.array_equal(r[key][:], c[key][:]), f'SAM {key} differs')
+        a.require(r['masks'].shape == c['masks'].shape, 'SAM instance count/shape differs')
+        for i in range(len(r['masks'])):
+            x, y = r['masks'][i], c['masks'][i]
+            union = np.count_nonzero(x | y)
+            ious.append(float(np.count_nonzero(x & y) / union) if union else 1.)
+        for key, limit in (('scores', 'mask_score_max_abs'), ('boxes_xyxy', 'mask_box_max_abs_px')):
+            x, y = r[key][:], c[key][:]
+            a.require(x.shape == y.shape and np.isfinite(x).all() and np.isfinite(y).all(), f'SAM {key} invalid')
+            delta = float(np.max(np.abs(x-y), initial=0.))
+            if key == 'scores': score_error = max(score_error, delta)
+            else: box_error = max(box_error, delta)
+            a.require(delta <= TOLERANCES[limit], f'SAM {key} tolerance exceeded: {delta}')
+    a.require(ious, 'no SAM instances compared')
+    result = {'mean_iou': float(np.mean(ious)), 'min_iou': min(ious), 'instances': len(ious),
+              'max_score_abs': score_error, 'max_box_abs_px': box_error}
+    a.require(result['mean_iou'] >= TOLERANCES['mask_mean_iou_min'] and
+              result['min_iou'] >= TOLERANCES['mask_min_iou_min'], 'SAM instance-mask IoU exceeded')
+    return result
+
+
 def h5_arrays(path):
     result = {}
     with h5py.File(path, 'r') as f:
@@ -72,8 +102,12 @@ def exact_h5(reference, candidate):
     a.require(h5_arrays(reference) == h5_arrays(candidate), f'HDF5 dataset inventory differs: {candidate}')
     compared = 0
     with h5py.File(reference, 'r') as r, h5py.File(candidate, 'r') as c:
-        for key in h5_arrays(reference):
-            x, y = r[key], c[key]
+        for key in (None, *h5_arrays(reference)):
+            x, y = (r, c) if key is None else (r[key], c[key])
+            a.require(set(x.attrs) == set(y.attrs) and all(np.array_equal(x.attrs[k], y.attrs[k]) for k in x.attrs),
+                      f'HDF5 attributes differ: {key}')
+            if key is None:
+                continue
             if not x.shape:
                 a.require(np.array_equal(x[()], y[()]), f'{key} differs')
             else:
@@ -98,6 +132,7 @@ def compare_episode(task, old_ep, number, root, bundle, stages=a.STAGES):
             files = sorted(r.glob('*.h5')) if stage != 'ingest' else sorted((r / 'frames').glob('*.h5'))
             a.require(files, f'{stage}: missing reference files')
             stage_results = []
+            proof['stages'][stage] = {'passed': False, 'files': stage_results}
             for rf in files:
                 cf = c / rf.relative_to(r)
                 if stage in ('ingest', 'sensor_depth'):
@@ -107,6 +142,9 @@ def compare_episode(task, old_ep, number, root, bundle, stages=a.STAGES):
                                              if stage == 'sensor_depth' else {})})
                 else:
                     with h5py.File(rf, 'r') as x, h5py.File(cf, 'r') as y:
+                        if stage == 'sam3_masks':
+                            raw_metrics = compare_instances(x, y)
+                            stage_results.append({'file': rf.name, 'raw_instances': raw_metrics})
                         key = 'depth' if stage == 'foundation_stereo_depth' else 'semantic'
                         a.require(x[key].shape == y[key].shape, f'{stage}: full frame count differs')
                         # Frame by frame bounds memory and exposes worst-frame deviations.
@@ -145,7 +183,8 @@ def compare_episode(task, old_ep, number, root, bundle, stages=a.STAGES):
                 proof['evidence_files'][str(p)] = a.sha(p)
         except (OSError, ValueError, KeyError) as exc:
             proof['passed'] = False
-            proof['stages'][stage] = {'passed': False, 'error': str(exc)}
+            proof['stages'].setdefault(stage, {})
+            proof['stages'][stage].update(passed=False, error=str(exc))
     return proof
 
 
@@ -196,6 +235,7 @@ def write_report(bundle, rows, coverage):
     a.atomic(Path(bundle) / 'equivalence.json', result)
     lines = ['# Local phase-A equivalence', '', f"Qualified: **{result['qualified']}**. Coverage: {coverage}.", '',
              'Depth limits: each frame mean abs <= 0.002 m, p99 abs <= 0.01 m, p99 rel <= 0.01; valid-mask IoU >= 0.995.',
+             'Raw SAM frame/prompt/instance IDs and counts must match. Raw instance-mask IoU uses the same limits; score abs <= 0.005, box abs <= 1 px.',
              'Semantic foreground class/frame IoU: mean >= 0.99 and minimum >= 0.95; class presence exact.',
              'Absent-in-both classes are counted separately. Ingest arrays and sensor depth must be bitwise equal.',
              'HDF5 container bytes and completion IDs/times are not compared. Ingest contract mapping changes only episode_id, raw path and provenance.created_utc; raw SHA/size and every other field remain exact.', '',

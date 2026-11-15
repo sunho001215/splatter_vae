@@ -146,3 +146,21 @@ def test_publication_rejects_escape_and_wrong_payload_sha(tmp_path, unsafe, wron
     target = tmp_path/'remote/covering/success/episode_000000'
     result = subprocess.run([sys.executable, '-I', '-c', installer(tmp_path), str(packed), str(target), a.sha(packed)], capture_output=True)
     assert result.returncode != 0 and not target.exists() and not (tmp_path/'escape').exists()
+
+
+def test_sam_raw_instance_counts_and_scores_are_part_of_gate(tmp_path):
+    import h5py
+    paths = [tmp_path/'a.h5', tmp_path/'b.h5']
+    for path in paths:
+        with h5py.File(path, 'w') as f:
+            group = f.create_group('chunks/000000')
+            for key in ('frame', 'prompt_index', 'instance_id', 'count'):
+                group[key] = np.array([0], np.int32)
+            group['masks'] = np.ones((1, 2, 2), bool)
+            group['scores'] = np.array([.9], np.float32)
+            group['boxes_xyxy'] = np.array([[0., 0., 2., 2.]], np.float32)
+    with h5py.File(paths[0], 'r') as r, h5py.File(paths[1], 'r+') as c:
+        assert gate.compare_instances(r, c)['min_iou'] == 1
+        c['chunks/000000/scores'][0] = .5
+        with pytest.raises(ValueError, match='scores tolerance'):
+            gate.compare_instances(r, c)

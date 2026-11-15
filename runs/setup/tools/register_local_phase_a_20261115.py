@@ -64,14 +64,13 @@ def publish(root, rows, release, bundle, gate_sha):
         registry = read_registry(root / 'experiments/registry.jsonl')
         owned = host_roles.read_ownership()
         remote = root/'runs/dsreset-phaseA-remote-20261114/state'
-        if remote.exists():
-            a.require((remote/'STOP').exists(), 'drain the R1 controller before local registration')
-            statepath = remote/'state.json'
-            if statepath.exists():
-                state = json.loads(statepath.read_text())
-                a.require(not any(v.get('status') in ('running', 'launching', 'unknown', 'uncertain')
-                                  for v in state.get('jobs', state).values() if isinstance(v, dict)),
-                          'R1 has unresolved execution; reconcile before local fallback')
+        a.require((remote/'STOP').exists(), 'drain R1 and disable its automatic preparation before local registration')
+        statepath = remote/'state.json'
+        if statepath.exists():
+            state = json.loads(statepath.read_text())
+            a.require(not any(v.get('status') in ('running', 'launching', 'unknown', 'uncertain')
+                              for v in state.get('jobs', state).values() if isinstance(v, dict)),
+                      'R1 has unresolved execution; reconcile before local fallback')
         for row in rows:
             a.require(row['id'] not in existing | set(registry) | set(owned), 'row already registered/launched/owned')
             a.require(not (root / 'runs' / row['id']).exists(), 'row output already exists')
