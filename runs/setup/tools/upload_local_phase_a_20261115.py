@@ -42,6 +42,7 @@ with open(p.parent/('.'+p.name+'.publish.lock'),'a') as lock:
   assert all(sha(tmp/n)==h for n,h in manifest['files'].items())
   assert {str(f.relative_to(tmp)) for f in tmp.rglob('*') if f.is_file()}==set(manifest['files'])|{'.publication.json'}
   if p.exists():
+   assert not any(f.is_symlink() for f in p.rglob('*')),'existing output contains symlinks'
    actual={str(f.relative_to(p)):sha(f) for f in p.rglob('*') if f.is_file() and f.name!='.publication.json'}
    assert actual==manifest['files'],'existing canonical output differs; refusing overwrite'
   else:

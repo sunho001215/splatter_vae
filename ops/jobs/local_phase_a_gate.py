@@ -102,7 +102,9 @@ def compare_episode(task, old_ep, number, root, bundle, stages=a.STAGES):
                 cf = c / rf.relative_to(r)
                 if stage in ('ingest', 'sensor_depth'):
                     elements = exact_h5(rf, cf)
-                    stage_results.append({'file': rf.name, 'bitwise': True, 'elements': elements})
+                    stage_results.append({'file': rf.name, 'bitwise': True, 'elements': elements,
+                                          **({'max_abs_m': 0.0, 'max_rel': 0.0, 'valid_iou': 1.0}
+                                             if stage == 'sensor_depth' else {})})
                 else:
                     with h5py.File(rf, 'r') as x, h5py.File(cf, 'r') as y:
                         key = 'depth' if stage == 'foundation_stereo_depth' else 'semantic'
@@ -133,6 +135,7 @@ def compare_episode(task, old_ep, number, root, bundle, stages=a.STAGES):
                           [(s['sha256'], s['bytes']) for s in y['provenance']['source_files']], 'ingest raw provenance differs')
                 x['episode_id'] = y['episode_id']
                 x['provenance']['source_files'] = y['provenance']['source_files']
+                x['provenance']['created_utc'] = y['provenance']['created_utc']
                 a.require(x == y, 'normalized contract differs beyond episode/path identity')
                 for directory in (r, c):
                     for name in ('arrays.npz', 'episode.json'):
@@ -182,7 +185,7 @@ def gate_jobs(bundle):
 def write_report(bundle, rows, coverage):
     result = {'schema': 'local-phase-a-equivalence/1', 'coverage': coverage,
               'qualified': coverage == 'full-two-episodes' and all(r['passed'] for r in rows),
-              'envelope_sha256': a.sha(Path(bundle) / 'envelope.json'), 'tolerances': TOLERANCES, 'episodes': rows}
+              'envelope_sha256': a.sha(Path(bundle) / 'envelope.json'), 'comparison_code_sha256': a.sha(__file__), 'tolerances': TOLERANCES, 'episodes': rows}
     resources = [json.loads((Path(bundle)/'gate'/r['task']/'local-phase-a.json').read_text()).get('footprints', {})
                  for r in rows if (Path(bundle)/'gate'/r['task']/'local-phase-a.json').exists()]
     result['footprints'] = {'measured': len(resources) == 2 and all(r.get('measured') for r in resources),
@@ -195,11 +198,13 @@ def write_report(bundle, rows, coverage):
              'Depth limits: each frame mean abs <= 0.002 m, p99 abs <= 0.01 m, p99 rel <= 0.01; valid-mask IoU >= 0.995.',
              'Semantic foreground class/frame IoU: mean >= 0.99 and minimum >= 0.95; class presence exact.',
              'Absent-in-both classes are counted separately. Ingest arrays and sensor depth must be bitwise equal.',
-             'HDF5 container bytes, timestamps/build IDs, paths and model response ordering are not deterministic payloads.', '',
+             'HDF5 container bytes and completion IDs/times are not compared. Ingest contract mapping changes only episode_id, raw path and provenance.created_utc; raw SHA/size and every other field remain exact.', '',
              '| Episode | Stage | Result | Numbers |', '|---|---|---|---|']
     for row in rows:
         for stage, st in row['stages'].items():
             numbers = st.get('error', 'bitwise payloads equal')
+            if stage == 'sensor_depth' and st['passed']:
+                numbers = 'bitwise equal; max abs=0 m; max rel=0; valid IoU=1'
             vals = [v for f in st.get('files', []) for v in f.get('metrics', [])]
             if vals and stage == 'foundation_stereo_depth':
                 numbers = f"worst frame mean abs={max(v['mean_abs_m'] for v in vals):.8g} m; p99 abs={max(v['p99_abs_m'] for v in vals):.8g} m; p99 rel={max(v['p99_rel'] for v in vals):.8g}; valid IoU min={min(v['valid_iou'] for v in vals):.8g}"
