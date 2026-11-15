@@ -164,3 +164,122 @@ def test_sam_raw_instance_counts_and_scores_are_part_of_gate(tmp_path):
         c['chunks/000000/scores'][0] = .5
         with pytest.raises(ValueError, match='scores tolerance'):
             gate.compare_instances(r, c)
+
+
+@pytest.mark.parametrize('returncode', [0, 7])
+def test_gate_real_child_heartbeat_and_quiet_exit_are_persisted(tmp_path, capsys, returncode):
+    frozen = tmp_path/'source'
+    package = frozen/'ops/jobs'
+    package.mkdir(parents=True)
+    (frozen/'ops/__init__.py').write_text('')
+    (package/'__init__.py').write_text('')
+    (package/'local_phase_a.py').write_text(
+        'import time\ndef execute(*args, **kwargs):\n'
+        f'    time.sleep(.1)\n    raise SystemExit({returncode})\n')
+    job = tmp_path/'gate-test.json'
+    job.write_text('{}')
+    result = gate.run_job(tmp_path, job, frozen, a.STAGES, heartbeat_s=.02)
+    persisted = json.loads((tmp_path/'execution/gate-test.json').read_text())
+    assert persisted == result
+    assert result['returncode'] == returncode
+    assert result['status'] == ('ok' if returncode == 0 else 'failed')
+    assert result['finished_unix'] >= result['started_unix']
+    output = capsys.readouterr().out
+    assert 'gate_episode_started' in output and 'gate_episode_running' in output
+    assert f'"returncode": {returncode}' in output
+
+
+@pytest.mark.parametrize('returncode', [0, 7, -9])
+def test_gate_child_failure_cannot_qualify_cached_success(tmp_path, monkeypatch, returncode):
+    (tmp_path/'envelope.json').write_text('{}')
+    monkeypatch.setattr(a, 'verify_envelope', lambda *args: {'frozen': str(tmp_path), 'files': {'source/ops/jobs/local_phase_a.py': a.sha(a.__file__)}})
+    jobs = [tmp_path/'one.json', tmp_path/'two.json']
+    monkeypatch.setattr(gate, 'gate_jobs', lambda _: jobs)
+    observed = []
+    def run(*args):
+        observed.append(json.loads((tmp_path/'equivalence.json').read_text()))
+        return {'returncode': returncode}
+    monkeypatch.setattr(gate, 'run_job', run)
+    monkeypatch.setattr(gate, 'compare_episode', lambda task, *args: {
+        'task': task, 'episode': task, 'passed': True, 'stages': {}})
+    assert gate.main(['--bundle', str(tmp_path)]) == (0 if returncode == 0 else 3)
+    result = json.loads((tmp_path/'equivalence.json').read_text())
+    assert result['qualified'] is (returncode == 0)
+    assert observed[0]['coverage'] == 'in-progress' and not observed[0]['qualified']
+    assert not observed[1]['qualified']  # one completed episode is insufficient
+    assert all(row['execution']['returncode'] == returncode for row in result['episodes'])
+
+
+def test_gate_launch_failure_is_recorded(tmp_path, monkeypatch):
+    job = tmp_path/'job.json'
+    job.write_text('{}')
+    def fail(*args, **kwargs):
+        raise FileNotFoundError('missing interpreter')
+    monkeypatch.setattr(gate.subprocess, 'Popen', fail)
+    with pytest.raises(FileNotFoundError, match='missing interpreter'):
+        gate.run_job(tmp_path, job, tmp_path, a.STAGES)
+    record = json.loads((tmp_path/'execution/job.json').read_text())
+    assert record['status'] == 'launch-failed' and 'missing interpreter' in record['error']
+
+
+def test_native_cache_loads_compiled_library_from_private_executable_ram():
+    import ctypes
+    import os
+    with a.native_code_cache() as (cache, report):
+        path = cache/'smoke.so'
+        result = subprocess.run(['/usr/bin/gcc', '-shared', '-fPIC', '-x', 'c', '-o', str(path), '-'],
+                                input='int local_phase_a_answer(void) { return 42; }',
+                                text=True, capture_output=True)
+        assert result.returncode == 0, result.stderr
+        assert ctypes.CDLL(str(path)).local_phase_a_answer() == 42
+        assert report['ok'] and report['executable']
+        assert cache.stat().st_mode & 0o777 == 0o700
+        assert not os.statvfs(cache).f_flag & os.ST_NOEXEC
+    assert not cache.exists()
+
+
+def test_native_cache_rejects_noexec_shared_memory():
+    with pytest.raises(ValueError, match='noexec'):
+        a.executable_ram('/dev/shm')
+
+
+def test_gate_refuses_stale_frozen_runner_before_any_spawn(tmp_path, monkeypatch):
+    (tmp_path/'envelope.json').write_text('{}')
+    monkeypatch.setattr(a, 'verify_envelope', lambda *args: {
+        'files': {'source/ops/jobs/local_phase_a.py': '0'*64}})
+    def unexpected(*args):
+        pytest.fail('must refuse before creating jobs or starting any process')
+    monkeypatch.setattr(gate, 'gate_jobs', unexpected)
+    with pytest.raises(ValueError, match='runner differs from frozen source'):
+        gate.main(['--bundle', str(tmp_path)])
+
+
+def test_prompt_order_survives_sorted_job_json_and_pipeline_yaml(tmp_path):
+    import yaml
+    order = ['robot arm', 'end effector', 'blue towel', 'tin can']
+    prompts = dict(zip(order, ['robot', 'robot', 'object', 'fixture']))
+    cfg = {'adapter': {'config': {'episodes': {
+        'covering-success-episode_000000': '/home/ws/data/real_world/covering/episode_000000.h5'}}},
+        'stages': {'sam3_masks': {'prompts': prompts, 'chunk': 228, 'mode': 'segment_video'}}}
+    config = tmp_path/'pipeline.yaml'
+    config.write_text(yaml.safe_dump(cfg, sort_keys=False))
+    (tmp_path/'envelope.json').write_text('{}')
+    job = a.make_job({'episode': 'covering-success-episode_000000', 'config': str(config),
+                      'raw_sha256': 'a'*64}, tmp_path)
+    path = tmp_path/'job.json'
+    a.atomic(path, job)
+    decoded = json.loads(path.read_text())
+    assert list(decoded['pipeline']['stages']['sam3_masks']['prompts']) != order
+    restored = yaml.safe_load(yaml.safe_dump(a.execution_pipeline(decoded), sort_keys=False))
+    assert list(restored['stages']['sam3_masks']['prompts']) == order
+    assert restored['stages']['sam3_masks']['chunk'] == 228
+    assert restored['stages']['sam3_masks']['mode'] == 'segment_video'
+    assert list(decoded['pipeline']['stages']['sam3_masks']['prompts']) == sorted(order)
+
+
+@pytest.mark.parametrize('order', [None, ['robot arm'], ['robot arm', 'robot arm'], ['other', 'robot arm']])
+def test_missing_duplicate_or_wrong_prompt_order_is_rejected(order):
+    job = {'pipeline': {'stages': {'sam3_masks': {'prompts': {'robot arm': 'robot', 'blue towel': 'object'}}}},
+           'sam3_prompt_order': order}
+    with pytest.raises(ValueError, match='prompt order'):
+        a.execution_pipeline(job)

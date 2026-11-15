@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import time
 
 import h5py
 import numpy as np
@@ -211,6 +212,7 @@ def gate_jobs(bundle):
         cfg['stages']['calibrate'] = {'robot_mask_stage': 'sam3_masks'}
         cfg['output_root'] = str(bundle / 'gate' / task)
         job = {'episode': ep, 'raw': str(raw), 'raw_sha256': rawproof['sha256'], 'pipeline': cfg,
+               'sam3_prompt_order': order,
                'envelope_sha256': a.sha(bundle / 'envelope.json')}
         path = bundle / 'jobs' / f'gate-{task}.json'
         if path.exists():
@@ -223,7 +225,8 @@ def gate_jobs(bundle):
 
 def write_report(bundle, rows, coverage):
     result = {'schema': 'local-phase-a-equivalence/1', 'coverage': coverage,
-              'qualified': coverage == 'full-two-episodes' and all(r['passed'] for r in rows),
+              'qualified': coverage == 'full-two-episodes' and len(rows) == len(REFERENCES)
+                           and all(r['passed'] for r in rows),
               'envelope_sha256': a.sha(Path(bundle) / 'envelope.json'), 'comparison_code_sha256': a.sha(__file__), 'tolerances': TOLERANCES, 'episodes': rows}
     resources = [json.loads((Path(bundle)/'gate'/r['task']/'local-phase-a.json').read_text()).get('footprints', {})
                  for r in rows if (Path(bundle)/'gate'/r['task']/'local-phase-a.json').exists()]
@@ -255,6 +258,41 @@ def write_report(bundle, rows, coverage):
     return result
 
 
+def run_job(bundle, job, frozen, stages, heartbeat_s=30):
+    """Keep long model calls visible and retain even a signal/quiet child exit."""
+    code = ('import sys;sys.path.insert(0,sys.argv.pop(1));from ops.jobs.local_phase_a import execute;'
+            'execute(sys.argv[1],sys.argv[2],sys.argv[3],stages=sys.argv[4].split(","))')
+    argv = [sys.executable, '-I', '-B', '-u', '-c', code, str(frozen), str(bundle), str(job), a.sha(job),
+            ','.join(stages)]
+    record = {'job': str(job), 'interpreter': sys.executable, 'stages': list(stages),
+              'started_unix': time.time(), 'status': 'starting'}
+    path = Path(bundle) / 'execution' / (job.stem + '.json')
+    a.atomic(path, record)
+    try:
+        child = subprocess.Popen(argv, cwd=frozen)
+    except OSError as exc:
+        record.update(status='launch-failed', error=str(exc), finished_unix=time.time())
+        a.atomic(path, record)
+        raise
+    record.update(status='running', pid=child.pid)
+    a.atomic(path, record)
+    print(json.dumps({'gate_episode_started': str(job), 'pid': child.pid, 'interpreter': sys.executable}), flush=True)
+    while True:
+        try:
+            returncode = child.wait(timeout=heartbeat_s)
+            break
+        except subprocess.TimeoutExpired:
+            record['elapsed_s'] = round(time.time() - record['started_unix'], 1)
+            a.atomic(path, record)
+            print(json.dumps({'gate_episode_running': str(job), 'pid': child.pid,
+                              'elapsed_s': record['elapsed_s']}), flush=True)
+    record.update(status='ok' if returncode == 0 else 'failed', returncode=returncode,
+                  finished_unix=time.time())
+    a.atomic(path, record)
+    print(json.dumps({'gate_episode_exited': str(job), 'pid': child.pid, 'returncode': returncode}), flush=True)
+    return record
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--bundle', required=True, type=Path)
@@ -262,17 +300,24 @@ def main(argv=None):
     p.add_argument('--compare-only', action='store_true')
     args = p.parse_args(argv)
     doc = a.verify_envelope(args.bundle, a.sha(args.bundle / 'envelope.json'))
+    a.require(doc['files']['source/ops/jobs/local_phase_a.py'] == a.sha(a.__file__),
+              'gate runner differs from frozen source; prepare a new immutable bundle')
     jobs = gate_jobs(args.bundle)
     stages = a.STAGES[:2] if args.cpu_only else a.STAGES
     rows = []
+    if not args.compare_only:
+        # Invalidate stale success/CPU-only evidence before starting a long child.
+        write_report(args.bundle, rows, 'in-progress')
     for job, (task, old_ep, number) in zip(jobs, REFERENCES):
+        execution = None
         if not args.compare_only:
             frozen = Path(doc['frozen']) / 'source'
-            code = ('import sys;sys.path.insert(0,sys.argv.pop(1));from ops.jobs.local_phase_a import execute;'
-                    'execute(sys.argv[1],sys.argv[2],sys.argv[3],stages=sys.argv[4].split(","))')
-            subprocess.run([sys.executable, '-I', '-B', '-c', code, str(frozen), str(args.bundle), str(job), a.sha(job),
-                            ','.join(stages)], cwd=frozen, check=False)
+            execution = run_job(args.bundle, job, frozen, stages)
         row = compare_episode(task, old_ep, number, args.bundle / 'gate' / task, args.bundle, a.STAGES)
+        if execution is not None:
+            row['execution'] = execution
+            if execution['returncode'] != 0:
+                row.update(passed=False, execution_error=f"episode process exit {execution['returncode']}")
         rows.append(row)
         write_report(args.bundle, rows, 'cpu-only' if args.cpu_only else 'full-two-episodes')
     result = write_report(args.bundle, rows, 'cpu-only' if args.cpu_only else 'full-two-episodes')

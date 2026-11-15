@@ -175,7 +175,21 @@ def make_job(row, bundle, output=PROCESSED):
     require(raw.is_relative_to('/home/ws/data/real_world'), 'raw outside approved local root')
     cfg['output_root'] = str(Path(output) / task / label / number)
     return {'episode': row['episode'], 'raw': str(raw), 'raw_sha256': row['raw_sha256'],
-            'pipeline': cfg, 'envelope_sha256': sha(bundle / 'envelope.json')}
+            'pipeline': cfg, 'sam3_prompt_order': list(cfg['stages']['sam3_masks']['prompts']),
+            'envelope_sha256': sha(bundle / 'envelope.json')}
+
+
+def execution_pipeline(job):
+    """JSON object order is not an inference contract; carry prompt order as a list."""
+    import copy
+    cfg = copy.deepcopy(job['pipeline'])
+    prompts = cfg['stages']['sam3_masks']['prompts']
+    order = job.get('sam3_prompt_order')
+    require(isinstance(order, list) and len(order) == len(prompts) and
+            len(set(order)) == len(order) and set(order) == set(prompts),
+            'SAM3 prompt order must name every prompt exactly once')
+    cfg['stages']['sam3_masks']['prompts'] = {name: prompts[name] for name in order}
+    return cfg
 
 
 def verified_job(bundle, jobfile, expected):
@@ -233,6 +247,27 @@ def output_lock(root):
         yield
 
 
+def executable_ram(path):
+    """Native Python/Triton extensions need RAM backing AND executable mappings."""
+    from s4d.realworld.workers._protocol import _mount_for
+    ram = _mount_for(str(path), Path('/proc/self/mountinfo').read_text())
+    require(ram['ok'], f'native code cache must be RAM-backed: {path}')
+    require(not os.statvfs(path).f_flag & os.ST_NOEXEC, f'native code cache mount is noexec: {path}')
+    return {**ram, 'executable': True}
+
+
+@contextlib.contextmanager
+def native_code_cache():
+    # /dev is a small executable tmpfs in the campaign container. Never remount
+    # shared filesystems; keep large frame/model scratch on /dev/shm instead.
+    executable_ram('/dev')
+    require(shutil.disk_usage('/dev').free >= 32 * 2**20, 'native code tmpfs needs at least 32 MiB free')
+    with tempfile.TemporaryDirectory(prefix='s4d-localA-code-', dir='/dev') as name:
+        path = Path(name)
+        path.chmod(0o700)
+        yield path, executable_ram(path)
+
+
 def execute(bundle, jobfile, expected, gpu_gib=12, gate_sha=None, stages=STAGES):
     """Run inside pinned source; rehash in finally even on stage failure."""
     bundle = Path(bundle).resolve()
@@ -248,11 +283,15 @@ def execute(bundle, jobfile, expected, gpu_gib=12, gate_sha=None, stages=STAGES)
     import torch
     require(torch.cuda.device_count() == 1, 'exactly one CUDA device must be visible')
     require(torch.cuda.mem_get_info()[0] > (gpu_gib + 1) * 2**30, 'MIG has insufficient free memory')
-    with output_lock(root), tempfile.TemporaryDirectory(prefix='s4d-localA-', dir='/dev/shm') as tmp:
+    with output_lock(root), native_code_cache() as (code_cache, code_mount), \
+            tempfile.TemporaryDirectory(prefix='s4d-localA-', dir='/dev/shm') as tmp:
         scratch = Path(tmp)
         scratch.chmod(0o700)
         os.environ.update(TMPDIR=tmp, TORCH_HOME=str(scratch / 'torch'), XDG_CACHE_HOME=str(scratch / 'cache'),
-                          TRITON_CACHE_DIR=str(scratch / 'triton'), CUDA_CACHE_PATH=str(scratch / 'cuda'),
+                          TRITON_CACHE_DIR=str(code_cache / 'triton'),
+                          TORCH_EXTENSIONS_DIR=str(code_cache / 'extensions'),
+                          TORCHINDUCTOR_CACHE_DIR=str(code_cache / 'inductor'),
+                          CUDA_CACHE_PATH=str(scratch / 'cuda'),
                           HF_HOME=str(scratch / 'hf'), HF_HUB_OFFLINE='1', TRANSFORMERS_OFFLINE='1',
                           S4D_CACHE_ROOT=str(scratch / 's4d'), S4D_RWPREP_SOURCE=str(Path(doc['frozen']) / 'source'),
                           S4D_PHASE_A_GPU_GIB=str(gpu_gib), OMP_NUM_THREADS='4', MKL_NUM_THREADS='4', OPENBLAS_NUM_THREADS='4')
@@ -272,7 +311,7 @@ def execute(bundle, jobfile, expected, gpu_gib=12, gate_sha=None, stages=STAGES)
         server_path = scratch / 'server.yaml'
         server_path.write_text(yaml.safe_dump(server))
         pipeline = scratch / 'pipeline.yaml'
-        pipeline.write_text(yaml.safe_dump(job['pipeline'], sort_keys=False))
+        pipeline.write_text(yaml.safe_dump(execution_pipeline(job), sort_keys=False))
         spec = importlib.util.spec_from_file_location('established_rwprep', Path(doc['frozen']) / 'rwprep_local.py')
         helper = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(helper)
@@ -283,6 +322,7 @@ def execute(bundle, jobfile, expected, gpu_gib=12, gate_sha=None, stages=STAGES)
                 require(ram['ok'], 'private worker scratch must be tmpfs')
                 return {'envelope': 'local-phase-a-integrity/1', 'gpu': gpu, 'scratch': tmp,
                         'scratch_mode': oct(scratch.stat().st_mode & 0o777), 'tmpfs': ram,
+                        'native_code_cache': {**code_mount, 'mode': oct(code_cache.stat().st_mode & 0o777)},
                         'limitations': doc['limitations']}
             def audit_start(self):
                 return {'envelope_sha256': job['envelope_sha256'], 'started_unix': time.time()}
@@ -312,16 +352,25 @@ def execute(bundle, jobfile, expected, gpu_gib=12, gate_sha=None, stages=STAGES)
         proof = {'status': 'running', 'episode': job['episode'], 'job_sha256': expected,
                  'envelope_sha256': job['envelope_sha256'], 'gpu': gpu, 'gpu_cap_gib': gpu_gib,
                  'started_unix': time.time(), 'stages': []}
+        atomic(root / 'local-phase-a.json', proof)
         try:
             # Close the pool after each stage so FS and SAM3 never coexist on a MIG.
             for stage in stages:
                 require(stage in STAGES, 'phase A only')
+                proof['active_stage'] = stage
+                atomic(root / 'local-phase-a.json', proof)
+                print(f'[{stage}] starting; episode={job["episode"]}; pid={os.getpid()}; scratch={tmp}', flush=True)
                 helper.LocalServer.needed_workers = tuple(helper.STAGE_WORKERS.get(stage, ()))
                 code = run_episode.main(['--pipeline', str(pipeline), '--server', str(server_path),
                                          '--episode', job['episode'], '--stages', stage])
                 require(code == 0, f'{stage}: exit {code}')
                 proof['stages'].append(stage)
+                atomic(root / 'local-phase-a.json', proof)
+            proof.pop('active_stage', None)
             proof['status'] = 'ok'
+        except BaseException as exc:
+            proof.update(status='failed', error=f'{type(exc).__name__}: {exc}')
+            raise
         finally:
             try:
                 verify_envelope(bundle, job['envelope_sha256'])
