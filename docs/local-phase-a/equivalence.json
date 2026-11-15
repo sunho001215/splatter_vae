@@ -1,0 +1,337 @@
+{
+  "comparison_code_sha256": "37c0786c0c15683ae5dd6fa3f408fb707704b6c2cc358ed99c3c1c0b34b5188d",
+  "coverage": "cpu-only",
+  "envelope_sha256": "35f4a07d17ba442c2130404c208279ec500ff3587fabc362d0ca33245c481a9e",
+  "episodes": [
+    {
+      "candidate": "/home/ws/ws/splatter4d/runs/local-phase-a-qualification-20261115/gate/covering/episodes/covering-success-episode_000000",
+      "episode": "covering-success-episode_000000",
+      "evidence_files": {
+        "/home/ws/ws/realworld-20261104/processed/tasks/covering/base/episodes/covering-000000/derived/sensor_depth/135122070988__color.h5": "583efe6294f2527409b68fcd5d7a6ffd0afda42f5d1487f1fadf8079bcaa6cbe",
+        "/home/ws/ws/realworld-20261104/processed/tasks/covering/base/episodes/covering-000000/derived/sensor_depth/135122073201__color.h5": "b15a9a4a3f547b00e965a6da9ddadd9af134a577e855dcdfe3784aa296fb9548",
+        "/home/ws/ws/realworld-20261104/processed/tasks/covering/base/episodes/covering-000000/derived/sensor_depth/135122076054__color.h5": "ad0f305af81bc3855ec907d5ea801e05b2c5fa3ad0c5253a87394660e894d119",
+        "/home/ws/ws/realworld-20261104/processed/tasks/covering/base/episodes/covering-000000/derived/sensor_depth/_COMPLETE.json": "e0918da63aca939743fb451b05a2ba2a9de6c468a9cade75ac9c4045c8ad8eda",
+        "/home/ws/ws/realworld-20261104/processed/tasks/covering/base/episodes/covering-000000/normalized/_COMPLETE.json": "c59a1077e6c8a103e815492bb8f780dc04621da0707dfc3f5cddb4806df25d34",
+        "/home/ws/ws/realworld-20261104/processed/tasks/covering/base/episodes/covering-000000/normalized/arrays.npz": "7b311e9fb893c7d93b6d7d5fb6504a8928b5fc2324024b14d554acd3da6fc07f",
+        "/home/ws/ws/realworld-20261104/processed/tasks/covering/base/episodes/covering-000000/normalized/episode.json": "cabd22083543225070fe5baec5fcd4b35c29af2b2f6feea0c9c5eaa725e33991",
+        "/home/ws/ws/realworld-20261104/processed/tasks/covering/base/episodes/covering-000000/normalized/frames/135122070988__color.h5": "183aa35b03efa053be1c4944a7fe434a30cbac88c097d7ef097a5573f23cf218",
+        "/home/ws/ws/realworld-20261104/processed/tasks/covering/base/episodes/covering-000000/normalized/frames/135122070988__depth.h5": "f188f06db9bb9c5ca94064dd1bd671420ff086e39472ba3cca0e1c706fdb6b4a",
+        "/home/ws/ws/realworld-20261104/processed/tasks/covering/base/episodes/covering-000000/normalized/frames/135122070988__ir_left.h5": "66c5522e34585b28a659de545fd95b886ae04991a2f731fea6ba396130e29b49",
+        "/home/ws/ws/realworld-20261104/processed/tasks/covering/base/episodes/covering-000000/normalized/frames/135122070988__ir_right.h5": "4b3a5d1f7b0fcb3acd359600c33ba5acfbe5ed028114e0f0068c74c6a36a5a42",
+        "/home/ws/ws/realworld-20261104/processed/tasks/covering/base/episodes/covering-000000/normalized/frames/135122073201__color.h5": "1350f8cb0a17351321c4d5bc19187e1ffd1b71c0c322ec43bdd860cad7624a24",
+        "/home/ws/ws/realworld-20261104/processed/tasks/covering/base/episodes/covering-000000/normalized/frames/135122073201__depth.h5": "5d21332cd303e7494e5a7973448f3200a9b3667742f8f8f869a8b00647a49b00",
+        "/home/ws/ws/realworld-20261104/processed/tasks/covering/base/episodes/covering-000000/normalized/frames/135122073201__ir_left.h5": "f4366cecb71bad7d7982249764ea69cd607660866a3ab498a2d22134bfdf7974",
+        "/home/ws/ws/realworld-20261104/processed/tasks/covering/base/episodes/covering-000000/normalized/frames/135122073201__ir_right.h5": "a3e29421be71459068e057b8c78e49144f4ae08b543ac92d1516e900fa525bba",
+        "/home/ws/ws/realworld-20261104/processed/tasks/covering/base/episodes/covering-000000/normalized/frames/135122076054__color.h5": "f009ed04a0c1f569df518631cc68308aa59779b4cc5775b59f5007cb2783728c",
+        "/home/ws/ws/realworld-20261104/processed/tasks/covering/base/episodes/covering-000000/normalized/frames/135122076054__depth.h5": "558d4d631e80d23681173c73e70c73c3ba9cb880893b5fedd05ef58d096098c5",
+        "/home/ws/ws/realworld-20261104/processed/tasks/covering/base/episodes/covering-000000/normalized/frames/135122076054__ir_left.h5": "9b6f68d568ff7b336b7392f61099018331e30e241479ad9b528705ff6489f7d4",
+        "/home/ws/ws/realworld-20261104/processed/tasks/covering/base/episodes/covering-000000/normalized/frames/135122076054__ir_right.h5": "4372872ec016c372f955aa390782217454081d8418fea7b27bb81f2bf3770df3",
+        "/home/ws/ws/splatter4d/runs/local-phase-a-qualification-20261115/gate/covering/episodes/covering-success-episode_000000/derived/sensor_depth/135122070988__color.h5": "583efe6294f2527409b68fcd5d7a6ffd0afda42f5d1487f1fadf8079bcaa6cbe",
+        "/home/ws/ws/splatter4d/runs/local-phase-a-qualification-20261115/gate/covering/episodes/covering-success-episode_000000/derived/sensor_depth/135122073201__color.h5": "b15a9a4a3f547b00e965a6da9ddadd9af134a577e855dcdfe3784aa296fb9548",
+        "/home/ws/ws/splatter4d/runs/local-phase-a-qualification-20261115/gate/covering/episodes/covering-success-episode_000000/derived/sensor_depth/135122076054__color.h5": "ad0f305af81bc3855ec907d5ea801e05b2c5fa3ad0c5253a87394660e894d119",
+        "/home/ws/ws/splatter4d/runs/local-phase-a-qualification-20261115/gate/covering/episodes/covering-success-episode_000000/derived/sensor_depth/_COMPLETE.json": "ee562d4835d3cda29be2dfab1c8992a12208900f9272a82999512868b00a5211",
+        "/home/ws/ws/splatter4d/runs/local-phase-a-qualification-20261115/gate/covering/episodes/covering-success-episode_000000/normalized/_COMPLETE.json": "22f66ede9f51db78c8da4c1bea0c03d5fb406cd3d8afa18c5ed23443794efc6f",
+        "/home/ws/ws/splatter4d/runs/local-phase-a-qualification-20261115/gate/covering/episodes/covering-success-episode_000000/normalized/arrays.npz": "7b311e9fb893c7d93b6d7d5fb6504a8928b5fc2324024b14d554acd3da6fc07f",
+        "/home/ws/ws/splatter4d/runs/local-phase-a-qualification-20261115/gate/covering/episodes/covering-success-episode_000000/normalized/episode.json": "fe47f49247fd9d4a5d70e81577579b8270c3caab9b63385ae1c1b08a368331ba",
+        "/home/ws/ws/splatter4d/runs/local-phase-a-qualification-20261115/gate/covering/episodes/covering-success-episode_000000/normalized/frames/135122070988__color.h5": "183aa35b03efa053be1c4944a7fe434a30cbac88c097d7ef097a5573f23cf218",
+        "/home/ws/ws/splatter4d/runs/local-phase-a-qualification-20261115/gate/covering/episodes/covering-success-episode_000000/normalized/frames/135122070988__depth.h5": "eba1a9965c4d6dc4a1fa225be875f92850e6ef30f6a7e3734d0fe3797d3ac66d",
+        "/home/ws/ws/splatter4d/runs/local-phase-a-qualification-20261115/gate/covering/episodes/covering-success-episode_000000/normalized/frames/135122070988__ir_left.h5": "66c5522e34585b28a659de545fd95b886ae04991a2f731fea6ba396130e29b49",
+        "/home/ws/ws/splatter4d/runs/local-phase-a-qualification-20261115/gate/covering/episodes/covering-success-episode_000000/normalized/frames/135122070988__ir_right.h5": "4b3a5d1f7b0fcb3acd359600c33ba5acfbe5ed028114e0f0068c74c6a36a5a42",
+        "/home/ws/ws/splatter4d/runs/local-phase-a-qualification-20261115/gate/covering/episodes/covering-success-episode_000000/normalized/frames/135122073201__color.h5": "1350f8cb0a17351321c4d5bc19187e1ffd1b71c0c322ec43bdd860cad7624a24",
+        "/home/ws/ws/splatter4d/runs/local-phase-a-qualification-20261115/gate/covering/episodes/covering-success-episode_000000/normalized/frames/135122073201__depth.h5": "cb305c255bb41d8a5e415517833272690388c46104bfc268938f10afe9684ad6",
+        "/home/ws/ws/splatter4d/runs/local-phase-a-qualification-20261115/gate/covering/episodes/covering-success-episode_000000/normalized/frames/135122073201__ir_left.h5": "f4366cecb71bad7d7982249764ea69cd607660866a3ab498a2d22134bfdf7974",
+        "/home/ws/ws/splatter4d/runs/local-phase-a-qualification-20261115/gate/covering/episodes/covering-success-episode_000000/normalized/frames/135122073201__ir_right.h5": "a3e29421be71459068e057b8c78e49144f4ae08b543ac92d1516e900fa525bba",
+        "/home/ws/ws/splatter4d/runs/local-phase-a-qualification-20261115/gate/covering/episodes/covering-success-episode_000000/normalized/frames/135122076054__color.h5": "abf72d8394b9a21101f025c42582bcde22094ca15ed2f19c1ee6f3262dff8d8b",
+        "/home/ws/ws/splatter4d/runs/local-phase-a-qualification-20261115/gate/covering/episodes/covering-success-episode_000000/normalized/frames/135122076054__depth.h5": "558d4d631e80d23681173c73e70c73c3ba9cb880893b5fedd05ef58d096098c5",
+        "/home/ws/ws/splatter4d/runs/local-phase-a-qualification-20261115/gate/covering/episodes/covering-success-episode_000000/normalized/frames/135122076054__ir_left.h5": "9b6f68d568ff7b336b7392f61099018331e30e241479ad9b528705ff6489f7d4",
+        "/home/ws/ws/splatter4d/runs/local-phase-a-qualification-20261115/gate/covering/episodes/covering-success-episode_000000/normalized/frames/135122076054__ir_right.h5": "4372872ec016c372f955aa390782217454081d8418fea7b27bb81f2bf3770df3"
+      },
+      "label": "success",
+      "passed": false,
+      "reference": "/home/ws/ws/realworld-20261104/processed/tasks/covering/base/episodes/covering-000000",
+      "stages": {
+        "foundation_stereo_depth": {
+          "error": "NOT RUN: designated MIG occupied by healthy FQL trainer PID 993329 (7388 MiB); short GPU gate deferred under the idle-ish condition.",
+          "passed": false,
+          "status": "not-run-gpu-busy"
+        },
+        "ingest": {
+          "files": [
+            {
+              "bitwise": true,
+              "elements": 210125028,
+              "file": "135122070988__color.h5"
+            },
+            {
+              "bitwise": true,
+              "elements": 70041828,
+              "file": "135122070988__depth.h5"
+            },
+            {
+              "bitwise": true,
+              "elements": 70041828,
+              "file": "135122070988__ir_left.h5"
+            },
+            {
+              "bitwise": true,
+              "elements": 70041828,
+              "file": "135122070988__ir_right.h5"
+            },
+            {
+              "bitwise": true,
+              "elements": 210125028,
+              "file": "135122073201__color.h5"
+            },
+            {
+              "bitwise": true,
+              "elements": 70041828,
+              "file": "135122073201__depth.h5"
+            },
+            {
+              "bitwise": true,
+              "elements": 70041828,
+              "file": "135122073201__ir_left.h5"
+            },
+            {
+              "bitwise": true,
+              "elements": 70041828,
+              "file": "135122073201__ir_right.h5"
+            },
+            {
+              "bitwise": true,
+              "elements": 210125028,
+              "file": "135122076054__color.h5"
+            },
+            {
+              "bitwise": true,
+              "elements": 70041828,
+              "file": "135122076054__depth.h5"
+            },
+            {
+              "bitwise": true,
+              "elements": 70041828,
+              "file": "135122076054__ir_left.h5"
+            },
+            {
+              "bitwise": true,
+              "elements": 70041828,
+              "file": "135122076054__ir_right.h5"
+            }
+          ],
+          "passed": true
+        },
+        "sam3_masks": {
+          "error": "NOT RUN: designated MIG occupied by healthy FQL trainer PID 993329 (7388 MiB); short GPU gate deferred under the idle-ish condition.",
+          "passed": false,
+          "status": "not-run-gpu-busy"
+        },
+        "sensor_depth": {
+          "files": [
+            {
+              "bitwise": true,
+              "elements": 140083200,
+              "file": "135122070988__color.h5",
+              "max_abs_m": 0.0,
+              "max_rel": 0.0,
+              "valid_iou": 1.0
+            },
+            {
+              "bitwise": true,
+              "elements": 140083200,
+              "file": "135122073201__color.h5",
+              "max_abs_m": 0.0,
+              "max_rel": 0.0,
+              "valid_iou": 1.0
+            },
+            {
+              "bitwise": true,
+              "elements": 140083200,
+              "file": "135122076054__color.h5",
+              "max_abs_m": 0.0,
+              "max_rel": 0.0,
+              "valid_iou": 1.0
+            }
+          ],
+          "passed": true
+        }
+      },
+      "task": "covering"
+    },
+    {
+      "candidate": "/home/ws/ws/splatter4d/runs/local-phase-a-qualification-20261115/gate/pick-and-place/episodes/pick-and-place-success-episode_000002",
+      "episode": "pick-and-place-success-episode_000002",
+      "evidence_files": {
+        "/home/ws/ws/realworld-20261104/processed/tasks/pick-and-place/base/episodes/pick-and-place-000002/derived/sensor_depth/135122070988__color.h5": "6021d260aea8de05be103d7aacbf424667e91942992e04251893db4aebbdab36",
+        "/home/ws/ws/realworld-20261104/processed/tasks/pick-and-place/base/episodes/pick-and-place-000002/derived/sensor_depth/135122073201__color.h5": "dae63bc0f714fef6ebd38e5793c904f8176f399a357cb59da47b403ee54a9d9b",
+        "/home/ws/ws/realworld-20261104/processed/tasks/pick-and-place/base/episodes/pick-and-place-000002/derived/sensor_depth/135122076054__color.h5": "19cc04a97e907666f46d41ef2ebe3efac1b08077e1625099494d3b1338d9e4c3",
+        "/home/ws/ws/realworld-20261104/processed/tasks/pick-and-place/base/episodes/pick-and-place-000002/derived/sensor_depth/_COMPLETE.json": "defdb8e5d6f5da8b2a2e5d83a7adb7dfed22590a4dce370126866d746d0c7bc4",
+        "/home/ws/ws/realworld-20261104/processed/tasks/pick-and-place/base/episodes/pick-and-place-000002/normalized/_COMPLETE.json": "90bd290d1f41ae10c83b1ab256939c253d04005d7f5032783c11fdfeb6dc61d3",
+        "/home/ws/ws/realworld-20261104/processed/tasks/pick-and-place/base/episodes/pick-and-place-000002/normalized/arrays.npz": "f18023e5be873fc66705f33afb7cd541ecb588d540255a2638a3c2ede89755f4",
+        "/home/ws/ws/realworld-20261104/processed/tasks/pick-and-place/base/episodes/pick-and-place-000002/normalized/episode.json": "7a75c303bc24f6fe9279a8b0ef0aa3502ff45557472fa756afc5427ddcd634fe",
+        "/home/ws/ws/realworld-20261104/processed/tasks/pick-and-place/base/episodes/pick-and-place-000002/normalized/frames/135122070988__color.h5": "f3938ac1a791a0e9bcb3bcde34623ae89f8e4c1db0a3d59241562b1ba0ed423b",
+        "/home/ws/ws/realworld-20261104/processed/tasks/pick-and-place/base/episodes/pick-and-place-000002/normalized/frames/135122070988__depth.h5": "cacd80b2e874c64cb061c2901ae811a6a5c9297d6bc3ce9932ba6de6078e8423",
+        "/home/ws/ws/realworld-20261104/processed/tasks/pick-and-place/base/episodes/pick-and-place-000002/normalized/frames/135122070988__ir_left.h5": "65ba86adf78874886ffe3a1343a72c6c13c77108851bea7b62d02adfbc6247c5",
+        "/home/ws/ws/realworld-20261104/processed/tasks/pick-and-place/base/episodes/pick-and-place-000002/normalized/frames/135122070988__ir_right.h5": "51a3be53318d70e5bd93c3074fbf6c732d3d55a8fc7cfa27a49327b99a0b9121",
+        "/home/ws/ws/realworld-20261104/processed/tasks/pick-and-place/base/episodes/pick-and-place-000002/normalized/frames/135122073201__color.h5": "a04c10de8d87046f0d9fdf3f4dbe3f6a0d8d8cba662f08c3dd65c690a109a0ab",
+        "/home/ws/ws/realworld-20261104/processed/tasks/pick-and-place/base/episodes/pick-and-place-000002/normalized/frames/135122073201__depth.h5": "b8851fa6e9c0df58d23a9ac6723fb18ceb98fe4b41630a3d6fb7f7027728b876",
+        "/home/ws/ws/realworld-20261104/processed/tasks/pick-and-place/base/episodes/pick-and-place-000002/normalized/frames/135122073201__ir_left.h5": "005de16d22832752858082965437222ebfcf9333be947937d21b10c9b942ea3d",
+        "/home/ws/ws/realworld-20261104/processed/tasks/pick-and-place/base/episodes/pick-and-place-000002/normalized/frames/135122073201__ir_right.h5": "4e0d9e4f661a66ab1f3b53c813a3e4077f5321dd7b21b12f17cb3e5fc5213d32",
+        "/home/ws/ws/realworld-20261104/processed/tasks/pick-and-place/base/episodes/pick-and-place-000002/normalized/frames/135122076054__color.h5": "30d4a722798311f441b7df7c3347642d756217f3712a394b5b9ce2dbf9246c40",
+        "/home/ws/ws/realworld-20261104/processed/tasks/pick-and-place/base/episodes/pick-and-place-000002/normalized/frames/135122076054__depth.h5": "aab96dbd5bdccfe5f37b61cd73e3401e2abc349d1499766428bcd07cc00feac0",
+        "/home/ws/ws/realworld-20261104/processed/tasks/pick-and-place/base/episodes/pick-and-place-000002/normalized/frames/135122076054__ir_left.h5": "65d036f3c0dca89c8b29fd208a0cbcbf64c626feac171abf3c1897f1dbfea2c3",
+        "/home/ws/ws/realworld-20261104/processed/tasks/pick-and-place/base/episodes/pick-and-place-000002/normalized/frames/135122076054__ir_right.h5": "0a77cc8b148ed704977da1d0cb0614f2ca5e654c119c082f9b173c8a1b42698a",
+        "/home/ws/ws/splatter4d/runs/local-phase-a-qualification-20261115/gate/pick-and-place/episodes/pick-and-place-success-episode_000002/derived/sensor_depth/135122070988__color.h5": "6021d260aea8de05be103d7aacbf424667e91942992e04251893db4aebbdab36",
+        "/home/ws/ws/splatter4d/runs/local-phase-a-qualification-20261115/gate/pick-and-place/episodes/pick-and-place-success-episode_000002/derived/sensor_depth/135122073201__color.h5": "dae63bc0f714fef6ebd38e5793c904f8176f399a357cb59da47b403ee54a9d9b",
+        "/home/ws/ws/splatter4d/runs/local-phase-a-qualification-20261115/gate/pick-and-place/episodes/pick-and-place-success-episode_000002/derived/sensor_depth/135122076054__color.h5": "19cc04a97e907666f46d41ef2ebe3efac1b08077e1625099494d3b1338d9e4c3",
+        "/home/ws/ws/splatter4d/runs/local-phase-a-qualification-20261115/gate/pick-and-place/episodes/pick-and-place-success-episode_000002/derived/sensor_depth/_COMPLETE.json": "1135cb8fe247725609c3cdea39386da853540f715b86aee7cc9365a8d53996d8",
+        "/home/ws/ws/splatter4d/runs/local-phase-a-qualification-20261115/gate/pick-and-place/episodes/pick-and-place-success-episode_000002/normalized/_COMPLETE.json": "32d07fbe3668d626ecae8a57736d684ca207c3c885f5a80b2064289a82494294",
+        "/home/ws/ws/splatter4d/runs/local-phase-a-qualification-20261115/gate/pick-and-place/episodes/pick-and-place-success-episode_000002/normalized/arrays.npz": "f18023e5be873fc66705f33afb7cd541ecb588d540255a2638a3c2ede89755f4",
+        "/home/ws/ws/splatter4d/runs/local-phase-a-qualification-20261115/gate/pick-and-place/episodes/pick-and-place-success-episode_000002/normalized/episode.json": "69de6f55821a55457dc31df1c8c337e00648b5dc426690165df5eb58a205541b",
+        "/home/ws/ws/splatter4d/runs/local-phase-a-qualification-20261115/gate/pick-and-place/episodes/pick-and-place-success-episode_000002/normalized/frames/135122070988__color.h5": "f3938ac1a791a0e9bcb3bcde34623ae89f8e4c1db0a3d59241562b1ba0ed423b",
+        "/home/ws/ws/splatter4d/runs/local-phase-a-qualification-20261115/gate/pick-and-place/episodes/pick-and-place-success-episode_000002/normalized/frames/135122070988__depth.h5": "0b9ebd208faf6213a7c9a5c4d9e7c32efb37017e36cd0040900157eaa4b38ba3",
+        "/home/ws/ws/splatter4d/runs/local-phase-a-qualification-20261115/gate/pick-and-place/episodes/pick-and-place-success-episode_000002/normalized/frames/135122070988__ir_left.h5": "65ba86adf78874886ffe3a1343a72c6c13c77108851bea7b62d02adfbc6247c5",
+        "/home/ws/ws/splatter4d/runs/local-phase-a-qualification-20261115/gate/pick-and-place/episodes/pick-and-place-success-episode_000002/normalized/frames/135122070988__ir_right.h5": "51a3be53318d70e5bd93c3074fbf6c732d3d55a8fc7cfa27a49327b99a0b9121",
+        "/home/ws/ws/splatter4d/runs/local-phase-a-qualification-20261115/gate/pick-and-place/episodes/pick-and-place-success-episode_000002/normalized/frames/135122073201__color.h5": "91ea871a235e4ac7515bedf59329424c539940cc2d25e746f6a5dc4552d526f9",
+        "/home/ws/ws/splatter4d/runs/local-phase-a-qualification-20261115/gate/pick-and-place/episodes/pick-and-place-success-episode_000002/normalized/frames/135122073201__depth.h5": "7f540644115a8755f2b8aff363ebd879ff841b46d1e9a184f610e160cb6ca62e",
+        "/home/ws/ws/splatter4d/runs/local-phase-a-qualification-20261115/gate/pick-and-place/episodes/pick-and-place-success-episode_000002/normalized/frames/135122073201__ir_left.h5": "005de16d22832752858082965437222ebfcf9333be947937d21b10c9b942ea3d",
+        "/home/ws/ws/splatter4d/runs/local-phase-a-qualification-20261115/gate/pick-and-place/episodes/pick-and-place-success-episode_000002/normalized/frames/135122073201__ir_right.h5": "4e0d9e4f661a66ab1f3b53c813a3e4077f5321dd7b21b12f17cb3e5fc5213d32",
+        "/home/ws/ws/splatter4d/runs/local-phase-a-qualification-20261115/gate/pick-and-place/episodes/pick-and-place-success-episode_000002/normalized/frames/135122076054__color.h5": "7f48a042a7f4dfd9085500aba5639892acdb7a9267caa9b40f75e0da4fa69dd5",
+        "/home/ws/ws/splatter4d/runs/local-phase-a-qualification-20261115/gate/pick-and-place/episodes/pick-and-place-success-episode_000002/normalized/frames/135122076054__depth.h5": "aab96dbd5bdccfe5f37b61cd73e3401e2abc349d1499766428bcd07cc00feac0",
+        "/home/ws/ws/splatter4d/runs/local-phase-a-qualification-20261115/gate/pick-and-place/episodes/pick-and-place-success-episode_000002/normalized/frames/135122076054__ir_left.h5": "65d036f3c0dca89c8b29fd208a0cbcbf64c626feac171abf3c1897f1dbfea2c3",
+        "/home/ws/ws/splatter4d/runs/local-phase-a-qualification-20261115/gate/pick-and-place/episodes/pick-and-place-success-episode_000002/normalized/frames/135122076054__ir_right.h5": "018fb187cfc2bc15b025db68fb7ee60e24ab07c920be2fdcb13c0a25b6f505f1"
+      },
+      "label": "success",
+      "passed": false,
+      "reference": "/home/ws/ws/realworld-20261104/processed/tasks/pick-and-place/base/episodes/pick-and-place-000002",
+      "stages": {
+        "foundation_stereo_depth": {
+          "error": "NOT RUN: designated MIG occupied by healthy FQL trainer PID 993329 (7388 MiB); short GPU gate deferred under the idle-ish condition.",
+          "passed": false,
+          "status": "not-run-gpu-busy"
+        },
+        "ingest": {
+          "files": [
+            {
+              "bitwise": true,
+              "elements": 198144215,
+              "file": "135122070988__color.h5"
+            },
+            {
+              "bitwise": true,
+              "elements": 66048215,
+              "file": "135122070988__depth.h5"
+            },
+            {
+              "bitwise": true,
+              "elements": 66048215,
+              "file": "135122070988__ir_left.h5"
+            },
+            {
+              "bitwise": true,
+              "elements": 66048215,
+              "file": "135122070988__ir_right.h5"
+            },
+            {
+              "bitwise": true,
+              "elements": 198144215,
+              "file": "135122073201__color.h5"
+            },
+            {
+              "bitwise": true,
+              "elements": 66048215,
+              "file": "135122073201__depth.h5"
+            },
+            {
+              "bitwise": true,
+              "elements": 66048215,
+              "file": "135122073201__ir_left.h5"
+            },
+            {
+              "bitwise": true,
+              "elements": 66048215,
+              "file": "135122073201__ir_right.h5"
+            },
+            {
+              "bitwise": true,
+              "elements": 198144215,
+              "file": "135122076054__color.h5"
+            },
+            {
+              "bitwise": true,
+              "elements": 66048215,
+              "file": "135122076054__depth.h5"
+            },
+            {
+              "bitwise": true,
+              "elements": 66048215,
+              "file": "135122076054__ir_left.h5"
+            },
+            {
+              "bitwise": true,
+              "elements": 66048215,
+              "file": "135122076054__ir_right.h5"
+            }
+          ],
+          "passed": true
+        },
+        "sam3_masks": {
+          "error": "NOT RUN: designated MIG occupied by healthy FQL trainer PID 993329 (7388 MiB); short GPU gate deferred under the idle-ish condition.",
+          "passed": false,
+          "status": "not-run-gpu-busy"
+        },
+        "sensor_depth": {
+          "files": [
+            {
+              "bitwise": true,
+              "elements": 132096000,
+              "file": "135122070988__color.h5",
+              "max_abs_m": 0.0,
+              "max_rel": 0.0,
+              "valid_iou": 1.0
+            },
+            {
+              "bitwise": true,
+              "elements": 132096000,
+              "file": "135122073201__color.h5",
+              "max_abs_m": 0.0,
+              "max_rel": 0.0,
+              "valid_iou": 1.0
+            },
+            {
+              "bitwise": true,
+              "elements": 132096000,
+              "file": "135122076054__color.h5",
+              "max_abs_m": 0.0,
+              "max_rel": 0.0,
+              "valid_iou": 1.0
+            }
+          ],
+          "passed": true
+        }
+      },
+      "task": "pick-and-place"
+    }
+  ],
+  "footprints": {
+    "cpu_threads": 4,
+    "disk_declaration_gib": 32,
+    "disk_gib": 1.1739425659179688,
+    "gpu_declaration_gib": 16,
+    "gpu_peak_reserved_gib": 0.0,
+    "measured": false,
+    "ram_declaration_gib": 48,
+    "rss_peak_gib": 1.672088623046875
+  },
+  "qualified": false,
+  "schema": "local-phase-a-equivalence/1",
+  "tolerances": {
+    "depth_mean_abs_m": 0.002,
+    "depth_p99_abs_m": 0.01,
+    "depth_p99_rel": 0.01,
+    "depth_valid_iou_min": 0.995,
+    "mask_box_max_abs_px": 1.0,
+    "mask_mean_iou_min": 0.99,
+    "mask_min_iou_min": 0.95,
+    "mask_score_max_abs": 0.005
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "observed_utc": "2026-11-15T04:03:34.684863+00:00",
+  "gpu": "MIG-c3511b41-5f78-52f1-9b93-9c6794cdbbdd",
+  "gpu_instance_id": 6,
+  "idle_ish": false,
+  "resident_pid": 993329,
+  "resident_gpu_memory_mib": 7388,
+  "resident_job": "rwnt-20261110-fql-e2e_cnn-pick-and-place-s1",
+  "gpu_inference_run": false,
+  "reason": "Healthy active FQL trainer; user authorized short gate only if idle-ish."
+}

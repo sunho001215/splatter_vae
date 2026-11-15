@@ -1,0 +1,5 @@
+{
+  "reachable": false,
+  "error_class": "RemoteUnreachable",
+  "message": "Remote SSH endpoint unreachable; remote jobs remain unknown, not failed"
+}

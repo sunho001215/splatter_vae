@@ -1,0 +1,9 @@
+[ingest] 18.2 s, 0 remote calls
+{"audit_ok": true, "run": "/home/ws/ws/splatter4d/runs/local-phase-a-qualification-20261115/gate/covering/runs/20261115T035027Z/run.json"}
+[sensor_depth] 60.5 s, 24 remote calls
+{"audit_ok": true, "run": "/home/ws/ws/splatter4d/runs/local-phase-a-qualification-20261115/gate/covering/runs/20261115T035053Z/run.json"}
+[ingest] 16.7 s, 0 remote calls
+{"audit_ok": true, "run": "/home/ws/ws/splatter4d/runs/local-phase-a-qualification-20261115/gate/pick-and-place/runs/20261115T035232Z/run.json"}
+[sensor_depth] 59.5 s, 21 remote calls
+{"audit_ok": true, "run": "/home/ws/ws/splatter4d/runs/local-phase-a-qualification-20261115/gate/pick-and-place/runs/20261115T035256Z/run.json"}
+{"qualified": false, "report": "/home/ws/ws/splatter4d/runs/local-phase-a-qualification-20261115/EQUIVALENCE.md"}
