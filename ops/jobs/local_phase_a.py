@@ -204,6 +204,11 @@ def verified_job(bundle, jobfile, expected):
     return job, doc
 
 
+def require_job_gate(bundle, expected, payload):
+    from ops.jobs import local_phase_a_hybrid as h
+    return h.require_gate(bundle, expected) if h.is_hybrid(payload) else require_gate(bundle, expected)
+
+
 def scheduler_inputs(job, root=MAIN):
     """Pure-data resolver used by established local placement and admission."""
     args = job.get('args', [])
@@ -212,12 +217,17 @@ def scheduler_inputs(job, root=MAIN):
     require(job.get('id', '').startswith('rwv2-20261113-prep-ours-') and job.get('registration_tool') ==
             'runs/setup/tools/register_local_phase_a_20261115.py', 'unregistered phase-A row')
     payload, envelope = verified_job(bundle, path, checksum)
-    require(job['id'] == f"rwv2-20261113-prep-ours-{payload['episode']}-localA", 'row/episode mismatch')
+    from ops.jobs import local_phase_a_hybrid as h
+    require(job['id'] == f"rwv2-20261113-prep-ours-{payload['episode']}-{h.suffix(payload)}", 'row/episode mismatch')
     require(Path(payload['pipeline']['output_root']) == PROCESSED.joinpath(*identity(payload['episode'])), 'noncanonical local output')
-    require_gate(bundle, gate_sha)
+    require_job_gate(bundle, gate_sha, payload)
+    if h.is_hybrid(payload):
+        require(sha(Path(bundle)/'dedup-audit.json') == payload['dedup_audit_sha256'], 'dedup audit drift')
+    gate_path = Path(bundle) / (h.REPORT if h.is_hybrid(payload) else "equivalence.json")
     return list(args), {'inputs': {payload['raw']: payload['raw_sha256']}, 'dependency_inputs': {},
                         'input_closure': {str(path): checksum, str(Path(bundle)/'envelope.json'): payload['envelope_sha256'],
-                                          str(Path(bundle)/'equivalence.json'): gate_sha}, 'phase_a_envelope_sha256': payload['envelope_sha256'], 'phase_a_job_sha256': checksum,
+                                          str(gate_path): gate_sha,
+                                          **({str(Path(bundle)/'dedup-audit.json'): payload['dedup_audit_sha256']} if h.is_hybrid(payload) else {})}, 'phase_a_envelope_sha256': payload['envelope_sha256'], 'phase_a_job_sha256': checksum,
                         'raw_sha256': payload['raw_sha256'], 'equivalence_sha256': gate_sha}
 
 
@@ -272,8 +282,13 @@ def execute(bundle, jobfile, expected, gpu_gib=12, gate_sha=None, stages=STAGES)
     """Run inside pinned source; rehash in finally even on stage failure."""
     bundle = Path(bundle).resolve()
     job, doc = verified_job(bundle, jobfile, expected)
+    from ops.jobs import local_phase_a_hybrid as h
+    if h.is_hybrid(job):
+        require(tuple(stages) in (STAGES, h.STAGES), 'hybrid jobs permit only qualified stages')
+        stages = h.STAGES
+        require(gate_sha is not None, 'hybrid execution requires its three-stage gate')
     if gate_sha is not None:
-        require_gate(bundle, gate_sha)
+        require_job_gate(bundle, gate_sha, job)
     root = Path(job['pipeline']['output_root'])
     require(not any(p.is_symlink() for p in (root, *root.parents)), 'output symlink escape')
     require(root == PROCESSED.joinpath(*identity(job['episode'])) or root.is_relative_to(bundle / 'gate'), 'unsafe output root')
@@ -367,6 +382,10 @@ def execute(bundle, jobfile, expected, gpu_gib=12, gate_sha=None, stages=STAGES)
                 proof['stages'].append(stage)
                 atomic(root / 'local-phase-a.json', proof)
             proof.pop('active_stage', None)
+            if h.is_hybrid(job):
+                h.finish(root, job)
+                proof['mode'] = h.MODE
+                proof['remote_remaining_stages'] = ['sam3_masks']
             proof['status'] = 'ok'
         except BaseException as exc:
             proof.update(status='failed', error=f'{type(exc).__name__}: {exc}')

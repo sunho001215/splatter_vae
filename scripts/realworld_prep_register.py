@@ -72,7 +72,7 @@ def main():
     p.add_argument('--out',type=Path,required=True)
     p.add_argument('--processed',type=Path,required=True)
     p.add_argument('--raw',type=Path,default=Path('/home/ws/data/real_world'))
-    p.add_argument('--phase',choices=['A','B'],default='A')
+    p.add_argument('--phase',choices=['A','A-sam3','B'],default='A')
     p.add_argument('--rig-map',type=Path)
     p.add_argument('--host',choices=['local','remote'],default='local')
     p.add_argument('--image',required=True,help='installed prep image immutable sha256 ID')
@@ -88,7 +88,11 @@ def main():
     from ops.resources.gpu_guard import MIG_DEVICES, REMOTE_MIG_DEVICES
     rigmap=json.loads(a.rig_map.read_text()) if a.rig_map else None
     a.out=a.out.resolve()
-    jobs=compile_plans(a.plan,a.out,a.processed,a.raw,a.phase,rigmap)
+    if a.phase == 'A-sam3':
+        from ops.jobs.local_phase_a_hybrid import remote_jobs
+        jobs=remote_jobs(a.plan,a.out,a.processed,a.raw)
+    else:
+        jobs=compile_plans(a.plan,a.out,a.processed,a.raw,a.phase,rigmap)
     (a.out/'state').mkdir()
     a.processed.mkdir(parents=True,exist_ok=True)
     inventory=MIG_DEVICES if a.host=='local' else REMOTE_MIG_DEVICES

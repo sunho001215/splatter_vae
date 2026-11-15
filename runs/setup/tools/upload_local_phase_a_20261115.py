@@ -64,12 +64,18 @@ def main():
     a.require(source.is_dir(), 'local episode root does not exist')
     with a.output_lock(source) if args.execute else contextlib.nullcontext():
         proof = json.loads((source / 'local-phase-a.json').read_text())
-        a.require(proof['status'] == 'ok' and proof['integrity_after'] is True and proof['stages'] == list(a.STAGES), 'episode is incomplete')
-        for stage in a.STAGES:
+        from ops.jobs import local_phase_a_hybrid as h
+        hybrid = proof.get('mode') == h.MODE
+        stages = h.STAGES if hybrid else a.STAGES
+        a.require(proof['status'] == 'ok' and proof['integrity_after'] is True and proof['stages'] == list(stages), 'episode is incomplete')
+        for stage in stages:
             tail = 'normalized' if stage == 'ingest' else 'derived/' + stage
             a.require((source/'episodes'/args.episode/tail/'_COMPLETE.json').is_file(), 'missing stage completion')
         files = a.inventory(source)
         files.pop('.local-phase-a.lock', None)
+        payloads = {p: source/p for p in files}
+        if hybrid:
+            payloads, files = h.portable_payloads(source, args.episode)
         manifest = {'schema': 'local-phase-a-publication/1', 'episode': args.episode, 'files': files}
         if not args.execute:
             print(json.dumps({'source': str(source), 'target': target, 'files': len(files), 'published': False}, indent=2))
@@ -83,12 +89,20 @@ def main():
             archive = Path(tmp) / 'episode.tar'
             with tarfile.open(archive, 'w') as t:
                 for name in files:
-                    t.add(source / name, arcname=name, recursive=False)
+                    value = payloads[name]
+                    if isinstance(value, bytes):
+                        info = tarfile.TarInfo(name); info.size = len(value)
+                        t.addfile(info, io.BytesIO(value))
+                    else:
+                        t.add(value, arcname=name, recursive=False)
                 data = json.dumps(manifest, sort_keys=True).encode()
                 info = tarfile.TarInfo('.publication.json'); info.size = len(data)
                 t.addfile(info, io.BytesIO(data))
             # Recheck originals after packing; concurrent writers/drift fail before network publication.
-            a.require(all(a.sha(source/n) == h for n,h in files.items()), 'source changed during archive')
+            if hybrid:
+                a.require(h.portable_payloads(source, args.episode)[1] == files, 'source changed during archive')
+            else:
+                a.require(all(a.sha(source/n) == v for n,v in files.items()), 'source changed during archive')
             token = a.sha(archive)
             from ops.remote.access import RemoteClient
             client = RemoteClient()

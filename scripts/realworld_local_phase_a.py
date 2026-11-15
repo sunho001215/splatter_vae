@@ -25,8 +25,9 @@ def main(argv=None):
     if result == 0:
         from ops.jobs.local_phase_a import atomic
         import json
+        from ops.jobs.local_phase_a_hybrid import suffix
         proof = json.loads((Path(job['pipeline']['output_root'])/'local-phase-a.json').read_text())
-        atomic(Path('runs')/f"rwv2-20261113-prep-ours-{job['episode']}-localA"/'completion.json', proof)
+        atomic(Path('runs')/f"rwv2-20261113-prep-ours-{job['episode']}-{suffix(job)}"/'completion.json', proof)
     return result
 
 

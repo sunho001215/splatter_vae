@@ -283,3 +283,33 @@ def test_missing_duplicate_or_wrong_prompt_order_is_rejected(order):
            'sam3_prompt_order': order}
     with pytest.raises(ValueError, match='prompt order'):
         a.execution_pipeline(job)
+
+
+def test_hybrid_rows_pin_new_ids_resources_and_remain_held(tmp_path):
+    from ops.jobs import local_phase_a_hybrid as h
+    reg = tool('register_local_phase_a_20261115.py')
+    payload = dict(episode='drawer-open-v2-success-episode_000001', mode=h.MODE,
+                   stages=list(h.STAGES), remote_remaining_stages=['sam3_masks'])
+    release = {'commit': 'a'*40, 'image': 'sha256:test', 'evidence_manifest': 'docs/tests.json'}
+    row = reg.build_rows([payload], tmp_path, release, 'b'*64, h.FOOTPRINTS)[0]
+    assert row['id'].endswith('-hybridA') and row['priority'] == -4
+    assert row['planned_commit'] == release['commit'] and row['host'] == 'remote'
+    assert (row['mem_gb'], row['ram_gb'], row['cpu_threads'], row['disk_gb']) == (8, 16, 4, 32)
+    assert row['local_placement_pause'] == reg.PAUSE and 'repinned' + '_from' not in row
+
+
+def test_wrapper_publishes_hybrid_completion_under_its_exact_id(tmp_path, monkeypatch):
+    from scripts import realworld_local_phase_a as wrapper
+    from types import SimpleNamespace
+    ep = 'covering-failure-episode_000001'
+    output = tmp_path/'output'
+    a.atomic(output/'local-phase-a.json', {'status': 'ok', 'stages': list(a.STAGES[:3])})
+    payload = dict(episode=ep, mode='qualified-local-three/1', stages=list(a.STAGES[:3]),
+                   remote_remaining_stages=['sam3_masks'], pipeline={'output_root': str(output)})
+    monkeypatch.setattr(a, 'verified_job', lambda *args: (payload, {'frozen': str(tmp_path)}))
+    import subprocess
+    monkeypatch.setattr(subprocess, 'run', lambda *args, **kwargs: SimpleNamespace(returncode=0))
+    monkeypatch.chdir(tmp_path)
+    assert wrapper.main(['--bundle', 'bundle', '--job', 'job', '--job-sha256', 'a', '--gate-sha256', 'b']) == 0
+    result = json.loads((tmp_path/'runs'/f'rwv2-20261113-prep-ours-{ep}-hybridA/completion.json').read_text())
+    assert result['status'] == 'ok' and result['stages'] == list(a.STAGES[:3])

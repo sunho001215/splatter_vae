@@ -12,6 +12,7 @@ import sys
 
 ROOT = next(p for p in Path(__file__).resolve().parents if (p / 's4d').is_dir())
 sys.path[:0] = [str(ROOT), str(Path(__file__).resolve().parent)]
+from ops.jobs import local_phase_a_hybrid as h
 from ops.jobs import local_phase_a as a  # noqa: E402
 import register_ours_ext_20261113 as reviewed  # noqa: E402
 
@@ -34,7 +35,7 @@ def build_rows(payloads, bundle, release, gate_sha, footprints):
     rows = []
     for payload in payloads:
         ep = payload['episode']
-        identity = f'rwv2-20261113-prep-ours-{ep}-localA'
+        identity = f'rwv2-20261113-prep-ours-{ep}-{h.suffix(payload)}'
         path = Path(bundle) / 'jobs' / f'{ep}.json'
         serialized = (json.dumps(payload, indent=2, sort_keys=True, allow_nan=False) + '\n').encode()
         import hashlib
@@ -43,7 +44,7 @@ def build_rows(payloads, bundle, release, gate_sha, footprints):
                          priority=-4, script=a.SCRIPT, args=['--bundle', str(bundle), '--job', str(path),
                          '--job-sha256', checksum, '--gate-sha256', gate_sha], deps=[], max_restarts=0,
                          mem_gb=footprints.get('gpu_declaration_gib', 16), gpu_mem_gb=footprints.get('gpu_declaration_gib', 16),
-                         ram_gb=footprints.get('ram_declaration_gib', 48), cpu_threads=4, disk_gb=32,
+                         ram_gb=footprints.get('ram_declaration_gib', 48), cpu_threads=4, disk_gb=footprints.get('disk_declaration_gib', 32),
                          measured_footprints=footprints, planned_commit=release['commit'], planned_image=release['image'],
                          evidence_manifest=release['evidence_manifest'], release_source='local',
                          local_placement_pause=PAUSE, registration_tool=TOOL,
@@ -56,7 +57,9 @@ def publish(root, rows, release, bundle, gate_sha):
     a.require(a.git(root, 'symbolic-ref', '--short', 'HEAD') == 'main', 'execute requires main')
     with reviewed.locks(root):
         a.require(reviewed.local_release_pin(root, release['commit'], release['image']) == release, 'release changed')
-        a.require_gate(bundle, gate_sha)
+        a.require(rows, 'no rows to publish')
+        payload = json.loads(Path(rows[0]['args'][3]).read_text())
+        a.require_job_gate(bundle, gate_sha, payload)
         from ops.jobs import host_roles, realworld_local
         from ops.jobs.scheduler import read_registry
         current = reviewed.queue_document((root / 'experiments/queue.yaml').read_bytes())
@@ -64,7 +67,10 @@ def publish(root, rows, release, bundle, gate_sha):
         registry = read_registry(root / 'experiments/registry.jsonl')
         owned = host_roles.read_ownership()
         remote = root/'runs/dsreset-phaseA-remote-20261114/state'
-        a.require((remote/'STOP').exists(), 'drain R1 and disable its automatic preparation before local registration')
+        a.require(not remote.exists() or (remote/'STOP').exists(), 'drain R1 and disable its automatic preparation before local registration')
+        if h.is_hybrid(payload):
+            audit = json.loads((Path(bundle)/'dedup-audit.json').read_text())
+            a.require(all(a.sha(p) == v for p, v in audit['evidence_files'].items()), 'dedup evidence changed; restage after reconciliation')
         statepath = remote/'state.json'
         if statepath.exists():
             state = json.loads(statepath.read_text())
@@ -100,22 +106,34 @@ def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--bundle', type=Path, required=True)
     p.add_argument('--plan', action='append', type=Path, required=True)
+    p.add_argument('--local-subset', action='store_true', help='qualified three stages only; SAM3 stays remote')
+    p.add_argument('--qualification', type=Path, help='unchanged two-episode qualification report')
     p.add_argument('--stage', action='store_true')
     p.add_argument('--execute', action='store_true')
     args = p.parse_args(argv)
     bundle = args.bundle.resolve()
     envelope = a.verify_envelope(bundle, a.sha(bundle / 'envelope.json'))
-    gatepath = bundle / 'equivalence.json'
+    if args.local_subset and args.stage:
+        a.require(args.qualification is not None, 'hybrid stage requires --qualification')
+        a.require(not (bundle/h.REPORT).exists(), 'hybrid gate exists; inputs are immutable')
+        h.qualify(bundle, args.qualification)
+    gatepath = bundle / (h.REPORT if args.local_subset else 'equivalence.json')
     gate_sha = a.sha(gatepath) if gatepath.exists() else 'GATE-NOT-RUN'
     qualified = False
     footprints = {}
     try:
-        gate = a.require_gate(bundle, gate_sha)
+        gate = h.require_gate(bundle, gate_sha) if args.local_subset else a.require_gate(bundle, gate_sha)
         qualified = True
         footprints = gate['footprints']
     except (OSError, ValueError, KeyError):
         pass
-    payloads = list(jobs(args.plan, bundle))
+    if args.local_subset:
+        eligible, audit = h.audit_plans(args.plan)
+        if args.stage:
+            a.atomic(bundle/'dedup-audit.json', audit)
+        payloads = [h.make_job(row, bundle) for row in eligible]
+    else:
+        payloads = list(jobs(args.plan, bundle))
     role = json.loads((a.MAIN / 'runs/setup/role-release.json').read_text())
     release = dict(commit=a.git(a.MAIN, 'rev-parse', 'HEAD') if args.execute else envelope['commit'], image=role['image'], source='local', evidence_manifest='docs/tests.json (local evidence)')
     rows = build_rows(payloads, bundle, release, gate_sha, footprints)
@@ -126,7 +144,7 @@ def main(argv=None):
             a.atomic(path, payload)
             path.chmod(0o444)
     if args.execute:
-        a.require(qualified and footprints.get('measured') is True, 'full gate and measured footprints required')
+        a.require(rows and qualified and footprints.get('measured') is True, 'selected gate and measured footprints required')
         publish(ROOT, rows, release, bundle, gate_sha)
     print(json.dumps({'qualified': qualified, 'rows': rows, 'registered': len(rows) if args.execute else 0,
                       'staged': args.stage, 'launched': False}, indent=2))

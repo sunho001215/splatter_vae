@@ -57,6 +57,7 @@ FILE_CLASSES = {
     "tests/test_future_stride.py": "cpu",
     "tests/test_geometry.py": "cpu",
     "tests/test_gpu_guard.py": "cpu",
+    "tests/test_local_phase_a_hybrid.py": "cpu",
     "tests/test_gpu_isolation.py": "serial",  # Host GPU/process isolation probes use global host resources.
     "tests/test_heldout.py": "gpu",
     "tests/test_heldout_replay_check.py": "gpu",
