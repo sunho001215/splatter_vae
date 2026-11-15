@@ -12,3 +12,6 @@ def legacy_row(row):
     script = ENTRYPOINTS.get(row.get("script"))
     return {**row, "script": script} if script else row
 
+
+# Task-aware evaluation for new paired/matrix rows. Historical eval scopes stay pinned.
+ENTRYPOINTS['scripts/dsreset_evaluate_ours_task_length.py'] = 'scripts/evaluate_ours_task_length.py'
