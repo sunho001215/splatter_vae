@@ -1,6 +1,7 @@
 """One pass of the local Stage 2 driver: verify finished pretraining/evaluations/exports/RL, prepare evaluation configs,
-admit eligible jobs one by one under TRAINING_CEILING (150 GB less transient
-overhead and the fixed 2 GB policy-staging reserve), less validation reservations, through scripts/jobs.py. Never deletes anything.
+admit eligible jobs one by one under TRAINING_CEILING (225 GB less transient
+overhead and the fixed 2 GB policy-staging reserve), less validation reservations, through scripts/jobs.py.
+Never deletes anything.
 
     python -I stage2_local_driver.py [--dry-run]
 """
@@ -25,7 +26,7 @@ sys.path.insert(0, str(ROOT / 'runs/setup/tools'))
 from ops.resources import memory_budget as mb  # noqa: E402
 from ops.resources.reservations import validation_reservation as _validation_reservation  # noqa: E402
 
-# Local budget (user instruction 2026-10-21): cgroup working set max(0, memory.current - inactive_file) vs 150 GB,
+# Local budget (user instruction 2026-10-21): cgroup working set max(0, memory.current - inactive_file) vs 225 GB,
 # minus the transient-overhead margin (runs/setup/tools/memory_budget.py)
 # Temporary local validation reservation (user 2026-11-02): RAM withheld from local admission for the real-world/DROID
 # validation and the integration suite (scripts/run_tests.py, +40 GB). runs/setup/local-validation-reservation.json
@@ -56,7 +57,7 @@ try:
     fcntl.flock(_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
 except BlockingIOError:
     print('STAGE2_DRIVER another pass is running; skipped')
-    raise SystemExit(0)
+    raise SystemExit(0) from None
 
 
 def sha(path):
@@ -312,6 +313,7 @@ middle_pretrain_pending = any(status(j['id']) == jobs.PENDING for j in stage2
 
 
 from ops.jobs.local_readiness import LocalReadiness  # noqa: E402
+
 _owner_ready = LocalReadiness(queue, state, ROOT, now=stamp)
 
 
@@ -347,10 +349,12 @@ plain_extra = [{k: v for k, v in j.items() if k != '_registration'} for j in ext
 candidates = sorted((j for j in jobs.eligible(stage2 + plain_extra, eligible_view)
                      if j.get('host', 'local') == 'local' and admissible(j)), key=key)
 from ops.jobs.admission_pause import paused  # noqa: E402  (intentional pauses, user 2026-10-28)
+
 candidates = [j for j in candidates if not paused(j['id'])]
 # server roles (user directive 2026-11-06; configs/hosts/roles.yaml): only rows the local role admits (Meta-World), and
 # none an explicit migration holds (ownership records); the scheduler tick enforces the same at launch
 from ops.jobs import host_roles  # noqa: E402
+
 _roles, _ownership, _context = host_roles.load_roles(), host_roles.read_ownership(), {j['id']: j for j in queue['jobs']}
 candidates = [j for j in candidates if host_roles.refusal(j, 'local', _roles, _ownership, _context) is None]
 # A ready higher-priority row served by another local driver must get capacity first.
@@ -384,13 +388,15 @@ pss = session_pss()
 # remaining growth of every active local job: its measured/declared footprint minus what it already uses
 queue_scripts = {j['id']: j['script'] for j in queue['jobs']}
 # other drivers' local DrM jobs: the measured DrM footprints too (their resident replay is already in the charge)
-growth = {i: max(0, (footprint(by_id[i]) if i in by_id else int(MEASURED.get(queue_scripts.get(i), float(s.get('ram_gb', 0)) * 2**30)))
+growth = {i: max(0, (footprint(by_id[i]) if i in by_id else int(MEASURED.get(queue_scripts.get(i),
+                                                                                       float(s.get('ram_gb', 0)) * 2**30)))
                  - pss.get(int(s.get('pid', -1)), 0))
           for i, s in state.items() if s.get('host', 'local') == 'local' and s['status'] in jobs.ACTIVE}
 ramp = sum(growth.values())
 total = charge + ramp + cache_reserve
-from ops.jobs.priority import PriorityReservations, log_unready  # noqa: E402
+from ops.jobs.priority import PriorityReservations, log_unready  # noqa: E402,I001
 from ops.jobs import realworld_local  # noqa: E402
+
 log_unready([j for j in queue.get('jobs', []) if j.get('host', 'local') == 'local'],
             {j['id'] for j in candidates + _other_ready}, state, messages)
 _host = queue['hosts']['local']

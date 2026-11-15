@@ -84,8 +84,12 @@ def admission(job, snap, config):
     """Conservative full-cap accounting also covers launch-time growth and tmpfs."""
     ram, cpu, disk = job['ram_gib']*GIB, job['cpus'], job.get('disk_gib', 32)*GIB
     reasons = []
-    cap = min(config.get('ram_cap_bytes', 138_000_000_000),
-              138_000_000_000 if config['host'] == 'local' else 1000*GIB)
+    from ops.resources.memory_budget import TRAINING_CEILING
+
+    ceiling = TRAINING_CEILING if config['host'] == 'local' else 1000*GIB
+    # Keep explicit per-queue caps and the remote default; local follows the shared training budget.
+    default_cap = TRAINING_CEILING if config['host'] == 'local' else 138_000_000_000
+    cap = min(config.get('ram_cap_bytes', default_cap), ceiling)
     if snap['charge'] + snap['growth'] + snap['prep_ram'] + ram > cap:
         reasons.append('campaign RAM cap/growth')
     if snap['available'] < config.get('host_reserve_bytes', 60*GIB) + snap['prep_ram'] + ram:

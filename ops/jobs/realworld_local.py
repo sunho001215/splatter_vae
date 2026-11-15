@@ -13,7 +13,7 @@ mtime at admission, small files are hashed again. ``verify`` can audit every byt
 
 Placement compares the pinned release's execution scope once, under the placement locks, and records the digests in
 both ownership and pool records. Launch compares that scope against the tick's source identity without git reads.
-Training capacity uses TRAINING_CEILING, leaving the fixed 2 GB staging reserve inside 150 GB.
+Training capacity uses TRAINING_CEILING, leaving the fixed 2 GB staging reserve inside 225 GB.
 No campaign driver is imported here. Network access is confined to the explicitly requested plan/fetch operations;
 remote commands only read files, and downloads use RemoteClient's shared budget and verified atomic placement.
 """
@@ -41,8 +41,8 @@ if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
 from ops.jobs import host_roles  # noqa: E402
-from s4d.rwlearn.dsreset_entrypoints import legacy_row
 from s4d.rwlearn.configs import REMOTE_REALWORLD_ROOT  # noqa: E402
+from s4d.rwlearn.dsreset_entrypoints import legacy_row  # noqa: E402
 
 REMOTE_PREFIX = REMOTE_REALWORLD_ROOT
 MIRROR = REPO / "runs/realworld-inputs"
@@ -114,7 +114,8 @@ BASELINE_INPUT_FIELDS = (("dataset", "hdf5_path"), ("data_interface", "split_man
                          ("data_interface", "gate_report"))
 # consumers whose LOCAL run dependencies must carry a matching closeout record (realworld_local.py closeout: required
 # results present, nonempty, hashed) - the scheduler marks a local exit-0 run done without that check (Codex review)
-CLOSEOUT_CONSUMERS = (DSRESET_CHECK, DSRESET_ARTIFACT, "scripts/realworld_fql_dataset.py", "scripts/train_realworld_fql.py", "scripts/train_mvp3d.py",
+CLOSEOUT_CONSUMERS = (DSRESET_CHECK, DSRESET_ARTIFACT, "scripts/realworld_fql_dataset.py", "scripts/train_realworld_fql.py",
+                      "scripts/train_mvp3d.py",
                       OURS_CONTINUATION, *OURS_EVAL_SCRIPTS)
 REMOTE_LOCK = REPO / "runs/setup/remote-driver.lock"
 
@@ -1093,9 +1094,10 @@ def _running_slots(queue: dict, state: dict) -> dict:
     return slots
 
 
-def _pack(job: dict, slots: dict, excluded=()) -> str | None:
+def _pack(job: dict, slots: dict, excluded=(), *, root: Path = REPO) -> str | None:
+    from ops.jobs.local_devices import allows
     for gpu, slot in slots.items():
-        if (gpu not in excluded and not slot.get("exclusive_gpu", False)
+        if (allows(job, gpu, root) and gpu not in excluded and not slot.get("exclusive_gpu", False)
                 and not (job.get("exclusive_gpu", False) and slot["jobs"])
                 and job.get("gpu", "any") in ("any", gpu) and slot["jobs"] < int(slot["max_jobs"])
                 and slot["mem_gb"] + float(job.get("mem_gb", 0)) <= float(slot["max_mem_gb"])):
@@ -1180,7 +1182,7 @@ def plan(queue: dict, state: dict, roles: dict, *, paused_fn, allow_pauses=(), p
         if (not priority_reservations.feasible(row) or ram < need["ram_gb"] or cpu < need["cpu_threads"]
                 or disk < need["disk_gb"] or not priority_reservations.allows(row)):
             return False
-        gpu = _pack(row, slots, priority_reservations.excluded(row))
+        gpu = _pack(row, slots, priority_reservations.excluded(row), root=root)
         if gpu is None:
             return False
         ram -= need["ram_gb"]

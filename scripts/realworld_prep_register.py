@@ -2,12 +2,14 @@
 import argparse
 import json
 import os
-from pathlib import Path
 import sys
+from pathlib import Path
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 import yaml
-from ops.jobs.rwprep_mig import atomic, digest, validate, priority_path
+
+from ops.jobs.rwprep_mig import atomic, digest, priority_path, validate
+from ops.resources.memory_budget import TRAINING_CEILING
 
 
 def compile_plans(plans, out, processed, raw, phase='A', rig_map=None):
@@ -42,11 +44,12 @@ def compile_plans(plans, out, processed, raw, phase='A', rig_map=None):
             if phase=='B':
                 inputs[str(Path(rig).resolve())]=digest(rig)
                 inputs[str(Path(rig).resolve().with_suffix('.reference.npz'))]=digest(Path(rig).with_suffix('.reference.npz'))
-                from s4d.realworld.calib.rig import load_rig,rig_camera_status
+                from s4d.realworld.calib.rig import load_rig, rig_camera_status
                 document,_,_=load_rig(rig)
                 if any(rig_camera_status(document,c)[0]!='validated' for c in document['cameras']):
                     raise ValueError('phase B rig cameras must be automatically accepted')
-            stages='ingest,sensor_depth,foundation_stereo_depth,sam3_masks' if phase=='A' else 'calibrate,track_everything,track_motion,train_data'
+            stages=('ingest,sensor_depth,foundation_stereo_depth,sam3_masks' if phase=='A'
+                    else 'calibrate,track_everything,track_motion,train_data')
             steps=[{'kind':'rwprep','argv':['episode','--pipeline',str(path),'--server',server,
                     '--episode',ep,'--stages',stages]}]
             if phase=='B':
@@ -74,14 +77,15 @@ def main():
     p.add_argument('--host',choices=['local','remote'],default='local')
     p.add_argument('--image',required=True,help='installed prep image immutable sha256 ID')
     p.add_argument('--code',type=Path,default=Path(__file__).resolve().parents[1])
-    p.add_argument('--control-repo',type=Path,default=Path('/home/ws/ws/splatter4d'),help='LIVE queue, registry and driver locks; separate from frozen source')
+    p.add_argument('--control-repo',type=Path,default=Path('/home/ws/ws/splatter4d'),
+                   help='LIVE queue, registry and driver locks; separate from frozen source')
     p.add_argument('--tools',type=Path,default=Path('/home/ws/ws/realworld-ops/pre/tools/rwprep'))
     p.add_argument('--weights',type=Path,required=True)
     p.add_argument('--assets',type=Path,default=Path('/home/ws/ws/validation-20261031'))
     p.add_argument('--extra-readonly',type=Path,action='append',default=[])
     a=p.parse_args()
-    from ops.resources.gpu_guard import MIG_DEVICES,REMOTE_MIG_DEVICES
     from ops.jobs.rwprep_mig import run
+    from ops.resources.gpu_guard import MIG_DEVICES, REMOTE_MIG_DEVICES
     rigmap=json.loads(a.rig_map.read_text()) if a.rig_map else None
     a.out=a.out.resolve()
     jobs=compile_plans(a.plan,a.out,a.processed,a.raw,a.phase,rigmap)
@@ -98,7 +102,8 @@ def main():
         queue=str(a.control_repo/'experiments/queue.yaml'),registry=str(a.control_repo/'experiments/registry.jsonl'),
         admission_lock=str(a.control_repo/'runs/setup/stage2-driver.lock'),
         priority_file=priority_path(a.control_repo/'runs/setup/rwprep-mig-priority.d',a.out/'state'),
-        ram_cap_bytes=138_000_000_000 if a.host=='local' else 1000*2**30,
+        ram_cap_bytes=TRAINING_CEILING
+        if a.host=='local' else 1000*2**30,
         extra_readonly=list(map(str,a.extra_readonly)))
     validate(config,jobs)
     atomic(a.out/'dispatcher.json',config)

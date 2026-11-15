@@ -1,7 +1,7 @@
 """One pass of local admission for the new-baseline jobs (registrations listed below), job by job under the local
 full-charge cap through the scheduler. Same accounting as stage2_local_driver.py (cgroup budget usage + remaining
-growth of every active local job, 150 GB budget less transient, fixed 2 GB staging, and validation reservations) and the same lock file, so the two
-drivers never admit at the same time. Never deletes anything.
+growth of every active local job, 225 GB budget less transient, fixed 2 GB staging, and validation reservations)
+and the same lock file, so the two drivers never admit at the same time. Never deletes anything.
 
     python -I baseline_local_driver.py [--dry-run]
 """
@@ -26,7 +26,7 @@ from ops.resources import memory_budget as mb  # noqa: E402
 from ops.resources.reservations import validation_reservation as _validation_reservation  # noqa: E402
 
 # Local budget (user instruction 2026-10-21): the cgroup working set max(0, memory.current - inactive_file) against the
-# 150 GB ceiling, minus a transient-overhead margin; see runs/setup/tools/memory_budget.py.
+# 225 GB ceiling, minus a transient-overhead margin; see runs/setup/tools/memory_budget.py.
 # Temporary local validation reservation (user 2026-11-02): RAM withheld from local admission for the real-world/DROID
 # validation and the integration suite (scripts/run_tests.py, +40 GB). runs/setup/local-validation-reservation.json
 # {"ram_bytes": N, "expires_unix": T, "reason": ...}; absent or expired = 0. GPUs are reserved by leaving them out of
@@ -181,6 +181,7 @@ def footprint(job):
 
 
 from ops.jobs.local_readiness import LocalReadiness  # noqa: E402
+
 _owner_ready = LocalReadiness(queue, state, ROOT, now=stamp)
 
 # Baselines rank below the registered Stage 2 work (user 2026-10-13): yield while any local Stage 2 job is waiting
@@ -294,6 +295,7 @@ fair_active = [{'id': i, 'family': family(by_queue.get(i, {})),
                and current['status'] in jobs.RESERVING]
 fair_candidates = [{'id': j['id'], 'priority': j.get('priority', 5), 'family': family(j), 'ram_bytes': footprint(j),
                     'ram_gb': float(j.get('ram_gb', 0)), 'cpu_threads': j.get('cpu_threads', 8),
+                    'script': j['script'], 'planned_commit': j.get('planned_commit'),
                     'disk_gb': float(j.get('disk_gb', 0)),
                     'exclusive_gpu': j.get('exclusive_gpu', False),
                     'gpu': j.get('gpu', 'any'), 'mem_gb': float(j.get('mem_gb', 0)),
@@ -311,6 +313,7 @@ for j in external:
                             'trainer_ready': status(trained_by(j)) in jobs.ACTIVE | {jobs.DONE}})
 from ops.jobs import realworld_local  # noqa: E402
 from ops.jobs.priority import log_unready  # noqa: E402
+
 # localize() verifies a placed row's execution scope against the checkout's source identity (incl. pinned third-party
 # commits); without it third-party scope entries can never match (2026-11-14). Computed once per pass, only if needed.
 _source_identity = jobs.source_identity() if any(host_roles.remote_resident(by_queue[r['id']], _roles, by_queue)

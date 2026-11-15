@@ -1,11 +1,11 @@
-"""Lossless checkpoint pause of owned local pretraining runs for the local 150 GB ceiling (standing user authorization,
-2026-10-10). Signals a run only after (1) step_<N>.pt and latest.pt are published at the next save boundary N,
-(2) the scheduled validation at N is in metrics.jsonl, and (3) no training step after N has been logged. Resume via
-scripts/jobs.py (--resume auto) restores step N exactly; nothing logged is lost or duplicated.
+"""Lossless checkpoint pause of owned local pretraining runs for the temporary local 225 GB ceiling (user 2026-11-15;
+checkpoint-pause authorization 2026-10-10). Signals a run only after (1) step_<N>.pt and latest.pt are published at the
+next save boundary N, (2) the scheduled validation at N is in metrics.jsonl, and (3) no training step after N has been
+logged. Resume via scripts/jobs.py (--resume auto) restores step N exactly; nothing logged is lost or duplicated.
 
     python -I pause_pretrain_at_checkpoint.py [--reason <reason>] <job id> [...]
 
-`--reason` (default local_campaign_150GB_ceiling) is recorded in the pause events, which also carry
+`--reason` (retaining its historical default label) is recorded in the pause events, which also carry
 intentional_stop: true, so the following non-zero exit is identifiable as an intentional stop, not a crash.
 """
 import fcntl as fcntl

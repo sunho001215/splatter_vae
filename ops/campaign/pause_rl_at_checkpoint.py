@@ -1,7 +1,8 @@
-"""Lossless checkpoint pause of owned local DrM trainers (and then their evaluator companions) for the local 150 GB
-ceiling (standing user authorization, 2026-10-10). A trainer is signalled only within 1 s of publishing latest.pt at
-the next 50k boundary with no later train.jsonl step; its evaluator only after it has evaluated every snapshot up to
-that checkpoint. Records checkpoint_paused events; resumes via scripts/jobs.py from latest.pt / eval.jsonl.
+"""Lossless checkpoint pause of owned local DrM trainers (and then their evaluator companions) for the temporary local
+225 GB ceiling (user 2026-11-15; checkpoint-pause authorization 2026-10-10). A trainer is signalled only within 1 s of
+publishing latest.pt at the next 50k boundary with no later train.jsonl step; its evaluator only after it has evaluated
+every snapshot up to that checkpoint. Records checkpoint_paused events; resumes via scripts/jobs.py from latest.pt /
+eval.jsonl.
 
     python -I pause_rl_at_checkpoint.py <trainer job id> [...]
 """

@@ -1,13 +1,16 @@
 """Pure local admission policy: equal dominant-resource guarantees with work-conserving borrowing.
 
 Callers supply ready candidates in their existing order, active local reservations, measured RAM plus remaining
-growth, and the queue's MIG limits. Unknown domains are charged to Meta-World by the caller. No I/O occurs here.
+growth, and the queue's MIG limits. Unknown domains are charged to Meta-World by the caller.
+Pinned device eligibility is checked before reserving or assigning a slot.
 RAM not attributable to a job still consumes the cap. Running jobs are never moved or preempted.
 """
 
 from __future__ import annotations
 
 import copy
+
+from ops.jobs.local_devices import allows
 
 RESOURCES = ("ram_bytes", "gpu_jobs", "gpu_mem_gb")
 
@@ -79,7 +82,7 @@ def _select_tier(candidates: list[dict], active: list[dict], limits: dict, ram_c
     def possible(row):
         # An intrinsically impossible head can neither start nor reserve; the trainers behind it are not blocked by it.
         return row.get("ram_bytes", 0) <= ram_cap and any(
-            row.get("gpu", "any") in ("any", gpu) and row.get("mem_gb", 0) <= slot["max_mem_gb"]
+            allows(row, gpu) and row.get("gpu", "any") in ("any", gpu) and row.get("mem_gb", 0) <= slot["max_mem_gb"]
             for gpu, slot in slots.items())
 
     def choose(row):
@@ -87,7 +90,7 @@ def _select_tier(candidates: list[dict], active: list[dict], limits: dict, ram_c
         over the instances not reserved for another row."""
         best = None
         for gpu, slot in slots.items():
-            if (row.get("gpu", "any") in ("any", gpu) and reserved.get(gpu, row["id"]) == row["id"]
+            if (allows(row, gpu) and row.get("gpu", "any") in ("any", gpu) and reserved.get(gpu, row["id"]) == row["id"]
                     and not slot.get("exclusive_gpu", False)
                     and not (row.get("exclusive_gpu", False) and slot["jobs"])
                     and slot["jobs"] < int(slot["max_jobs"])
@@ -146,7 +149,8 @@ def _select_tier(candidates: list[dict], active: list[dict], limits: dict, ram_c
             taken = sum(h[k] for h in held.values())
             held[head["family"]][k] = min(need[k], max(0.0, capacity[k] - total[k] - taken))
         if gpu is None:
-            large = [g for g, slot in slots.items() if head.get("gpu", "any") in ("any", g) and g not in reserved
+            large = [g for g, slot in slots.items() if allows(head, g) and head.get("gpu", "any") in ("any", g)
+                     and g not in reserved
                      and float(head.get("mem_gb", 0)) <= float(slot["max_mem_gb"])]
             if large:
                 reserved[max(large, key=lambda g: (float(slots[g]["max_mem_gb"]) - slots[g]["mem_gb"],

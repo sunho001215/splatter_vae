@@ -12,6 +12,7 @@ from pathlib import Path
 
 FILE_CLASSES = {
     "tests/test_ours_matrix.py": "cpu",
+    "tests/test_local_devices.py": "cpu",
     "tests/test_rwprep_mig.py": "cpu",
     "tests/test_dsreset_preparation.py": "cpu",
     "tests/test_dsreset_registration.py": "cpu",

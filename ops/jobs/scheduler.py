@@ -30,29 +30,37 @@ REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
 from ops.containers.admission import gpu_reasons, host_reasons  # noqa: E402
 from ops.containers.verification import validate_report, validate_verification, verification_resources  # noqa: E402
-from ops.jobs.footprints import exclusive, fql_ram_gb, ram_gb  # noqa: E402
-from ops.jobs import host_roles, realworld_local  # noqa: E402
-from ops.jobs.priority import PriorityReservations  # noqa: E402
-from ops.jobs import release_reservation  # noqa: E402
+from ops.jobs import (  # noqa: E402
+    host_roles,
+    realworld_local,
+    release_reservation,  # noqa: E402
+)
 from ops.jobs.arguments import option as _option  # noqa: E402
-from ops.resources.gpu_guard import (APPROVED_HOST_GPUS, HOST_CONFIG_PATH, MIG_DEVICES, REMOTE_MIG_DEVICES,  # noqa: E402
-                                     REMOTE_MIG_ERROR)
-from ops.remote.access import sha256 as file_sha256  # noqa: E402
-from ops.jobs.remote_backend import ROOT as REMOTE_ROOT  # noqa: E402
+from ops.jobs.footprints import exclusive, fql_ram_gb, ram_gb  # noqa: E402
+from ops.jobs.priority import PriorityReservations  # noqa: E402
 from ops.jobs.remote_backend import (  # noqa: E402
     COTENANT_GPU_MARGIN_GB,
-    ContainerRemovalRefused,
     AdmissionRefused,
-    validate_guard_refusal,
-    container_name,
+    ContainerRemovalRefused,
     RemoteBackend,
     RemoteJobError,
     RemoteUnreachable,
+    container_name,
     cotenant_charges,
     validate_container,
+    validate_guard_refusal,
 )
+from ops.jobs.remote_backend import ROOT as REMOTE_ROOT  # noqa: E402
 from ops.jobs.retired import retired_reason  # noqa: E402
 from ops.provenance.upstreams import working_tree_identity as third_party_identity  # noqa: E402
+from ops.remote.access import sha256 as file_sha256  # noqa: E402
+from ops.resources.gpu_guard import (  # noqa: E402
+    APPROVED_HOST_GPUS,
+    HOST_CONFIG_PATH,
+    MIG_DEVICES,
+    REMOTE_MIG_DEVICES,
+    REMOTE_MIG_ERROR,
+)
 from ops.resources.nvidia_query import mig_query  # noqa: E402
 from ops.resources.processes import pid_alive as pid_alive  # noqa: E402
 
@@ -410,10 +418,13 @@ def choose_gpu(job: dict, limits: dict, running: list[dict], foreign: set[str],
                cotenant: dict | None = None) -> str | None:
     host = job.get("host", "local")
     candidates = list(limits) if job.get("gpu", "any") == "any" else [job["gpu"]]
+    from ops.jobs.local_devices import allows
     best = None
     for uuid in candidates:
         if uuid not in APPROVED_HOST_GPUS[host]:
             raise ValueError(f"job {job['id']} requests non-authorized GPU {uuid} on {host}")
+        if not allows(job, uuid, REPO):
+            continue
         from ops.jobs.continuation import profile_matches
         if not profile_matches(job, uuid, set(MIG_DEVICES) | set(REMOTE_MIG_DEVICES)):
             continue
@@ -441,7 +452,8 @@ def choose_gpu(job: dict, limits: dict, running: list[dict], foreign: set[str],
                                           round((memory-float(job['mem_gb'])) * GIB),
                                           round(shared['pending_gb'] * GIB), count,
                                           limits[uuid]['max_jobs'], exclusive(job),
-                                          shared.get('exclusive_gpu', False), uuid in foreign or shared.get('foreign', False))
+                                          shared.get('exclusive_gpu', False),
+                                          uuid in foreign or shared.get('foreign', False))
                 except (KeyError, ValueError):
                     continue
                 if reasons:
@@ -509,12 +521,18 @@ def launch(job: dict, gpu: str, attempt: int, runs: Path = RUNS, args: list | No
     train_realworld_fql.py used ~95 cores). Every MIG launch defaults to eight threads when no explicit quota is given.
     The variables bound the default intra-op pools only; unlike the container's NanoCpus quota they do not cap
     inter-op pools, total threads or aggregate CPU time."""
+    from ops.jobs.local_devices import allows, execution_root
+    if not allows(job, gpu, REPO):
+        raise ValueError(f"job {job['id']}: device refused by pinned local GPU guard: {gpu}")
     script = check_guarded(job["script"])
     run_dir = runs / job["id"]
     run_dir.mkdir(parents=True, exist_ok=True)
     (run_dir / "exit_code").unlink(missing_ok=True)
     env = {**os.environ, "CUDA_VISIBLE_DEVICES": gpu, "MUJOCO_GL": "egl", "PYOPENGL_PLATFORM": "egl",
            "S4D_HOST_CONFIG": str(HOST_CONFIG_PATH)}
+    checkout = execution_root(job, REPO)
+    if checkout != REPO.resolve():
+        env["S4D_HOST_CONFIG"] = str(checkout / "configs/hosts/local.yaml")
     env.pop("MUJOCO_EGL_DEVICE_ID", None)
     if cpu_threads is _UNBOUNDED and gpu in MIG_DEVICES:
         cpu_threads = thread_limit(job.get("cpu_threads", DEFAULT_CPU_THREADS))
@@ -1365,7 +1383,8 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
                 charge["mem_gb"] = max(0.0, charge["mem_gb"] - reservation(current, jobs.get(job_id, {}), "mem_gb"))
             for key in ("ram_gb", "disk_gb", "cpu_threads"):
                 release_charge[key] = max(0, release_charge[key] - reservation(current, jobs.get(job_id, {}), key))
-    phantom = [{"host": "remote", "gpu": uuid, "mem_gb": charge["mem_gb"], "pid": None, "exclusive_gpu": uuid.startswith("MIG-")}
+    phantom = [{"host": "remote", "gpu": uuid, "mem_gb": charge["mem_gb"],
+                "pid": None, "exclusive_gpu": uuid.startswith("MIG-")}
                for uuid, charge in release_charge["gpus"].items()]
     # Remote CPU threads in use for every admission: our executing containers plus known
     # co-tenants, updated after every launch of this tick
@@ -1612,7 +1631,8 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
             record({"event": "launching", **event}, registry)
             resource["available"] -= math.ceil(need * GIB) / GIB
             resource["disk_free"] -= math.ceil(disk_need)
-            running.append({"host": "remote", "gpu": gpu, "mem_gb": math.ceil(float(job["mem_gb"]) * GIB) / GIB, "pid": None, "exclusive_gpu": exclusive(job)})
+            running.append({"host": "remote", "gpu": gpu, "mem_gb": math.ceil(float(job["mem_gb"]) * GIB) / GIB,
+                            "pid": None, "exclusive_gpu": exclusive(job)})
             cpu_used += threads
             if gpu in resource.get("cotenant", {}):
                 resource["cotenant"][gpu]["free_gb"] -= float(job["mem_gb"])
@@ -1662,7 +1682,8 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
                     **identity, **input_event}, registry)
             resource["available"] -= need
             resource["disk_free"] -= disk_need
-            running.append({"host": "local", "gpu": gpu, "mem_gb": float(job["mem_gb"]), "pid": pid, "exclusive_gpu": exclusive(job)})
+            running.append({"host": "local", "gpu": gpu, "mem_gb": float(job["mem_gb"]),
+                            "pid": pid, "exclusive_gpu": exclusive(job)})
             local_cpu_used += threads
             if gpu in resource.get("cotenant", {}):
                 resource["cotenant"][gpu]["free_gb"] -= float(job["mem_gb"])

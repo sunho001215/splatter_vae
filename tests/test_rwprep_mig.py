@@ -18,8 +18,8 @@ def job():
 
 
 @pytest.mark.parametrize('field,value,reason',[
-    ('charge',130*P.GIB,'RAM'),('load',9000,'CPU'),('idle',.1,'idle'),
-    ('available',50*P.GIB,'reserve'),('disk_free',100*P.GIB,'disk'),('growth',130*P.GIB,'growth')])
+    ('charge',210*P.GIB,'RAM'),('load',9000,'CPU'),('idle',.1,'idle'),
+    ('available',50*P.GIB,'reserve'),('disk_free',100*P.GIB,'disk'),('growth',210*P.GIB,'growth')])
 def test_admission_rejects_without_bypassing_other_users(field,value,reason):
     s=snap();s[field]=value
     gpu,reasons=P.admission(job(),s,{'host':'local'})
@@ -290,3 +290,17 @@ def test_local_stop_after_slow_worker_upload_prevents_launch(tmp_path, monkeypat
     with pytest.raises(RuntimeError,match='STOP'):
         R.launch_job(None,config,job(),{'attempt':1})
     assert not calls
+
+
+def test_local_prep_uses_shared_training_ceiling_and_retains_declared_caps():
+    from ops.resources.memory_budget import TRAINING_CEILING
+
+    state = snap()
+    state['available'] = 500 * P.GIB
+    state['charge'] = TRAINING_CEILING - job()['ram_gib'] * P.GIB
+    assert P.admission(job(), state, {'host': 'local'})[0] == 'MIG-a'
+    state['charge'] += 1
+    assert 'campaign RAM cap/growth' in P.admission(job(), state, {'host': 'local'})[1]
+    state['charge'] = 130 * P.GIB
+    assert P.admission(job(), state, {'host': 'local'})[0] == 'MIG-a'
+    assert P.admission(job(), state, {'host': 'local', 'ram_cap_bytes': 138_000_000_000})[0] is None

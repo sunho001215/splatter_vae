@@ -73,9 +73,10 @@ ENVIRONMENT_SCOPE = ("uv.lock", "pyproject.toml")
 # a job imports the scheduler only for the tested-source check of scripts/_bootstrap.py) and the GPU guard (approved
 # host tables and output-path authorization). Every other imported operational file (run identity / provenance,
 # evaluator registry access, remote access, ...) must be identical like the research code.
+# + local pinned-device admission (user 2026-11-15): eligibility only, never execution semantics.
 # + the remote MIG allowlist loader that gpu_guard imports (2026-11-11): GPU authorization, not execution semantics
 OPERATIONAL_ALLOWED = frozenset({"ops/jobs/scheduler.py", "ops/jobs/host_roles.py", "ops/resources/gpu_guard.py",
-                                 "ops/resources/mig_inventory.py"})
+                                 "ops/resources/mig_inventory.py", "ops/jobs/local_devices.py"})
 IMPORT_ROOTS = ("s4d", "ops", "scripts")
 # Checkpoint components a resume restores (scripts/train_rl.py, s4d/train/checkpoint.py), by script.
 COMPONENTS = {

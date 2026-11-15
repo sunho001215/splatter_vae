@@ -1,0 +1,29 @@
+{
+  "user_directive": "2026-11-15 15:00 KST",
+  "results": [
+    {
+      "mapping": [
+        {
+          "index": 0,
+          "uuid": "MIG-f30be823-f40d-5292-9474-427746dd3703",
+          "name": "NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition MIG 1g.24gb"
+        }
+      ],
+      "tensor_bytes": 4194304,
+      "result": 1073741824.0,
+      "passed": true
+    },
+    {
+      "mapping": [
+        {
+          "index": 0,
+          "uuid": "MIG-0b9a2ef1-2f30-5730-ab39-c31e8e7242b6",
+          "name": "NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition MIG 1g.24gb"
+        }
+      ],
+      "tensor_bytes": 4194304,
+      "result": 1073741824.0,
+      "passed": true
+    }
+  ]
+}

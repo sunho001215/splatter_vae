@@ -90,6 +90,11 @@ def pinned_scope(monkeypatch):
             raise rw.LocalInputError("no pinned release (planned_commit): local placement needs one")
         return copy.deepcopy(SCOPE)
     monkeypatch.setattr(rw, "placement_scope", scope)
+    from ops.jobs import local_devices
+    original = local_devices._release_devices
+    monkeypatch.setattr(local_devices, "_release_devices",
+                        lambda root, commit: frozenset(jobs.APPROVED_HOST_GPUS["local"][:8])
+                        if commit == COMMIT else original(root, commit))
 
 
 def placed(job_id="fql", scope=None):
@@ -819,7 +824,8 @@ def test_retry_identity_covers_the_transitive_input_closure(mirrored, monkeypatc
 
 def test_ready_local_retries_reserve_capacity(mirrored):
     f = mirrored
-    local = row("retry", host="local", pin_host="local", gpu="any", role="metaworld", script="scripts/train.py", args=[], deps=[])
+    local = row("retry", host="local", pin_host="local", gpu="any", role="metaworld",
+                script="scripts/train.py", args=[], deps=[])
     crashed = {**f.state, "retry": {"host": "local", "status": "crashed", "failures": 1, "attempts": 1}}
     assert planning(f, [local, row()], state=crashed)[0]["reason"] == "local capacity"
     exhausted = {**f.state, "retry": {"host": "local", "status": "crashed", "failures": 2, "attempts": 2}}
@@ -1225,6 +1231,7 @@ def test_remote_driver_keeps_previous_role_releases_for_retries_only():
 @pytest.mark.parametrize('condition,expected', [('ours', 3), ('dynamo', 3), ('e2e_cnn', 8)])
 def test_measured_realworld_fql_ram_is_shared_by_admission_and_running_growth(condition, expected):
     import ast
+
     from ops.jobs import scheduler
     from ops.jobs.footprints import ram_gb
 
@@ -1722,7 +1729,8 @@ def _snerl_teacher(f, monkeypatch, payload=b"official dino weights", pinned=None
     job = geometry_rows(f)["snerl"]
     config = f.root / "configs/realworld/baselines/snerl/real.yaml"
     config.write_bytes((rw.REPO / "configs/realworld/baselines/snerl/pick-and-place.yaml").read_bytes())
-    job["args"][job["args"].index("configs/realworld/baselines/snerl/task.yaml")] = "configs/realworld/baselines/snerl/real.yaml"
+    job["args"][job["args"].index("configs/realworld/baselines/snerl/task.yaml")] = (
+        "configs/realworld/baselines/snerl/real.yaml")
     return job, weights
 
 

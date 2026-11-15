@@ -43,8 +43,9 @@ class PriorityReservations:
                 self.messages.append(f"{row['id']}: {reason}; no priority reservation")
 
     def devices(self, row):
+        from ops.jobs.local_devices import allows
         return [gpu for gpu, limit in self.limits.items()
-                if row.get('gpu', 'any') in ('any', gpu) and int(limit['max_jobs']) > 0
+                if allows(row, gpu) and row.get('gpu', 'any') in ('any', gpu) and int(limit['max_jobs']) > 0
                 and (row.get('gpu_profile') is None or (row.get('gpu_profile') == '1g.24gb'
                                                        and gpu.startswith('MIG-')))
                 and 0 <= float(row.get('mem_gb', 0)) <= float(limit['max_mem_gb'])]

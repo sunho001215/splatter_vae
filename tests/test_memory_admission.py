@@ -6,15 +6,16 @@ from pathlib import Path
 
 import pytest
 
-from ops.resources import memory_budget as mb, memory_watch as watch
 from ops.jobs.footprints import local_footprint
+from ops.resources import memory_budget as mb
+from ops.resources import memory_watch as watch
 
 
 @pytest.mark.parametrize('mode,usage,growth,extra,host,expected', [
-    ('fits', 64e9, 30e9, 44e9, 200e9, True),
-    ('fits', 64e9, 30e9, 44e9 + 1, 200e9, False),
-    ('fits-staging', 138e9, 100e9, 2e9, 200e9, True),
-    ('fits-staging', 138e9 + 1, 0, 2e9, 200e9, False),
+    ('fits', 64e9, 30e9, 119e9, 200e9, True),
+    ('fits', 64e9, 30e9, 119e9 + 1, 200e9, False),
+    ('fits-staging', 213e9, 100e9, 2e9, 200e9, True),
+    ('fits-staging', 213e9 + 1, 0, 2e9, 200e9, False),
     ('fits-staging', 64e9, 100e9, 2e9 + 1, 200e9, False),
     ('fits-staging', 64e9, 100e9, 2e9, mb.HOST_RESERVE + 2e9 - 1, False),
     ('fits-staging', 64e9, 100e9, 2e9, mb.HOST_RESERVE + 2e9, True),
@@ -33,7 +34,7 @@ def test_modes(monkeypatch, capsys, mode, usage, growth, extra, host, expected):
     assert watch.main() == (0 if expected else 1)
     data = json.loads(capsys.readouterr().out)
     assert data['fits'] is expected and data['mode'] == mode
-    assert data['staging_reserve'] == 2_000_000_000 and data['ceiling'] == 150_000_000_000
+    assert data['staging_reserve'] == 2_000_000_000 and data['ceiling'] == 225_000_000_000
     assert data['remaining_growth'] == (0 if mode == 'fits-staging' else growth)
 
 
@@ -72,16 +73,16 @@ def test_driver_cap_arithmetic(filename):
         isinstance(t, ast.Name) and t.id == 'CAP' for t in n.targets))
     names = {'mb': mb, 'VALIDATION_RESERVATION': 7_000_000_000}
     exec(compile(ast.Module(body=[node], type_ignores=[]), str(source), 'exec'), names)
-    assert mb.CEILING == 150_000_000_000
-    assert mb.TRAINING_CEILING == 138_000_000_000
-    assert names['CAP'] == 131_000_000_000
+    assert mb.CEILING == 225_000_000_000
+    assert mb.TRAINING_CEILING == 213_000_000_000
+    assert names['CAP'] == 206_000_000_000
 
 
 def test_realworld_capacity_withholds_staging(monkeypatch):
     from ops.jobs import realworld_local
     monkeypatch.setattr(mb, 'snapshot', lambda: {'budget_usage': 64_000_000_000})
     monkeypatch.setattr(mb, 'session_nonfile_pss', lambda: {})
-    assert realworld_local._capacity({'jobs': []}, {}) == {'ram_free_bytes': 74_000_000_000}
+    assert realworld_local._capacity({'jobs': []}, {}) == {'ram_free_bytes': 149_000_000_000}
 
 
 @pytest.mark.parametrize('job,recorded_ram,footprint', [

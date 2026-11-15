@@ -1,4 +1,4 @@
-"""Local memory-budget accounting (user decision 2026-10-21, option (b)): the 150 GB local budget counts every byte of the
+"""Local memory-budget accounting (user decision 2026-10-21, option (b)): the 225 GB local budget counts every byte of the
 container's cgroup except verified reclaimable, clean, disk-backed file cache, whether on the active or the inactive
 LRU generations.
 
@@ -13,7 +13,7 @@ can drop at any time without writeback. (Earlier definitions, kept in memory_bud
 set max(0, memory.current - inactive_file), which counted clean active dataset cache; that share swung 2.6-62 GB with
 the multi-generational LRU's aging.)
 
-The ceiling stays 150,000,000,000 bytes. A fixed 2,000,000,000-byte policy-staging
+Temporary ceiling (user 2026-11-15): 225,000,000,000 bytes. A fixed 2,000,000,000-byte policy-staging
 reserve sits inside that budget. Training/suite admission uses TRAINING_CEILING
 (ceiling minus transient overhead minus staging reserve); staging measures actual
 budget usage, fits within STAGING_RESERVE, retains transient overhead, and must
@@ -33,7 +33,7 @@ from __future__ import annotations
 from pathlib import Path
 
 CGROUP = Path('/sys/fs/cgroup')
-CEILING = 150_000_000_000
+CEILING = 225_000_000_000
 TRANSIENT_OVERHEAD = 10_000_000_000  # the previous 140 GB admission ceiling kept the same 10 GB margin
 STAGING_RESERVE = 2_000_000_000
 TRAINING_CEILING = CEILING - TRANSIENT_OVERHEAD - STAGING_RESERVE

@@ -1,0 +1,43 @@
+{
+  "dry_run": true,
+  "queue_written": false,
+  "queue_sha256": "09239a9c5cc818c1e0dc06fb8f2926f3c3f5301cdc0ba3969d650dff13b0a1d8",
+  "local_limits_before": 8,
+  "local_limits_after": 16,
+  "new_limits": {
+    "MIG-f30be823-f40d-5292-9474-427746dd3703": {
+      "max_jobs": 3,
+      "max_mem_gb": 22
+    },
+    "MIG-908fda99-f524-5319-ae5a-9f534a881ee1": {
+      "max_jobs": 3,
+      "max_mem_gb": 22
+    },
+    "MIG-3b813dc6-21e9-5e2e-bc3c-4aa8659b51a8": {
+      "max_jobs": 3,
+      "max_mem_gb": 22
+    },
+    "MIG-42dd67ec-ecc1-5c8f-b9a2-22e9a48a8c29": {
+      "max_jobs": 3,
+      "max_mem_gb": 22
+    },
+    "MIG-d253e1a4-e168-5dfa-a3e4-51a7be631cbe": {
+      "max_jobs": 3,
+      "max_mem_gb": 22
+    },
+    "MIG-ee350888-38e3-5d39-89ea-3ebab8f12202": {
+      "max_jobs": 3,
+      "max_mem_gb": 22
+    },
+    "MIG-43d75dd7-aed7-5b0f-8977-c0835bdbc6bb": {
+      "max_jobs": 3,
+      "max_mem_gb": 22
+    },
+    "MIG-0b9a2ef1-2f30-5730-ab39-c31e8e7242b6": {
+      "max_jobs": 3,
+      "max_mem_gb": 22
+    }
+  },
+  "job_rows_byte_identical": true,
+  "note": "Pure in-memory rewrite of a read-only live queue snapshot; no queue, registry or lock file was written."
+}

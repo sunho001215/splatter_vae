@@ -1,0 +1,6 @@
+{
+  "python_files": 25,
+  "new_violations": [],
+  "existing_violations": 37,
+  "note": "Existing violations remain in ops/jobs/rwprep_mig.py and tests/test_rwprep_mig.py; changed code has no new lint violations."
+}
