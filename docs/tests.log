@@ -1,18 +1,18 @@
 Collecting authoritative suite; CPU budget=24, CPU shards=8, GPU shards=1
-Collected 4012 tests; 1 exclusive serial shard(s) with 24 threads, then 9 parallel shards, 2 threads each
-Shard 0 (serial): exit=0, seconds=212.6
-Shard 7 (cpu): exit=0, seconds=40.1
-Shard 4 (cpu): exit=0, seconds=50.8
-Shard 8 (cpu): exit=0, seconds=68.9
-Shard 3 (cpu): exit=0, seconds=80.4
-Shard 6 (cpu): exit=0, seconds=88.2
-Shard 9 (cpu): exit=0, seconds=96.5
-Shard 2 (cpu): exit=0, seconds=100.7
-Shard 5 (cpu): exit=0, seconds=104.0
-Shard 1 (gpu): exit=0, seconds=534.4
+Collected 4065 tests; 1 exclusive serial shard(s) with 24 threads, then 9 parallel shards, 2 threads each
+Shard 0 (serial): exit=0, seconds=212.7
+Shard 7 (cpu): exit=0, seconds=47.2
+Shard 4 (cpu): exit=0, seconds=60.4
+Shard 8 (cpu): exit=0, seconds=63.9
+Shard 9 (cpu): exit=0, seconds=76.9
+Shard 5 (cpu): exit=0, seconds=89.5
+Shard 3 (cpu): exit=0, seconds=90.2
+Shard 2 (cpu): exit=0, seconds=100.0
+Shard 6 (cpu): exit=0, seconds=108.0
+Shard 1 (gpu): exit=0, seconds=479.1
 
 ===== collection =====
-[gpu_guard] cuda:0 -> MIG-2ebd9e11-f2e0-5e22-870a-7779d44ec10a (NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition MIG 1g.24gb)
+[gpu_guard] cuda:0 -> MIG-0b9a2ef1-2f30-5730-ab39-c31e8e7242b6 (NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition MIG 1g.24gb)
 tests/test_adoption_guards.py::test_daemon_refreshes_pause_evidence_once_per_tick
 tests/test_adoption_guards.py::test_other_pause_consumers_see_additions_lifts_and_invalid_evidence
 tests/test_adoption_guards.py::test_cross_driver_reservations_require_all_owning_driver_gates[config]
@@ -779,7 +779,7 @@ tests/test_gpu_guard.py::test_invalid_cuda_environment_is_rejected[,]
 tests/test_gpu_guard.py::test_invalid_cuda_environment_is_rejected[GPU-0,]
 tests/test_gpu_guard.py::test_cuda_environment_rejects_duplicates_and_accepts_selected_set
 tests/test_gpu_guard.py::test_local_mig_instances_map_to_their_parent_gpus
-tests/test_gpu_guard.py::test_revoked_local_gpu_and_its_mig_instances_are_rejected
+tests/test_gpu_guard.py::test_expanded_local_devices_are_authorized
 tests/test_gpu_guard.py::test_repository_cache_and_evidence_paths_are_constrained
 tests/test_gpu_guard.py::test_remote_runtime_root_allows_descendants_not_arbitrary_paths
 tests/test_gpu_guard.py::test_external_evidence_gate_remains_strict
@@ -1077,6 +1077,40 @@ tests/test_lifecycle_cleanup.py::test_cli_local_pass_dry_run_writes_nothing_then
 tests/test_lifecycle_cleanup.py::test_traversal_and_noncanonical_references_are_never_harmless
 tests/test_lifecycle_cleanup.py::test_cli_local_pass_rechecks_only_runs_with_work_reads_inputs_once_and_ledgers_each_run
 tests/test_lifecycle_cleanup.py::test_cli_files_appearing_after_the_no_op_check_still_get_the_pre_deletion_recheck
+tests/test_local_devices.py::test_old_release_and_new_release_use_their_own_allowlists
+tests/test_local_devices.py::test_old_pin_never_admitted_when_only_new_devices_free
+tests/test_local_devices.py::test_pinned_entry_point_uses_its_guard_and_config
+tests/test_local_devices.py::test_new_pinned_release_can_use_all_sixteen
+tests/test_local_devices.py::test_malformed_pinned_config_fails_closed[None]
+tests/test_local_devices.py::test_malformed_pinned_config_fails_closed[{broken]
+tests/test_local_devices.py::test_malformed_pinned_config_fails_closed[name: local\ngpu_uuids: [MIG-a, MIG-a]\n]
+tests/test_local_devices.py::test_malformed_pinned_config_fails_closed[name: local\ngpu_uuids: [MIG-a]\nruntime_root: /other\n]
+tests/test_local_devices.py::test_planner_without_script_uses_current_checkout
+tests/test_local_devices.py::test_identical_owned_old_pin_uses_new_migs_without_mutation
+tests/test_local_devices.py::test_old_pin_new_migs_refuse_incomplete_or_changed_scope[module]
+tests/test_local_devices.py::test_old_pin_new_migs_refuse_incomplete_or_changed_scope[script]
+tests/test_local_devices.py::test_old_pin_new_migs_refuse_incomplete_or_changed_scope[config]
+tests/test_local_devices.py::test_old_pin_new_migs_refuse_incomplete_or_changed_scope[environment]
+tests/test_local_devices.py::test_old_pin_new_migs_refuse_incomplete_or_changed_scope[argv]
+tests/test_local_devices.py::test_old_pin_new_migs_refuse_incomplete_or_changed_scope[upstream]
+tests/test_local_devices.py::test_old_pin_new_migs_refuse_incomplete_or_changed_scope[deleted]
+tests/test_local_devices.py::test_old_pin_new_migs_refuse_incomplete_or_changed_scope[missing-proof]
+tests/test_local_devices.py::test_old_pin_new_migs_refuse_incomplete_or_changed_scope[pin]
+tests/test_local_devices.py::test_old_pin_new_migs_refuse_incomplete_or_changed_scope[owner]
+tests/test_local_devices.py::test_old_pin_new_migs_refuse_incomplete_or_changed_scope[state]
+tests/test_local_devices.py::test_old_pin_new_migs_refuse_incomplete_or_changed_scope[kind]
+tests/test_local_devices.py::test_missing_ownership_invalid_pin_and_external_checkout_fail_closed
+tests/test_local_phase_a_hybrid.py::test_stage_contract_rejects_sam3_and_unknown_modes
+tests/test_local_phase_a_hybrid.py::test_full_gate_is_still_required_for_legacy_jobs
+tests/test_local_phase_a_hybrid.py::test_audit_reuses_successes_and_preserves_pending_failure
+tests/test_local_phase_a_hybrid.py::test_audit_never_duplicates_remote_raw_identity[done]
+tests/test_local_phase_a_hybrid.py::test_audit_never_duplicates_remote_raw_identity[running]
+tests/test_local_phase_a_hybrid.py::test_audit_never_duplicates_remote_raw_identity[unknown]
+tests/test_local_phase_a_hybrid.py::test_audit_never_duplicates_remote_raw_identity[launching]
+tests/test_local_phase_a_hybrid.py::test_audit_never_duplicates_remote_raw_identity[pending]
+tests/test_local_phase_a_hybrid.py::test_manifest_refuses_missing_completion_local_sam_and_drift
+tests/test_local_phase_a_hybrid.py::test_relocation_preserves_completion_build_ids_and_source_provenance
+tests/test_local_phase_a_hybrid.py::test_remote_plan_requires_all_payloads_and_requests_sam_only
 tests/test_masking_perframe.py::test_visible_counts_equal_the_sincro_and_mae_truncation
 tests/test_masking_perframe.py::test_random_tokens_keep_exactly_the_budget_without_a_per_frame_quota
 tests/test_masking_perframe.py::test_random_mode_masks_temporal_tokens_and_ignores_motion_scores
@@ -1093,10 +1127,10 @@ tests/test_masking_perframe.py::test_perframe_forward_encodes_every_image_alone_
 tests/test_masking_perframe.py::test_temporal_branch_reuses_each_frames_spatial_encoding
 tests/test_masking_perframe.py::test_rl_frame_modes_keep_history_and_refuse_mismatches
 tests/test_masking_perframe.py::test_stacked_policy_state_is_the_chronological_concatenation
-tests/test_memory_admission.py::test_modes[fits-64000000000.0-30000000000.0-44000000000.0-200000000000.0-True]
-tests/test_memory_admission.py::test_modes[fits-64000000000.0-30000000000.0-44000000001.0-200000000000.0-False]
-tests/test_memory_admission.py::test_modes[fits-staging-138000000000.0-100000000000.0-2000000000.0-200000000000.0-True]
-tests/test_memory_admission.py::test_modes[fits-staging-138000000001.0-0-2000000000.0-200000000000.0-False]
+tests/test_memory_admission.py::test_modes[fits-64000000000.0-30000000000.0-119000000000.0-200000000000.0-True]
+tests/test_memory_admission.py::test_modes[fits-64000000000.0-30000000000.0-119000000001.0-200000000000.0-False]
+tests/test_memory_admission.py::test_modes[fits-staging-213000000000.0-100000000000.0-2000000000.0-200000000000.0-True]
+tests/test_memory_admission.py::test_modes[fits-staging-213000000001.0-0-2000000000.0-200000000000.0-False]
 tests/test_memory_admission.py::test_modes[fits-staging-64000000000.0-100000000000.0-2000000001.0-200000000000.0-False]
 tests/test_memory_admission.py::test_modes[fits-staging-64000000000.0-100000000000.0-2000000000.0-66424509439.0-False]
 tests/test_memory_admission.py::test_modes[fits-staging-64000000000.0-100000000000.0-2000000000.0-66424509440.0-True]
@@ -1229,6 +1263,14 @@ tests/test_mujoco_guard.py::test_mig_instance_selects_its_position_among_the_par
 tests/test_mujoco_guard.py::test_mig_instance_selects_its_position_among_the_parent_egl_devices[5]
 tests/test_mujoco_guard.py::test_mig_instance_selects_its_position_among_the_parent_egl_devices[6]
 tests/test_mujoco_guard.py::test_mig_instance_selects_its_position_among_the_parent_egl_devices[7]
+tests/test_mujoco_guard.py::test_mig_instance_selects_its_position_among_the_parent_egl_devices[8]
+tests/test_mujoco_guard.py::test_mig_instance_selects_its_position_among_the_parent_egl_devices[9]
+tests/test_mujoco_guard.py::test_mig_instance_selects_its_position_among_the_parent_egl_devices[10]
+tests/test_mujoco_guard.py::test_mig_instance_selects_its_position_among_the_parent_egl_devices[11]
+tests/test_mujoco_guard.py::test_mig_instance_selects_its_position_among_the_parent_egl_devices[12]
+tests/test_mujoco_guard.py::test_mig_instance_selects_its_position_among_the_parent_egl_devices[13]
+tests/test_mujoco_guard.py::test_mig_instance_selects_its_position_among_the_parent_egl_devices[14]
+tests/test_mujoco_guard.py::test_mig_instance_selects_its_position_among_the_parent_egl_devices[15]
 tests/test_mujoco_guard.py::test_display_requires_numeric_proved_selection_before_loading_egl[None]
 tests/test_mujoco_guard.py::test_display_requires_numeric_proved_selection_before_loading_egl[]
 tests/test_mujoco_guard.py::test_display_requires_numeric_proved_selection_before_loading_egl[-1]
@@ -1453,6 +1495,16 @@ tests/test_ours_length_eval.py::test_entrypoint_completes_all_defined_metrics[co
 tests/test_ours_length_eval.py::test_entrypoint_completes_all_defined_metrics[pick-and-place-True]
 tests/test_ours_length_eval.py::test_entrypoint_completes_all_defined_metrics[unmeasured-False]
 tests/test_ours_length_eval.py::test_task_evaluator_has_identical_launch_input_and_output_guards
+tests/test_ours_matrix.py::test_only_approved_science_changes_and_single_schedule[S-drawer-open-v2]
+tests/test_ours_matrix.py::test_only_approved_science_changes_and_single_schedule[S-covering]
+tests/test_ours_matrix.py::test_only_approved_science_changes_and_single_schedule[S-pick-and-place]
+tests/test_ours_matrix.py::test_only_approved_science_changes_and_single_schedule[SF-drawer-open-v2]
+tests/test_ours_matrix.py::test_only_approved_science_changes_and_single_schedule[SF-covering]
+tests/test_ours_matrix.py::test_only_approved_science_changes_and_single_schedule[SF-pick-and-place]
+tests/test_ours_matrix.py::test_complete_graph_protocol_paths_and_rewards_entrypoints
+tests/test_ours_matrix.py::test_loop_does_not_touch_unrelated_continuations_and_recovers_lift
+tests/test_ours_matrix.py::test_recipe_drift_is_rejected
+tests/test_ours_matrix.py::test_dsreset_matrix_mode_publishes_dependencies_without_new_continuations
 tests/test_ours_priority.py::test_real_scheduler_guard_accepts_new_entry_preamble[scripts/train_ours_continuation.py]
 tests/test_ours_priority.py::test_real_scheduler_guard_accepts_new_entry_preamble[scripts/evaluate_ours_length.py]
 tests/test_ours_priority.py::test_real_scheduler_guard_accepts_new_entry_preamble[scripts/evaluate_ours_task_length.py]
@@ -3889,12 +3941,12 @@ tests/test_rwlearn_store_baselines.py::test_new_task_registry_and_scene_measurem
 tests/test_rwlearn_trainers_gpu.py::test_dataset_build_training_lossless_resume_and_policy[e2e_cnn-none]
 tests/test_rwlearn_trainers_gpu.py::test_dataset_build_training_lossless_resume_and_policy[dynamo-none]
 tests/test_rwlearn_trainers_gpu.py::test_dataset_build_training_lossless_resume_and_policy[dynamo-train_standardize]
-tests/test_rwprep_mig.py::test_admission_rejects_without_bypassing_other_users[charge-139586437120-RAM]
+tests/test_rwprep_mig.py::test_admission_rejects_without_bypassing_other_users[charge-225485783040-RAM]
 tests/test_rwprep_mig.py::test_admission_rejects_without_bypassing_other_users[load-9000-CPU]
 tests/test_rwprep_mig.py::test_admission_rejects_without_bypassing_other_users[idle-0.1-idle]
 tests/test_rwprep_mig.py::test_admission_rejects_without_bypassing_other_users[available-53687091200-reserve]
 tests/test_rwprep_mig.py::test_admission_rejects_without_bypassing_other_users[disk_free-107374182400-disk]
-tests/test_rwprep_mig.py::test_admission_rejects_without_bypassing_other_users[growth-139586437120-growth]
+tests/test_rwprep_mig.py::test_admission_rejects_without_bypassing_other_users[growth-225485783040-growth]
 tests/test_rwprep_mig.py::test_mig_exclusive_and_cumulative_resource_admission
 tests/test_rwprep_mig.py::test_stop_dependencies_and_failed_jobs_do_not_reserve
 tests/test_rwprep_mig.py::test_priority_is_live_and_fail_closed
@@ -3920,6 +3972,7 @@ tests/test_rwprep_mig.py::test_processed_mount_guard_confines_cleanup_and_reject
 tests/test_rwprep_mig.py::test_planner_uses_locked_shared_admission_and_owned_accounting[True]
 tests/test_rwprep_mig.py::test_planner_uses_locked_shared_admission_and_owned_accounting[False]
 tests/test_rwprep_mig.py::test_local_stop_after_slow_worker_upload_prevents_launch
+tests/test_rwprep_mig.py::test_local_prep_uses_shared_training_ceiling_and_retains_declared_caps
 tests/test_scheduler_daemon_reexec.py::test_reexec_decision
 tests/test_scheduler_daemon_reexec.py::test_tested_source
 tests/test_scheduler_daemon_reexec.py::test_pid_conflict
@@ -4026,10 +4079,10 @@ tests/test_watch.py::test_heartbeat_never_uses_local_pid_for_remote_jobs
 tests/test_watch.py::test_heartbeat_flags_stale_running_jobs_and_dead_watcher
 tests/test_workers.py::test_fork_safe_iteration_collects_freezes_only_while_forking_and_yields_the_same_batches
 
-4012 tests collected in 15.29s
+4065 tests collected in 14.60s
 
 ===== shard-0 =====
-[gpu_guard] cuda:0 -> MIG-2ebd9e11-f2e0-5e22-870a-7779d44ec10a (NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition MIG 1g.24gb)
+[gpu_guard] cuda:0 -> MIG-0b9a2ef1-2f30-5730-ab39-c31e8e7242b6 (NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition MIG 1g.24gb)
 ........................................................................ [  9%]
 ........................................................................ [ 19%]
 ........................................................................ [ 29%]
@@ -4041,24 +4094,24 @@ tests/test_workers.py::test_fork_safe_iteration_collects_freezes_only_while_fork
 ........................................................................ [ 84%]
 ........................................................................ [ 94%]
 ...........................................                              [100%]
-736 passed, 27 subtests passed in 208.59s (0:03:28)
+736 passed, 27 subtests passed in 208.70s (0:03:28)
 
 ===== shard-1 =====
-[gpu_guard] cuda:0 -> MIG-2ebd9e11-f2e0-5e22-870a-7779d44ec10a (NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition MIG 1g.24gb)
+[gpu_guard] cuda:0 -> MIG-0b9a2ef1-2f30-5730-ab39-c31e8e7242b6 (NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition MIG 1g.24gb)
 ........................................................................ [ 16%]
 ........................................................................ [ 32%]
-........................................................................ [ 49%]
-........................................................................ [ 65%]
-........................................................................ [ 81%]
-........................................................................ [ 98%]
-........                                                                 [100%]
+........................................................................ [ 48%]
+........................................................................ [ 64%]
+........................................................................ [ 80%]
+........................................................................ [ 96%]
+................                                                         [100%]
 =============================== warnings summary ===============================
 tests/test_rwlearn_trainers_gpu.py::test_dataset_build_training_lossless_resume_and_policy[e2e_cnn-none]
 tests/test_rwlearn_trainers_gpu.py::test_dataset_build_training_lossless_resume_and_policy[dynamo-none]
 tests/test_rwlearn_trainers_gpu.py::test_dataset_build_training_lossless_resume_and_policy[dynamo-train_standardize]
 tests/test_rwlearn_ours.py::test_gate_refusals
 tests/test_rwlearn_ours.py::test_split_must_partition_the_store_also_for_smoke_runs
-  /home/ws/ws/splatter4d/.worktrees/lpa/s4d/rwlearn/store.py:401: UserWarning: training store built from MOCK model outputs (tests only)
+  /home/ws/ws/splatter4d/.worktrees/s16/s4d/rwlearn/store.py:401: UserWarning: training store built from MOCK model outputs (tests only)
     return module.CompactStore(spec["paths"])
 
 tests/test_baselines_snerl.py::test_official_get_rays_keep_rig_intrinsics_and_integer_samples_at_camera_z_depth
@@ -4074,7 +4127,7 @@ tests/test_baselines_snerl.py::test_heldout_semantic_ground_truth_is_native_stor
     logger.warn(f"{pre} is not within the observation space.")
 
 tests/test_rl.py::test_exploitation_target_and_expectile_match_the_official_code_on_a_fixed_batch
-  /home/ws/ws/splatter4d/.worktrees/lpa/tests/test_rl.py:219: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
+  /home/ws/ws/splatter4d/.worktrees/s16/tests/test_rl.py:219: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
   Consider using tensor.detach() first. (Triggered internally at /pytorch/torch/csrc/autograd/generated/python_variable_methods.cpp:836.)
     assert float(agent.update_predictor(obs, proprio, action)["predictor_loss"]) == pytest.approx(float(loss), rel=1e-6)
 
@@ -4091,32 +4144,79 @@ tests/test_heldout.py: 27 warnings
     return data.pin_memory(device)
 
 tests/test_rwlearn_ours.py::test_window_sampling_rules_stride_uniformity_and_spread_validation_order
-  /home/ws/ws/splatter4d/.worktrees/lpa/s4d/realworld/train_windows.py:141: UserWarning: training store built from MOCK model outputs (tests only)
+  /home/ws/ws/splatter4d/.worktrees/s16/s4d/realworld/train_windows.py:141: UserWarning: training store built from MOCK model outputs (tests only)
     self.store = store if isinstance(store, CompactStore) else CompactStore(store)
 
 tests/test_workers.py::test_fork_safe_iteration_collects_freezes_only_while_forking_and_yields_the_same_batches
-  /home/ws/ws/splatter4d/.worktrees/lpa/tests/test_workers.py:42: FutureWarning: `torch.distributed.reduce_op` is deprecated, please use `torch.distributed.ReduceOp` instead
+  /home/ws/ws/splatter4d/.worktrees/s16/tests/test_workers.py:42: FutureWarning: `torch.distributed.reduce_op` is deprecated, please use `torch.distributed.ReduceOp` instead
     assert not any(isinstance(o, dict) and "tensor" in o and o.get("self") is o for o in gc.get_objects())
 
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
-440 passed, 2557 warnings in 522.25s (0:08:42)
+448 passed, 2557 warnings in 466.39s (0:07:46)
 
 ===== shard-2 =====
-[gpu_guard] cuda:0 -> MIG-2ebd9e11-f2e0-5e22-870a-7779d44ec10a (NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition MIG 1g.24gb)
+[gpu_guard] cuda:0 -> MIG-0b9a2ef1-2f30-5730-ab39-c31e8e7242b6 (NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition MIG 1g.24gb)
 ...                                                                      [100%]
-3 passed in 89.65s (0:01:29)
+3 passed in 90.19s (0:01:30)
 
 ===== shard-3 =====
-[gpu_guard] cuda:0 -> MIG-2ebd9e11-f2e0-5e22-870a-7779d44ec10a (NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition MIG 1g.24gb)
-........................................................................ [ 20%]
-........................................................................ [ 41%]
-........................................................................ [ 61%]
-........................................................................ [ 82%]
-..............................................................           [100%]
-350 passed in 68.84s (0:01:08)
+[gpu_guard] cuda:0 -> MIG-0b9a2ef1-2f30-5730-ab39-c31e8e7242b6 (NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition MIG 1g.24gb)
+........................................................................ [ 26%]
+........................................................................ [ 53%]
+........................................................................ [ 80%]
+...................................................                      [100%]
+267 passed in 79.58s (0:01:19)
 
 ===== shard-4 =====
-[gpu_guard] cuda:0 -> MIG-2ebd9e11-f2e0-5e22-870a-7779d44ec10a (NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition MIG 1g.24gb)
+[gpu_guard] cuda:0 -> MIG-0b9a2ef1-2f30-5730-ab39-c31e8e7242b6 (NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition MIG 1g.24gb)
+........................................................................ [ 12%]
+........................................................................ [ 25%]
+........................................................................ [ 37%]
+........................................................................ [ 50%]
+........................................................................ [ 62%]
+........................................................................ [ 75%]
+........................................................................ [ 87%]
+.......................................................................  [100%]
+575 passed in 48.39s
+
+===== shard-5 =====
+[gpu_guard] cuda:0 -> MIG-0b9a2ef1-2f30-5730-ab39-c31e8e7242b6 (NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition MIG 1g.24gb)
+........................................................................ [ 16%]
+........................................................................ [ 33%]
+........................................................................ [ 50%]
+........................................................................ [ 66%]
+........................................................................ [ 83%]
+.......................................................................  [100%]
+=============================== warnings summary ===============================
+tests/test_droid_crop.py: 580 warnings
+  /home/ws/ws/splatter4d/.venv/lib/python3.10/site-packages/torch/utils/data/_utils/pin_memory.py:57: DeprecationWarning: The argument 'device' of Tensor.pin_memory() is deprecated. Please do not pass this argument. (Triggered internally at /pytorch/aten/src/ATen/native/Memory.cpp:46.)
+    return data.pin_memory(device)
+
+tests/test_droid_crop.py: 580 warnings
+  /home/ws/ws/splatter4d/.venv/lib/python3.10/site-packages/torch/utils/data/_utils/pin_memory.py:57: DeprecationWarning: The argument 'device' of Tensor.is_pinned() is deprecated. Please do not pass this argument. (Triggered internally at /pytorch/aten/src/ATen/native/Memory.cpp:31.)
+    return data.pin_memory(device)
+
+tests/test_rwlearn_store_baselines.py::test_sincro_per_sample_cameras_equal_the_reference_for_one_rig_and_differ_otherwise
+  /home/ws/ws/splatter4d/.venv/lib/python3.10/site-packages/torch/functional.py:505: UserWarning: torch.meshgrid: in an upcoming release, it will be required to pass the indexing argument. (Triggered internally at /pytorch/aten/src/ATen/native/TensorShape.cpp:4381.)
+    return _VF.meshgrid(tensors, **kwargs)  # type: ignore[attr-defined]
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+431 passed, 1161 warnings in 78.09s (0:01:18)
+
+===== shard-6 =====
+[gpu_guard] cuda:0 -> MIG-0b9a2ef1-2f30-5730-ab39-c31e8e7242b6 (NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition MIG 1g.24gb)
+........................................................................ [ 13%]
+........................................................................ [ 26%]
+........................................................................ [ 39%]
+........................................................................ [ 52%]
+........................................................................ [ 65%]
+........................................................................ [ 78%]
+........................................................................ [ 91%]
+.............................................                            [100%]
+549 passed in 96.56s (0:01:36)
+
+===== shard-7 =====
+[gpu_guard] cuda:0 -> MIG-0b9a2ef1-2f30-5730-ab39-c31e8e7242b6 (NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition MIG 1g.24gb)
 ........................................................................ [ 22%]
 ........................................................................ [ 44%]
 ........................................................................ [ 66%]
@@ -4124,35 +4224,30 @@ tests/test_workers.py::test_fork_safe_iteration_collects_freezes_only_while_fork
 ....................................                                     [100%]
 =============================== warnings summary ===============================
 tests/test_realworld_rgbd.py::test_panda_metadata_uses_recorded_calibration_and_timestamps
-  /home/ws/ws/splatter4d/.worktrees/lpa/tests/test_realworld_rgbd.py:259: UserWarning: panda: recorder task_name 'test' disagrees with the dataset folder 'test_panda_metadata_uses_recor0' (the folder decides the task)
+  /home/ws/ws/splatter4d/.worktrees/s16/tests/test_realworld_rgbd.py:259: UserWarning: panda: recorder task_name 'test' disagrees with the dataset folder 'test_panda_metadata_uses_recor0' (the folder decides the task)
     meta = p.adapter.read_meta("panda")
 
 tests/test_realworld_rgbd.py::test_panda_drops_colour_frames_without_a_stereo_record
-  /home/ws/ws/splatter4d/.worktrees/lpa/tests/test_realworld_rgbd.py:340: UserWarning: panda: recorder task_name 'test' disagrees with the dataset folder 'test_panda_drops_colour_frames0' (the folder decides the task)
+  /home/ws/ws/splatter4d/.worktrees/s16/tests/test_realworld_rgbd.py:340: UserWarning: panda: recorder task_name 'test' disagrees with the dataset folder 'test_panda_drops_colour_frames0' (the folder decides the task)
     meta = panda_file.adapter.read_meta("panda")
 
 tests/test_realworld_rgbd.py::test_panda_drops_colour_frames_without_a_stereo_record
-  /home/ws/ws/splatter4d/.worktrees/lpa/s4d/realworld/pipeline.py:83: UserWarning: panda: recorder task_name 'test' disagrees with the dataset folder 'test_panda_drops_colour_frames0' (the folder decides the task)
+  /home/ws/ws/splatter4d/.worktrees/s16/s4d/realworld/pipeline.py:83: UserWarning: panda: recorder task_name 'test' disagrees with the dataset folder 'test_panda_drops_colour_frames0' (the folder decides the task)
     meta = adapter.read_meta(episode_id)
 
 tests/test_realworld_rgbd.py::test_sensor_depth_local_runner_resumes_only_remaining_chunks
-  /home/ws/ws/splatter4d/.worktrees/lpa/s4d/realworld/pipeline.py:83: UserWarning: panda: recorder task_name 'test' disagrees with the dataset folder 'test_sensor_depth_local_runner0' (the folder decides the task)
+  /home/ws/ws/splatter4d/.worktrees/s16/s4d/realworld/pipeline.py:83: UserWarning: panda: recorder task_name 'test' disagrees with the dataset folder 'test_sensor_depth_local_runner0' (the folder decides the task)
     meta = adapter.read_meta(episode_id)
 
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
-324 passed, 4 warnings in 39.12s
+324 passed, 4 warnings in 35.59s
 
-===== shard-5 =====
-[gpu_guard] cuda:0 -> MIG-2ebd9e11-f2e0-5e22-870a-7779d44ec10a (NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition MIG 1g.24gb)
-........................................................................ [ 12%]
-........................................................................ [ 24%]
-........................................................................ [ 36%]
-........................................................................ [ 48%]
-........................................................................ [ 61%]
-........................................................................ [ 73%]
-........................................................................ [ 85%]
-........................................................................ [ 97%]
-............                                                             [100%]
+===== shard-8 =====
+[gpu_guard] cuda:0 -> MIG-0b9a2ef1-2f30-5730-ab39-c31e8e7242b6 (NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition MIG 1g.24gb)
+........................................................................ [ 26%]
+........................................................................ [ 52%]
+........................................................................ [ 78%]
+..........................................................               [100%]
 =============================== warnings summary ===============================
 tests/test_droid_largescale.py: 294 warnings
   /home/ws/ws/splatter4d/.venv/lib/python3.10/site-packages/torch/utils/data/_utils/pin_memory.py:57: DeprecationWarning: The argument 'device' of Tensor.pin_memory() is deprecated. Please do not pass this argument. (Triggered internally at /pytorch/aten/src/ATen/native/Memory.cpp:46.)
@@ -4163,66 +4258,31 @@ tests/test_droid_largescale.py: 294 warnings
     return data.pin_memory(device)
 
 tests/test_masking_perframe.py::test_decoder_features_and_zero_initialised_branch_give_persistence
-  /home/ws/ws/splatter4d/.worktrees/lpa/tests/test_masking_perframe.py:192: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
+  /home/ws/ws/splatter4d/.worktrees/s16/tests/test_masking_perframe.py:192: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
   Consider using tensor.detach() first. (Triggered internally at /pytorch/torch/csrc/autograd/generated/python_variable_methods.cpp:836.)
     assert d.shape == (4, 6, 3) and float(d.abs().sum()) == 0.0
 
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
-588 passed, 589 warnings in 92.19s (0:01:32)
-
-===== shard-6 =====
-[gpu_guard] cuda:0 -> MIG-2ebd9e11-f2e0-5e22-870a-7779d44ec10a (NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition MIG 1g.24gb)
-........................................................................ [ 13%]
-........................................................................ [ 27%]
-........................................................................ [ 41%]
-........................................................................ [ 55%]
-........................................................................ [ 69%]
-........................................................................ [ 83%]
-........................................................................ [ 97%]
-..............                                                           [100%]
-518 passed in 76.55s (0:01:16)
-
-===== shard-7 =====
-[gpu_guard] cuda:0 -> MIG-2ebd9e11-f2e0-5e22-870a-7779d44ec10a (NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition MIG 1g.24gb)
-........................................................................ [ 28%]
-........................................................................ [ 56%]
-........................................................................ [ 84%]
-........................................                                 [100%]
-256 passed in 28.29s
-
-===== shard-8 =====
-[gpu_guard] cuda:0 -> MIG-2ebd9e11-f2e0-5e22-870a-7779d44ec10a (NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition MIG 1g.24gb)
-........................................................................ [ 25%]
-........................................................................ [ 51%]
-........................................................................ [ 77%]
-..............................................................           [100%]
-278 passed in 58.80s
+274 passed, 589 warnings in 52.37s
 
 ===== shard-9 =====
-[gpu_guard] cuda:0 -> MIG-2ebd9e11-f2e0-5e22-870a-7779d44ec10a (NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition MIG 1g.24gb)
-........................................................................ [ 13%]
-........................................................................ [ 27%]
-........................................................................ [ 41%]
-........................................................................ [ 55%]
-........................................................................ [ 69%]
-........................................................................ [ 83%]
-........................................................................ [ 97%]
-...............                                                          [100%]
+[gpu_guard] cuda:0 -> MIG-0b9a2ef1-2f30-5730-ab39-c31e8e7242b6 (NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition MIG 1g.24gb)
+........................................................................ [ 15%]
+........................................................................ [ 31%]
+........................................................................ [ 47%]
+........................................................................ [ 62%]
+........................................................................ [ 78%]
+........................................................................ [ 94%]
+..........................                                               [100%]
 =============================== warnings summary ===============================
-tests/test_ours_continuation.py: 60 warnings
-tests/test_droid_crop.py: 580 warnings
+tests/test_ours_continuation.py: 59 warnings
   /home/ws/ws/splatter4d/.venv/lib/python3.10/site-packages/torch/utils/data/_utils/pin_memory.py:57: DeprecationWarning: The argument 'device' of Tensor.pin_memory() is deprecated. Please do not pass this argument. (Triggered internally at /pytorch/aten/src/ATen/native/Memory.cpp:46.)
     return data.pin_memory(device)
 
-tests/test_ours_continuation.py: 60 warnings
-tests/test_droid_crop.py: 580 warnings
+tests/test_ours_continuation.py: 59 warnings
   /home/ws/ws/splatter4d/.venv/lib/python3.10/site-packages/torch/utils/data/_utils/pin_memory.py:57: DeprecationWarning: The argument 'device' of Tensor.is_pinned() is deprecated. Please do not pass this argument. (Triggered internally at /pytorch/aten/src/ATen/native/Memory.cpp:31.)
     return data.pin_memory(device)
 
-tests/test_rwlearn_store_baselines.py::test_sincro_per_sample_cameras_equal_the_reference_for_one_rig_and_differ_otherwise
-  /home/ws/ws/splatter4d/.venv/lib/python3.10/site-packages/torch/functional.py:505: UserWarning: torch.meshgrid: in an upcoming release, it will be required to pass the indexing argument. (Triggered internally at /pytorch/aten/src/ATen/native/TensorShape.cpp:4381.)
-    return _VF.meshgrid(tensors, **kwargs)  # type: ignore[attr-defined]
-
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
-519 passed, 1281 warnings in 84.65s (0:01:24)
-{"counts": {"passed": 4039, "error": 0, "failed": 0, "skipped": 0}, "total": 4039, "exit_code": 0, "full_suite_passed": true}
+458 passed, 118 warnings in 65.52s (0:01:05)
+{"counts": {"passed": 4092, "error": 0, "failed": 0, "skipped": 0}, "total": 4092, "exit_code": 0, "full_suite_passed": true}

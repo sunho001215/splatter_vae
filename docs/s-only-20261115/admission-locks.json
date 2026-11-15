@@ -1,0 +1,50 @@
+[
+  {
+    "path": "/home/ws/ws/splatter4d/runs/setup/stage2-driver.lock",
+    "device_inode": "103:06:455344816",
+    "holders": [
+      {
+        "lock": "82: FLOCK  ADVISORY  WRITE 574928 103:06:455344816 0 EOF",
+        "pid_visible": true,
+        "command": ".venv/bin/python -I runs/setup/tools/register_local_phase_a_20261115.py --local-subset --bundle runs/hybrid-phase-a-20261115-release-r2 --plan /home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifest"
+      },
+      {
+        "lock": "82: -> FLOCK  ADVISORY  WRITE 672066 103:06:455344816 0 EOF",
+        "pid_visible": false,
+        "command": null
+      },
+      {
+        "lock": "82:  -> FLOCK  ADVISORY  WRITE 698331 103:06:455344816 0 EOF",
+        "pid_visible": false,
+        "command": null
+      }
+    ]
+  },
+  {
+    "path": "/home/ws/ws/splatter4d/runs/setup/remote-driver.lock",
+    "device_inode": "103:06:455344494",
+    "holders": [
+      {
+        "lock": "80: FLOCK  ADVISORY  WRITE 698331 103:06:455344494 0 EOF",
+        "pid_visible": true,
+        "command": ".venv/bin/python -B runs/setup/tools/place_ours400k_20261113.py --execute rwv2-20261113-export400k-ours-pick-and-place-S rwv2-20261113-fql400k-ours-pick-and-place-S-s0 rwv2-20261113-fql400k-ours-pick-and-place-S-s1 rwv2-"
+      }
+    ]
+  },
+  {
+    "path": "/home/ws/ws/splatter4d/experiments/registry.lock",
+    "device_inode": "103:06:455344729",
+    "holders": [
+      {
+        "lock": "81: FLOCK  ADVISORY  WRITE 574928 103:06:455344729 0 EOF",
+        "pid_visible": true,
+        "command": ".venv/bin/python -I runs/setup/tools/register_local_phase_a_20261115.py --local-subset --bundle runs/hybrid-phase-a-20261115-release-r2 --plan /home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifest"
+      },
+      {
+        "lock": "81: -> FLOCK  ADVISORY  WRITE 423073 103:06:455344729 0 EOF",
+        "pid_visible": false,
+        "command": null
+      }
+    ]
+  }
+]

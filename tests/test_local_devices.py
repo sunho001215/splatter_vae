@@ -123,3 +123,76 @@ def test_malformed_pinned_config_fails_closed(tmp_path, config):
 def test_planner_without_script_uses_current_checkout():
     assert local_devices.execution_root({}, ROOT) == ROOT
     assert all(local_devices.allows({}, gpu) for gpu in GPUS)
+
+
+@pytest.fixture
+def placed_identical(tmp_path, monkeypatch):
+    import hashlib
+    import json
+    from ops.provenance import upstreams
+    row = dict(id='placed', host='local', script='scripts/train.py', mem_gb=1, planned_commit='a'*40,
+               args=['--config', 'configs/train.yaml'])
+    paths = {'scripts/train.py': 'import s4d.model\n', 's4d/model.py': 'VALUE = 1\n',
+             'configs/train.yaml': 'steps: 400000\n', 'uv.lock': 'environment\n'}
+    for name, data in paths.items():
+        path = tmp_path/name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(data)
+    record = dict(job_id='placed', kind='role_placement', state='placed', owner_host='local',
+                  execution_scope=dict(source_commit='a'*40, files={
+                      p: hashlib.sha256(v.encode()).hexdigest() for p,v in paths.items()}))
+    ownership = tmp_path/'runs/setup/ownership/placed.json'
+    ownership.parent.mkdir(parents=True)
+    ownership.write_text(json.dumps(record))
+    monkeypatch.setattr(local_devices, '_release_devices', lambda *a: frozenset(GPUS[:8]))
+    monkeypatch.setattr(upstreams, 'working_tree_identity', lambda root: {})
+    return row, record, ownership, tmp_path
+
+
+def test_identical_owned_old_pin_uses_new_migs_without_mutation(placed_identical, monkeypatch):
+    row, record, path, root = placed_identical
+    monkeypatch.setattr(scheduler, 'REPO', root)
+    before = path.read_bytes(), copy.deepcopy(row)
+    limits = {g: dict(max_jobs=1, max_mem_gb=22) for g in GPUS}
+    running = [dict(id=str(i), host='local', gpu=g, mem_gb=22) for i,g in enumerate(GPUS[:8])]
+    assert all(local_devices.allows(row, gpu, root) for gpu in GPUS)
+    assert scheduler.choose_gpu(row, limits, running, set()) == GPUS[8]
+    assert (path.read_bytes(), row) == before
+
+
+@pytest.mark.parametrize('change', ['module', 'script', 'config', 'environment', 'argv', 'upstream',
+                                    'deleted', 'missing-proof', 'pin', 'owner', 'state', 'kind'])
+def test_old_pin_new_migs_refuse_incomplete_or_changed_scope(placed_identical, monkeypatch, change):
+    import json
+    from ops.provenance import upstreams
+    row, record, path, root = placed_identical
+    if change in ('module', 'script', 'config', 'environment'):
+        name = {'module':'s4d/model.py', 'script':'scripts/train.py',
+                'config':'configs/train.yaml', 'environment':'uv.lock'}[change]
+        (root/name).write_text('changed\n')
+    elif change == 'argv':
+        row['args'] = ['--config', 'configs/other.yaml']
+    elif change == 'upstream':
+        monkeypatch.setattr(upstreams, 'working_tree_identity', lambda root: {'third_party/other@commit': 'b'*40})
+    elif change == 'deleted':
+        (root/'s4d/model.py').unlink()
+    elif change == 'missing-proof':
+        record['execution_scope']['files'].pop(row['script'])
+    elif change == 'pin':
+        row['planned_commit'] = 'b'*40
+    else:
+        record[{'owner':'owner_host', 'state':'state', 'kind':'kind'}[change]] = 'other'
+    path.write_text(json.dumps(record))
+    assert not local_devices.allows(row, GPUS[-1], root)
+    # Existing device eligibility and all state/ownership enforcement are unchanged.
+    assert local_devices.allows(row, GPUS[0], root)
+
+
+def test_missing_ownership_invalid_pin_and_external_checkout_fail_closed(placed_identical, monkeypatch):
+    row, record, path, root = placed_identical
+    path.unlink()
+    assert not local_devices.allows(row, GPUS[-1], root)
+    path.write_text('{broken')
+    assert not local_devices.allows(row, GPUS[-1], root)
+    monkeypatch.setattr(local_devices, '_release_devices', lambda *a: frozenset())
+    assert not local_devices.allows(row, GPUS[-1], root)

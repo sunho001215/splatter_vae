@@ -1,0 +1,13 @@
+[gpu_guard] cuda:0 -> MIG-0b9a2ef1-2f30-5730-ab39-c31e8e7242b6 (NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition MIG 1g.24gb)
+Collected 4065 tests; 1 exclusive serial shard(s) with 24 threads, then 9 parallel shards, 2 threads each
+Shard 0 (serial): exit=0, seconds=212.7
+Shard 7 (cpu): exit=0, seconds=47.2
+Shard 4 (cpu): exit=0, seconds=60.4
+Shard 8 (cpu): exit=0, seconds=63.9
+Shard 9 (cpu): exit=0, seconds=76.9
+Shard 5 (cpu): exit=0, seconds=89.5
+Shard 3 (cpu): exit=0, seconds=90.2
+Shard 2 (cpu): exit=0, seconds=100.0
+Shard 6 (cpu): exit=0, seconds=108.0
+Shard 1 (gpu): exit=0, seconds=479.1
+{"counts": {"passed": 4092, "error": 0, "failed": 0, "skipped": 0}, "total": 4092, "exit_code": 0, "full_suite_passed": true}

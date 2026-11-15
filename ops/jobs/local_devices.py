@@ -6,6 +6,8 @@ no attempt, registry event or process is created. User 2026-11-15 MIG expansion.
 from __future__ import annotations
 
 import ast
+import hashlib
+import json
 import re
 import subprocess
 from functools import lru_cache
@@ -59,6 +61,60 @@ def execution_root(job: dict, root: Path = REPO) -> Path:
     return root
 
 
+def identical_placed_source(job: dict, root: Path) -> bool:
+    """Reuse the existing local-placement scope proof without changing the row's pin.
+
+    Only an explicitly placed local row qualifies. Its recorded scope was proved
+    against planned_commit by realworld_local. Hash the actual checkout again;
+    a different script/config/upstream or an incomplete record fails closed.
+    Normal admission still checks ownership, pauses, state and all inputs.
+    """
+    from ops.provenance.upstreams import working_tree_identity
+
+    try:
+        identity = job['id']
+        if (job.get('host', 'local') != 'local' or Path(identity).name != identity
+                or identity in ('.', '..') or execution_root(job, root) != root.resolve()):
+            return False
+        record = json.loads((root / 'runs/setup/ownership' / (identity + '.json')).read_bytes())
+        scope = record['execution_scope']
+        files = scope['files']
+        if (record.get('job_id') != identity or record.get('kind') != 'role_placement'
+                or record.get('state') != 'placed' or record.get('owner_host') != 'local'
+                or not job.get('planned_commit') or scope.get('source_commit') != job['planned_commit']
+                or not isinstance(files, dict) or not files or job.get('script') not in files):
+            return False
+        # Include every repository argument checked at original placement, as well
+        # as the script. Changing argv cannot borrow another script/config proof.
+        for arg in job.get('args', []):
+            value = str(arg).partition('=')[2] if '=' in str(arg) else str(arg)
+            path = Path(value)
+            if path.is_absolute():
+                try:
+                    value = str(path.relative_to(root))
+                except ValueError:
+                    continue
+            if value.startswith(('configs/', 'scripts/', 's4d/', 'ops/')) and value not in files:
+                return False
+        upstreams = working_tree_identity(root)
+        for name, digest in files.items():
+            path = (root / name).resolve()
+            if '@' in name:
+                actual = upstreams.get(name)
+            elif root.resolve() not in path.parents or not path.is_file():
+                return False
+            else:
+                actual = hashlib.sha256(path.read_bytes()).hexdigest()
+            if actual != digest:
+                return False
+        # An empty upstream subset cannot waive newly added or changed gitlinks.
+        if any(files.get(name) != digest for name, digest in upstreams.items()):
+            return False
+        return True
+    except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError):
+        return False
+
+
 def allows(job: dict, gpu: str, root: Path = REPO) -> bool:
     if job.get('host', 'local') != 'local':
         return True
@@ -70,8 +126,10 @@ def allows(job: dict, gpu: str, root: Path = REPO) -> bool:
     if gpu not in APPROVED_HOST_GPUS['local']:
         return False
     pin = job.get('planned_commit')
-    if pin and gpu not in _release_devices(Path(root).resolve(), str(pin)):
-        return False
+    if pin:
+        devices = _release_devices(Path(root).resolve(), str(pin))
+        if not devices or (gpu not in devices and not identical_placed_source(job, Path(root).resolve())):
+            return False
     checkout = execution_root(job, root)
     if checkout != Path(root).resolve():
         try:

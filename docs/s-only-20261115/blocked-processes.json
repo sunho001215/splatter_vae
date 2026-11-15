@@ -1,0 +1,42 @@
+[
+  {
+    "pid": 574928,
+    "argv": ".venv/bin/python -I runs/setup/tools/register_local_phase_a_20261115.py --local-subset --bundle runs/hybrid-phase-a-20261115-release-r2 --plan /home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep-plan.json --plan /home/ws/ws/realworld-ops/dsreset-20261113/pipeline/covering-canonical-manifests/prep-plan.json --plan /home/ws/ws/realworld-ops/dsreset-20261113/pipeline/pick-and-place-canonical-manifests/prep-plan.json --execute ",
+    "wchan": "0",
+    "status": [
+      "State:\tR (running)",
+      "PPid:\t574927"
+    ],
+    "children": []
+  },
+  {
+    "pid": 698331,
+    "argv": ".venv/bin/python -B runs/setup/tools/place_ours400k_20261113.py --execute rwv2-20261113-export400k-ours-pick-and-place-S rwv2-20261113-fql400k-ours-pick-and-place-S-s0 rwv2-20261113-fql400k-ours-pick-and-place-S-s1 rwv2-20261113-fql400k-ours-pick-and-place-S-s2 rwv2-20261113-fqldata400k-ours-pick-and-place-S ",
+    "wchan": "locks_lock_inode_wait",
+    "status": [
+      "State:\tS (sleeping)",
+      "PPid:\t698329"
+    ],
+    "children": []
+  },
+  {
+    "pid": 672066,
+    "argv": ".venv/bin/python -I /home/ws/ws/realworld-ops/fqlnq/tools/feature_hold_lift.py --execute ",
+    "wchan": "locks_lock_inode_wait",
+    "status": [
+      "State:\tS (sleeping)",
+      "PPid:\t672065"
+    ],
+    "children": []
+  },
+  {
+    "pid": 423073,
+    "argv": ".venv/bin/python -I scripts/jobs.py daemon --interval 30 ",
+    "wchan": "locks_lock_inode_wait",
+    "status": [
+      "State:\tS (sleeping)",
+      "PPid:\t1690474"
+    ],
+    "children": []
+  }
+]

@@ -1,0 +1,1374 @@
+[
+  {
+    "episode": "drawer-open-v2-success-episode_000001",
+    "raw_sha256": "04f070dce45590eff6e20760ff57a8bbbbc0a7a553aabd7d540df9f8b8a4287a",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000001.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000001.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000001"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000002",
+    "raw_sha256": "e495859d8ebcdb42eeec7c9f874d1ddd970b9fd8aaae05ee296cd0a57864db24",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000002.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000002.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000002"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000003",
+    "raw_sha256": "ba5bad87b49fe6f5e03fb6aa66babf9f60856892d78616eddcd21c9bb21253b7",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000003.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000003.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000003"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000004",
+    "raw_sha256": "87d8b34e9b81ea1c76786e6a0483f9dcbe85910329f167c1a0691fb3332e9395",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000004.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000004.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000004"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000006",
+    "raw_sha256": "f75687ee83014d36d0daf3479c21e7a344e3bb7bb052b31912f7639b95c95127",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000006.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000006.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000006"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000007",
+    "raw_sha256": "17fbdda09630ef52bed3285d8f4d3ec2ec28fba4d43fc19bfa647a172b5848ef",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000007.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000007.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000007"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000008",
+    "raw_sha256": "953cbfc48b4ed1c8483085c7fe738af57a680a02028a8cf99c9af885a7c1b995",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000008.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000008.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000008"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000009",
+    "raw_sha256": "a399ab906403312f337e2661f0eb519737137890cab0650379838d5a29aebbe9",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000009.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000009.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000009"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000010",
+    "raw_sha256": "9f4d6c4c789e9c7a80aae78d5959144ad4334e5f2d0a694caac119caea1b7c6a",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000010.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000010.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000010"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000013",
+    "raw_sha256": "304525e29fe739479143ddb7d081aa7d4f092eb4eea5f4b5a3f8c8031ce7d379",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000013.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000013.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000013"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000014",
+    "raw_sha256": "1369d176883d10272ace623029c5aa4a564912a47845db460809f603d121b6ad",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000014.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000014.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000014"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000016",
+    "raw_sha256": "9d98958126d789d634f967a8418ff9453aa44726c138017a6ffde9c1e0d86afd",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000016.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000016.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000016"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000017",
+    "raw_sha256": "102a9e87c705518b912c88777f1666c38dcc34ff114d60459ad83519e1645bb9",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000017.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000017.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000017"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000018",
+    "raw_sha256": "162c3cd4154fb679169ee4cbbae3346d2162353557dd7512808ec1ec6150d5b7",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000018.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000018.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000018"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000019",
+    "raw_sha256": "d82ffbf21a5ac12f9ad50f3c93fed86eafe906d7abc29e191ab508dfb66fe133",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000019.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000019.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000019"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000020",
+    "raw_sha256": "f844c493e0886af481d3bb97ecaebd65cc1cdc82cff02cad800b4fd97da5c6d7",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000020.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000020.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000020"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000021",
+    "raw_sha256": "672aa53f225847ba01ca7b0f236015bf6a2ca07e0d2889e85595dad3be0e1835",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000021.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000021.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000021"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000022",
+    "raw_sha256": "20bf09e2c9209deecce6f04acc8b7d57009143196bc7752106cce640766ae717",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000022.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000022.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000022"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000023",
+    "raw_sha256": "315f0ad855cae54c4e38a14beb2a7a1e0c47e0daef17e081e41c073a0c1ef6fd",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000023.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000023.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000023"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000024",
+    "raw_sha256": "ca7436065646be1336efa0c703055eae6ac00f2c250c7688ff27e6a682675ff6",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000024.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000024.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000024"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000025",
+    "raw_sha256": "15e458b4f305bcb54cc9a97166c8ea7e10b5206da5d124526ad9778f562f57c9",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000025.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000025.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000025"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000026",
+    "raw_sha256": "46bb2467c7ebfbd0c864cc582a1eacd45333a852f3ded9137cd6b83055ac7576",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000026.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000026.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000026"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000027",
+    "raw_sha256": "26e34a80896184be68483473b8c95eb8d1bea6c5aec1d4935d40a93fb63ecfcf",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000027.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000027.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000027"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000028",
+    "raw_sha256": "37b0e9dfe94d83fde709760772246045def8bebd6cab3d7d691543093afde9b7",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000028.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000028.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000028"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000029",
+    "raw_sha256": "5dcd6e27037b35f19b281448934020d54c317e5e56b00c45e0665d1f96fa24de",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000029.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000029.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000029"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000030",
+    "raw_sha256": "3b9ba5b9c49ee49e4b508e35fe444da318b6b5a90550c22d22c14076a65191e1",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000030.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000030.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000030"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000031",
+    "raw_sha256": "1dffdec44634852b4368ec42e9d8ef37e05be264623ac9cdc41018d77f600255",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000031.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000031.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000031"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000032",
+    "raw_sha256": "a3b54d337c383afd80a76f9c9dcc2f65e21f9d50e5345e1ba1b1187c8401fbe9",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000032.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000032.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000032"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000033",
+    "raw_sha256": "6d1087168673bf18edd2c3e8dae65f8dd9dafcb376faccc2f5066b718c9bb270",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000033.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000033.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000033"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000035",
+    "raw_sha256": "01bdbc0899e5bda6106899674e95bb24e2a713ce0bac97fd33717a4b7c71cd96",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000035.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000035.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000035"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000036",
+    "raw_sha256": "1a14ddc37eb17f0aa31a727581b03b1412189f198abde7e25b001e8c599dec8c",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000036.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000036.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000036"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000037",
+    "raw_sha256": "6c015e09203839875e6a33531f163a346d8e408210a0cdcdaaea599cefe4610b",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000037.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000037.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000037"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000038",
+    "raw_sha256": "a367eceedbe32643254996414f45d1c4d71dbd285f5621e6e49a3e7072ab1c53",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000038.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000038.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000038"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000039",
+    "raw_sha256": "9c60a14d330ac6b2500de822c0ec63b0068c04b27e85fd6b1b13430166485353",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000039.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000039.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000039"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000041",
+    "raw_sha256": "a9cf328a8252930f0170002e8a6dbf8e5bac9ade92948e84c0e0aca548b5330b",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000041.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000041.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000041"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000042",
+    "raw_sha256": "d41ac56d7249b22da5d7778e7be9644c3ce180abe8600276ed6bfd7a4ecf0e69",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000042.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000042.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000042"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000043",
+    "raw_sha256": "53df0e1a1f2b8de2c34a077abf6b9b851f624c466066b7b95c58e39138a9f933",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000043.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000043.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000043"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000044",
+    "raw_sha256": "df2b7ff96bcefe13ce83ddc97c514a109ea0c176d9b96e67f314768e34f575e7",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000044.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000044.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000044"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000045",
+    "raw_sha256": "9576c18dd2c3b274413090c240d05d1ee96685da99cbfb86be41a8f791f8e5ae",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000045.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000045.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000045"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000046",
+    "raw_sha256": "4cb63670e661fe692b7b1abd4baec0cd0f63c0be8b58972113e04634d085f70b",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000046.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000046.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000046"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000047",
+    "raw_sha256": "15fa62715da00066e0adc38fe4e64fbec9b90da4db4b2af29dd4a140bc998b6f",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000047.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000047.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000047"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000048",
+    "raw_sha256": "8fc7af26c1b9a59a794878cdf75dfc36fe41974a8c07844a8943566903aab43a",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000048.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000048.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000048"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000050",
+    "raw_sha256": "7b4ff02e15ac1ef53c28635167e7ba62b964b9df7d1e88f31ef01e8b30fc2991",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000050.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000050.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000050"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000051",
+    "raw_sha256": "23424e3ed1291dc229ba25e1c873f67321a2fc995e5ed9a83d8f2fcfd823581c",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000051.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000051.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000051"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000052",
+    "raw_sha256": "86441eb0f73e75bce5153a2917dd839688c5403006a810f0f0ab1ccfc78689be",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000052.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000052.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000052"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000053",
+    "raw_sha256": "7026e35bccdac1214288b8fb010425087164f2eb68d0cccd21ac16cc6e66587a",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000053.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000053.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000053"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000054",
+    "raw_sha256": "fc339b4515f48ca21e56414a64e93ceb9da88939c119ca88a863f3648f796d5b",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000054.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000054.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000054"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000055",
+    "raw_sha256": "e27159bb1e68f17039bc3a164d242f46260087c176da4c6dee9757376efd04f4",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000055.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000055.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000055"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000056",
+    "raw_sha256": "45e455153bb241448b336550da1b941b6289afdfe37061b365185b3335eb216a",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000056.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000056.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000056"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000057",
+    "raw_sha256": "3dfc2788ba40a1601f4ae8d8bd464e1dfb008b3513d454a38592b1088abee4eb",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000057.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000057.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000057"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000058",
+    "raw_sha256": "bcdcab4fc4a96532717f85676dd68dea1bbe81deedf8131fbc26d546366a5500",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000058.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000058.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000058"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000059",
+    "raw_sha256": "d845fe53b62a9c4d5ade5bc0351c33fcf6347fc3d48a33fcd08e2f66bb4674be",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000059.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000059.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000059"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000060",
+    "raw_sha256": "e3f6a2c3b332080b19d11c53a2ff5953cd575c9303b775388ba6adc829d1cb47",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000060.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000060.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000060"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000061",
+    "raw_sha256": "e0888b424fac3cbf37be77fb51907d8c6ad9bbc3b00e64e32f1cc3a8ee4e1cd9",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000061.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000061.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000061"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000062",
+    "raw_sha256": "daddbeaf562e76e913d45b7e5baf29eeafd704fd0a8984c74e5ed58ed7e81f0d",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000062.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000062.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000062"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000063",
+    "raw_sha256": "f06e6a04708980163f9f0da8d37d033a67281dc7758f88ffd2b38915f2ddbcdc",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000063.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000063.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000063"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000064",
+    "raw_sha256": "c7c7c6cffb5ecfee58ac32ec8982f077e77651fcbd38cb4972b2c23086afd924",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000064.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000064.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000064"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000065",
+    "raw_sha256": "3c7177eb6fd7c49f7a82ec2498063969929d35957595655ebb8d60e2248a59c0",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000065.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000065.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000065"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000067",
+    "raw_sha256": "0c127a56a98104ec55d1d727dd1b47f3ec9f93ba1223a3e99ca20da50fb3dd20",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000067.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000067.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000067"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000068",
+    "raw_sha256": "fe85a918b3f2a8e298c21393073c1190736e84e3519b04c046a9ccaf68c64341",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000068.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000068.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000068"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000069",
+    "raw_sha256": "eef0fa0bb8a5fcfc915479b02b05360fddd94b141426e54521355ab5987abdc9",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000069.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000069.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000069"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000070",
+    "raw_sha256": "84ee5077be23bede3f7131bef62bcb91e483d5ff06c094f88884bb164fe86507",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000070.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000070.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000070"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000073",
+    "raw_sha256": "4b50cf2778183daca50705d92745fddd570082bd06af3b334c00985687fede4b",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000073.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000073.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000073"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000074",
+    "raw_sha256": "45b34432419dbacb78b303995de990ff7528e8c0a161b3af9b489bdc062ea990",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000074.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000074.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000074"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000075",
+    "raw_sha256": "8388474589bf8bef865982b2fa44efe48fe4712c097ed32a487fcce8ae30c71e",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000075.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000075.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000075"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000076",
+    "raw_sha256": "57d5e11a952b88fbf198877318bf6a9fa4b13d7a00a839ca9f46544ed40c76d6",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000076.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000076.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000076"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000078",
+    "raw_sha256": "f338e01c7fa5076f1cf31efbbd508f44198fbcbc7e1757eabce75db5447281d1",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000078.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000078.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000078"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000080",
+    "raw_sha256": "2b7d5597e4a002c668ac2a829cf9a6d20d84a0bdfbf8a28c08cbab116cae6d8d",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000080.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000080.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000080"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000082",
+    "raw_sha256": "2a46d4db054be63ab073271aa1b24bdf72c97182eb09fe3f994eff04a02b68f5",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000082.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000082.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000082"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000083",
+    "raw_sha256": "9c7916533d75ae77679ba9ddbeaffeb11b57ea40da1e965b31d5b8097e106caf",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000083.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000083.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000083"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000084",
+    "raw_sha256": "135187829eecb1b787e9e2b43209347c5b82d940051ba1273d414d78d4e5fcc6",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000084.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000084.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000084"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000086",
+    "raw_sha256": "a306bcef236e3402e7c054ccc9fd18b7811ace4f4856c3b6193a5bf3b97fefaf",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000086.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000086.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000086"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000087",
+    "raw_sha256": "927c5e9fd787a638a965c725841a18a494e474a68dca543c89e31cdb47ff413a",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000087.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000087.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000087"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000088",
+    "raw_sha256": "1c644b159d828a8ea8ddc9b5c456f2bf704079a130ccb2be0ac9d7bc6eca1401",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000088.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000088.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000088"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000089",
+    "raw_sha256": "88a8ebc32e777cf71e596122930f76d4732f21ce824192af76b8b5445192e364",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000089.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000089.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000089"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000091",
+    "raw_sha256": "e3b2fef3460d3549ba64def6886958b0ae765cedd9ab6330629e0f580de0ed8a",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000091.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000091.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000091"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000093",
+    "raw_sha256": "9d51d0ff263343256dc057e443e5c25ed3f2195e330daa81da574c5bea896bbb",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000093.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000093.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000093"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000095",
+    "raw_sha256": "455f02d892a11e38d0e1bb417f0a2aff77dd06a3b1349ac07d4b454a061e7cfb",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000095.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000095.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000095"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000096",
+    "raw_sha256": "4e4fb2b83187c844a1522ab3a0b65eb3b76446a0249e3a383674b62950bb440c",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000096.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000096.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000096"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000097",
+    "raw_sha256": "77512b78d3f329eb6d7d51b2292c30ba681b795356f4d2a0e4649b0040fa0bc1",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000097.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000097.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000097"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000098",
+    "raw_sha256": "082c1c2dc0ba854be35655c7dbadf213ec739c4ad593a75945949c802cd069bb",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000098.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000098.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000098"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000100",
+    "raw_sha256": "838713b3d28d0dd45e44a3074483d865365807ea9340f873469e40baf9e6d6ea",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000100.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000100.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000100"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000101",
+    "raw_sha256": "a181a019570caf744f95248fd56df07b1f139b6220eb75bb102964e8b5864cbd",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000101.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000101.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000101"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000102",
+    "raw_sha256": "7bfe78d6dc22c494e718600e42c67b45a4f658fd40625c7971da813fb31d55b3",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000102.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000102.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000102"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000103",
+    "raw_sha256": "0d98e1dbb25afbf4e56b1af8b6c84c3438b7c243dcfe4d1374fc310eafd55336",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000103.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000103.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000103"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000104",
+    "raw_sha256": "17a163f836d1c126a87d0f9315b4fed5e7ac85096dd748cdae45e4110895fbe4",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000104.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000104.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000104"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000105",
+    "raw_sha256": "53213e9c59f65777c0c7de6d241a56cafeef0a460ad5d59d9fd29be4cfba3e7a",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000105.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000105.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000105"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000106",
+    "raw_sha256": "3a6dd0e7bd2469863f3b9cd707dbd4d4fa770a44ab4aece1fcf81bb98b96bf17",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000106.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000106.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000106"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000107",
+    "raw_sha256": "09658cf2a1dbbdda13463719b55b71f37cc93c2356e06461ed9ca2c3a1d2271b",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000107.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000107.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000107"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000108",
+    "raw_sha256": "d0b4c25cdad16a6934730dcca3ac378b7862efd0235d4dc7df4d3309ff7abbff",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000108.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000108.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000108"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000109",
+    "raw_sha256": "c8f038f0c624e7b3b6fa9e8cfde48677d9230c6b7a6b4d015b5979339a208891",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000109.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000109.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000109"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000110",
+    "raw_sha256": "3403fe9087fcdaf20394c1119ccdd22f1526fa6848c294d012e90a00e611f53c",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000110.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000110.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000110"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000111",
+    "raw_sha256": "5faa15de9cf3ab5a37ce47218511ff9b5db33ce63713d16b5ee36e8f38ffc86e",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000111.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000111.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000111"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000112",
+    "raw_sha256": "90fd7962641cb161d259fe96275e5d3b5ebe2b6e7783459fa114c28d4938e040",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000112.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000112.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000112"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000113",
+    "raw_sha256": "b16dc99e23f664fc8e690c9de797a1c3cfcf03d2e619880e1332375df78ae307",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000113.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000113.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000113"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000114",
+    "raw_sha256": "9377856107fee0bd382f9c39e21c156f38420ffe2fc95549cd0b597bd1b1f726",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000114.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000114.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000114"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000115",
+    "raw_sha256": "48ab89cae62a93012afdf3c13d839022863e6a533d55351ba1912c42d4934e34",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000115.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000115.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000115"
+    ]
+  },
+  {
+    "episode": "drawer-open-v2-success-episode_000117",
+    "raw_sha256": "45b98764e82383872d13118f185d491a773eea5bbb7596d4ea940bf9700bbccb",
+    "config": "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000117.yaml",
+    "argv": [
+      "-m",
+      "s4d.realworld.cli",
+      "run",
+      "--config",
+      "/home/ws/ws/realworld-ops/dsreset-20261113/pipeline/drawer-canonical-manifests/prep/drawer-open-v2-success-episode_000117.yaml",
+      "--episode",
+      "drawer-open-v2-success-episode_000117"
+    ]
+  }
+]

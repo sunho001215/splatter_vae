@@ -1,0 +1,19 @@
+{
+  "passed": 9,
+  "checks": [
+    "unique registered cancellation IDs",
+    "S and cancelled registered inventories disjoint",
+    "all150 canonical failure identities retained",
+    "all293 success plan entries are exact canonical subsets",
+    "211 unique prospective S publication rows including9 repaired barriers",
+    "covering/PNP stats reused",
+    "qualified98 S-only rows without registration or staging",
+    "actual old pin eligibility expands8 to16 devices",
+    "all108 S policies inventoried with24 S hooks"
+  ],
+  "success_plan_counts": {
+    "success-plan-covering-canonical-manifests.json": 98,
+    "success-plan-pick-and-place-canonical-manifests.json": 97,
+    "success-plan-drawer-canonical-manifests.json": 98
+  }
+}
