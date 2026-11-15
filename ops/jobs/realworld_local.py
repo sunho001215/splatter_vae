@@ -1348,7 +1348,7 @@ def closeout(job_id: str, state: dict, job: dict, finished_dir: Path = FINISHED_
                                   json.loads((runs / job_id / "continuation.json").read_bytes()))
         except (OSError, ValueError) as exc:
             raise LocalInputError(str(exc)) from exc
-    if job.get("script") == NATIVE_DEPTH:  # every overlay the descriptor names is part of the immutable evidence
+    if legacy_row(job).get("script") == NATIVE_DEPTH:  # every overlay the descriptor names (dsreset wrapper too) is evidence
         if NATIVE_STORE_NAME not in files:
             raise LocalInputError(f"native depth closeout needs {NATIVE_STORE_NAME} as a required result")
         spec = yaml.safe_load((runs / job_id / NATIVE_STORE_NAME).read_bytes()) or {}
