@@ -39,6 +39,11 @@ ALIASES = {
 S4D_IMPORTS_OF_OPS = {
     ("s4d/data/__init__.py", "ops.resources.gpu_guard"),
     ("s4d/diag/wandb_log.py", "ops.resources.gpu_guard"),
+    # RGB-only drawer route (nosam 07b0894): verifies phase-A hybrid outputs and local closeouts it consumes.
+    ("s4d/rwlearn/rgb_inputs.py", "ops.jobs"),
+    ("s4d/rwlearn/rgb_inputs.py", "ops.jobs.local_phase_a"),
+    ("s4d/rwlearn/rgb_inputs.py", "ops.jobs.local_phase_a_hybrid"),
+    ("s4d/rwlearn/rgb_inputs.py", "ops.inference_server.contract_checks"),
 }
 
 

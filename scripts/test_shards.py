@@ -17,6 +17,7 @@ FILE_CLASSES = {
     "tests/test_dsreset_preparation.py": "cpu",
     "tests/test_dsreset_registration.py": "cpu",
     "tests/test_dsreset_success_only.py": "cpu",
+    "tests/test_drawer_rgb_inputs.py": "cpu",
     "tests/test_adoption_guards.py": "cpu",
     "tests/test_ours_priority.py": "cpu",
     "tests/test_ours_continuation.py": "cpu",
