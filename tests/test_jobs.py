@@ -536,6 +536,7 @@ def test_exit_terminates_leftover_processes_of_the_job_session(tmp_path):
     assert not jobs.pid_alive(child), status.read_text()[:400] if status.exists() else "gone"
 
 
+@pytest.mark.local_host_data  # launches through the LOCAL host's approved GPUs; the remote container is not that host
 def test_detached_launch_success_restart_once_then_fail(tmp_path, monkeypatch):
     uuid = os.environ["CUDA_VISIBLE_DEVICES"].split(",")[0]
     monkeypatch.setattr(jobs, "APPROVED_HOST_GPUS", {**jobs.APPROVED_HOST_GPUS, "local": (uuid,)})
