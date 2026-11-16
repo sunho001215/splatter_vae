@@ -7,6 +7,9 @@ import pytest
 from ops.jobs import realworld_local as L
 from ops.jobs.dsreset_plan import METHODS, build_rows, row_id
 
+# reads coordinator tools under runs/setup/tools, which the remote release bundle does not ship
+pytestmark = pytest.mark.local_host_data
+
 REPO = Path(__file__).resolve().parents[1]
 
 

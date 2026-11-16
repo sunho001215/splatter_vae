@@ -10,6 +10,9 @@ from s4d.rwlearn import rgb_inputs as rgb
 from tests.test_dsreset_registration import canonical_manifests
 from tests.test_realworld_train_store import built
 
+# reads coordinator tools under runs/setup/tools, which the remote release bundle does not ship
+pytestmark = pytest.mark.local_host_data
+
 ROOT = Path(__file__).resolve().parents[1]
 
 

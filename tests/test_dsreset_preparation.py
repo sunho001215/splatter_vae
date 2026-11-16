@@ -85,6 +85,7 @@ def test_automatic_publication_uses_the_established_frozen_verdict_contract(tmp_
         check_against_frozen(verdict,frozen)
 
 
+@pytest.mark.local_host_data  # reads runs/setup/tools (not in the remote release bundle)
 def test_scene_runtime_settings_are_identical_across_variants_and_stage_priority_dominates():
     from ops.jobs.dsreset_plan import build_rows
     from tests.test_dsreset_registration import registrar

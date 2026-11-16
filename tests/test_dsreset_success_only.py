@@ -12,6 +12,9 @@ from tests.test_dsreset_registration import registrar, canonical_manifests
 from tests.test_rwlearn_gate import entry
 
 
+# reads coordinator tools under runs/setup/tools, which the remote release bundle does not ship
+pytestmark = pytest.mark.local_host_data
+
 def test_s_inventory_never_opens_failure_root(tmp_path):
     success=tmp_path/'success';success.mkdir()
     for i in range(3):(success/f'episode_{i:06d}.h5').write_text(str(i))
