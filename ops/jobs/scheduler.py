@@ -220,6 +220,7 @@ def load_queue(path: Path = QUEUE) -> dict:
 def read_registry(path: Path = REGISTRY) -> dict[str, dict]:
     state: dict[str, dict] = {}
     executed = set()
+    repin_histories = {}
     if path.is_file():
         for line in path.read_text().splitlines():
             event = json.loads(line)
@@ -390,8 +391,18 @@ def read_registry(path: Path = REGISTRY) -> dict[str, dict]:
                 # release whose execution scope equals its pinned release except the GPU-allowlist files
                 # (ops/jobs/release_repin.py); same host, job id, arguments and fingerprint, resumed from its own
                 # checkpoint under the next attempt. Recorded only with the user's explicit authorization.
+                prior = repin_histories.get(event["id"], [])
+                chained = "repin_chain" in event
+                if chained:
+                    from ops.jobs.repin_chain import validate_events
+                    if (not job.get("repinned_from") or not prior or event["repin_chain"] != prior
+                            or event.get("attempt") != job.get("attempt")):
+                        raise ValueError(f"invalid release re-pin chain for {event['id']}")
+                    visited = validate_events(prior, job.get("commit"), job.get("image_digest"))
+                    if (event.get("commit"), event.get("image_digest")) in visited:
+                        raise ValueError(f"invalid release re-pin duplicate for {event['id']}")
                 if (job["status"] not in {"crashed", "pending", "failed"} or job.get("unknown")
-                        or job.get("repinned_from") or job.get("host") != "remote"
+                        or (job.get("repinned_from") and not chained) or job.get("host") != "remote"
                         or event.get("host") != "remote" or event.get("sources_identical") is not True
                         or event.get("from_commit") != job.get("commit")
                         or event.get("from_image_digest") != job.get("image_digest")
@@ -400,6 +411,9 @@ def read_registry(path: Path = REGISTRY) -> dict[str, dict]:
                         or not all(isinstance(event.get(key), str) and event[key] for key in ("commit", "image_digest"))
                         or (event["commit"], event["image_digest"]) == (job.get("commit"), job.get("image_digest"))):
                     raise ValueError(f"invalid release re-pin event for {event['id']}")
+                repin_histories[event["id"]] = [*prior, {k: v for k, v in event.items() if k != "repin_chain"}]
+                if chained:
+                    job["release_history"] = repin_histories[event["id"]]
                 job.update(commit=event["commit"], image_digest=event["image_digest"],
                            repinned_target={"commit": event["commit"], "image_digest": event["image_digest"]},
                            repinned_from={"commit": event["from_commit"], "image_digest": event["from_image_digest"],

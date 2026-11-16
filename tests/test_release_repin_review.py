@@ -62,7 +62,7 @@ def test_uncovered_or_stale_evidence_refuses(tmp_path, change):
 
 @pytest.mark.parametrize('extra', [{'status': 'running'}, {'unknown': True}, {'status': 'unreachable'},
                                   {'repinned_from': {'commit': C1}}])
-def test_stopped_only_and_single_transition(extra):
+def test_stopped_only_and_complete_transition(extra):
     state = {'host': 'remote', 'status': 'crashed', 'commit': C1, 'image_digest': IMG, **extra}
     with pytest.raises(rr.RepinError):
         rr.check_state('j', state, C2, IMG)
@@ -145,5 +145,5 @@ def test_cli_plan_is_read_only_and_apply_requires_acceptance_and_approval(tmp_pa
     state = jobs.read_registry(registry)['j']
     assert state['commit'] == C2 and state['job_sha256'] == fingerprint and state['data_identity'] == 'd' * 64
     assert state['repinned_target'] == {'commit': C2, 'image_digest': IMG}
-    with pytest.raises(rr.RepinError, match='already re-pinned once'):
+    with pytest.raises(rr.RepinError, match='already on'):
         rr.main(['apply', '--authorization', 'resume', '--acceptance-manifest', 'manifest.json', *args])

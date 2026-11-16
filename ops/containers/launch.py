@@ -317,7 +317,7 @@ def _bound_path(path: str) -> str:
 
 def build_remote_command(spec: dict, data_identity: str, origin_commit: str, proof_sha256: str,
                          acceptance_sha256: dict[str, str], data_files: list[tuple[str, str]], *,
-                         origin_ref: str = ORIGIN_REF) -> str:
+                         origin_ref: str = ORIGIN_REF, repin_history: list[dict] | None = None) -> str:
     spec = validate_spec(spec)
     if (not HEX64.fullmatch(data_identity) or not HEX40.fullmatch(origin_commit) or not HEX64.fullmatch(proof_sha256)
             or origin_ref not in RELEASE_ORIGIN_REFS.values()):
@@ -642,6 +642,20 @@ def build_remote_command(spec: dict, data_identity: str, origin_commit: str, pro
     for directory in (f"{root}/runs", f"{root}/outputs", cache, f"{cache}/home", f"{cache}/tmp"):
         lines.append("bounded " + q(directory))
         lines.append("mkdir -p -- " + q(directory))
+    if repin_history is not None:
+        from ops.containers import repin_provenance
+        from ops.jobs.repin_chain import validate_events, PRETRAINERS
+
+        validate_events(repin_history, commit, image)
+        # Limit preparation to trainers whose entry and trainer share runs/<job_id>/provenance.json.
+        if spec["script"] not in PRETRAINERS or repin_history[-1]["id"] != spec["id"]:
+            raise ValueError("chained provenance preparation requires a supported pretrainer")
+        source = Path(repin_provenance.__file__).read_text()
+        source += "\nimport sys\np, events, data, fingerprint, invocation = json.loads(sys.argv[1])\nprepare(Path(p), events, data, fingerprint, invocation)\n"
+        payload = json.dumps([f"{root}/runs/{spec['id']}/provenance.json", repin_history,
+                              data_identity, repin_history[-1]["job_sha256"],
+                              {"script": spec["script"], "arguments": spec["args"]}])
+        lines.append(shlex.join(["python3", "-I", "-c", source, payload]))
     lines += ["cid=$(" + shlex.join(docker) + ")", 'test "${#cid}" -eq 64',
               'case "$cid" in *[!0-9a-f]*) exit 1;; esac',
               'printf \'{"container_id":"%s","container":"%s"}\\n\' "$cid" "$container"']
@@ -769,22 +783,25 @@ def gpu_free_command(gpu: str) -> str:
 
 
 def recorded_repin(repo: Path, spec: dict) -> bool:
-    """Codex review 3 (6): a spec carrying ``repinned_from`` launches only when the local registry holds exactly that
-    release_repinned transition (job, source and destination release, scope identity, authorization)."""
+    """Only the latest contiguous, authorized transition may launch."""
+    from ops.jobs.repin_chain import registry_history, validate_events
+
     registry = Path(repo) / "experiments/registry.jsonl"
-    source = spec["repinned_from"]
     if not registry.is_file():
         return False
-    for line in registry.read_text().splitlines():
-        if '"release_repinned"' not in line:
-            continue
-        event = json.loads(line)
-        if (event.get("event") == "release_repinned" and event.get("id") == spec["id"]
-                and event.get("from_commit") == source["commit"] and event.get("from_image_digest") == source["image_digest"]
-                and event.get("commit") == spec["commit"] and event.get("image_digest") == spec["image_digest"]
-                and event.get("sources_identical") is True and str(event.get("authorization", "")).strip()):
-            return True
-    return False
+    try:
+        history = registry_history(registry, spec["id"])
+    except ValueError:
+        return False
+    if not history:
+        return False
+    latest, source = history[-1], spec["repinned_from"]
+    try:
+        validate_events(history, spec["commit"], spec["image_digest"])
+    except ValueError:
+        return False
+    return (latest.get("from_commit") == source["commit"] and latest.get("from_image_digest") == source["image_digest"]
+            and latest.get("commit") == spec["commit"] and latest.get("image_digest") == spec["image_digest"])
 
 
 MIG_MODE_QUERY = "nvidia-smi --query-gpu=uuid,mig.mode.current,mig.mode.pending --format=csv,noheader,nounits"
@@ -816,6 +833,12 @@ def launch(spec_path: Path, client: RemoteClient | None = None, *, wait: bool | 
     spec = validate_spec(json.loads(Path(spec_path).read_text()))
     if "repinned_from" in spec and not recorded_repin(client.main_repo, spec):
         raise ValueError("Release re-pin of this attempt is not recorded in the registry (release_repinned)")
+    repin_history = None
+    if "repinned_from" in spec:
+        from ops.jobs.repin_chain import registry_history
+        history = registry_history(client.main_repo / "experiments/registry.jsonl", spec["id"])
+        if len(history) > 1:
+            repin_history = history
     client.check_tunnel(wait=wait)
     mig_mode_preflight(client, spec["gpu"], wait=wait)
     artifacts, data_identity, payloads = evidence_artifacts(spec, client.main_repo)
@@ -836,7 +859,7 @@ def launch(spec_path: Path, client: RemoteClient | None = None, *, wait: bool | 
         checksums[name] = sha256(extracted)
     data_files = [(item["target"], item["sha256"]) for item in payloads["data.json"]["files"]]
     command = build_remote_command(spec, data_identity, origin_commit, sha256(local_proof), checksums, data_files,
-                                   origin_ref=proof["origin_ref"])
+                                   origin_ref=proof["origin_ref"], repin_history=repin_history)
     try:
         result = client.checked_ssh(command, wait=wait, idempotent=False, timeout=900)
     except RemoteCommandError as exc:

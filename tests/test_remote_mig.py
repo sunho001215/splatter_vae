@@ -792,8 +792,8 @@ def test_repin_hardening_image_chain_patch_and_reserved_field(tmp_path):
     with pytest.raises(release_repin.RepinError, match="image change"):
         release_repin.check_state("j", stopped, C2, "sha256:" + "d" * 64)
     pending = {**stopped, "commit": C2, "repinned_from": {"commit": C1, "image_digest": IMG, "attempt": 1}}
-    for attempt in (1, 2):  # one re-pin per run (Codex review 3, 13), whether or not it was taken up
-        with pytest.raises(release_repin.RepinError, match="already re-pinned once"):
+    for attempt in (1, 2):  # chain requires complete recorded provenance, even before its first launch
+        with pytest.raises(release_repin.RepinError, match="incomplete or inconsistent"):
             release_repin.check_state("j", {**pending, "attempt": attempt}, "e" * 40, IMG)
     scope = {"operational_differences": ["ops/jobs/run_identity.py", "configs/hosts/remote.yaml"]}
     release_repin.check_operational(scope, {"ops/jobs/run_identity.py": b"reviewed\n"}, lambda name: b"reviewed\n")
