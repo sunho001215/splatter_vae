@@ -258,6 +258,13 @@ try:  # fail closed: without readable roles nothing is admitted, offered or move
 except (OSError, ValueError, yaml.YAMLError) as exc:
     ROLES, OWNERSHIP, EXCEPTIONS, ROLE_ERROR = None, {}, {}, f'{type(exc).__name__}: {str(exc)[:200]}'
 by_id = {j['id']: j for j in queue['jobs']}
+# Explicit offloads retain the row's exact commit/image; they never inherit ROLE_COMMIT.
+# The scheduler still validates the complete acceptance and pushed-commit evidence.
+from ops.jobs import remote_offload
+OFFLOAD_PINS = {j['id']: proof for j in queue['jobs']
+                if (proof := remote_offload.admitted_pin(j, OWNERSHIP)) is not None}
+for _pin, _manifest in OFFLOAD_PINS.values():
+    RELEASES[_pin] = _manifest
 remote = [j for j in queue['jobs'] if j.get('host') == 'remote' and kind(j['id'])]
 freeze_path = REPO / 'runs/setup/method-frozen-v1.json'
 freeze = json.loads(freeze_path.read_text()) if freeze_path.exists() else None
@@ -513,7 +520,7 @@ def ready(job):
     if k == 'pool_export':  # inputs are the remote pretraining's files, released by the dependency on that run
         return True
     if k == 'role':  # inputs live on the remote (ingested / preprocessed there); dependencies express data gates
-        return ROLE_READY
+        return release_ready(job) if jid in OFFLOAD_PINS else ROLE_READY
     if k == 'analysis':  # inputs (existing checkpoints / exports, uploaded with checksums) are listed in 'inputs'
         if not job.get('inputs'):
             return False
@@ -625,6 +632,8 @@ def job_release(job):
         return target['commit'], target['image_digest']
     if previous.get('commit'):
         return previous['commit'], previous.get('image_digest', IMAGE)
+    if job['id'] in OFFLOAD_PINS:
+        return OFFLOAD_PINS[job['id']][0]
     if kind(job['id']) == 'role':
         return ROLE_COMMIT, ROLE_IMAGE
     if job['id'].startswith(ENC_PREFIXES):
@@ -660,7 +669,7 @@ sys.path.insert(0, str(REPO / 'runs/setup/tools'))
 candidates = [j for j in candidates if not paused(j['id'])]
 # Rows pinned to a LOCAL release (registrars' --release-source local) run only on local after explicit placement:
 # the remote would run them on runs/setup/role-release.json, which is not their release.
-candidates = [j for j in candidates if j.get('release_source') != 'local']
+candidates = [j for j in candidates if j.get('release_source') != 'local' or j['id'] in OFFLOAD_PINS]
 if (REPO / 'runs/setup/remote-hold-admissions').exists():
     messages.append('ADMISSIONS_HELD ' + (REPO / 'runs/setup/remote-hold-admissions').read_text().strip())
     candidates = []

@@ -1539,6 +1539,13 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
             continue
         # Readiness precedes all reservations, including GPU waits.
         if host_name == 'remote':
+            if (str(job.get('placement', '')).startswith('remote-offload ')
+                    or ownership.get(job['id'], {}).get('remote_offload')):
+                from ops.jobs.remote_offload import admitted_pin
+                proof = admitted_pin(job, ownership)
+                if proof is None or proof[0] != (host.get('commit'), host.get('image_digest')):
+                    messages.append(f"{job['id']}: offload pin/ownership mismatch; admission held")
+                    continue
             purpose = validate_verification(job, queued=True)
             if purpose is not None:
                 if purpose not in verification_evidence:

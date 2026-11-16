@@ -1211,7 +1211,7 @@ def test_local_driver_stamps_roles_and_remote_driver_honours_queue_hold_and_loca
     assert 'if _paused_now(job' in local  # an intentionally paused Stage 2 row never forces the baselines to yield
     remote = (rw.REPO / 'ops/campaign/remote_campaign_driver.py').read_text()
     assert "or queue['hosts'].get('remote', {}).get('hold', False) is not False)" in remote
-    assert "candidates = [j for j in candidates if j.get('release_source') != 'local']" in remote
+    assert "candidates = [j for j in candidates if j.get('release_source') != 'local' or j['id'] in OFFLOAD_PINS]" in remote
     assert "if paused(job['id']) or job.get('release_source') == 'local':" in remote
     for text in (local,):
         assert 'remote-hold-admissions' not in text and 'verification/HOLD' not in text

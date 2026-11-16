@@ -2455,10 +2455,30 @@ def test_removal_archives_durably_and_refuses_symlinked_archive_paths(tmp_path):
     assert (run / "containers/s4d-r-a1.docker.log").read_text() == "log\n" and (tmp_path / "removed").exists()
 
 
+def test_offload_dispatch_queue_cannot_substitute_its_release(tmp_path, monkeypatch):
+    identity = 'rwv2-20261113-export-dynamo-covering-S'
+    row = job(identity, placement='remote-offload test', planned_commit='c' * 40, planned_image=IMAGE,
+              registration_tool='runs/setup/tools/register_dsreset_20261113.py')
+    owner = dict(job_id=identity, kind='role_placement', state='placed', owner_host='remote',
+        remote_offload=dict(commit='c' * 40, image=IMAGE, fingerprint=jobs.job_fingerprint(row),
+                            inputs_verified=True, evidence_manifest='manifest.json'))
+    monkeypatch.setattr(jobs.host_roles, 'read_ownership', lambda *a: {identity: owner})
+    backend = FakeBackend(tmp_path / 'runs')
+    backend.value.admission_records = []
+    backend.value.gpu_memory = {REMOTE: (24 * 1024, 0)}
+    backend.ready = lambda *a: pytest.fail('offload pin must be checked before acceptance')
+    messages = tick(tmp_path, write_queue(tmp_path, [row]), backend)
+    assert not backend.launches
+    assert any('offload pin/ownership mismatch' in m for m in messages)
+
+
 def test_negative_priorities_load_and_admit_before_older_fql(tmp_path):
     backend = FakeBackend(tmp_path / "runs")
+    backend.value.admission_records = []
+    backend.value.gpu_memory = {REMOTE: (24 * 1024, 0)}
     queued = write_queue(tmp_path, [job("old-fql", priority=2), job("ours-fql", priority=0),
-                                    job("pretrain", priority=-1)])
+                                    job("pretrain", priority=-1)],
+                         limits={REMOTE: dict(max_jobs=2, max_mem_gb=22)})
     assert [j["id"] for j in jobs.eligible(jobs.load_queue(queued)["jobs"], {})] == [
         "pretrain", "ours-fql", "old-fql"]
     tick(tmp_path, queued, backend)
