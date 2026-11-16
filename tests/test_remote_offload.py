@@ -319,6 +319,7 @@ def test_driver_release_selection_without_importing_campaign(placement):
     assert names['job_release'](placement.job) == (COMMIT, IMAGE)
 
 
+@pytest.mark.local_host_data  # runs runs/setup/tools, which the remote sync does not carry
 def test_offline_cli_never_constructs_remote_client(placement, monkeypatch, capsys):
     spec = importlib.util.spec_from_file_location('offload_cli', REPO / 'runs/setup/tools/offload_remote_20261116.py')
     cli = importlib.util.module_from_spec(spec)
@@ -380,6 +381,7 @@ def test_unrelated_queue_edit_during_staging_is_not_overwritten(placement, monke
     assert not list((f.root / 'experiments').glob('.offload-queue-*'))
 
 
+@pytest.mark.local_host_data  # runs runs/setup/tools, which the remote sync does not carry
 def test_loop_stop_file_prevents_pass_and_stops_between_passes(tmp_path, monkeypatch):
     stop = tmp_path / 'STOP'
     log = tmp_path / 'passes'
@@ -469,6 +471,7 @@ def test_release_reservation_keeps_remote_device_free(placement, monkeypatch):
         off.remote_room(f.job, f.root, snap)
 
 
+@pytest.mark.local_host_data  # runs runs/setup/tools, which the remote sync does not carry
 def test_execute_end_to_end_uses_only_fake_remote_and_never_writes_registry(placement, monkeypatch, capsys):
     from ops.jobs.remote_backend import RemoteBackend, RemoteSnapshot
     from ops.remote import access
