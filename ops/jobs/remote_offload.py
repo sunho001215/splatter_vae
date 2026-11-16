@@ -60,7 +60,8 @@ def pauses(root):
     setup = root / "runs/setup"
     files = [setup / "rwprep-mig-priority.json", *sorted((setup / "rwprep-mig-priority.d").glob("*.json"))]
     for path in files:
-        if path.exists() and json.loads(path.read_bytes())["active"] is True:
+        prep = json.loads(path.read_bytes()) if path.exists() else {}
+        if prep.get("active") is True and prep.get("host") != "remote":
             result.append(dict(name="rwprep-mig-priority:" + path.stem, prefixes=[""]))
     return result
 

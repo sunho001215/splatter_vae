@@ -1340,6 +1340,7 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
         try:
             remote_backend = remote_backend or RemoteBackend(REPO, runs)
             snapshot = remote_backend.snapshot()
+            prep_snapshot = snapshot  # _charge_cotenants consumes resources['remote']['snapshot']
             _host_reachability(registry, True)
             owned, reachable = _reconcile_remote(remote_backend, snapshot, read_registry(registry), registry, runs, messages,
                                                  scope)
@@ -1620,6 +1621,15 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
         if not policy.feasible(job):
             policy.log(job, 'infeasible on empty host')
             continue
+        if host_name == 'remote':
+            # Dispatch batches may outlive prep readiness changes. Re-read intents
+            # before each admission; these in-memory holds never constrain prep.
+            from ops.jobs.prep_reservation import reserve as reserve_prep
+            try:
+                reserve_prep(policy, prep_snapshot)
+            except (OSError, ValueError, KeyError, TypeError, RuntimeError, subprocess.SubprocessError) as exc:
+                messages.append(f"{job['id']}: prep reservation evidence unavailable ({type(exc).__name__})")
+                continue
         priority_free = policy.remaining()
         if held_back:
             priority_free = {k: priority_free[k]-release_charge[k] for k in priority_free}

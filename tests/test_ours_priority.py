@@ -165,7 +165,7 @@ def remote_context(pool=False, **head_overrides):
               total=0, reserved=0, _ram_budget=10, _ram_available=10, CAP=10 * 2**30,
               ram_gb=lambda j: j.get('ram_gb', 0), with_role=lambda j: j,
               HYB_PREFIXES=('hyb-',), CST_PREFIXES=('cst-',), GPU_HEAVY=('heavy-',),
-              by_id={r['id']: r for r in ready}, messages=[])
+              by_id={r['id']: r for r in ready}, messages=[], snapshot=SimpleNamespace(cotenants={}))
     functions('ops/campaign/remote_campaign_driver.py', ns, 'priority_request', 'priority_policy',
               'capacity_fits', 'place', 'may_use_reserved', 'reserve_for_hybrid')
     source = tree('ops/campaign/remote_campaign_driver.py')

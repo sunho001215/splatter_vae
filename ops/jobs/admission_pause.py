@@ -11,13 +11,22 @@ PREP_PRIORITY = Path('/home/ws/ws/splatter4d/runs/setup/rwprep-mig-priority.json
 PREP_PRIORITY_DIR = Path('/home/ws/ws/splatter4d/runs/setup/rwprep-mig-priority.d')
 
 
+def prep_holds(*, active_only=True):
+    """Live prep evidence; remote holds reserve capacity rather than pause rows."""
+    prep_files = ([PREP_PRIORITY] if PREP_PRIORITY.exists() else []) + sorted(PREP_PRIORITY_DIR.glob('*.json'))
+    holds = []
+    for path in prep_files:
+        prep = json.loads(path.read_text())
+        if not active_only or prep['active'] is True:
+            holds.append((path, prep))
+    return holds
+
+
 def snapshot() -> list[dict]:
     spec = json.loads(FILE.read_text()) if FILE.is_file() else {'pauses': []}
     pauses = [p for p in spec['pauses'] if p.get('active') is True]
-    prep_files = ([PREP_PRIORITY] if PREP_PRIORITY.exists() else []) + sorted(PREP_PRIORITY_DIR.glob('*.json'))
-    for path in prep_files:
-        prep = json.loads(path.read_text())
-        if prep['active'] is True:
+    for path, prep in prep_holds():
+        if prep.get('host') != 'remote':  # preserve local/legacy fail-closed pauses
             pauses.append({'name':'rwprep-mig-priority:'+path.stem,'prefixes':['']})
     return pauses
 

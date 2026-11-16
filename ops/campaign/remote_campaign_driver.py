@@ -810,14 +810,16 @@ if RELEASE_HOLD:
     _ram_available -= release_reservation.charges(RELEASE_HOLD)['ram_gb']
 
 def priority_policy():
+    from ops.jobs.prep_reservation import reserve
     limits = {g: dict(max_jobs=int(_host['limits'].get(g, {}).get('max_jobs', 4 if g.startswith('MIG-') else 20)),
                       max_mem_gb=min(GPU_CAP[g], float(_host['limits'].get(g, {}).get('max_mem_gb', GPU_CAP[g]))))
               for g in GPUS}
-    return PriorityReservations(limits, dict(ram_gb=_ram_budget, cpu_threads=CPU_BUDGET, disk_gb=disk_budget),
+    policy = PriorityReservations(limits, dict(ram_gb=_ram_budget, cpu_threads=CPU_BUDGET, disk_gb=disk_budget),
         lambda: {g: dict(jobs=gpu_jobs[g], mem_gb=gpu_mem[g]) for g in GPUS},
         lambda: dict(ram_gb=min((CAP-total) / 2**30, _ram_available-(total-reserved) / 2**30),
                      cpu_threads=CPU_BUDGET-cpu_used, disk_gb=disk_free),
         request=priority_request, messages=messages)
+    return reserve(policy, globals().get('snapshot'))
 
 
 def capacity_fits(job, g):
@@ -1057,6 +1059,7 @@ chosen = _replayed
 
 def dispatch_policy(observed, backend):
     """Fresh live evidence between release ticks; reservations cannot rely on a preceding batch's outcome."""
+    from ops.jobs.prep_reservation import reserve
     fresh = backend.snapshot()
     if not fresh.resources_ready:
         raise ValueError('remote dispatch resource evidence unavailable')
@@ -1095,7 +1098,7 @@ def dispatch_policy(observed, backend):
         lambda: dict(ram_gb=ram, cpu_threads=CPU_BUDGET-cpu, disk_gb=disk),
         request=priority_request, messages=messages)
     policy.logged = priority_reservations.logged
-    return policy
+    return reserve(policy, fresh)
 
 
 if chosen and DRY:

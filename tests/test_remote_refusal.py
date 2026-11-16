@@ -127,7 +127,9 @@ def test_real_registry_replay_unchanged_for_every_job(tmp_path):
     """Only read main's registry; replay one captured byte sequence with both reducers."""
     import ast
     import subprocess
-    source = subprocess.run(['git', 'show', '1b1e228:ops/jobs/scheduler.py'], cwd=REPO,
+    # Adopted main supports the chained re-pins now in the live registry. The
+    # earlier 1b1e228 reference rejects those events before comparison can run.
+    source = subprocess.run(['git', 'show', '747ecbb3388b927bf968c882527debb0e262abe0:ops/jobs/scheduler.py'], cwd=REPO,
                             check=True, capture_output=True, text=True).stdout
     node = next(n for n in ast.parse(source).body if isinstance(n, ast.FunctionDef) and n.name == 'read_registry')
     original = dict(jobs.__dict__)
