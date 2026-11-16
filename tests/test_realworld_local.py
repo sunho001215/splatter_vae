@@ -90,6 +90,8 @@ def pinned_scope(monkeypatch):
             raise rw.LocalInputError("no pinned release (planned_commit): local placement needs one")
         return copy.deepcopy(SCOPE)
     monkeypatch.setattr(rw, "placement_scope", scope)
+    # Synthetic scope digests have no corresponding source checkout under tmp_path.
+    monkeypatch.setattr(rw, "revalidate_placement_scope", lambda scope, **kw: scope)
     from ops.jobs import local_devices
     original = local_devices._release_devices
     monkeypatch.setattr(local_devices, "_release_devices",

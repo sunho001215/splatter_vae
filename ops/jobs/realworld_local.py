@@ -11,8 +11,8 @@ their content identities. Compact descriptors retain their byte-identical remote
 the localized copies; every referenced episode file is inventoried. Large files use the verified transfer's size and
 mtime at admission, small files are hashed again. ``verify`` can audit every byte independently of admission.
 
-Placement compares the pinned release's execution scope once, under the placement locks, and records the digests in
-both ownership and pool records. Launch compares that scope against the tick's source identity without git reads.
+Placement compares the pinned release's execution scope outside the placement locks, rechecks its digests inside,
+and records them in both ownership and pool records. Launch compares that scope against the tick's source identity without git reads.
 Training capacity uses TRAINING_CEILING, leaving the fixed 2 GB staging reserve inside the configured local ceiling.
 No campaign driver is imported here. Network access is confined to the explicitly requested plan/fetch operations;
 remote commands only read files, and downloads use RemoteClient's shared budget and verified atomic placement.
@@ -1037,6 +1037,17 @@ def placement_scope(job: dict, *, root: Path = REPO) -> dict:
     return {"source_commit": commit, "files": files}
 
 
+def revalidate_placement_scope(scope: dict, *, root: Path = REPO) -> dict:
+    """Recheck a prepared proof without repeating the pinned git tree/import walk."""
+    from ops.provenance.upstreams import working_tree_identity
+    upstreams = working_tree_identity(root) if any("@" in n for n in scope["files"]) else {}
+    for name, digest in scope["files"].items():
+        current = upstreams.get(name) if "@" in name else _hash(root / name)
+        if current != digest:
+            raise LocalInputError("local code changed after scope preparation")
+    return scope
+
+
 def localize(job: dict, state: dict, *, roles: dict, by_id=None, runs: Path | None = None,
              mirror: Path | None = None, manifest: Path | None = None, source_identity: dict | None = None,
              ownership: dict | None = None, root: Path = REPO, remote_prefix: str = REMOTE_PREFIX,
@@ -1148,7 +1159,8 @@ def _missing_bytes(job: dict, mirror: Path, manifest: Path, inventory: dict | No
 
 def plan(queue: dict, state: dict, roles: dict, *, paused_fn, allow_pauses=(), policy="fit", capacity=None,
          mirror: Path = MIRROR, manifest: Path | None = None, ownership=None, runs: Path | None = None,
-         root: Path = REPO, remote_plan: dict | None = None, remote_prefix: str = REMOTE_PREFIX) -> list[dict]:
+         root: Path = REPO, remote_plan: dict | None = None, remote_prefix: str = REMOTE_PREFIX,
+         scope_provider=None, only_ids=None) -> list[dict]:
     """Read-only decisions in priority order. ``fit`` reserves per-MIG slots and remaining local RAM; ``all`` queues.
 
     Caller capacity overrides the measured snapshot; missing total/free RAM, CPU and disk evidence is measured here.
@@ -1202,6 +1214,8 @@ def plan(queue: dict, state: dict, roles: dict, *, paused_fn, allow_pauses=(), p
         return True
 
     for _, job in sorted(enumerate(queue["jobs"]), key=lambda pair: (pair[1].get("priority", 5), pair[0])):
+        if only_ids is not None and job["id"] not in only_ids:
+            continue
         if job.get("host", "local") != "remote" or not applies(job, roles, by_id):
             continue
         if current_priority != job.get("priority", 5):
@@ -1245,7 +1259,7 @@ def plan(queue: dict, state: dict, roles: dict, *, paused_fn, allow_pauses=(), p
                     needs = 0  # the refusal above remains authoritative when a size cannot be inventoried
             if decision == "local":
                 try:
-                    scope = placement_scope(job, root=root)
+                    scope = (scope_provider or placement_scope)(job, root=root)
                 except (OSError, ValueError, subprocess.SubprocessError) as exc:
                     decision, reason = "stay_remote", str(exc)
             if decision == "local" and policy == "fit":
@@ -1268,7 +1282,7 @@ def apply(ids, reason, *, allow_pauses=(), queue_path=None, registry_path=None,
           admission_lock: Path = host_roles.ADMISSION_LOCK, remote_lock: Path = REMOTE_LOCK, blocking=False,
           mirror: Path = MIRROR, input_manifest: Path | None = None, roles_path: Path = host_roles.ROLES_PATH,
           root: Path = REPO, paused_fn=None) -> dict:
-    """Recheck all non-capacity rules under remote -> local-admission -> registry locks, then move host fields only.
+    """Prepare git scopes outside locks; recheck under stage2 -> remote -> registry, then move host fields only.
 
     Capacity is a planning policy, not a permanent ownership condition: rows placed by ``all`` can wait in the local
     queue. Every move retains the original row, fingerprints and release scope. Allowed pauses are recorded and are
@@ -1277,8 +1291,23 @@ def apply(ids, reason, *, allow_pauses=(), queue_path=None, registry_path=None,
     from ops.jobs import scheduler
     from ops.jobs.admission_pause import active_pauses
     queue_path, registry_path = Path(queue_path or scheduler.QUEUE), Path(registry_path or scheduler.REGISTRY)
+    requested = set(ids)
+    initial = {j["id"]: j for j in scheduler.load_queue(queue_path)["jobs"] if j["id"] in requested}
+    prepared = {}
+    for identity, job in initial.items():
+        try:
+            prepared[identity] = placement_scope(job, root=root)
+        except (OSError, ValueError, subprocess.SubprocessError) as exc:
+            prepared[identity] = str(exc)
+
+    def prepared_scope(job, *, root):
+        proof = prepared.get(job["id"])
+        if initial.get(job["id"]) != job or not isinstance(proof, dict):
+            raise LocalInputError(proof if isinstance(proof, str) else "row changed after scope preparation")
+        return revalidate_placement_scope(proof, root=root)
+
     with contextlib.ExitStack() as stack:
-        for path in (Path(remote_lock), Path(admission_lock), registry_path.with_suffix(".lock")):
+        for path in (Path(admission_lock), Path(remote_lock), registry_path.with_suffix(".lock")):
             path.parent.mkdir(parents=True, exist_ok=True)
             lock = stack.enter_context(path.open("a"))
             try:
@@ -1288,10 +1317,10 @@ def apply(ids, reason, *, allow_pauses=(), queue_path=None, registry_path=None,
         roles = host_roles.load_roles(roles_path)
         queue, state, ownership = scheduler.load_queue(queue_path), scheduler.read_registry(registry_path), \
             host_roles.read_ownership(ownership_dir)
-        requested = set(ids)
         pause_check = paused_fn or (lambda job_id: active_pauses(job_id, fresh=True))
         decisions = plan(queue, state, roles, paused_fn=pause_check, allow_pauses=allow_pauses,
-                         policy="all", mirror=mirror, manifest=input_manifest, ownership=ownership, root=root)
+                         policy="all", mirror=mirror, manifest=input_manifest, ownership=ownership, root=root,
+                         scope_provider=prepared_scope, only_ids=requested)
         selected = [d for d in decisions if d["id"] in requested and d["decision"] == "local"]
         kept = {d["id"]: d["reason"] for d in decisions if d["id"] in requested and d["decision"] != "local"}
         kept.update({i: "not a remote row with a local input resolver"
