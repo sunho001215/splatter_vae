@@ -7,6 +7,9 @@ import shutil
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from ops.resources.gpu_guard import enforce_allowed_gpus  # noqa: E402
+
+enforce_allowed_gpus()
 
 
 def publish(source, out, kind):
