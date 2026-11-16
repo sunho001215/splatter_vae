@@ -292,7 +292,7 @@ def publication_locks(repo):
     with (repo/'runs/setup/stage2-driver.lock').open('a') as local, \
          (repo/'runs/setup/remote-driver.lock').open('a') as remote, \
          (repo/'experiments/registry.lock').open('a') as registry:
-        for lock in (remote,local,registry):fcntl.flock(lock,fcntl.LOCK_EX)
+        for lock in (local,remote,registry):fcntl.flock(lock,fcntl.LOCK_EX)
         yield
 
 
