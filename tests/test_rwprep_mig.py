@@ -129,7 +129,7 @@ def test_remote_guard_preserves_capacity_and_rewrites_worker(tmp_path,monkeypatc
               inputs={str(p):R.digest(p)},slot_guard=dict(uuid='MIG-x',ram_bytes=48*R.GIB,reserve_bytes=120*R.GIB))
     if problem=='input':p.write_bytes(b'changed')
     if problem=='stop':Path(spec['stop_path']).touch()
-    job=dict(name='named',episode='ep',gpu='MIG-x',docker_args=['docker','run','WANDB_MODE=disabled','old_worker','old_job'])
+    job=dict(name='named',episode='ep',gpu='MIG-x',docker_args=['docker','run','WANDB_MODE=disabled','--env','TMPDIR=/ram/tmp','old_worker','old_job'])
     calls=[];guards=[]
     def run(*args):
         calls.append(args)
@@ -159,6 +159,7 @@ def test_remote_guard_preserves_capacity_and_rewrites_worker(tmp_path,monkeypatc
         command=next(c for c in calls if c[:2]==('docker','run'))
         assert command[-2:]==('/opt/src/splatter4d/scripts/realworld_prep_worker.py','/configs/job.json')
         assert 'WANDB_MODE=offline' in command
+        assert 'TMPDIR=/ram' in command and 'TMPDIR=/ram/tmp' not in command  # worker creates only /ram/work
     if problem!='none':assert not any(c[:2]==('docker','run') for c in calls)
 
 

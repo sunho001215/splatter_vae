@@ -217,6 +217,9 @@ for path in spec.get('extra_readonly',[]):
 args[-2:]=['/opt/src/splatter4d/scripts/realworld_prep_worker.py',spec['worker_job']]
 # The established launcher currently sets disabled: this campaign requires offline W&B.
 args=[x.replace('WANDB_MODE=disabled','WANDB_MODE=offline') for x in args]
+# realworld_prep_worker.py (unlike the legacy rwprep_job.py bootstrap) creates only /ram/work, so the launcher's
+# TMPDIR=/ram/tmp would not exist and the stream workers' RAM-backed check refuses; /ram is the same 16 GiB tmpfs.
+args=['TMPDIR=/ram' if x=='TMPDIR=/ram/tmp' else x for x in args]
 verdict=decide(data)  # fresh after potentially slow SHA verification
 if not verdict['admit']:
     print(json.dumps({'refused':verdict.get('reasons',[])}));sys.exit(20)
