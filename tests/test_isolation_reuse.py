@@ -363,7 +363,8 @@ def test_actual_assembly_combines_fresh_and_reused_evidence(history, monkeypatch
     accepted(h, result)
 
 
-def test_release_chain_with_all_reused_devices_drives_only_the_new_native_job(history, monkeypatch):
+@pytest.mark.parametrize('fresh', ['none', 'one', 'all'])
+def test_release_chain_drives_only_cache_misses_from_the_guard(history, monkeypatch, fresh):
     h = history
     source = (REPO / 'ops/campaign/release_chain.py').read_text().replace(
         "ROOT = Path('/home/ws/ws/splatter4d')", f'ROOT = Path({str(h.repo)!r})')
@@ -375,7 +376,9 @@ def test_release_chain_with_all_reused_devices_drives_only_the_new_native_job(hi
     write(h.repo, f'runs/{native_id}/evidence/tests.json', h.suite)
     native_q, isolation_q = h.repo / 'native.yaml', h.repo / 'isolation.yaml'
     native_q.write_text(yaml.safe_dump({'jobs': [{'gpu': GPUS[0], 'mem_gb': 12, 'ram_gb': 96}]}))
-    isolation_q.write_text(yaml.safe_dump({'jobs': []}))
+    pending = [] if fresh == 'none' else GPUS[-1:] if fresh == 'one' else GPUS
+    isolation_jobs = [{'id': f'verify-isolation-{GPUS.index(gpu)}-{NEW[:7]}', 'gpu': gpu} for gpu in pending]
+    isolation_q.write_text(yaml.safe_dump({'jobs': isolation_jobs}))
     calls = []
     def run(cmd):
         calls.append(cmd)
@@ -384,6 +387,7 @@ def test_release_chain_with_all_reused_devices_drives_only_the_new_native_job(hi
         return 'ACCEPTED'
     monkeypatch.setitem(names, 'run', run)
     release = names['Release'](['release_chain', NEW, '--skip-sync', '--native-gpu', GPUS[0]])
+    assert release.gpus == list(APPROVED_HOST_GPUS['remote'])
     driven, stages = [], []
     release.drive = lambda q, ids: driven.append(ids)
     release.publish = stages.append
@@ -392,6 +396,7 @@ def test_release_chain_with_all_reused_devices_drives_only_the_new_native_job(hi
     release.write_timing = lambda _: None
     release.clear = release._stop.set
     release.main()
-    assert driven == [[native_id]] and stages == ['native', 'native', 'isolation']
-    assert release.isolation_gpus == []
+    assert driven == [[native_id]] + ([[job['id'] for job in isolation_jobs]] if isolation_jobs else [])
+    assert stages == ['native', 'native', 'isolation']
+    assert release.isolation_gpus == pending
     assert any('assemble_remote_acceptance.py' in cmd[2] for cmd in calls)

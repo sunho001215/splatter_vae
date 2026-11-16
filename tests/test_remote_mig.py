@@ -490,7 +490,8 @@ def test_remote_controllers_take_their_devices_from_the_guard():
     assert "GPUS = tuple(APPROVED_HOST_GPUS['remote'])" in driver and "<= 90" not in driver and "GPU_CAP[g]" in driver
     source = (REPO / "ops/campaign/release_chain.py").read_text()
     assert "self.gpus = list(APPROVED_HOST_GPUS['remote'])" in source
-    assert "range(len(self.gpus))" in source
+    # Isolation reuse schedules only cache misses. Behavioral coverage of empty,
+    # partial and complete miss sets lives in test_isolation_reuse.py.
 
 
 def test_snapshot_mig_mode_conflicts():

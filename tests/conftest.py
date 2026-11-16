@@ -42,6 +42,26 @@ def _isolated_release_reservation(_release_reservation_dir, monkeypatch):
 
 
 @pytest.fixture
+def _admission_pause_paths(tmp_path):
+    return {"FILE": tmp_path / "admission-pauses.json",
+            "PREP_PRIORITY": tmp_path / "rwprep-mig-priority.json",
+            "PREP_PRIORITY_DIR": tmp_path / "rwprep-mig-priority.d"}
+
+
+@pytest.fixture(autouse=True)
+def _isolated_admission_pauses(_admission_pause_paths, monkeypatch):
+    """Synthetic queues must not inherit live campaign or prep holds from main.
+
+    Redirect every evidence source, preserving the real matching/fail-closed logic;
+    tests of pauses write their own records just like release reservations above.
+    """
+    from ops.jobs import admission_pause
+
+    for name, path in _admission_pause_paths.items():
+        monkeypatch.setattr(admission_pause, name, path)
+
+
+@pytest.fixture
 def batch():
     """A small, fully valid training batch with independently translated cameras."""
     B, T, V, H, W = 2, 3, 2, 16, 16
