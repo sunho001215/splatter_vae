@@ -205,9 +205,13 @@ def evidence_artifacts(spec: dict, repository: Path) -> tuple[list[tuple[Path, s
     records = [(evidence.get("full_suite"), "tests.json"), (evidence.get("data"), "data.json"),
                (evidence.get("cross_host"), "cross_host.json")]
     isolation = evidence.get("gpu_isolation")
-    if not isinstance(isolation, dict) or set(isolation) != set(APPROVED_HOST_GPUS["remote"]):
-        raise ValueError("Isolation evidence must cover all four approved GPUs")
-    records.extend((isolation[uuid], f"isolation-{uuid}.json") for uuid in APPROVED_HOST_GPUS["remote"])
+    reused = evidence.get("reused_isolation", {})
+    if (not isinstance(isolation, dict) or not isinstance(reused, dict) or set(isolation) & set(reused)
+            or set(isolation) | set(reused) != set(APPROVED_HOST_GPUS["remote"])):
+        raise ValueError("Isolation evidence must cover every approved GPU exactly once")
+    reused_names = {f"isolation-{uuid}.json" for uuid in reused}
+    records.extend((reused[uuid].get('evidence') if uuid in reused else isolation[uuid], f"isolation-{uuid}.json")
+                   for uuid in APPROVED_HOST_GPUS["remote"])
     verified, payloads = [], {}
     for record, name in records:
         if (not isinstance(record, dict) or not isinstance(record.get("sha256"), str)
@@ -222,9 +226,10 @@ def evidence_artifacts(spec: dict, repository: Path) -> tuple[list[tuple[Path, s
         payload = json.loads(path.read_text())
         if not isinstance(payload, dict):
             raise ValueError("Acceptance artifacts must contain JSON objects")
-        for key in ("commit", "image_digest"):
-            if payload.get(key) != spec[key]:
-                raise ValueError("Acceptance artifact provenance differs")
+        if name not in reused_names:  # originals keep their source commit; validate all reuse bindings below
+            for key in ("commit", "image_digest"):
+                if payload.get(key) != spec[key]:
+                    raise ValueError("Acceptance artifact provenance differs")
         report = payload.get("report", payload)
         if not isinstance(report, dict):
             raise ValueError("Acceptance report must be a JSON object")
@@ -243,10 +248,12 @@ def evidence_artifacts(spec: dict, repository: Path) -> tuple[list[tuple[Path, s
             suite_partition.check_combined(suite)
         except ValueError as exc:
             raise ValueError(f"Full native suite partitions are inconsistent ({exc})") from None
+    from ops.containers.isolation_cache import validate_reuse_set
+    validate_reuse_set(evidence, repository, suite)
     for uuid in APPROVED_HOST_GPUS["remote"]:
         report = payloads[f"isolation-{uuid}.json"]
         if (report.get("passed") is not True or report.get("host") != "remote"
-                or report.get("source_sha256") != suite["source_sha256"]
+                or (uuid not in reused and report.get("source_sha256") != suite["source_sha256"])
                 or report.get("pid_matching", {}).get("host_pid_namespace_asserted") is not True
                 or [item.get("uuid") for item in report.get("parent_mapping", [])] != [uuid]):
             raise ValueError("GPU isolation acceptance is incomplete or stale")

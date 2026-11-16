@@ -173,17 +173,21 @@ def reserved_gpus(path: Path | None = None) -> set[str]:
 
 
 def plan(commit: str, short: str, stage: str, native_gpu: str, gpus: list[str], *, native: dict, isolation: dict,
-         pid: int | None = None, now: float | None = None, created: float | None = None) -> dict:
+         pid: int | None = None, now: float | None = None, created: float | None = None,
+         isolation_gpus: list[str] | None = None) -> dict:
     """The reservation document for a release at ``stage`` ('native' or 'isolation'). The native stage reserves the
     native suite's resources on its GPU AND the isolation checks' small share on every GPU, so the isolation stage
     launches without waiting; the isolation stage keeps only the isolation share."""
     if stage not in ("native", "isolation"):
         raise ValueError("stage")
     now = time.time() if now is None else now
-    share = {uuid: {"mem_gb": float(isolation["mem_gb"]), "load": float(isolation["load"])} for uuid in gpus}
-    jobs = [f"verify-isolation-{i}-{short}" for i in range(len(gpus))]
-    ram, cpu, disk = (float(isolation["ram_gb"]) * len(gpus), int(isolation["cpu_threads"]) * len(gpus),
-                      float(isolation["disk_gb"]) * len(gpus))
+    pending = gpus if isolation_gpus is None else isolation_gpus
+    if len(set(pending)) != len(pending) or not set(pending) <= set(gpus):
+        raise ValueError('isolation GPUs must be a subset of the release devices')
+    share = {uuid: {"mem_gb": float(isolation["mem_gb"]), "load": float(isolation["load"])} for uuid in pending}
+    jobs = [f"verify-isolation-{i}-{short}" for i, uuid in enumerate(gpus) if uuid in pending]
+    ram, cpu, disk = (float(isolation["ram_gb"]) * len(pending), int(isolation["cpu_threads"]) * len(pending),
+                      float(isolation["disk_gb"]) * len(pending))
     if stage == "native":
         native_share = share.setdefault(native_gpu, {"mem_gb": 0.0, "load": 0.0})
         native_share["mem_gb"] += float(native["mem_gb"])

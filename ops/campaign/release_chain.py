@@ -1,7 +1,7 @@
 """Deploy and verify a remote release (the established typed-verification route; image unchanged):
 sync the pushed commit's bundle to ~/kaist/sunho/releases/<commit>/code (identity: clean pushed ancestry, checksum),
-run the remote native suite (functional check of the new code in the accepted image) on one authorized GPU, then all authorized
-one-UUID CUDA/EGL isolation checks, and assemble the campaign acceptance manifest. Logs to stdout.
+run the remote native suite (functional check of the new code in the accepted image) on one authorized GPU, reuse
+bounded same-image/device/host isolation evidence, run exclusive checks for misses, and assemble acceptance. Logs to stdout.
     python -I release_chain.py <commit> [--native-gpu <uuid>] [--image <digest> --tag <suffix>] [--sync-repo <dir>]
         [--skip-sync]
 
@@ -9,7 +9,7 @@ Release turnaround (user 2026-11-12; every gate step above is unchanged):
 - priority: from the start until the end (success or failure) runs/setup/release-reservation.json reserves the native
   suite's resources on its GPU and the isolation checks' share on every GPU (ops/jobs/release_reservation.py), renewed
   at every poll; every remote admission path charges it, so new campaign work never takes that capacity. Running jobs
-  are never touched. The isolation stage keeps only the isolation share.
+  are never touched. The isolation stage keeps only the share of devices needing fresh checks.
 - polling: the chain ticks the scheduler only for its own verification jobs (``scope``: no campaign housekeeping
   inside the chain's ticks), and between ticks watches its running containers with one cheap ``docker inspect`` every
   POLL_SECONDS (no snapshot, no registry lock), ticking as soon as one stops (at least every MAX_QUIET_SECONDS for the
@@ -81,6 +81,7 @@ class Release:
         self.local_gpu = argv[argv.index('--local-gpu') + 1] if '--local-gpu' in argv else LOCAL_TEST_GPU
         self.local_proc = None
         self.gpus = list(APPROVED_HOST_GPUS['remote'])
+        self.isolation_gpus = None  # determined after the new native suite supplies the current host identity
         self.stage = 'native'
         self.native = None
         self.timing = {'commit': self.commit, 'short': self.short, 'stages': {}}
@@ -107,12 +108,15 @@ class Release:
         with self._lock:
             if self._stop.is_set() or time.time() - self.started > DEADLINE_SECONDS:
                 return
+            if self.stage == 'isolation' and self.isolation_gpus == []:
+                release_reservation.clear(self.commit)
+                return
             native = self.native or {'mem_gb': POLICIES['native_suite'][3], 'load': NATIVE_LOAD,
                                      'ram_gb': POLICIES['native_suite'][2],
                                      'cpu_threads': CPU_THREADS['native_suite'], 'disk_gb': 1}
             release_reservation.write(release_reservation.plan(
                 self.commit, self.short, self.stage, self.native_gpu or self.gpus[0], self.gpus, native=native,
-                isolation=self.isolation_share(), created=self.started))
+                isolation=self.isolation_share(), created=self.started, isolation_gpus=self.isolation_gpus))
 
     def publish(self, stage):
         """Publish a new reservation content under the scheduler's registry lock, so that a tick either ran entirely
@@ -294,12 +298,16 @@ class Release:
             self.timing['suite_seconds'] = round(float(report.get('duration_seconds', 0)), 1)
             log(json.dumps({k: v for k, v in report.items() if k in ('counts', 'exit_code', 'full_suite_passed')}))
             start = time.time()
-            self.publish('isolation')
             qpath = run([PY, '-I', str(ROOT / 'runs/setup/tools/prepare_remote_verification.py'), self.commit,
                          '--suite', str(suite), *self.image_args])
+            isolation_jobs = yaml.safe_load(Path(qpath).read_text())['jobs']
+            self.isolation_gpus = [job['gpu'] for job in isolation_jobs]
+            self.publish('isolation')
+            log(f'isolation: {len(self.gpus) - len(isolation_jobs)} reused, {len(isolation_jobs)} fresh')
             self.mark('prepare_isolation', start)
             start = time.time()
-            self.drive(qpath, [f'verify-isolation-{i}-{self.short}' for i in range(len(self.gpus))])
+            if isolation_jobs:
+                self.drive(qpath, [job['id'] for job in isolation_jobs])
             self.mark('isolation', start)
             start = time.time()
             self.finish_local_partition()

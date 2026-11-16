@@ -880,8 +880,11 @@ def acceptance_manifest(host: dict, repo: Path) -> dict:
     if suite["source_sha256"] != commit_source_sha256(repo, commit):
         raise RemoteJobError("Remote suite source fingerprints do not match the pushed commit")
     isolation = manifest.get("gpu_isolation", {})
-    if set(isolation) != set(APPROVED_HOST_GPUS["remote"]):
-        raise RemoteJobError("Remote GPU isolation evidence must cover every approved GPU")
+    from ops.containers.isolation_cache import validate_reuse_set
+    try:
+        validate_reuse_set(manifest, repo, suite)
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        raise RemoteJobError(f"Remote reused isolation is not accepted ({exc})") from None
     for uuid, reference in isolation.items():
         report = _artifact(reference, repo, commit, image)
         matches = [item for item in report.get("results", []) if item.get("uuid") == uuid]

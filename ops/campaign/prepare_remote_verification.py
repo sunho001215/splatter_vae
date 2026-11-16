@@ -4,6 +4,7 @@ Writes, under runs/remote/acceptance/<short>/:
   binding-data.json             the accepted eight-file development data identity, bound to this commit/image
   verification-native_suite.json
   verification-gpu_isolation.json (only with --suite <synced tests.json>: binds the passing remote suite report)
+  isolation-plan.json            checksum-bound originals reused for up to seven days; only misses enter the queue
 and a scoped queue under runs/remote/verification/ holding the verification job(s). The scheduler admits them only
 through RemoteBackend.ready_verification; campaign acceptance is never replaced by these files.
 
@@ -23,6 +24,8 @@ sys.path.insert(0, str(ROOT))
 from ops.resources.gpu_guard import APPROVED_HOST_GPUS  # noqa: E402
 from ops.jobs.remote_backend import commit_source_sha256  # noqa: E402
 from ops.containers.verification import CPU_THREADS, POLICIES, validate_development_data, validate_report  # noqa: E402
+from ops.containers.isolation_cache import select_reused  # noqa: E402
+from ops.jobs import scheduler as jobs  # noqa: E402
 
 IMAGE = 'sha256:c3ffea7f7c114dd12755f9d537f760a6d5b31c96c923233185b775e0324799b7'
 if '--image' in sys.argv:
@@ -66,7 +69,12 @@ else:
     write(out / 'verification-gpu_isolation.json', {**base, 'verification_purpose': 'gpu_isolation',
                                                     'full_suite': suite_ref})
     manifests['gpu_isolation'] = str((out / 'verification-gpu_isolation.json').relative_to(ROOT))
+    reused = select_reused(ROOT, IMAGE, suite, jobs.read_registry(ROOT / 'experiments/registry.jsonl'))
+    write(out / 'isolation-plan.json', {'commit': commit, 'image_digest': IMAGE, 'full_suite': suite_ref,
+                                       'reused_isolation': reused})
     for index, gpu in enumerate(gpus):
+        if gpu in reused:
+            continue
         jobs_out.append({'id': f'verify-isolation-{index}-{short}', 'host': 'remote', 'gpu': gpu,
                          'script': POLICIES['gpu_isolation'][0], 'args': [], 'verification_purpose': 'gpu_isolation',
                          'campaign_eligible': False, 'ram_gb': 8, 'mem_gb': 4, 'disk_gb': 1, 'priority': 0,

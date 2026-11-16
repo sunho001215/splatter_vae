@@ -69,7 +69,8 @@ def placement(tmp_path, monkeypatch):
         return evidence
     monkeypatch.setattr(remote_backend, 'acceptance_manifest', acceptance)
     return SimpleNamespace(root=root, job=job, source=source, digest=digest, owner=owner, calls=calls,
-        state=scheduler.read_registry(registry), owned={IDENTITY: owner}, roles=host_roles.load_roles(), queue=queue)
+        state=scheduler.read_registry(registry), owned={IDENTITY: owner}, roles=host_roles.load_roles(), queue=queue,
+        evidence=evidence)
 
 
 def prepare(f, **kw):
@@ -85,6 +86,24 @@ def test_prepare_exact_pin_input_identity_and_no_mutations(placement):
     assert f.calls[-1]['commit'] == f.job['planned_commit']
     assert f.queue.read_bytes() == before
     assert not list((f.root / 'runs/setup').glob('*backup*'))
+
+
+@pytest.mark.parametrize('key', ['evidence', 'provenance', 'closeout', 'launch_spec'])
+def test_offload_rechecks_reused_isolation_files_before_placement(placement, key):
+    f = placement
+    entries = {}
+    for name in ('evidence', 'provenance', 'closeout', 'launch_spec'):
+        path = f.root / 'runs/setup' / ('reused-' + name + '.json')
+        path.write_text('{}')
+        entries[name] = {'path': str(path.relative_to(f.root)), 'sha256': realworld_local._hash(path)}
+    f.evidence['reused_isolation'] = {scheduler.APPROVED_HOST_GPUS['remote'][0]: entries}
+    prepared = prepare(f)
+    prepared['remote_verified'] = True
+    assert all(str(f.root / ref['path']) in prepared['stats'] for ref in entries.values())
+    (f.root / entries[key]['path']).write_text('{"changed": true}')
+    with pytest.raises(off.Refused, match='input/acceptance changed'):
+        off.commit_placement(prepared, f.root)
+    assert scheduler.load_queue(f.queue)['jobs'][0]['host'] == 'local'
 
 
 @pytest.mark.parametrize('change,reason', [

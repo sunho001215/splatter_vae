@@ -197,7 +197,7 @@ def test_native_acceptance_requires_all_four_gpus_and_checksum_identity(tmp_path
     assert len(artifacts) == 7 and identity == DATA_ID
     assert payloads["tests.json"]["full_suite_passed"] is True
     spec["evidence"]["gpu_isolation"].pop(APPROVED_HOST_GPUS["remote"][3])
-    with pytest.raises(ValueError, match="all four"):
+    with pytest.raises(ValueError, match="every approved GPU"):
         evidence_artifacts(spec, tmp_path)
 
 

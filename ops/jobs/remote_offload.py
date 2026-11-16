@@ -246,6 +246,8 @@ def prepare(job, root, state, ownership, roles, holds, inventory, local_wait, re
     for key in ("full_suite", "cross_host", "data"):
         paths.add(root / evidence[key]["path"])
     paths.update(root / v["path"] for v in evidence["gpu_isolation"].values())
+    for entry in evidence.get('reused_isolation', {}).values():
+        paths.update(root / entry[key]['path'] for key in ('evidence', 'provenance', 'closeout', 'launch_spec'))
     require(all(stamp(i["source"]) == tuple(i["stat"]) for i in items), "input changed during preparation")
     return dict(job=copy.deepcopy(job), owner=copy.deepcopy(ownership[job["id"]]),
                 dependencies={d: copy.deepcopy(state[d]) for d in job.get("deps", [])},

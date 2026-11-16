@@ -357,6 +357,17 @@ def run_verification(repository: Path, spec: dict, run_child) -> int:
             if code == 0:
                 report_name = "tests.json" if purpose == "native_suite" else "gpu_isolation.json"
                 validate_report(purpose, json.loads((output / report_name).read_text()), source, commit, image, spec["gpu"])
+                if purpose == "native_suite":
+                    # Optional cache context: an unavailable identity costs fresh isolation,
+                    # never the new commit's native suite or its existing acceptance gates.
+                    from ops.containers.isolation_cache import runtime_identity
+                    try:
+                        context = runtime_identity(source, env)
+                    except (OSError, ValueError):
+                        context = None
+                    report = json.loads((output / report_name).read_text())
+                    report['isolation_host_identity'] = context
+                    _write_json(output / report_name, report)
                 for name in POLICIES[purpose][4]:
                     original = output / name
                     if original.is_symlink() or not original.is_file() or original.stat().st_size == 0:

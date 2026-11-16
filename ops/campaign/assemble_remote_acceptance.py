@@ -1,10 +1,12 @@
 """Assemble the campaign acceptance manifest for a release from its synced typed-verification evidence.
 
 Inputs (all checksum-verified closeouts of the scheduler): runs/verify-native-<short>/evidence/tests.json and
-runs/verify-isolation-<i>-<short>/evidence/gpu_isolation.json for the four authorized remote GPUs; the accepted
+runs/verify-isolation-<i>-<short>/evidence/gpu_isolation.json for devices without reusable evidence; the accepted
 development data identity; the cross-host record carried over unchanged from 226d8ae (the 2026-10-15 20:09 user
 decision removed cross-host equivalence as a placement/acceptance criterion; the record is labelled as such and is
 not a new measurement). The result is validated with s4d.remote_jobs.acceptance_manifest before it is written.
+isolation-plan.json carries original evidence references under reused_isolation; every reuse binding and the
+original closeout's seven-day age are revalidated at assembly and at admission/launch. The new native suite is mandatory.
 
     python -I assemble_remote_acceptance.py <commit>
 """
@@ -20,6 +22,7 @@ from ops.resources.gpu_guard import APPROVED_HOST_GPUS  # noqa: E402
 from ops.jobs.remote_backend import acceptance_manifest  # noqa: E402
 from ops.containers import suite_partition  # noqa: E402
 from ops.jobs import scheduler as jobs  # noqa: E402
+from ops.containers.isolation_cache import read_reference, validate_reuse_set  # noqa: E402
 
 IMAGE = 'sha256:c3ffea7f7c114dd12755f9d537f760a6d5b31c96c923233185b775e0324799b7'
 commit = sys.argv[1]
@@ -62,11 +65,23 @@ manifest = {'commit': commit, 'image_digest': IMAGE,
             'full_suite': write('tests.json', {'commit': commit, 'image_digest': IMAGE, 'report': suite,
                                                'job': f'verify-native-{short}'})}
 isolation = {}
+plan_path = out / 'isolation-plan.json'
+reused = {}
+if plan_path.exists():
+    plan = json.loads(plan_path.read_text())
+    assert plan['commit'] == commit and plan['image_digest'] == IMAGE, 'isolation plan identity differs'
+    _, planned_suite = read_reference(plan['full_suite'], ROOT)
+    assert planned_suite['report'] == verified(f'verify-native-{short}', 'tests.json'), 'isolation plan suite differs'
+    reused = plan['reused_isolation']
 for index, gpu in enumerate(APPROVED_HOST_GPUS['remote']):
+    if gpu in reused:
+        continue
     report = verified(f'verify-isolation-{index}-{short}', 'gpu_isolation.json')
     isolation[gpu] = write(f'isolation-{gpu}.json', {'commit': commit, 'image_digest': IMAGE, 'report': report,
                                                      'job': f'verify-isolation-{index}-{short}'})
 manifest['gpu_isolation'] = isolation
+manifest['reused_isolation'] = reused
+validate_reuse_set(manifest, ROOT, suite)
 data = json.loads((ROOT / 'runs/remote/acceptance/226d8ae/data.json').read_text())
 manifest['data'] = write('data.json', {**data, 'commit': commit, 'image_digest': IMAGE,
                                        'carried_over_from': '226d8ae (same files, same checksums, same remote paths)'})
