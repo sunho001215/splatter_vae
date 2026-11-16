@@ -1465,6 +1465,8 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
     # Budgets describe an empty host; remaining() below describes current live capacity.
     policies = {}
     for name, resource in resources.items():
+        if name not in queue['hosts']:  # dispatch copies carry only their own host (baseline driver: local)
+            continue
         host = queue['hosts'][name]
         own_ram = sum(reservation(c, jobs.get(i, {}), 'ram_gb') for i, c in state.items()
                       if c.get('host', 'local') == name and c['status'] in RESERVING)
