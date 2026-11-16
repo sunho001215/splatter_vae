@@ -1,11 +1,12 @@
 """Offline prep priority/backfill checks; no live queues, holds, tools or SSH."""
 import json
-from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
-from ops.jobs import admission_pause as pauses, prep_reservation as prep, remote_offload
+from ops.jobs import admission_pause as pauses
+from ops.jobs import prep_reservation as prep
+from ops.jobs import remote_offload
 from ops.jobs.priority import PriorityReservations
 from ops.jobs.rwprep_mig import atomic, digest
 from ops.resources.gpu_guard import APPROVED_HOST_GPUS
@@ -108,7 +109,8 @@ def test_dependencies_remote_artifacts_external_states_stop_and_transitions(tmp_
             import shlex
             args = shlex.split(command)
             assert args[:3] == ['python3', '-I', '-c'] and args[3] == prep.GATES
-            gates = json.loads(args[4]); calls.append(gates)
+            gates = json.loads(args[4])
+            calls.append(gates)
             assert gates[0]['requires'] == ['/remote/rig.json']
             assert gates[0]['external_states'] == {'/remote/other.json':['producer']}
             return SimpleNamespace(stdout=json.dumps([g['id'] for g in gates]) if len(calls)>1 else '[]')
@@ -129,11 +131,84 @@ def test_dependencies_remote_artifacts_external_states_stop_and_transitions(tmp_
     assert not prep.reserve(p, snapshot(), client).reservations
 
 
-@pytest.mark.parametrize('status', ['unknown', 'running'])
-def test_ambiguous_prep_evidence_fails_closed(tmp_path, status):
-    bundle(tmp_path, statuses=(status,))
+def test_ambiguous_prep_evidence_fails_closed(tmp_path):
+    bundle(tmp_path, statuses=('unknown',))
     with pytest.raises(ValueError):
         prep.reserve(policy(), snapshot())
+
+
+@pytest.mark.parametrize('active', [True, False])
+def test_finished_running_row_does_not_crash_or_reserve_while_state_lags(tmp_path, active):
+    root, _, states = bundle(tmp_path, statuses=('running', 'pending', 'launching', 'running'))
+    state_bytes = (root/'state/state.json').read_bytes()
+    hold_path = next(pauses.PREP_PRIORITY_DIR.glob('*.json'))
+    atomic(hold_path, dict(json.loads(hold_path.read_text()), active=active))
+    hold_bytes = hold_path.read_bytes()
+    calls = []
+    class Client:
+        def checked_ssh(self, command, **kw):
+            calls.append(command)
+            assert command == "docker ps --format '{{.Names}}'" and kw == {'idempotent': True}
+            return SimpleNamespace(stdout='unrelated-container\n')  # stale running row has exited
+    live = {list(states.values())[-1]['container']: {}}
+    p = prep.reserve(policy(), SimpleNamespace(cotenants=live), Client())
+    held = list(p.reservations.values())
+    assert len(held) == 2  # only pending and launching; live cotenant counted once
+    assert GPUS[2] in {r['gpu'] for r in held}
+    assert sum(r['need']['ram_gb'] for r in held) == 96
+    assert p.allows(campaign(), GPUS[-1])
+    assert calls == ["docker ps --format '{{.Names}}'"]
+    assert (root/'state/state.json').read_bytes() == state_bytes
+    assert hold_path.read_bytes() == hold_bytes
+
+
+def test_running_after_snapshot_reserves_pinned_quota_until_cotenant_is_charged(tmp_path):
+    # Already running jobs bypass artifact/dependency/STOP gates just like launch intents.
+    root, _, states = bundle(tmp_path, statuses=('running', 'running'), requires=['/not-present'])
+    (root/'state/STOP').touch()
+    names = [s['container'] for s in states.values()]
+    calls = []
+    class Client:
+        def checked_ssh(self, command, **kw):
+            calls.append(command)
+            assert command == "docker ps --format '{{.Names}}'" and kw == {'idempotent': True}
+            return SimpleNamespace(stdout='\n'.join(names)+'\n')
+    p = prep.reserve(policy(), snapshot(), Client())
+    assert len(calls) == 1  # one unfiltered, read-only listing for all missing rows
+    assert {r['gpu'] for r in p.reservations.values()} == set(GPUS[:2])
+    assert sum(r['need']['ram_gb'] for r in p.reservations.values()) == 96
+    assert not any(p.allows(campaign(g), g) for g in GPUS[:2])
+    assert not prep.reserve(p, SimpleNamespace(cotenants=dict.fromkeys(names)), Client()).reservations
+    assert len(calls) == 1  # cotenant snapshot already charges them; no SSH or double count
+
+
+def test_later_batch_running_intent_is_checked_after_reading_its_state(tmp_path):
+    bundle(tmp_path, name='first', statuses=('running',))
+    root, _, states = bundle(tmp_path, name='second')
+    state = json.loads((root/'state/state.json').read_text())
+    calls = []
+    class Client:
+        def checked_ssh(self, command, **kw):
+            calls.append(command)
+            if len(calls) == 1:
+                # Another dispatcher launches after the first batch's Docker query.
+                next(iter(state['jobs'].values()))['status'] = 'running'
+                atomic(root/'state/state.json', state)
+                return SimpleNamespace(stdout='')
+            return SimpleNamespace(stdout=next(iter(states.values()))['container']+'\n')
+    p = prep.reserve(policy(), snapshot(), Client())
+    assert len(calls) == 2
+    assert len(p.reservations) == 1
+    assert next(iter(p.reservations.values()))['gpu'] == GPUS[0]
+
+
+def test_missing_running_row_remote_query_failure_fails_closed(tmp_path):
+    bundle(tmp_path, statuses=('running',))
+    class Client:
+        def checked_ssh(self, command, **kw):
+            raise RuntimeError('Docker query failed')
+    with pytest.raises(RuntimeError, match='Docker query failed'):
+        prep.reserve(policy(), snapshot(), Client())
 
 
 def test_changed_queue_or_missing_state_fails_closed(tmp_path):
@@ -165,7 +240,7 @@ def test_inactive_batch_can_become_ready_before_next_prep_writer_tick(tmp_path):
 
 
 def test_campaign_pool_replay_and_dispatch_consume_prep_reservations(tmp_path, monkeypatch):
-    from tests.test_ours_priority import remote_context, functions
+    from tests.test_ours_priority import functions, remote_context
     bundle(tmp_path)
     actual = prep.ready_rows
     # The existing driver harness uses two abstract 10 GiB slots and a 10 GiB
@@ -189,7 +264,7 @@ def test_campaign_pool_replay_and_dispatch_consume_prep_reservations(tmp_path, m
 
 
 def test_scheduler_backfills_without_consuming_prep_mig(tmp_path):
-    from tests.test_remote_jobs import FakeBackend, job, write_queue, tick, launched
+    from tests.test_remote_jobs import FakeBackend, job, launched, tick, write_queue
     bundle(tmp_path)
     backend = FakeBackend(tmp_path/'runs')
     backend.value.admission_records = []
@@ -203,7 +278,7 @@ def test_scheduler_backfills_without_consuming_prep_mig(tmp_path):
 
 
 def test_prep_becoming_ready_between_batch_admissions_gets_next_mig(tmp_path, monkeypatch):
-    from tests.test_remote_jobs import FakeBackend, job, write_queue, tick, launched
+    from tests.test_remote_jobs import FakeBackend, job, launched, tick, write_queue
     root, _, _ = bundle(tmp_path)
     stop = root/'state/STOP'
     stop.touch()

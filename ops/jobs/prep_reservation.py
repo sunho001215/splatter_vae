@@ -6,19 +6,20 @@ already charged as co-tenants. Unreadable or ambiguous evidence fails closed.
 """
 import json
 import math
-from pathlib import Path
 import shlex
+from pathlib import Path
 
 from ops.jobs import admission_pause
 from ops.jobs.rwprep_mig import digest, validate
-
 
 GATES = '''
 import json,pathlib,sys
 out=[]
 for j in json.loads(sys.argv[1]):
     if not all(pathlib.Path(p).is_file() for p in j.get('requires',[])):continue
-    if not all(pathlib.Path(p).is_file() and all(json.loads(pathlib.Path(p).read_text())['jobs'].get(i,{}).get('status')=='done' for i in ids) for p,ids in j.get('external_states',{}).items()):continue
+    if not all(pathlib.Path(p).is_file() and all(
+        json.loads(pathlib.Path(p).read_text())['jobs'].get(i,{}).get('status')=='done' for i in ids)
+        for p,ids in j.get('external_states',{}).items()):continue
     out.append(j['id'])
 print(json.dumps(out))
 '''
@@ -47,6 +48,7 @@ def ready_rows(snapshot, client=None):
         if state['queue_sha256'] != digest(config['jobs']):
             raise ValueError('prep immutable queue changed')
         states = state['jobs']
+        live_names = None  # recheck after reading this batch's durable intents
         if any(s['status'] == 'unknown' for s in states.values()):
             raise ValueError('unknown prep launch intent')
         for j in jobs:
@@ -56,7 +58,17 @@ def ready_rows(snapshot, client=None):
                 if s['container'] in snapshot.cotenants:
                     continue  # verified live quota already charged; never double count
                 if status == 'running':
-                    raise ValueError('running prep container missing from resource evidence')
+                    # Reconciliation lags container exit. Recheck without tenant
+                    # filters: a launch after the snapshot still needs its quota.
+                    if live_names is None:
+                        if client is None:
+                            from ops.remote.access import RemoteClient
+                            client = RemoteClient()
+                        live_names = set(client.checked_ssh(
+                            "docker ps --format '{{.Names}}'", idempotent=True).stdout.splitlines())
+                    if s['container'] not in live_names:
+                        continue  # finished/transient; leave reconciliation to prep
+                    status = 'launching'  # live but uncharged: reserve its pinned demand
             elif (status not in ('pending', 'retry') or (root / 'STOP').exists()
                   or not all(states.get(d, {}).get('status') == 'done' for d in j.get('deps', []))):
                 continue
