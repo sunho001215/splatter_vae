@@ -16,11 +16,17 @@ from s4d.rwlearn.observation import CONDITIONS
 REPO = Path(__file__).resolve().parents[2]
 
 
+FQL_SCRIPTS = ("scripts/train_realworld_fql.py", "scripts/dsreset_train_realworld_fql.py")
+
+
 def fql_ram_gb(job: dict) -> float | None:
     # Local 1g.24gb measurements, 2026-11-12 (VmHWM): frozen encoder 1.5 GiB,
     # e2e_cnn 4.3 GiB. User-approved rounded admission charges: 3 / 8 GiB.
+    # The dataset-reset entry point runs the same trainer (train_realworld_fql.main after the dsreset runtime
+    # install); 2026-11-18 VmHWM of 12 running dsreset rows: e2e_cnn(+noaug, condition=e2e_cnn) 4.5-4.6 GiB,
+    # mvp3d_single/multiview 1.5-1.7 GiB, i.e. within the same charges (user 2026-11-18: apply across entry points).
     # Keep all other families on their existing policy.
-    if job.get("script") != "scripts/train_realworld_fql.py":
+    if job.get("script") not in FQL_SCRIPTS:
         return None
     args = list(map(str, job.get("args", [])))
     overrides = [value.split("=", 1)[1] for value in args if value.startswith("condition=")]

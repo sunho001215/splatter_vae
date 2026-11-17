@@ -30,3 +30,13 @@ def test_unresolved_config_keeps_declaration(tmp_path, content):
     config.write_text(content)
     assert ram_gb(row(["--config", str(config)], fql_condition="dynamo")) == 64
     assert ram_gb(row(["--config", str(config) + ".missing"])) == 64
+
+
+@pytest.mark.parametrize("script", ["scripts/train_realworld_fql.py", "scripts/dsreset_train_realworld_fql.py"])
+@pytest.mark.parametrize("condition,expected", [("e2e_cnn", 8), ("mvp3d_single", 3), ("mvp3d_multiview", 3)])
+def test_dsreset_fql_entry_point_uses_the_measured_charge(script, condition, expected):
+    assert ram_gb(row(["--set", "condition=" + condition], script=script)) == expected
+
+
+def test_other_scripts_keep_their_declaration():
+    assert ram_gb(row(["--set", "condition=e2e_cnn"], script="scripts/dsreset_train_sincro.py")) == 64
