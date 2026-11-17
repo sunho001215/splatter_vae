@@ -289,3 +289,118 @@ def test_check_agrees_with_the_report_verdict(tmp_path, capsys):
                   release_gate={"accepted": True, "mode": "full"})
     code, out = check()
     assert code == 1 and any("another checkout" in r for r in out["reasons"])
+
+
+# ---------------------------------------------------------------------------------------------------- adoption
+def selective_evidence(repo, baseline):
+    """A candidate commit and the report run_tests writes for its accepted selective run."""
+    write(repo, "s4d/a.py", "A = 9\n")
+    verdict = run(repo, baseline)
+    head = git(repo, "rev-parse", "HEAD")
+    selection = gate.test_impact.select(gate.test_impact.Graph(gate.test_impact.Tree(repo)),
+                                        gate.test_impact.changed_files(baseline.commit, repo))
+    composed = verdict["executed_tests"] + verdict["reused_tests"] + verdict["carried_tests"]
+    evidence = {**ENV, "checkout": str(repo), "head": head, "exit_code": 0, "full_suite_passed": True,
+                "complete_suite_executed": False, "source_changed_during_suite": False, "source_sha256": {},
+                "counts": {"passed": composed, "error": 0, "failed": 0, "skipped": 0},
+                "selection": {"files": selection["files"]}, "release_gate": verdict}
+    assert verdict["accepted"], verdict["reasons"]
+    return evidence, head
+
+
+def test_adoption_check_accepts_a_verified_selective_report(repo, baseline):
+    evidence, head = selective_evidence(repo, baseline)
+    assert gate.adoption_check(evidence, repo, head, baselines=baseline.store, candidate_check=False) == []
+
+
+@pytest.mark.parametrize("mutate,reason", [
+    (lambda e: e.update(head="f" * 40), "candidate commit"),
+    (lambda e: e.update(checkout="/elsewhere"), "another checkout"),
+    (lambda e: e["release_gate"].update(accepted=False), "not an accepted selective verdict"),
+    (lambda e: e["counts"].update(passed=e["counts"]["passed"] + 1), "inconsistent selective report"),
+    (lambda e: e["selection"].update(files=e["selection"]["files"][1:]), "not covered by the run"),
+    (lambda e: e.update(torch="2.11.0"), "environment differs"),
+    (lambda e: e["release_gate"]["baseline"].update(source_digest="0" * 64), "does not match"),
+])
+def test_adoption_check_refuses_inconsistent_selective_reports(repo, baseline, mutate, reason):
+    evidence, head = selective_evidence(repo, baseline)
+    mutate(evidence)
+    reasons = gate.adoption_check(evidence, repo, head, baselines=baseline.store, candidate_check=False)
+    assert any(reason in r for r in reasons), reasons
+
+
+def test_adoption_check_reselects_the_change_set_itself(repo, baseline, tmp_path):
+    evidence, head = selective_evidence(repo, baseline)
+    assert gate.adoption_check(evidence, repo, head, baselines=gate.Baselines(tmp_path / "none"),
+                               candidate_check=False) == [f"no accepted baseline record for {baseline.commit}"]
+    write(repo, "ops/robot_pc/executor.py", "SAFE = False\n")  # a later high-risk commit under the same verdict
+    git(repo, "commit", "-qam", "robot change")
+    forged = git(repo, "rev-parse", "HEAD")
+    evidence = {**evidence, "head": forged,
+                "release_gate": {**evidence["release_gate"], "candidate": {"head": forged}}}
+    reasons = gate.adoption_check(evidence, repo, forged, baselines=baseline.store, candidate_check=False)
+    assert any("high-risk" in r for r in reasons), reasons
+    # the candidate's own check runs in the candidate worktree and must accept as well
+    reasons = gate.adoption_check(evidence, repo, forged, baselines=baseline.store)
+    assert any("candidate's test_gate check refuses" in r for r in reasons), reasons
+
+
+@pytest.fixture
+def adoption_tool(tmp_path, monkeypatch):
+    """The adoption tool's verify() on a synthetic candidate worktree with docs/tests.json (never merges)."""
+    import importlib.util
+
+    path = Path(gate.REPO, "runs", "setup", "tools", "merge_adopt_local_mig16_20261115.py")
+    spec = importlib.util.spec_from_file_location("adopt16_gate", path)
+    tool = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(tool)
+    worktree = tmp_path / "candidate"
+    write(worktree, "tests/test_one.py", "def test_one():\n    pass\n")
+    write(worktree, "tests/test_two.py", "def test_two():\n    pass\n")
+    git(worktree, "init", "-q")
+    git(worktree, "add", "-A")
+    git(worktree, "commit", "-qm", "candidate")
+    commit = git(worktree, "rev-parse", "HEAD")
+    report = {"full_suite_passed": True, "exit_code": 0, "host": "local", "source_changed_during_suite": False,
+              "counts": {"passed": 2, "failed": 0, "error": 0, "skipped": 0},
+              "pytest_args": [["tests/test_one.py"], ["tests/test_two.py"]],
+              "gpu_mapping": [{"uuid": tool.APPROVED_HOST_GPUS["local"][-1]}]}
+
+    def verify(**over):
+        (worktree / "docs").mkdir(exist_ok=True)
+        (worktree / "docs" / "tests.json").write_text(json.dumps({**report, **over}))
+        return tool.verify(worktree, commit)
+    return SimpleNamespace(verify=verify, report=report)
+
+
+def test_adoption_tool_keeps_every_complete_run_check(adoption_tool):
+    assert adoption_tool.verify()["counts"]["passed"] == 2
+    assert adoption_tool.verify(release_gate={"accepted": True, "mode": "full"})["counts"]["passed"] == 2
+    with pytest.raises(ValueError, match="exactly"):
+        adoption_tool.verify(pytest_args=[["tests/test_one.py"]])
+    with pytest.raises(ValueError, match="release gate refused"):
+        adoption_tool.verify(release_gate={"accepted": False, "mode": None})
+    with pytest.raises(ValueError, match="complete local evidence"):
+        adoption_tool.verify(full_suite_passed=False)
+
+
+def test_adoption_tool_adopts_selective_evidence_only_after_its_re_verification(adoption_tool, monkeypatch):
+    import test_gate as tool_gate  # the module object the tool imports from scripts/
+
+    calls = []
+
+    def check(evidence, worktree, commit):
+        calls.append(commit)
+        return [] if evidence["release_gate"]["accepted"] else ["refused"]
+
+    monkeypatch.setattr(tool_gate, "adoption_check", check)
+    selective = {"pytest_args": [["tests/test_one.py"]], "complete_suite_executed": False,
+                 "release_gate": {"accepted": True, "mode": "selective"}}
+    assert adoption_tool.verify(**selective)["release_gate"]["mode"] == "selective"  # no exact-shard requirement
+    assert calls  # ... because the selective re-verification ran instead
+    monkeypatch.setattr(tool_gate, "adoption_check", lambda *a: ["high-risk paths changed"])
+    with pytest.raises(ValueError, match="selective evidence refused: high-risk"):
+        adoption_tool.verify(**selective)
+    with pytest.raises(ValueError, match="authorized"):
+        monkeypatch.setattr(tool_gate, "adoption_check", lambda *a: [])
+        adoption_tool.verify(**selective, gpu_mapping=[{"uuid": "GPU-unauthorized"}])

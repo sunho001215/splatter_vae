@@ -262,6 +262,68 @@ def accepted(report: dict, sources: dict | None = None,
     return not reasons, (mode if not reasons else None), reasons
 
 
+def adoption_check(evidence: dict, worktree: Path, commit: str, *, baselines: Baselines | None = None,
+                   candidate_check: bool = True) -> list[str]:
+    """Reasons an ACCEPTED SELECTIVE report cannot be adopted (empty = adoptable); the adoption tool's counterpart of
+    its shard-coverage check for complete runs (2026-11-18).
+
+    Re-verified with the ADOPTING checkout's gate and selector code, not only the candidate's: the report is accepted
+    (``accepted``: verdict, flags, composed counts) and names ``worktree``; it was produced at ``commit``; its baseline is
+    an ancestor of ``commit`` with an untampered record (re-derived from git objects) in the report's environment; the
+    change set baseline..commit, re-selected from the committed trees, holds no high-risk, widened or unclassified path,
+    and every re-selected test file was selected by the run; finally the candidate's own ``scripts/test_gate.py check``
+    accepts the evidence for its sources. Git objects are read through ``worktree`` (worktrees share them)."""
+    worktree = Path(worktree).resolve()
+    gate = evidence.get("release_gate") or {}
+    if gate.get("mode") != "selective" or gate.get("accepted") is not True:
+        return ["not an accepted selective verdict"]
+    ok, mode, reasons = accepted(evidence, None, worktree)
+    reasons = list(reasons)
+    if not ok or mode != "selective":
+        reasons.append("the report is not accepted as selective")
+    if evidence.get("head") != commit or (gate.get("candidate") or {}).get("head") != commit:
+        reasons.append("the evidence was not produced at the candidate commit")
+    if evidence.get("checkout") is None:
+        reasons.append("the evidence does not name its checkout")
+    base = (gate.get("baseline") or {}).get("commit")
+    if not base:
+        return reasons + ["no baseline in the verdict"]
+    if subprocess.run(["git", "-C", str(worktree), "merge-base", "--is-ancestor", base, commit]).returncode != 0:
+        reasons.append("the baseline is not an ancestor of the candidate")
+    store = baselines or Baselines(test_impact.cache_root(REPO))
+    record = store.load(base)
+    if record is None:
+        reasons.append(f"no accepted baseline record for {base}")
+    else:
+        digest = source_digest(commit_sources(worktree, base))
+        if record.get("source_digest") != digest or (gate.get("baseline") or {}).get("source_digest") != digest:
+            reasons.append("the baseline record does not match the baseline commit's sources")
+        if record.get("environment") != environment(evidence):
+            reasons.append("the baseline environment differs from the evidence")
+    tree = test_impact.CommitTree(worktree, commit)
+    selection = test_impact.select(test_impact.Graph(tree),
+                                   test_impact.changed_files(base, worktree, head=commit, worktree=False))
+    risky = [p for p in selection["changed"] if high_risk(p)]
+    if risky:
+        reasons.append("high-risk paths changed (complete suite required): " + ", ".join(risky[:5]))
+    if selection["widened"]:
+        reasons.append("unattributed test/config inputs: " + ", ".join(selection["widened"][:5]))
+    unclassified = [p for p in [*selection["unattributed"], *selection.get("guard_only", [])] if not inert(p)]
+    if unclassified:
+        reasons.append("unclassified changed paths: " + ", ".join(unclassified[:5]))
+    uncovered = sorted(set(selection["files"]) - set((evidence.get("selection") or {}).get("files") or []))
+    if uncovered:
+        reasons.append("test files the change set selects were not covered by the run: " + ", ".join(uncovered[:5]))
+    if candidate_check:
+        script = worktree / "scripts/test_gate.py"
+        process = subprocess.run([sys.executable, "-I", str(script), "check", "--evidence", str(worktree / "docs")],
+                                 cwd=worktree, capture_output=True, text=True, timeout=600)
+        if process.returncode != 0:
+            reasons.append(f"the candidate's test_gate check refuses (exit {process.returncode}): "
+                           + (process.stdout + process.stderr).strip()[-300:])
+    return reasons
+
+
 # ---------------------------------------------------------------------------------------------------- CLI
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])

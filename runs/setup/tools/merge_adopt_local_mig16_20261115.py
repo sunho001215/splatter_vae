@@ -3,6 +3,11 @@
 Same gates as merge_adopt_local_mig_20261112.py; validate GPU authorization using
 this candidate, and leave the entire queue (including remote limits) untouched.
 This tool is prepared for the coordinator; implementation never runs it.
+
+2026-11-18 (user-approved release gate): evidence whose release_gate accepted a SELECTIVE run is adopted after
+scripts/test_gate.adoption_check re-verifies it (same checkout and candidate commit, ancestor baseline with an untampered
+record, no high-risk/unclassified change, every re-selected test covered, the candidate's own check); a complete run
+keeps every check below, including exact shard coverage of tests/.
 """
 from __future__ import annotations
 
@@ -39,6 +44,20 @@ def verify(worktree: Path, commit: str) -> dict:
             or evidence.get('source_changed_during_suite') is not False or evidence.get('host') != 'local'
             or evidence.get('partition') not in (None, 'all') or evidence.get('expected_commit') not in (None, commit)):
         raise ValueError('not passing complete local evidence')
+    gate = evidence.get('release_gate')
+    if gate is not None and gate.get('accepted') is not True:
+        raise ValueError('release gate refused the evidence')
+    if gate is not None and gate.get('mode') == 'selective':
+        sys.path.insert(0, str(REPO / 'scripts'))
+        import test_gate  # the adopting checkout's gate (scripts/test_gate.py)
+
+        reasons = test_gate.adoption_check(evidence, worktree, commit)
+        if reasons:
+            raise ValueError('selective evidence refused: ' + '; '.join(reasons))
+        mapping = evidence.get('gpu_mapping') or []
+        if len(mapping) != 1 or mapping[0].get('uuid') not in APPROVED_HOST_GPUS['local']:
+            raise ValueError('suite GPU not authorized by candidate')
+        return evidence
     args = evidence.get('pytest_args') or [None]
     if isinstance(args[0], list):
         files = {a for shard in args for a in shard if a.startswith('tests/') and a.endswith('.py')}
@@ -93,7 +112,10 @@ def main():
         report = {**evidence, 'adopted_evidence': {'host': 'local', 'commit': a.commit,
                   'worktree': str(a.worktree.resolve()), 'adopted_at': stamp,
                   'report_sha256': hashlib.sha256((a.worktree / 'docs/tests.json').read_bytes()).hexdigest(),
-                  'policy': 'user 2026-11-15 temporary local MIG16 expansion; complete local native suite'}}
+                  'policy': 'user 2026-11-15 temporary local MIG16 expansion; '
+                            + ('selective run accepted by the release gate (user 2026-11-17)'
+                               if (evidence.get('release_gate') or {}).get('mode') == 'selective'
+                               else 'complete local native suite')}}
         tmp = docs / 'tests.json.adopt.tmp'
         tmp.write_text(json.dumps(report, indent=2) + '\n')
         for name in ('tests.log', 'tests.junit.xml'):
