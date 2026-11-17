@@ -1380,7 +1380,12 @@ class _TickLock:
             # append-only growth of the same file (no rewrite/rotation): dev, inode equal and size grew
             registry_ok = bool(old and new and old[:2] == new[:2] and new[2] >= old[2])
         others = changed - {self.registry}
-        return registry_ok and all(path.name == "state.json" for path in others)
+        from ops.jobs import admission_pause
+        # Prep dispatchers refresh their hold heartbeat files (atomic replace, new inode) about every 45 s and their
+        # state.json continuously; the serial retry re-reads them, so they never invalidate a decision.
+        hold_dir = admission_pause.PREP_PRIORITY_DIR
+        return registry_ok and all(path.name == "state.json" or path == hold_dir or path.parent == hold_dir
+                                   for path in others)
 
     def unlocked(self, fn, *args, **kwargs):
         if self.hold:

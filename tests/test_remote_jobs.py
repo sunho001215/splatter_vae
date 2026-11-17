@@ -312,6 +312,35 @@ def test_registry_append_during_observation_redoes_the_pass_under_the_lock(tmp_p
     assert any("redoing this pass under registry.lock" in m for m in messages)
 
 
+def test_prep_hold_heartbeat_during_observation_redoes_the_pass_under_the_lock(tmp_path, monkeypatch):
+    """2026-11-18: prep hold files are rewritten every ~45 s; they must not starve admission either."""
+    from ops.jobs import admission_pause
+    queue = write_queue(tmp_path, [job()])
+    (tmp_path / "registry.jsonl").write_text(json.dumps({"event": "heartbeat", "id": "other", "time": 0.0}) + "\n")
+    hold_dir = tmp_path / "prep-priority.d"
+    hold_dir.mkdir()
+    monkeypatch.setattr(admission_pause, "PREP_PRIORITY_DIR", hold_dir)
+    backend = FakeBackend(tmp_path / "runs")
+    real_ready, calls = backend.ready, []
+
+    def ready(host):
+        if not calls:
+            with (tmp_path / "registry.lock").open("a") as probe:
+                fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            tmp = hold_dir / "x.json.tmp"
+            tmp.write_text(json.dumps({"active": False, "host": "remote", "priority": -4,
+                                       "state_dir": str(tmp_path / "prep/state")}))
+            os.replace(tmp, hold_dir / "x.json")
+        calls.append(True)
+        return real_ready(host)
+
+    monkeypatch.setattr(backend, "ready", ready)
+    messages = tick(tmp_path, queue, backend)
+    assert len(calls) == 2, messages  # the pass was redone under the lock, not deferred to a later tick
+    assert any("redoing this pass under registry.lock" in m for m in messages)
+    assert not any("deferred to next tick" in m for m in messages)
+
+
 def test_remote_observation_and_cleanup_yield_the_registry_lock(tmp_path, monkeypatch):
     queue = write_queue(tmp_path, [job()])
     registry = tmp_path / "registry.jsonl"
