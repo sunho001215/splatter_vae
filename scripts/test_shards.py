@@ -95,6 +95,7 @@ FILE_CLASSES = {
     "tests/test_policy_staging.py": "serial",  # Serving threads and bounded shutdown/latency assertions.
     "tests/test_policy_staging_fql_settings.py": "cpu",
     "tests/test_policy_eligibility_evidence.py": "cpu",  # pipeline audit F1/F8 (registry built, never started), 2026-11-17
+    "tests/test_pnpv2_serving_hooks.py": "cpu",  # pick-and-place-v2 deployment hooks, pure, 2026-11-18
     "tests/test_pool_pin.py": "cpu",
     "tests/test_realworld_baselines.py": "cpu",
     "tests/test_realworld_calibration.py": "cpu",

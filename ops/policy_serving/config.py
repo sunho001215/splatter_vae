@@ -80,9 +80,12 @@ SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 # FQL settings by run-id prefix (== staging.FQL_SETTINGS names, pinned by a test; no staging import here): an entry of
 # a setting is served as ``<condition>-<task>-s<seed>-<setting>`` with the flag ``fql_setting_<setting>``; the earlier
 # rows (alpha 10, normalize_q_loss false) have no prefix, no suffix and no flag (setting ``legacy``).
-FQL_SETTING_PREFIXES = {"rwnq-": "a10nq", "rwa100-": "a100"}
+FQL_SETTING_PREFIXES = {"pnpv2-": "a10nq", "rwnq-": "a10nq", "rwa100-": "a100"}
 LEGACY_SETTING = "legacy"
-FQL_RUN_RE = re.compile(r"^(?P<prefix>.+)-fql-(?P<condition>[a-z0-9_]+)-(?P<task>[a-z0-9-]+)-s(?P<seed>\d+)$")
+# pick-and-place-v2 (2026-11-18): the Ours arm token (ours_orig / ours_ch01 -> condition ours) and the S variant of
+# pick-and-place-v2 only (pnpv2-<date>-fql-<method>-pick-and-place-v2-S-s<k>); every earlier id parses as before
+FQL_RUN_RE = re.compile(r"^(?P<prefix>.+)-fql-(?P<condition>[a-z0-9_]+?)(?:_(?P<arm>orig|ch01))?-"
+                        r"(?P<task>[a-z0-9-]+?)(?:(?<=-pick-and-place-v2)-(?P<variant>S))?-s(?P<seed>\d+)$")
 # Execution eligibility by FQL setting (validator-side allowlist, user decisions 2026-11-12 ~16:00; a catalog cannot
 # widen it): end-to-end CNN policies keep the legacy E2E setting; every frozen-encoder condition is eligible ONLY in the
 # new setting a10nq (alpha 10 + normalize_q_loss true) and only with a passed deployment-validation record bound to
@@ -193,6 +196,8 @@ def entry_fql_setting(pid, entry: dict) -> str:
     from a free label; every source must agree (ValueError otherwise). ``legacy`` = the earlier rows."""
     run = str(entry.get("run") or "")
     by_run = next((v for k, v in FQL_SETTING_PREFIXES.items() if run.startswith(k)), LEGACY_SETTING)
+    if run.startswith("pnpv2-") and (m := FQL_RUN_RE.fullmatch(run)) and m["condition"].startswith("e2e_cnn"):
+        by_run = LEGACY_SETTING  # pick-and-place-v2 E2E CNN rows train with the established E2E (legacy) setting
     base = str(pid)[:-len(BCFLOW_SUFFIX)] if str(pid).endswith(BCFLOW_SUFFIX) else str(pid)
     by_id = next((v for v in FQL_SETTING_PREFIXES.values() if base.endswith(f"-{v}")), LEGACY_SETTING)
     flagged = {f[len("fql_setting_"):] for f in entry.get("flags", []) if isinstance(f, str)

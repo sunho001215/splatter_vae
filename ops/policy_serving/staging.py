@@ -43,7 +43,9 @@ REPO = Path(__file__).resolve().parents[2]
 CONDITIONS = ("e2e_cnn", "mvp3d_single", "mvp3d_multiview", "dynamo", "reviwo", "sincro", "snerl", "ours")
 PRETRAIN_OF = {"mvp3d_single": "mvp3d", "mvp3d_multiview": "mvp3d"}  # FQL condition -> pretraining family
 _C = "|".join(CONDITIONS)
-FQL_RE = re.compile(rf"^(?P<prefix>.+)-fql-(?P<condition>{_C})-(?P<task>.+)-s(?P<seed>\d+)$")
+# the pick-and-place-v2 Ours arm token and its S variant are parsed (pnpv2() below); earlier ids parse as before
+FQL_RE = re.compile(rf"^(?P<prefix>.+)-fql-(?P<condition>{_C})(?:_(?P<arm>orig|ch01))?-(?P<task>.+?)"
+                    r"(?:(?<=-pick-and-place-v2)-(?P<variant>S))?-s(?P<seed>\d+)$")
 DATA_RE = re.compile(rf"^(?P<prefix>.+)-fqldata-(?P<condition>{_C})-(?P<task>.+)$")
 PRE_RE = re.compile(r"^(?P<prefix>.+)-(?P<condition>dynamo|reviwo|sincro|snerl|mvp3d)-(?P<task>.+)-pre(?:-native)?$")
 # ours: the encoder export is its own row (scripts/export_encoder.py) after the scripts/train.py pretraining row
@@ -52,7 +54,7 @@ OURS_EXPORT_RE = re.compile(r"^(?P<prefix>.+)-(?P<condition>ours)-(?P<task>.+)-e
 # FQL settings (user decision 2026-11-11 ~23:10, FQLNQ): rows registered with a setting prefix are served under
 # DISTINCT ids <condition>-<task>-s<seed>-<setting>, never replacing the alpha-10 ids of the earlier rows; the a100
 # comparison baseline is staged only when explicitly asked (``stage``/``hook`` --allow-comparison).
-FQL_SETTINGS = {"rwnq-": ("a10nq", 10.0, True), "rwa100-": ("a100", 100.0, False)}
+FQL_SETTINGS = {"pnpv2-": ("a10nq", 10.0, True), "rwnq-": ("a10nq", 10.0, True), "rwa100-": ("a100", 100.0, False)}
 COMPARISON_SETTINGS = ("a100",)
 # Inventories record the policy-id rule they were evaluated under; ``stage --inventory`` refuses any other (an inventory
 # from before the FQL-setting rule names rwnq rows by the alpha-10 ids and would overwrite those entries).
@@ -73,7 +75,9 @@ SUPERSEDED = {
 CATALOG_NAME = "catalog.json"
 VALIDATION_DIR = Path("/home/ws/ws/realworld-ops/serving/validation")  # auto-eligibility deployment-validation records
 # released rig documents per task (realworld-ops/serving/API.md; DEP's validated replays)
-RIG_DOCUMENTS = {"drawer-open": "rig-loma-drawer-open.json", "mug-hanging": "rig-loma-mug-hanging-fx.json"}
+RIG_DOCUMENTS = {"drawer-open": "rig-loma-drawer-open.json", "mug-hanging": "rig-loma-mug-hanging-fx.json",
+                 # pick-and-place-v2: the ACCEPTED rig of the automatic calibration gate (pnpv2_spec rig_local)
+                 "pick-and-place-v2": "rig-pick-and-place-v2-accepted.json"}
 
 
 def sha256_file(path) -> str:
@@ -143,11 +147,15 @@ class Lifecycle:
         return None if s is None else (s.get("sync") or {}).get("files", {}).get(name)
 
 
-def read_registry(path: Path, prefix: str = "rw") -> dict[str, Lifecycle]:
+ROW_PREFIXES = ("rw", "pnpv2-")  # the earlier real-world rows and pick-and-place-v2 (2026-11-18)
+
+
+def read_registry(path: Path, prefix: str | tuple = ROW_PREFIXES) -> dict[str, Lifecycle]:
+    prefixes = (prefix,) if isinstance(prefix, str) else tuple(prefix)
     rows: dict[str, Lifecycle] = {}
     with open(path) as f:
         for line in f:
-            if f'"id": "{prefix}' not in line:
+            if not any(f'"id": "{p}' in line for p in prefixes):
                 continue
             try:
                 e = json.loads(line)
@@ -157,8 +165,9 @@ def read_registry(path: Path, prefix: str = "rw") -> dict[str, Lifecycle]:
     return rows
 
 
-def read_queue(path: Path, prefix: str = "rw") -> dict[str, dict]:
-    return {j["id"]: j for j in (_yaml(path).get("jobs") or []) if str(j.get("id", "")).startswith(prefix)}
+def read_queue(path: Path, prefix: str | tuple = ROW_PREFIXES) -> dict[str, dict]:
+    prefixes = (prefix,) if isinstance(prefix, str) else tuple(prefix)
+    return {j["id"]: j for j in (_yaml(path).get("jobs") or []) if str(j.get("id", "")).startswith(prefixes)}
 
 
 def _arg(job: dict | None, key: str) -> str | None:
@@ -178,6 +187,8 @@ def quarantine_decision(run: str) -> str | None:
 
 def fql_setting(run: str) -> str | None:
     """The FQL setting of a run id (``FQL_SETTINGS`` prefix), None for the earlier rows (alpha 10, no normalisation)."""
+    if (p := pnpv2(run)) is not None:
+        return p["setting"]  # pick-and-place-v2: E2E legacy, frozen encoders a10nq
     return next((v[0] for k, v in FQL_SETTINGS.items() if run.startswith(k)), None)
 
 
@@ -189,6 +200,8 @@ def setting_check(run: str, config: dict) -> str | None:
     """A setting-prefixed run must have trained with exactly its setting (agent.alpha, agent.normalize_q_loss of its
     own config.yaml); the reason of a mismatch, else None."""
     spec = next((v for k, v in FQL_SETTINGS.items() if run.startswith(k)), None)
+    if run.startswith(PNPV2_PREFIX) and fql_setting(run) is None:
+        spec = None  # pick-and-place-v2 E2E CNN: the established E2E setting (no prefix setting to check)
     if spec is None or not config:
         return None
     agent = config.get("agent") or {}
@@ -272,6 +285,78 @@ def ours_export_row(src: Sources, run: str, life: Lifecycle | None, pre_life: Li
             "encoder": _file_record(src, life, run, "encoder.pt")}
 
 
+# pick-and-place-v2 (2026-11-18): queue rows pnpv2-<date>-fql-<method>-pick-and-place-v2-S-s<k> (ops/jobs/pnpv2_plan.py,
+# s4d/rwlearn/pnpv2_spec.py). The serving condition is the trained one (ours for ours_orig / ours_ch01); the FQL
+# setting follows the method (E2E: alpha 10 without q normalisation = legacy; every frozen encoder: a10nq); only the
+# Ours arms carry comparison axes (their ids name them), every other pnp-v2 policy id is
+# <condition>-pick-and-place-v2-s<k>[-a10nq] (the restricted-grant id rule); an FQL row trains on its method's export
+# row (mvp3d_single: mvp3d_multiview's). Same rules as the serving / coordinator release lines (ops/policy_serving/
+# identity.py there). The e2e_cnn_noaug serving alias is not on this line: its pnp-v2 rows are not recognized here.
+PNPV2_PREFIX = "pnpv2-"
+PNPV2_TASK = "pick-and-place-v2"
+PNPV2_METHODS = ("ours_orig", "ours_ch01", "dynamo", "reviwo", "sincro", "snerl", "mvp3d_single", "mvp3d_multiview",
+                 "e2e_cnn", "e2e_cnn_noaug")
+PNPV2_RE = re.compile(r"^(?P<prefix>pnpv2-[0-9]{8})-fql-(?P<method>" + "|".join(sorted(PNPV2_METHODS, key=len,
+                      reverse=True)) + r")-(?P<task>pick-and-place-v2)-(?P<variant>S)-s(?P<seed>[0-9]+)$")
+PNPV2_ARMS = {"orig": "Original", "ch01": "Chamfer0.1"}
+PNPV2_EXPORT_RE = re.compile(r"^(?P<prefix>pnpv2-[0-9]{8})-export-(?P<method>ours_orig|ours_ch01|dynamo|reviwo|sincro|"
+                             r"snerl|mvp3d_multiview)-(?P<task>pick-and-place-v2)-S$")
+
+
+def pnpv2(run: str) -> dict | None:
+    """The pnp-v2 FQL identity of ``run`` (None: not a pnp-v2 FQL id); a pnpv2 FQL id outside the plan raises."""
+    if not run.startswith(PNPV2_PREFIX) or "-fql-" not in run:
+        return None
+    m = PNPV2_RE.fullmatch(run)
+    if m is None:
+        raise ValueError(f"unsupported pick-and-place-v2 FQL run id {run!r}")
+    method = m["method"]
+    arm = method.split("_", 1)[1] if method.startswith("ours_") else None
+    return {"prefix": m["prefix"], "method": method, "condition": "ours" if arm else method, "task": m["task"],
+            "variant": "S", "seed": int(m["seed"]), "arm": arm,
+            "setting": None if method.startswith("e2e_cnn") else "a10nq",
+            "axes": dict(dataset="success", recipe=PNPV2_ARMS[arm], training="scratch", checkpoint="400k")
+            if arm else {},
+            "export": None if method.startswith("e2e_cnn") else
+            f"{m['prefix']}-export-{'mvp3d_multiview' if method == 'mvp3d_single' else method}-{m['task']}-S"}
+
+
+def pnpv2_policy_id(p: dict) -> str:
+    """Catalog id of a parsed pnp-v2 row (== the coordinator line's comparison_id for the Ours arms)."""
+    if p["axes"]:
+        a = p["axes"]
+        return (f"{p['condition']}-{p['task']}-{a['dataset']}-{a['recipe']}-{a['training']}-ckpt{a['checkpoint']}-"
+                f"s{p['seed']}-{p['setting']}")
+    return policy_id(p["condition"], p["task"], p["seed"], p["setting"])
+
+
+def pnpv2_export_row(src: Sources, run: str, life: Lifecycle | None, pre_life: Lifecycle | None) -> dict:
+    """pick-and-place-v2: the export row (its encoder.pt is what the FQL dataset records) with criterion a of its
+    pretraining row ``...-pre-<method>-...``: both completed (synced); an Ours arm must be exactly its scratch 400k
+    pretraining (loss.chamfer 0 for orig, 0.1 for ch01, train.steps 400000, no continuation), else a fails."""
+    m = PNPV2_EXPORT_RE.fullmatch(run)
+    pre = run.replace("-export-", "-pre-", 1)
+    d = src.runs / pre
+    config = _yaml(d / "config.yaml") if (d / "config.yaml").is_file() else {}
+    completion = _json(d / "completion.json")
+    a = C.pretraining_complete(config, completion) if config else C.check(False, reason=f"no local {pre}/config.yaml")
+    states = {pre: pre_life.state if pre_life else "never_launched", run: life.state if life else "never_launched"}
+    bad = {k: v for k, v in states.items() if v not in ("completed_synced", "completed_local")}
+    if bad:
+        a = {**a, "pass": False, "reason": f"registry state {bad}" + (f"; {a['reason']}" if "reason" in a else "")}
+    method = m["method"]
+    if method.startswith("ours_") and config:
+        chamfer = float((config.get("loss") or {}).get("chamfer", 0))
+        if (chamfer != (0.1 if method == "ours_ch01" else 0.0) or (config.get("train") or {}).get("steps") != 400000
+                or (d / "continuation.json").is_file()):
+            a = {**a, "pass": False, "reason": f"{method}: pretraining is not its scratch 400k arm (chamfer "
+                                               f"{chamfer}, steps {(config.get('train') or {}).get('steps')})"}
+    return {"run": run, "kind": "encoder_pretraining", "condition": "ours" if method.startswith("ours_") else method,
+            "method": method, "task": m["task"], "pretraining_run": pre, "registry_state": states[run],
+            "superseded": None, "budget": {k: a.get(k) for k in ("kind", "budget")}, "completed": completion, "a": a,
+            "encoder": _file_record(src, life, run, "encoder.pt")}
+
+
 def fql_row(src: Sources, run: str, life: Lifecycle | None, job: dict | None) -> dict:
     m = FQL_RE.match(run)
     d = src.runs / run
@@ -291,10 +376,20 @@ def fql_row(src: Sources, run: str, life: Lifecycle | None, job: dict | None) ->
         policy["local_completion"] = True  # criteria.checkpoint_matches_completion: no remote sync for local runs
     return {"run": run, "kind": "fql", "condition": m["condition"], "task": m["task"], "seed": int(m["seed"]),
             "fql_setting": setting,
-            "policy_id": policy_id(m["condition"], m["task"], int(m["seed"]), setting), "registry_state": state,
+            "policy_id": pnpv2_policy_id(p) if (p := pnpv2(run)) is not None else
+            policy_id(m["condition"], m["task"], int(m["seed"]), setting), "registry_state": state,
             "superseded": superseded(run), "quarantine_decision": quarantine_decision(run), "dataset": dataset,
             "budget_steps": b.get("budget"), "completed": completion, "b": b,
             "policy": policy}
+
+
+def _pnpv2_servable(run: str) -> bool:
+    """A pnp-v2 FQL row this line can stage: planned, and of a condition this line serves (no e2e_cnn_noaug here)."""
+    try:
+        p = pnpv2(run)
+    except ValueError:
+        return False
+    return p is not None and p["condition"] in CONDITIONS and FQL_RE.fullmatch(run) is not None
 
 
 def inventory(src: Sources) -> dict:
@@ -304,7 +399,13 @@ def inventory(src: Sources) -> dict:
     pre, data, fql, other = [], [], [], []
     for run in ids:
         life, job = reg.get(run), queue.get(run)
-        if PRE_RE.match(run):
+        if PNPV2_EXPORT_RE.fullmatch(run):
+            pre.append(pnpv2_export_row(src, run, life, reg.get(run.replace("-export-", "-pre-", 1))))
+        elif run.startswith(PNPV2_PREFIX) and not _pnpv2_servable(run):
+            other.append({"run": run, "registry_state": life.state if life else "never_launched"})
+        elif (arm := FQL_RE.match(run)) is not None and arm["arm"] and not run.startswith(PNPV2_PREFIX):  # foreign arm
+            other.append({"run": run, "registry_state": life.state if life else "never_launched"})
+        elif PRE_RE.match(run):
             pre.append(pretraining_row(src, run, life, job))
         elif OURS_EXPORT_RE.match(run):
             pre.append(ours_export_row(src, run, life, reg.get(run[:-len("-export")] + "-pre")))
@@ -338,6 +439,8 @@ def pretrain_run_of(src: Sources, row: dict) -> str:
         attrs = _dataset_attrs(src.data_root / row["dataset"])
         if attrs and attrs.get("export_path"):
             return Path(attrs["export_path"]).parent.name
+    if (p := pnpv2(row["run"])) is not None:
+        return p["export"]  # the method's own export row (mvp3d_single: mvp3d_multiview's)
     prefix = row["run"].split("-fql-")[0]
     suffix = "-export" if row["condition"] == "ours" else "-pre"
     return f"{prefix}-{PRETRAIN_OF.get(row['condition'], row['condition'])}-{row['task']}{suffix}"
@@ -376,6 +479,9 @@ def evaluate(src: Sources, rows: list[dict], pre_rows: dict[str, dict], *, sidec
             r["pretrain_run"] = pre_run
             checks["a"] = pre_rows[pre_run]["a"] if pre_run in pre_rows else \
                 C.check(False, reason=f"pretraining row {pre_run} not in the registry/queue")
+        if (p := pnpv2(r["run"])) is not None and "a" in checks and r["pretrain_run"] != p["export"]:
+            checks["a"] = C.check(False, reason=f"pnp-v2 FQL dataset export {r['pretrain_run']} is not the "
+                                                f"{p['method']} export row {p['export']}")
         out[r["run"]] = checks
         if r["superseded"] is None and checks["b"]["pass"] and checks.get("a", {"pass": True})["pass"]:
             candidates.append(r)
@@ -410,6 +516,8 @@ def evaluate(src: Sources, rows: list[dict], pre_rows: dict[str, dict], *, sidec
             r["export"] = {"path": meta["export_path"], "pretrain_run": pre_run, "sha256": enc}
             if pre_run in pre_rows:
                 checks["a"] = pre_rows[pre_run]["a"]  # the run that actually produced the export
+            if (p := pnpv2(run)) is not None and pre_run != p["export"]:
+                checks["a"] = C.check(False, reason=f"pnp-v2 checkpoint export {pre_run} is not {p['export']}")
         checks["c"] = C.export_chain(meta, attrs, enc)
         checks["d"] = sidecars.get(run, C.check(False, reason="no sidecar"))
         metrics = [json.loads(x) for x in (src.runs / run / "metrics.jsonl").read_text().splitlines() if x.strip()]
@@ -485,7 +593,8 @@ def catalog_entry(row: dict, input_spec: dict | None = None, validation: dict | 
            "export": exp.get("path"), "training_contract": f"contracts/{row['run']}.deploy_contract.json",
            "condition": row["condition"], "task": row["task"], "seed": row["seed"], "run": row["run"],
            "status": status, "reasons": row["class"]["reasons"],
-           "flags": list(row["class"]["flags"]) + ([f"fql_setting_{setting}"] if setting else []),
+           "flags": list(row["class"]["flags"]) + ([f"fql_setting_{setting}"] if setting else []) +
+                    [f"identity_{k}_{v}" for k, v in sorted(((pnpv2(row["run"]) or {}).get("axes") or {}).items())],
            "criteria": criteria,
            **usage_of(status, row["condition"], setting, checkpoint_sha256=row["policy"]["sha256"],
                       failed_criteria=failed, validation=validation)}
