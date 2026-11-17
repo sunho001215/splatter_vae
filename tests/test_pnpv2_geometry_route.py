@@ -21,6 +21,36 @@ IMAGE = 'sha256:' + 'b' * 64
 COMMIT = 'a' * 40
 
 
+_PROJECT_PACKAGES = ("s4d", "ops", "scripts", "tests")
+
+
+@pytest.fixture(autouse=True, scope="module")
+def _hermetic_imports():
+    """Leave the interpreter exactly as this file found it.
+
+    Tests here monkeypatch shared module globals (e.g. ``s4d.rwlearn.store.open_store``) and run entries that install
+    the process-local pnp-v2/dsreset runtime (``sys.modules`` aliases, rebound task globals). A project module first
+    imported inside such a window binds the patched objects for the rest of the process (2026-11-18: baseline_data
+    bound the FakeStore opener; realworld_plan bound the patched TARGET_TASKS). On teardown every module first imported
+    by this file is dropped (and its package attribute removed), replaced ``sys.modules`` entries are restored, and
+    every pre-existing project module namespace is restored to its snapshot, so later files re-import cleanly.
+    """
+    before = dict(sys.modules)
+    saved = {name: dict(vars(module)) for name, module in before.items()
+             if module is not None and name.split(".")[0] in _PROJECT_PACKAGES and hasattr(module, "__dict__")}
+    yield
+    for name in [n for n in sys.modules if n not in before]:
+        del sys.modules[name]
+    for name, module in before.items():
+        if sys.modules.get(name) is not module:
+            sys.modules[name] = module
+    for name, snapshot in saved.items():
+        namespace = vars(before[name])
+        for key in [k for k in namespace if k not in snapshot]:
+            del namespace[key]
+        namespace.update(snapshot)
+
+
 @pytest.fixture(autouse=True)
 def _restore_runtime_globals(monkeypatch):
     """Runtime task installs are process-local in production; never leak them into other test files.
