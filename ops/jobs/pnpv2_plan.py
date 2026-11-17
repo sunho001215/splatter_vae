@@ -182,6 +182,22 @@ def build_rows(spec, release, *, scene=None, waves=("rgb", "geometry")):
             add("eval", method, wave, "scripts/pnpv2_realworld_dsreset_artifact.py",
                 ["--source", f"runs/{fql}/policy.pt", "--kind", "policy", "--out", f"runs/{ev}/evaluation.json"],
                 [fql], ["evaluation.json"], seed=seed)
+        if method.startswith("ours"):
+            # Task-aware held-out length evaluation of the 400k pretraining (rwv3 matrix precedent), after its FQL
+            # seeds so it never competes with them; the region is the task's measured dynamic workspace.
+            arm = method.split("_", 1)[1]
+            pre = row_id("pre", method)
+            task_eval = row_id("taskeval", method)
+            add("taskeval", method, wave, "scripts/pnpv2_dsreset_evaluate_ours_task_length.py",
+                ["--name", task_eval, "--output-root", "runs",
+                 "--checkpoint", f"runs/{pre}/checkpoints/step_0400000.pt",
+                 "--config", f"configs/realworld/ours_matrix/{TASK}-S-{arm}-scratch400k.yaml",
+                 "--set", f"data.store={view(wave, 'store')}", f"data.split_manifest={view(wave, 'split')}",
+                 f"data.gate_report={view(wave, 'gate')}", f"model.anchor_stats={p['workspace_stats']}"],
+                [pre, stats, *(row_id("fql", method, seed) for seed in spec["seeds"])],
+                ["evaluation.json", "grasp_sites.json", "completion.json"], mem=8, ram=16, role="realworld_pretrain",
+                cpu_threads=8, realworld_arm={"orig": "Original", "ch01": "Original+chamfer0.1"}[arm],
+                realworld_protocol="scratch", realworld_checkpoint=400000)
     return rows
 
 

@@ -502,8 +502,6 @@ def next_steps(spec, ev):
     p = values(spec)
     w = p["work"]
     producer = f"{PY} scripts/pick_and_place_v2.py --entry"
-    prep = (f"--processed {p['remote_processed']} --raw {spec['roots']['raw']} --weights <prep weights dir> "
-            f"--image $(cat {w}/prep-image-id) --code {w}/prep-code --control-repo /home/ws/ws/splatter4d")
     commands = {
         "arrival": [f"operator: verified pull of Robot-PC teleop_collector/data/{TASK}/success into {p['raw_success']}"
                     " with success.local.sha256 / success.robotpc.sha256 / success.VERIFIED (dsreset transfer layout);"
@@ -513,8 +511,8 @@ def next_steps(spec, ev):
                    "robot_urdf_sha256, confirmed_by)", f"{producer} manifest"],
         # Remote route (ops/jobs/rwprep_remote, release pnpv2-20261117): driven from this container over SSH.
         # The local-host route (realworld_prep_register.py + launch-prep-controller.sh) needs host Docker, canonical
-        # bind mounts and free local MIGs; it remains available as: {PY} scripts/realworld_prep_register.py --phase A
-        # --id-stem {STAGE_IDS['phaseA']} --plan <prep plan> --out <work>/phaseA {prep}.
+        # bind mounts and free local MIGs; it remains available as: scripts/realworld_prep_register.py --phase A|B
+        # --id-stem pnpv2-20261117-prepA|B --processed <remote processed> ... + launch-prep-controller.sh.
         "phaseA": [f"{producer} raw-proof   # every remote raw copy verified (once the upload finished)",
                    f"{producer} phase-a-remote",
                    f"{PY} -m ops.jobs.rwprep_remote tick --config {p['phase_a']}/dispatcher.json --apply --loop "
@@ -525,14 +523,13 @@ def next_steps(spec, ev):
         "rgb-publication": [f"{producer} rgb-fetch   # after the remote RGB job is done",
                             f"{producer} upload -- --view rgb",
                             f"(local-host route instead: {producer} publish-rgb -- --execute; then upload)"],
-        "rig": [f"{PY} scripts/realworld_dsreset_calibration.py plan --id-stem {STAGE_IDS['rig']} --task {TASK} "
-                f"--phase-config {p['phase_a']}/dispatcher.json --out {p['calib']} "
-                f"--work {p['remote_processed']}/calibration/{TASK} --upstream <calib-upstream>",
-                "LOCAL HOST: start its controller (waits for Phase A automatically; automatic G1-G6 acceptance)"],
-        "phaseB": [f"{producer} rig-map",
-                   f"{PY} scripts/realworld_prep_register.py --phase B --id-stem {STAGE_IDS['phaseB']} "
-                   f"--plan {p['prep_plan']} --rig-map {w}/phaseB-rig-map.json --out {p['phase_b']} {prep} "
-                   f"--extra-readonly {p['remote_processed']}/calibration/{TASK}"],
+        "rig": [f"{producer} calib-remote   # remote planner; the view job waits on the Phase-A state mirror",
+                f"{PY} -m ops.jobs.rwprep_remote tick --config {p['calib']}/dispatcher.json --apply --loop "
+                "(detached, from main; automatic G1-G6 acceptance, no override)",
+                f"{producer} rig-fetch   # mirror the accepted rig + reference once the publish job is done"],
+        "phaseB": [f"{producer} phase-b-remote",
+                   f"{PY} -m ops.jobs.rwprep_remote tick --config {p['phase_b']}/dispatcher.json --apply --loop "
+                   "(detached, from main)"],
         "geometry-publication": [
             f"{producer} raw-proof",
             f"{producer} snapshot -- --success-only --source /home/ws/ws/realworld-ops/ingest/manifest.json "

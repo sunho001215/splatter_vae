@@ -216,7 +216,7 @@ def test_calibration_independent_wave_has_its_own_dependency_path():
     s = load_spec(ROOT / SPEC)
     rows = build_rows(s, RELEASE, scene=SCENE)
     byid = {r["id"]: r for r in rows}
-    assert len(rows) == 88 and sum(r["pnpv2_wave"] == "rgb" for r in rows) == 33
+    assert len(rows) == 90 and sum(r["pnpv2_wave"] == "rgb" for r in rows) == 33
     for row in rows:
         method = row["realworld_method"]
         if method in ("rgb", "geometry"):
@@ -271,7 +271,9 @@ def test_resolver_alias_maps_every_entrypoint():
     from s4d.rwlearn import dsreset_entrypoints
 
     for wrapper, original in WRAPPERS.items():
-        assert dsreset_entrypoints.legacy_row({"script": wrapper})["script"] == original
+        # The established dsreset aliases still apply after the pnpv2 one (task-aware evaluation body).
+        expected = dsreset_entrypoints.ENTRYPOINTS.get(original, original)
+        assert dsreset_entrypoints.legacy_row({"script": wrapper})["script"] == expected
         text = (ROOT / wrapper).read_text()
         assert "\nguard_gpus()\n" in text
     assert dsreset_entrypoints.legacy_row({"script": "scripts/train.py"})["script"] == "scripts/train.py"
@@ -389,7 +391,7 @@ def test_geometry_wave_waits_for_rig_phase_b_publication_and_scene(spec, arrived
     assert reg.evidence(spec, arrived)["scene"]["status"] == "pending"
     monkeypatch.setattr(reg, "scene_evidence", lambda s, m, r: reg._stage("done", "synthetic", scene=SCENE))
     record = reg.prepare(repo, spec, arrived, RELEASE, waves=["geometry"])
-    assert len(record["rows"]) == 55 and {r["pnpv2_wave"] for r in record["rows"]} == {"geometry"}
+    assert len(record["rows"]) == 57 and {r["pnpv2_wave"] for r in record["rows"]} == {"geometry"}
     mvp = next(r for r in record["rows"] if r["id"] == row_id("pre", "mvp3d_multiview"))
     assert "render.bounds=" + json.dumps(SCENE["bounds"], separators=(",", ":")) in mvp["args"]
 
@@ -421,7 +423,7 @@ def test_register_refuses_without_arrived_data(spec, tmp_path):
     out = json.loads(status.stdout)
     assert out["arrived"] is False and out["would_register"] == {} and out["writes"] is False
     assert out["waves"] == {"rgb": {"rows": 33, "ready_after_check_data": False, "registered": 0},
-                            "geometry": {"rows": 55, "ready_after_check_data": False, "registered": 0}}
+                            "geometry": {"rows": 57, "ready_after_check_data": False, "registered": 0}}
     assert snapshot(repo) == before and not (tmp_path / "w").exists()
 
 
@@ -463,7 +465,7 @@ def test_status_reports_progress_and_next_commands(spec, arrived):
     ev = reg.evidence(spec, None, arrival_state=arrived["arrival"])
     nxt = reg.next_steps(spec, ev)
     assert ev["phaseA"]["status"] == "done" and ev["rgb-publication"]["status"] == "done"
-    assert "rig" in nxt and "--id-stem pnpv2-20261117-calib" in nxt["rig"][0]
+    assert "rig" in nxt and "calib-remote" in nxt["rig"][0]  # remote route; job stem pnpv2-20261117-calib
     assert "wave:rgb" not in nxt  # check-data has not run in this evidence view
 
 

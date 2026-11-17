@@ -30,12 +30,12 @@ registration. Queue rows start at each view's readiness barrier.
 | geometry publication | `--entry raw-proof`, `--entry snapshot`, `realworld_prep_followup.py records --id-stem pnpv2-20261117-qa`, `calib.release apply`, `--entry publish`, `--entry upload -- --view geometry` | geometry consumers pass (per-episode `calibration_validated`), same split/outcomes as RGB, receipt |
 | scene | `realworld_prep_followup.py measure --id-stem pnpv2-20261117-qa` | accepted train-only native measurement bound to the manifest and rig |
 
-Queue rows (88; ids `pnpv2-20261117-<stage>-<method>-pick-and-place-v2-S[-s<seed>]`):
+Queue rows (90; ids `pnpv2-20261117-<stage>-<method>-pick-and-place-v2-S[-s<seed>]`):
 
 | Wave | Needs | Rows |
 |---|---|---|
 | **rgb** (DynaMo, ReViWo, E2E CNN, E2E CNN noaug) | check-data, ingest, Phase A, RGB publication; **never** rig/Phase B | gate 1, pre 2, export 2, fqldata 4, fql 12, eval 12 = **33** |
-| **geometry** (Ours orig/ch01 scratch400k, SinCro, SNeRL, 3D-MVP single/multiview) | the above + rig, Phase B, geometry publication, scene | gate 1, stats 1, native-depth 1, pre 5, export 5, fqldata 6, fql 18, eval 18 = **55** |
+| **geometry** (Ours orig/ch01 scratch400k, SinCro, SNeRL, 3D-MVP single/multiview) | the above + rig, Phase B, geometry publication, scene | gate 1, stats 1, native-depth 1, pre 5, export 5, fqldata 6, fql 18, eval 18, Ours task-length eval 2 = **57** |
 
 Settings: frozen encoders FQL alpha 10 + `normalize_q_loss=true`; E2E CNN alpha 10, nq false (noaug: `p_aug=0`);
 Ours = drawer-open-v2 S scratch400k (ch01 adds `loss.chamfer=0.1`), export step 400000; 3D-MVP single/multiview share
@@ -75,6 +75,13 @@ local MIGs. From the campaign container, Phase A and the RGB publication therefo
 4. Ticks, detached, from main: `python -m ops.jobs.rwprep_remote tick --config <bundle>/dispatcher.json --apply --loop`.
 5. `--entry rgb-fetch` copies only the bundle documents (never the episodes) into `<work>/publication/S/rgb`, then
    `--entry upload -- --view rgb` publishes them to the canonical directory with the receipt `status` checks.
+
+Geometry on the same route: `--entry calib-remote` compiles the established LoMa-G plan (stem `pnpv2-20261117-calib`,
+upstream `configs/dsreset-upstream-20261114`, automatic G1-G6, no override) inside the remote planner and attaches
+`<work>/calib`; its view job waits on the Phase-A state mirror. After its publish job, `--entry rig-fetch` mirrors the
+accepted rig + reference locally (what `status` checks) and `--entry phase-b-remote` compiles Phase B
+(`pnpv2-20261117-prepB-*`) on the remote against that rig; `attach` gives every pnpv2 bundle the pnpv2 release.
+The geometry publication (snapshot, records, release apply, publish, scene measurement) is not yet on this route.
 
 ## Guarantees
 

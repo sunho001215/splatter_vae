@@ -63,6 +63,7 @@ WRAPPERS = {
         "realworld_dsreset_artifact.py",
         "realworld_fql_dataset.py",
         "train_realworld_fql.py",
+        "dsreset_evaluate_ours_task_length.py",
     )
 }
 
