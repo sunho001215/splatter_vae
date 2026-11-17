@@ -91,7 +91,9 @@ class SampledNativeStore:
     def _recording(self, ep):
         from s4d.realworld.io import sha256_file
         from s4d.rwlearn.deploy.replay import RecordedEpisode
-        from s4d.rwlearn.deploy.realsense import load_rig_session
+        # Offline measurement: an automatically accepted rig takes the unchanged realsense.load_rig_session; a rig
+        # accepted for offline use by its task's acceptance override is accepted here and named in the evidence.
+        from s4d.realworld.calib.acceptance_override import load_rig_session_offline as load_rig_session
         if ep not in self._recordings:
             raw = self.raw_paths.get(ep,self.store.raw_recording(ep))
             from pathlib import Path
@@ -122,7 +124,13 @@ class SampledNativeStore:
         return self._depths[key]
 
     def depth_provenance(self, episodes):
-        return {'rig_document_sha256':self.rig_sha256,'alignment':'rs_align',
-                'depth_source':'native_realsense','sampling':'measurement frames only',
-                'episodes':{ep:{'raw_sha256':self.store.raw_sha256(ep),
-                               'native_depth_correction':self._corrections[ep]} for ep in episodes}}
+        out = {'rig_document_sha256':self.rig_sha256,'alignment':'rs_align',
+               'depth_source':'native_realsense','sampling':'measurement frames only',
+               'episodes':{ep:{'raw_sha256':self.store.raw_sha256(ep),
+                              'native_depth_correction':self._corrections[ep]} for ep in episodes}}
+        refs = {json.dumps(c['evidence'].get('acceptance_override'),sort_keys=True)
+                for ep in episodes for c in self._corrections[ep].values()
+                if c['evidence'].get('acceptance_override') is not None}
+        if refs:  # offline-only acceptance override of the rig (absent for an automatically accepted rig)
+            out['acceptance_override'] = [json.loads(r) for r in sorted(refs)]
+        return out

@@ -18,6 +18,16 @@ from s4d.rwlearn.dsreset import learning_inputs
 from s4d.rwlearn.store import open_store
 
 
+def acceptance_overrides(m, ingest):
+    """Distinct ``metrics.acceptance_override`` references of the selected episodes' calibration_validated records
+    (calib.acceptance_override; empty for an automatically accepted calibration)."""
+    shas = {r['sha256'] for r in m['episodes']}
+    refs = {json.dumps(((e.get('preprocessing') or {}).get('stages') or {}).get('calibration_validated', {})
+                       .get('metrics', {}).get('acceptance_override'), sort_keys=True)
+            for e in ingest['episodes'].values() if e.get('task') == m['task'] and e.get('sha256') in shas}
+    return [json.loads(r) for r in sorted(refs) if r != 'null']
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--manifest', type=Path, required=True)
@@ -38,6 +48,9 @@ def main():
             paths.append(matches[0]['preprocessing']['stages']['train_data']['outputs'])
         descriptor = {'kind': 'compact', 'paths': paths}
     docs = learning_inputs(m, ingest, open_store(descriptor))
+    overrides = acceptance_overrides(m, ingest)
+    if overrides:  # offline-only acceptance override of the task's rig, carried by every consumer of the gate report
+        docs['gate_report.json']['acceptance_override'] = overrides
     a.out_dir.mkdir(parents=True, exist_ok=False)
     (a.out_dir / 'store.yaml').write_text(yaml.safe_dump(descriptor, sort_keys=False))
     for name, doc in docs.items():

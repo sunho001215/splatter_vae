@@ -1,0 +1,156 @@
+{
+ "format": "s4d-calib-acceptance-override/1",
+ "id": "acceptance-override-drawer-open-v2-20261117",
+ "task": "drawer-open-v2",
+ "variant": "S",
+ "decision": "accepted",
+ "status": "validated_by_override",
+ "document_name_suffix": "-ao20261117",
+ "scope": {
+  "offline_uses": ["phase_b_preprocessing", "dataset_publication", "pretraining", "fql", "evaluation"],
+  "robot_execution_authorized": false,
+  "robot_execution_note": "This override authorizes OFFLINE use only. It is never a robot-execution authorization: robot deployment keeps the unchanged strict rule (calib.rig.rig_camera_status == 'validated', rwlearn.deploy.realsense.load_rig_session) and its separate safety and eligibility gates."
+ },
+ "automatic_acceptance": {
+  "passed": false,
+  "criteria": "rig_loma-release/2",
+  "criteria_commit": "38a337e5a0cf59e61babe360e021f949ea32a12c",
+  "decision_file": "automatic-decision.json",
+  "decision_sha256": "64343dd6e0efb84fcf66cd29b8bcc3f49482a652e5fcc42d6a99360f1a621c6a",
+  "decision": {
+   "cameras": {
+    "135122070988/color": "held",
+    "135122073201/color": "held",
+    "135122076054/color": "held"
+   },
+   "accepted": false
+  },
+  "verdict_release1_file": "verdict-release1.json",
+  "verdict_release1_sha256": "1b0f55146f5ee97b0cdadb4738cae2cafae8441b70bb1b3d25061b00987fca08",
+  "thresholds": {"g1_radius_centre_m": 0.008, "g5b_dt_max_diff_px": 0.05},
+  "thresholds_changed": false,
+  "note": "The automatic verdict stays accepted:false. automatic-decision.json is never rewritten; the override decision is a separate file (override-decision.json)."
+ },
+ "value_tolerance": {"relative": 1e-09, "integers": "exact", "strings": "exact"},
+ "cameras": {
+  "135122070988/color": {"gates": ["G5b"]},
+  "135122073201/color": {"gates": ["G1", "G5b"]},
+  "135122076054/color": {"gates": ["G5b"]}
+ },
+ "exceptions": [
+  {
+   "id": "G1-centre-radius-135122073201",
+   "gate": "G1",
+   "check": "g1_centre_radius",
+   "cameras": ["135122073201/color"],
+   "metric": "radius_centre_m",
+   "measured": 0.008770722160007146,
+   "measured_display": "8.770722 mm",
+   "threshold": 0.008,
+   "threshold_display": "8 mm",
+   "worst_solve": "loco-135122073201",
+   "reason": "G1: centre radius 8.8 mm > 8 (loco-135122073201)"
+  },
+  {
+   "id": "G5b-dt-extension-135122070988-135122073201",
+   "gate": "G5b",
+   "check": "g5b_dt_extension_median_upper",
+   "cameras": ["135122070988/color", "135122073201/color", "135122076054/color"],
+   "cameras_note": "the shared timing-extension check holds all three cameras; only this pair's median upper bound is covered",
+   "pair": "135122070988-135122073201",
+   "metric": "median_diff_ci95_px[1]",
+   "measured": 0.09885288634467633,
+   "measured_display": "0.098853 px (bootstrap 95 % upper bound, seed 0, 1000 replicates)",
+   "threshold": 0.05,
+   "threshold_display": "0.05 px",
+   "context": {
+    "n_short": 89,
+    "n_long": 9,
+    "median_diff_px": 0.014269243648465879,
+    "p90_diff_px": 0.07094970276816659,
+    "long_violations": []
+   },
+   "long_offset_cohort": [
+    "drawer-open-v2-success-episode_000001",
+    "drawer-open-v2-success-episode_000002",
+    "drawer-open-v2-success-episode_000003",
+    "drawer-open-v2-success-episode_000004",
+    "drawer-open-v2-success-episode_000006",
+    "drawer-open-v2-success-episode_000007",
+    "drawer-open-v2-success-episode_000008",
+    "drawer-open-v2-success-episode_000009",
+    "drawer-open-v2-success-episode_000010"
+   ],
+   "problem": "135122070988-135122073201: long-offset median difference +0.014 px (95 % CI upper +0.099) > 0.05",
+   "reason": "G5b: dt extension not validated (135122070988-135122073201: long-offset median difference +0.014 px (95 % CI upper +0.099) > 0.05)"
+  }
+ ],
+ "sensitivity_check": {
+  "result": "FAILED",
+  "recorded_disposition": "HELD_STOP (2026-11-17T02:05:26Z); no override under the conditional decision",
+  "failed_criteria": [
+   {
+    "criterion": "G1: 073201 workspace p95 3D displacement <= 2x each other camera",
+    "camera": "135122073201/color",
+    "measured": "6.576010 mm = 4.881430x 135122076054/color (1.347148 mm); 1.384887x 135122070988/color (4.748408 mm)",
+    "limit": "2x",
+    "result": "FAIL"
+   },
+   {
+    "criterion": "G5b: no long-offset episode above the short-cohort p95 of the pair residual",
+    "pair": "135122070988-135122073201",
+    "measured": "3 of 9 long-offset episodes above the short-cohort p95 0.308550585 px: 000001 (0.310882), 000003 (0.374266), 000004 (0.369878)",
+    "limit": "0 episodes",
+    "result": "FAIL"
+   }
+  ],
+  "passed_criteria": [
+   "G1: 073201 workspace p95 image displacement 2.700902 px <= 7.5 px",
+   "G1: part attributable to the centre-radius excess above 8 mm 0.506591 px <= 1 px",
+   "G5b: long-minus-short median excess 0.014269 px <= 0.05 px",
+   "G5b: no long-offset episode violates an existing per-episode limit (1 px absolute; excess + 2.58 SE <= 0.25 px)"
+  ],
+  "artifacts": [
+   {"path": "/home/ws/ws/realworld-ops/drawer-geo-20261116/override-20261117/RESULT.md", "sha256": "934ba6f21331246085b6039dd0f3512fc11778da1f3179caf59a2020fcdefe13"},
+   {"path": "/home/ws/ws/realworld-ops/drawer-geo-20261116/override-20261117/PREREG.md", "sha256": "0e8b9f433be1600da399701ef8555058983b65a5d992a8146aa43fda5fa4d3ff"},
+   {"path": "/home/ws/ws/realworld-ops/drawer-geo-20261116/override-20261117/PREREG-CLARIFICATIONS.md", "sha256": "15cebea0fd742f6180d58af834e9804c5214446d378ace4a8f434a4f393295fc"},
+   {"path": "/home/ws/ws/realworld-ops/drawer-geo-20261116/override-20261117/sensitivity.json", "sha256": "c4bc66aa3f2d76c84ca1ded139e49a0e403495145836c4aa1247c79c4621516f"},
+   {"path": "/home/ws/ws/realworld-ops/drawer-geo-20261116/override-20261117/evidence-manifest.json", "sha256": "1a6aefb4add067ee0445ab61065bb743a7aca646dd590aeff6d1a5358cd900a5"},
+   {"path": "/home/ws/ws/realworld-ops/drawer-geo-20261116/override-20261117/workspace-evidence.json", "sha256": "a1fad8a83bbe16296083616ada4f6f74406d9255c6a4b290cad53b1616a05823"},
+   {"path": "/home/ws/ws/realworld-ops/drawer-geo-20261116/override-20261117/analyze.py", "sha256": "699b629452006cf6a9e5d7ae0815652529934cf5d03b525d3dec07fbf905ebb5"},
+   {"path": "/home/ws/ws/realworld-ops/drawer-geo-20261116/override-20261117/ARTIFACTS.sha256", "sha256": "1d38081ceaed0a4ae158a97c0d7ad6246a409ef0bac1c5b83ae89e387300525f"}
+  ],
+  "accepted_by_user": true,
+  "user_acceptance": "user_decisions[1] (Option 2) was made after the failed sensitivity result was reported; it explicitly accepts the measured calibration errors for offline training."
+ },
+ "user_decisions": [
+  {
+   "date": "2026-11-17",
+   "kind": "conditional authorization (Option 1); its sensitivity condition FAILED, so it did not authorize this override",
+   "text": "Drawer-open-v2 calibration - choose Option 1: documented, task-specific override. I authorize a narrowly scoped override of G1 (8.77 mm vs. 8 mm) and G5b (0.099 px vs. 0.05 px), provided a short read-only sensitivity analysis finds no substantial geometric or downstream impact. Examine the G1 workspace reprojection impact and G5b's nine high-offset episodes. Preserve all 98 episodes. Do not exclude outliers merely to pass acceptance. Preserve the original failed verdicts, numerical evidence, and calibration provenance. Record both exceptions explicitly; do not weaken global acceptance thresholds or claim automatic acceptance passed. If the impact check reveals a significant problem, keep the calibration held and report the evidence rather than overriding it. Otherwise, publish the unchanged rig under the explicit override and immediately resume Phase B, dataset publication, Ours/baseline pretraining, FQL, and all dependent S-only jobs. Keep real-robot execution authorization separate from this calibration override."
+  },
+  {
+   "date": "2026-11-17",
+   "kind": "explicit override (Option 2), made with the failed sensitivity result in view; this decision authorizes the override",
+   "text": "Proceed with Option 2: override drawer-open-v2 only. The measured calibration errors are acceptable for offline training. Preserve all 98 episodes, 3 cameras, original failure records, thresholds, and evidence hashes. Implement a narrowly scoped override without weakening global acceptance criteria. Immediately proceed with Phase B, publication, pretraining, FQL, and evaluation as dependencies become ready. Avoid unnecessary delays or redundant verification. Keep physical robot execution subject to separate safety and eligibility gates. Preserve all existing jobs, checkpoints, and configurations."
+  }
+ ],
+ "retained": {"episodes": 98, "cameras": 3, "excluded_episodes": [], "excluded_cameras": []},
+ "provenance": {
+  "criteria_commit": "38a337e5a0cf59e61babe360e021f949ea32a12c",
+  "queue_sha256": "f0fcafb588ab0c95c9b00f42366a9e047a04dedd3355d653031bcbc7c701c7f5",
+  "spec_sha256": "91e74365780f0731ca44e3fcfb92bfe84fe3b77b2366c8f1256d12fafe62901b",
+  "freeze_sha256": "1680e1e0568a9364ce57ee25e45c0f18410a15c4e7798f21cd2f7a69688d2798",
+  "dispatcher": "dsreset-calib-drawer-open-v2-20261114",
+  "publish_job": "rwv2-20261113-calib-ours-drawer-open-v2-publish",
+  "evidence_root": "/home/compu/kaist/sunho/realworld/processed/dsreset-20261113/calibration/drawer-open-v2",
+  "failed_publish_attempts": [
+   {"attempt": 1, "log_sha256": "86914f23e7bab0d0eb896f595e655aab56931995b6683f3219bf7a04ef22c82b", "result_sha256": "a69763cf46fda455327d7be74b36fe089e13c72d2e5a0f5f4421c9d632fed387"},
+   {"attempt": 2, "log_sha256": "86914f23e7bab0d0eb896f595e655aab56931995b6683f3219bf7a04ef22c82b", "result_sha256": "a69763cf46fda455327d7be74b36fe089e13c72d2e5a0f5f4421c9d632fed387"},
+   {"attempt": 3, "log_sha256": "86914f23e7bab0d0eb896f595e655aab56931995b6683f3219bf7a04ef22c82b", "result_sha256": "a69763cf46fda455327d7be74b36fe089e13c72d2e5a0f5f4421c9d632fed387"}
+  ],
+  "failure_report": {"path": "/home/ws/ws/realworld-ops/drawer-geo-20261116/CALIB-PUBLISH-FAILURE-20261117.md", "sha256": "04c9655a49c282fb95fca64ad01543d43aefbcd652fc0f62d14952bc89a25008"},
+  "recomputed_verdict": {"path": "/home/ws/ws/realworld-ops/drawer-geo-20261116/rolling/calpub-verdict-v2-20261117.json", "sha256": "3874b6aee7cd3f033b49ab5740ffc9327653738064f3b982acc658bcf0a0b18d"},
+  "static_eval_sha256": "f17593f2835735c8d594deb08904241f884f49e69b9f8f4a91f83dd80e33d91e"
+ }
+}

@@ -156,7 +156,8 @@ def publish(spec,specpath):
     w=Path(spec['work']);R=load_results(w/'results');fixed=json.loads((w/'fixedness.json').read_text())
     static=json.loads((w/'static.json').read_text());C.check_static_eval(static,w/'results/full.json')
     verdict=freeze_release1(release_verdict(R,fixed))
-    atomic(w/'verdict-release1.json',verdict)
+    from s4d.realworld.calib.acceptance_override import write_once
+    write_once(w/'verdict-release1.json',verdict)  # original record: an equal recomputation keeps the file untouched
     ref=np.load(w/'fixedness.reference.npz')
     sources={k:{'path':str(p),'sha256':digest(p)} for k,p in {
         'freeze_record':Path(specpath).parent/'FREEZE.json','alias_map':Path(specpath),
@@ -174,9 +175,18 @@ def publish(spec,specpath):
     doc['reference_episode']=mapping[doc['reference_episode']]
     for c,rows in doc['fixedness_evidence'].items():
         doc['fixedness_evidence'][c]={mapping[e]:r for e,r in rows.items()}
+    from s4d.realworld.calib import acceptance_override as AO
     verdict2={c:rig_camera_status(doc,c)[0] for c in doc['cameras']}
-    atomic(w/'automatic-decision.json',{'cameras':verdict2,'accepted':all(v=='validated' for v in verdict2.values())})
-    if any(v!='validated' for v in verdict2.values()):raise ValueError('rig held by established automatic criteria; see automatic-decision.json')
+    automatic={'cameras':verdict2,'accepted':all(v=='validated' for v in verdict2.values())}
+    # The automatic decision is an original record: written once, never rewritten (an equal recomputation passes).
+    AO.write_once(w/'automatic-decision.json',automatic)
+    if not automatic['accepted']:
+        # Held stays held unless the task has a committed, user-authorized acceptance override that matches this
+        # exact evidence (calib.acceptance_override); it writes override-decision.json and returns the document with
+        # its automatic verdicts kept and the override block added. Any mismatch raises: the rig stays held.
+        if AO.record_for(spec['task']) is None:raise ValueError('rig held by established automatic criteria; see automatic-decision.json')
+        doc=AO.apply_publisher_override(doc,task=spec['task'],work=w,specpath=specpath,static=static,
+            aliases=spec['aliases'],automatic=automatic,commit=spec['commit'])
     out=w/f"rig-{spec['task']}-accepted.json"
     if not out.exists():publish_rig(out,doc,{k:ref[k] for k in ref.files})
 

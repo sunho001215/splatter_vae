@@ -13,7 +13,9 @@ Two steps, both refusing on any failed check (fail closed, per task: one failing
   status done, same sha256, ``metrics.build_id``, ``outputs`` = episode dir) must be a rig-mode build with EXACTLY the
   published release document (its input hash), its build id must equal the manifest's, and every camera of the
   document must be ``accepted`` with the document's pose, depth scales and robot model; the document's cameras must
-  be effectively validated (a G5a-held camera only with a valid fixedness exception). Output: a JSON plan.
+  be effectively validated (a G5a-held camera only with a valid fixedness exception; a held camera only as
+  "validated_by_override" under the task's committed acceptance override, ``calib.acceptance_override``, whose
+  reference every record then carries in ``metrics.acceptance_override``). Output: a JSON plan.
 * ``apply`` (where the manifest lives): DRY RUN by default (prints what would be written); ``--apply`` re-checks
   every episode's current calibrate build id and sha256 in the live manifest against the plan and then calls
   ``ingest_worker.set_stage(state_dir, key, "calibration_validated", record)`` per episode.
@@ -83,7 +85,7 @@ def _valid_entries(manifest: dict, task: str) -> dict:
 def check_episode(key: str, entry: dict, rig_doc: dict, rig_sha: str, path_map=()) -> tuple[dict | None, list]:
     """(record or None, problems) of one manifest episode."""
     from s4d.realworld import io as rio
-    from s4d.realworld.calib.rig import rig_camera_status
+    from s4d.realworld.calib.acceptance_override import OFFLINE_ACCEPTED, STATUS, effective_status
 
     problems = []
     sha = entry.get("sha256")
@@ -105,10 +107,12 @@ def check_episode(key: str, entry: dict, rig_doc: dict, rig_sha: str, path_map=(
                         f"(input {str((rec.get('inputs') or {}).get('rig_calibration'))[:12]} != {rig_sha[:12]})")
     if (rec.get("inputs") or {}).get("rig_reference") != rig_doc.get("reference_sha256"):
         problems.append(f"{key}: calibrate record reference arrays differ from the document's")
-    cams, per_cam = [], {}
+    cams, per_cam, override = [], {}, None
     for cam, entry_cam in sorted(rig_doc["cameras"].items()):
-        status, why, exception = rig_camera_status(rig_doc, cam)
-        if status != "validated":
+        # offline consumer: "validated", or "validated_by_override" under the task's committed acceptance override
+        # (calib.acceptance_override; never a robot-execution authorization)
+        status, why, override_ref = effective_status(rig_doc, cam)
+        if status not in OFFLINE_ACCEPTED:
             problems.append(f"{key}: release document camera {cam} is {status}: {why}")
             continue
         p = stage_dir / f"{cam.replace('/', '__')}.json"
@@ -133,6 +137,12 @@ def check_episode(key: str, entry: dict, rig_doc: dict, rig_sha: str, path_map=(
         fx = diag.get("fixedness") or {}
         if fx.get("fixed") is not True:
             problems.append(f"{key}: {cam} fixedness not verified: {fx.get('reason')}")
+        if status == STATUS:
+            if (diag.get("release") or {}).get("effective_rig_status") != STATUS or \
+                    diag.get("acceptance_override") != override_ref:
+                problems.append(f"{key}: {cam} calibrate result does not carry the document's acceptance override")
+                continue
+            override = override_ref
         cams.append(cam.split("/")[0])
         per_cam[cam.split("/")[0]] = {
             "fixedness": {"rule": fx.get("rule"), "registration": fx.get("registration"),
@@ -141,6 +151,8 @@ def check_episode(key: str, entry: dict, rig_doc: dict, rig_sha: str, path_map=(
             "heldout_depth_abs_median_m": diag.get("heldout_depth_abs_median_m"),
             "explained_fraction_heldout": diag.get("explained_fraction_heldout"),
             "depth_scale_applied": diag.get("depth_scale_applied")}
+        if status == STATUS:
+            per_cam[cam.split("/")[0]]["effective_rig_status"] = STATUS
     if problems:
         return None, problems
     if len(cams) != len(rig_doc["cameras"]):
@@ -162,6 +174,10 @@ def check_episode(key: str, entry: dict, rig_doc: dict, rig_sha: str, path_map=(
                                                     if exception.get("decision") else None)},
                "depth_scale": {c.split("/")[0]: v["depth_scale"] for c, v in rig_doc["cameras"].items()},
                "robot_model": rig_doc.get("robot_model"), "per_camera": per_cam}
+    if override is not None:  # offline-only acceptance under a task override (absent for automatic acceptance)
+        metrics["acceptance_override"] = override
+        metrics["evidence"]["acceptance_override"] = {k: override[k] for k in (
+            "id", "record_sha256", "automatic_decision_sha256", "override_decision_sha256")}
     config_sha = _sha(json.dumps({"gate_version": rig_doc.get("gate_version"), "rig_sha256": rig_sha},
                                  sort_keys=True).encode())
     record = {"status": "done", "code_version": CODE_VERSION, "stage_schema_version": 1,
