@@ -643,8 +643,12 @@ def disk_usage(path: Path) -> tuple[int, int]:
     return result.total, result.free
 
 
-def _host_reachability(registry: Path, reachable: bool, reason: str = "") -> None:
-    previous = read_registry(registry).get(HOST_EVENT_ID, {})
+def _direct(fn, *args, **kwargs):
+    return fn(*args, **kwargs)
+
+
+def _host_reachability(registry: Path, reachable: bool, reason: str = "", unlocked=_direct) -> None:
+    previous = unlocked(read_registry, registry).get(HOST_EVENT_ID, {})
     if not reachable and previous.get("status") != "unreachable":
         record({"event": "host_unreachable", "id": HOST_EVENT_ID, "host": "remote", "reason": reason}, registry)
     elif reachable and previous.get("status") == "unreachable":
@@ -653,8 +657,8 @@ def _host_reachability(registry: Path, reachable: bool, reason: str = "") -> Non
                 "duration_seconds": time.time() - start}, registry)
 
 
-def _unknown(job_id: str, registry: Path, reason: str, messages: list[str]) -> None:
-    previous = read_registry(registry).get(job_id, {})
+def _unknown(job_id: str, registry: Path, reason: str, messages: list[str], unlocked=_direct) -> None:
+    previous = unlocked(read_registry, registry).get(job_id, {})
     if not previous.get("unknown") or previous.get("reason") != reason:
         record({"event": "unknown", "id": job_id, "host": "remote", "reason": reason}, registry)
         messages.append(f"{job_id}: remote state unknown ({reason}); no relaunch")
@@ -903,7 +907,7 @@ def _verify_backup(run_id: str, state: dict, backup: dict, runs: Path) -> None:
 
 
 def _reconcile_remote(backend, snapshot, state: dict, registry: Path, runs: Path,
-                      messages: list[str], scope: set[str] | None = None) -> tuple[set[int], bool]:
+                      messages: list[str], scope: set[str] | None = None, unlocked=_direct) -> tuple[set[int], bool]:
     owned = set()
     reachable = True
     for job_id, current in state.items():
@@ -923,15 +927,15 @@ def _reconcile_remote(backend, snapshot, state: dict, registry: Path, runs: Path
         if item is None and _retired_after_verification(current):
             # 2026-10-28: removed by the cleanup once verified in place, before the local backup: not unknown; the job
             # completes from the bulk worker's backup as before
-            _complete_from_backup(backend, job_id, current, registry, runs, messages)
+            _complete_from_backup(backend, job_id, current, registry, runs, messages, unlocked)
             continue
         if item is None:
-            _unknown(job_id, registry, "container missing from confirmed snapshot", messages)
+            _unknown(job_id, registry, "container missing from confirmed snapshot", messages, unlocked)
             continue
         try:
             validate_container(item, job_id, current)
         except (RemoteJobError, KeyError, ValueError, TypeError):
-            _unknown(job_id, registry, "container identity/isolation mismatch", messages)
+            _unknown(job_id, registry, "container identity/isolation mismatch", messages, unlocked)
             continue
         observed = item.get("State", {}).get("Status")
         if observed in {"running", "restarting", "paused"}:
@@ -944,16 +948,16 @@ def _reconcile_remote(backend, snapshot, state: dict, registry: Path, runs: Path
             if current.get("verification_purpose") is None:
                 continue  # campaign runs: live copies are made by scripts/sync_media.py, never inside the tick
             try:
-                backend.sync_verification_results(job_id, current, final=False)
+                unlocked(backend.sync_verification_results, job_id, current, final=False)
             except RemoteUnreachable:
-                _host_reachability(registry, False, "RemoteUnreachable")
+                _host_reachability(registry, False, "RemoteUnreachable", unlocked)
                 reachable = False
-                _unknown(job_id, registry, "result sync SSH unavailable", messages)
+                _unknown(job_id, registry, "result sync SSH unavailable", messages, unlocked)
             except (RemoteJobError, OSError, ValueError, RuntimeError, subprocess.SubprocessError):
                 messages.append(f"{job_id}: live result sync unavailable; job remains running")
             continue
         if observed != "exited" or type(item.get("State", {}).get("ExitCode")) is not int:
-            _unknown(job_id, registry, f"unconfirmed container exit ({observed})", messages)
+            _unknown(job_id, registry, f"unconfirmed container exit ({observed})", messages, unlocked)
             continue
         code = item["State"]["ExitCode"]
         if code != 0:
@@ -966,13 +970,13 @@ def _reconcile_remote(backend, snapshot, state: dict, registry: Path, runs: Path
                     "container_id": item["Id"]}, registry)
         if current.get("verification_purpose") is not None:
             try:
-                synced = backend.sync_verification_results(job_id, current, final=True)
-                _verify_synced_exit(job_id, current, synced, runs)
+                synced = unlocked(backend.sync_verification_results, job_id, current, final=True)
+                unlocked(_verify_synced_exit, job_id, current, synced, runs)
                 synced = {**synced, "verification_purpose": current["verification_purpose"], "campaign_eligible": False}
             except RemoteUnreachable:
-                _host_reachability(registry, False, "RemoteUnreachable")
+                _host_reachability(registry, False, "RemoteUnreachable", unlocked)
                 reachable = False
-                _unknown(job_id, registry, "final result sync SSH unavailable", messages)
+                _unknown(job_id, registry, "final result sync SSH unavailable", messages, unlocked)
                 continue
             except (RemoteJobError, OSError, ValueError, RuntimeError, subprocess.SubprocessError):
                 messages.append(f"{job_id}: final result checksums not verified; dependencies remain blocked")
@@ -991,12 +995,12 @@ def _reconcile_remote(backend, snapshot, state: dict, registry: Path, runs: Path
                    or time.time() - float(failed.get("time", 0)) >= REMOTE_RECHECK_SECONDS)
         if (current.get("remote_verified") or {}).get("attempt") != current["attempts"] and recheck:
             try:
-                report = backend.verify_remote_artifacts(job_id, remote_check_names(current))
-                checks = _verify_remote_exit(job_id, current, report, state)
+                report = unlocked(backend.verify_remote_artifacts, job_id, remote_check_names(current))
+                checks = unlocked(_verify_remote_exit, job_id, current, report, state)
             except RemoteUnreachable:
-                _host_reachability(registry, False, "RemoteUnreachable")
+                _host_reachability(registry, False, "RemoteUnreachable", unlocked)
                 reachable = False
-                _unknown(job_id, registry, "remote artifact check SSH unavailable", messages)
+                _unknown(job_id, registry, "remote artifact check SSH unavailable", messages, unlocked)
                 continue
             except (RemoteJobError, OSError, ValueError, KeyError, TypeError, RuntimeError,
                     subprocess.SubprocessError) as exc:
@@ -1014,7 +1018,7 @@ def _reconcile_remote(backend, snapshot, state: dict, registry: Path, runs: Path
                                                           "checks": checks}}
                 messages.append(f"{job_id} exited with 0 on remote; artifacts verified on the remote "
                                 "(same-host dependents released; local backup pending)")
-        _complete_from_backup(backend, job_id, current, registry, runs, messages)
+        _complete_from_backup(backend, job_id, current, registry, runs, messages, unlocked)
     return owned, reachable
 
 
@@ -1028,13 +1032,14 @@ def _retired_after_verification(current: dict) -> bool:
             and bool(current.get("container_id")))
 
 
-def _complete_from_backup(backend, job_id: str, current: dict, registry: Path, runs: Path, messages: list[str]) -> None:
+def _complete_from_backup(backend, job_id: str, current: dict, registry: Path, runs: Path, messages: list[str],
+                          unlocked=_direct) -> None:
     """Done once scripts/sync_media.py's verified final local backup matches the in-place verification."""
     try:
-        backup = backend.backup_record(job_id)
+        backup = unlocked(backend.backup_record, job_id)
         if backup is None:
             return
-        _verify_backup(job_id, current, backup, runs)
+        unlocked(_verify_backup, job_id, current, backup, runs)
     except (RemoteJobError, OSError, ValueError, KeyError, TypeError):
         return  # no verified final backup yet: the job stays compute-complete (sync_pending), reserving nothing
     record({"event": "results_synced", "id": job_id, "host": "remote", "final": True, "sync": backup}, registry)
@@ -1169,7 +1174,8 @@ def _cleanup_targets(job_id: str, current: dict) -> list[tuple[int, str, str, in
     return sorted(target for target in targets.values() if target[2] not in settled)
 
 
-def _cleanup_completed_containers(backend, snapshot, state: dict, registry: Path, messages: list[str]) -> bool:
+def _cleanup_completed_containers(backend, snapshot, state: dict, registry: Path, messages: list[str],
+                                  unlocked=_direct) -> bool:
     """Remove the containers of completed remote jobs and of intentionally paused attempts (``_cleanup_targets``; user
     instructions 2026-10-21 and 2026-10-28), each by its recorded id, stopped with the expected exit code and labelled
     ours, after preserving its Docker log and inspect record in the remote run directory
@@ -1198,12 +1204,14 @@ def _cleanup_completed_containers(backend, snapshot, state: dict, registry: Path
                 continue
             calls += 1
             try:  # a container missing from the snapshot is checked by the command itself (absent, or refused)
-                result = (backend.remove_container(job_id, attempt, name, container_id, code, list(required),
-                                                   verification_purpose=current.get("verification_purpose"))
+                # Removal is idempotent and fenced remotely by the stopped container's immutable id, exit code and
+                # result-sync lock. If another writer wins while it runs, the next pass recovers its durable receipt.
+                result = (unlocked(backend.remove_container, job_id, attempt, name, container_id, code, list(required),
+                                   verification_purpose=current.get("verification_purpose"))
                           if current.get("verification_purpose") else
-                          backend.remove_container(job_id, attempt, name, container_id, code, list(required)))
+                          unlocked(backend.remove_container, job_id, attempt, name, container_id, code, list(required)))
             except RemoteUnreachable:
-                _host_reachability(registry, False, "RemoteUnreachable")
+                _host_reachability(registry, False, "RemoteUnreachable", unlocked)
                 return False
             except ContainerRemovalRefused as exc:
                 record({**base, "event": "container_kept", "reason": exc.reason}, registry)
@@ -1280,26 +1288,141 @@ def _charge_cotenants(resources: dict, state: dict, jobs: dict, messages: list[s
                         "free after pending reservations)" for uuid, charge in sorted(charges["gpus"].items())))
 
 
+class _TickChanged(Exception):
+    """An unlocked observation overlapped another writer; leave committed events for the next tick."""
+
+
+class _TickLock:
+    """Yield the registry lock for slow evidence reads, then validate the planning snapshot.
+
+    All registry/queue/ownership writers use registry.lock. Stat tokens also cover policy files written by other
+    controllers (including in-place writes). A changed snapshot aborts the rest of the pass, never replays a launch.
+    This deliberately keeps the existing scheduling algorithm and its reservations inside one serial transaction.
+    """
+    def __init__(self, lock, queue_path, registry, authoritative_queue, reservation_path):
+        from ops.jobs import admission_pause
+        self.lock = lock
+        self.paths = {queue_path, registry, authoritative_queue, queue_path.parent / "HOLD",
+                      authoritative_queue.parent / "HOLD", host_roles.ROLES_PATH, host_roles.EXCEPTIONS_PATH,
+                      host_roles.OWNERSHIP_DIR, admission_pause.FILE, admission_pause.PREP_PRIORITY,
+                      admission_pause.PREP_PRIORITY_DIR, reservation_path or release_reservation.PATH,
+                      REPO / "docs/tests.json", REPO / "runs/setup/role-release.json",
+                      registry.parent.parent / "runs/setup/remote-hold-admissions"}
+        # Adoption may change sources without changing the queue or registry. Include git's real HEAD/ref/index
+        # paths (also in linked worktrees), so an unlocked source/evidence read cannot cross a release adoption.
+        gitdir = REPO / ".git"
+        if gitdir.is_file():
+            gitdir = (REPO / gitdir.read_text().strip().removeprefix("gitdir: ")).resolve()
+        if gitdir.is_dir():
+            common = gitdir / "commondir"
+            common = (gitdir / common.read_text().strip()).resolve() if common.is_file() else gitdir
+            self.paths.update((gitdir / "HEAD", gitdir / "index", common / "packed-refs"))
+            head = (gitdir / "HEAD").read_text().strip()
+            if head.startswith("ref: "):
+                self.paths.add(common / head.removeprefix("ref: "))
+
+    def revision(self):
+        from ops.jobs import admission_pause
+        paths = set(self.paths)
+        paths.update(host_roles.OWNERSHIP_DIR.glob("*.json"))
+        holds = [admission_pause.PREP_PRIORITY, *admission_pause.PREP_PRIORITY_DIR.glob("*.json")]
+        paths.update(holds)
+        # Prep intents can change without changing their hold file; include the state/config they refer to.
+        for path in holds:
+            try:
+                hold = json.loads(path.read_bytes())
+                root = Path(hold["state_dir"])
+                config = root.parent / "dispatcher.json"
+                paths.update((root / "state.json", root / "STOP", config))
+                paths.add(Path(json.loads(config.read_bytes())["jobs"]))
+            except (OSError, ValueError, KeyError, TypeError):
+                pass  # readiness still fails closed on unreadable evidence; the hold/config tokens detect changes
+        setup = REPO / "runs/setup"
+        paths.update(setup.glob("*registration*.json"))
+        paths.update((setup / "cnn-freeze-20261024.json", setup / "stage2-admission-hold.json"))
+        return self._stat_tokens(paths)
+
+    def pause_revision(self):
+        """Identity of the pause snapshot, including legacy prep holds and directory membership."""
+        from ops.jobs import admission_pause
+        return self._stat_tokens({admission_pause.FILE, admission_pause.PREP_PRIORITY,
+                                  admission_pause.PREP_PRIORITY_DIR,
+                                  *admission_pause.PREP_PRIORITY_DIR.glob("*.json")})
+
+    @staticmethod
+    def _stat_tokens(paths):
+        tokens = {}
+        for path in paths:
+            try:
+                st = path.stat()
+                tokens[path] = (st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns, st.st_ctime_ns)
+            except FileNotFoundError:
+                tokens[path] = None
+        return tokens
+
+    def unlocked(self, fn, *args, **kwargs):
+        before = self.revision()
+        fcntl.flock(self.lock, fcntl.LOCK_UN)
+        try:
+            return fn(*args, **kwargs)
+        finally:
+            fcntl.flock(self.lock, fcntl.LOCK_EX)
+            if before != self.revision():
+                raise _TickChanged
+
+
+def _dispatch_refusal(job, authoritative, context, gpu=None):
+    """Dispatch copies may stamp a derived role and choose a GPU; every other field must still match."""
+    current = authoritative.get(job["id"])
+    if current is None:
+        return "row absent from authoritative queue"
+    expected = host_roles.with_role(current, authoritative)
+    planned = host_roles.with_role(job, context)
+    if {k: v for k, v in expected.items() if k != "gpu"} != {k: v for k, v in planned.items() if k != "gpu"}:
+        return "authoritative row changed since dispatch planning"
+    if gpu is not None and current.get("gpu", "any") not in ("any", gpu):
+        return "authoritative GPU pin differs from dispatch"
+    return None
+
+
 @input_verification_pass()
 def tick(queue_path: Path = QUEUE, registry: Path = REGISTRY, runs: Path = RUNS, usage=None,
          available_gb: float | None = None, disk_bytes: tuple[int, int] | None = None, remote_backend=None,
-         scope: set[str] | None = None, reservation_path: Path | None = None) -> list[str]:
-    """One scheduler pass under the registry lock. ``scope`` (the release chain, 2026-11-12): only these job ids are
+         scope: set[str] | None = None, reservation_path: Path | None = None,
+         authoritative_queue: Path | None = None) -> list[str]:
+    """One scheduler pass, yielding registry.lock during slow evidence reads and validating before continuing.
+
+    Production dispatch copies always compare against QUEUE; isolated registries default to their supplied queue.
+    ``scope`` (the release chain, 2026-11-12): only these job ids are
     reconciled (exit observation, verification, result sync) and no completed containers are cleaned up; every other
     remote job only contributes its running containers' processes to the owned set (foreign-process detection is
     unchanged) and is left to the daemon and drivers. Admission is unaffected (it reads the full registry)."""
     registry.parent.mkdir(parents=True, exist_ok=True)
+    authoritative_queue = Path(authoritative_queue or (QUEUE if registry == REGISTRY else queue_path))
     with open(registry.with_suffix(".lock"), "w") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
-        return _tick(queue_path, registry, runs, usage, available_gb, disk_bytes, remote_backend, scope,
-                     reservation_path)
+        guard = _TickLock(lock, queue_path, registry, authoritative_queue, reservation_path)
+        messages = []
+        try:
+            return _tick(queue_path, registry, runs, usage, available_gb, disk_bytes, remote_backend, scope,
+                         reservation_path, authoritative_queue, guard, messages)
+        except _TickChanged:
+            return [*messages, "scheduler inputs changed during observation; remaining decisions deferred to next tick"]
 
 
 def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, disk_bytes, remote_backend,
-          scope: set[str] | None = None, reservation_path: Path | None = None) -> list[str]:
-    queue = load_queue(queue_path)
+          scope: set[str] | None, reservation_path: Path | None, authoritative_queue: Path, guard: _TickLock,
+          messages: list[str]) -> list[str]:
+    unlocked = guard.unlocked
+    queue = unlocked(load_queue, queue_path)
+    for host in queue["hosts"].values():
+        manifests = [host["evidence_manifest"]] if host.get("evidence_manifest") else []
+        manifests.extend(host.get("verification_manifests", {}).values())
+        guard.paths.update(REPO / name for name in manifests)
     jobs = {job["id"]: job for job in queue.get("jobs", [])}
-    state, messages = read_registry(registry), []
+    authoritative = (queue if queue_path == authoritative_queue else unlocked(load_queue, authoritative_queue))
+    authoritative_jobs = {job["id"]: job for job in authoritative.get("jobs", [])}
+    state = unlocked(read_registry, registry)
     for job_id, current in state.items():
         if job_id in jobs and "attempt" in current:
             purpose = validate_verification(jobs[job_id], queued=True)
@@ -1325,7 +1448,7 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
             pass
     resources = {}
     remote_host = queue["hosts"].get("remote")
-    remote_candidates = read_registry(registry)
+    remote_candidates = unlocked(read_registry, registry)
     for job_id, current in remote_candidates.items():
         if current["status"] == "crashed" and current["failures"] <= int(jobs.get(job_id, {}).get("max_restarts", 1)):
             current["status"] = PENDING
@@ -1340,15 +1463,15 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
     if remote_needed:
         try:
             remote_backend = remote_backend or RemoteBackend(REPO, runs)
-            snapshot = remote_backend.snapshot()
+            snapshot = unlocked(remote_backend.snapshot)
             prep_snapshot = snapshot  # _charge_cotenants consumes resources['remote']['snapshot']
-            _host_reachability(registry, True)
-            owned, reachable = _reconcile_remote(remote_backend, snapshot, read_registry(registry), registry, runs, messages,
-                                                 scope)
+            _host_reachability(registry, True, unlocked=unlocked)
+            owned, reachable = _reconcile_remote(remote_backend, snapshot, unlocked(read_registry, registry), registry,
+                                                 runs, messages, scope, unlocked)
             if (reachable and scope is None and remote_host is not None
                     and remote_host.get("cleanup_completed_containers", True) is True):
-                reachable = _cleanup_completed_containers(remote_backend, snapshot, read_registry(registry), registry,
-                                                          messages)
+                reachable = _cleanup_completed_containers(remote_backend, snapshot, unlocked(read_registry, registry),
+                                                          registry, messages, unlocked)
             if reachable and snapshot.resources_ready and (snapshot.launch_hold or {}).get("held"):
                 # the durable remote launch hold (no resume record for this boot, or control/launch-hold/HOLD): reconcile and
                 # sync as usual, launch nothing (ops/remote/launch_hold.py; the launcher re-checks inside its lock)
@@ -1375,18 +1498,18 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
             else:
                 messages.append("remote: resource evidence unavailable; no remote jobs launched")
         except RemoteUnreachable:
-            _host_reachability(registry, False, "RemoteUnreachable")
+            _host_reachability(registry, False, "RemoteUnreachable", unlocked)
             messages.append("remote unreachable; active jobs remain unknown, local scheduling continues")
-            for job_id, current in read_registry(registry).items():
+            for job_id, current in unlocked(read_registry, registry).items():
                 if current.get("host") == "remote" and current["status"] in ACTIVE:
-                    _unknown(job_id, registry, "SSH unavailable", messages)
+                    _unknown(job_id, registry, "SSH unavailable", messages, unlocked)
         except (RemoteJobError, OSError, ValueError, RuntimeError, subprocess.SubprocessError):
             record({"event": "host_query_failed", "id": HOST_EVENT_ID, "host": "remote"}, registry)
             messages.append("remote resource/status query failed; no remote jobs launched")
-            for job_id, current in read_registry(registry).items():
+            for job_id, current in unlocked(read_registry, registry).items():
                 if current.get("host") == "remote" and current["status"] in ACTIVE:
-                    _unknown(job_id, registry, "remote snapshot unavailable", messages)
-    state = read_registry(registry)
+                    _unknown(job_id, registry, "remote snapshot unavailable", messages, unlocked)
+    state = unlocked(read_registry, registry)
     for job_id, current in state.items():
         if job_id in jobs and "host" in current and jobs[job_id].get("host", "local") != current["host"]:
             raise ValueError(f"job {job_id} host changed; existing runs cannot be migrated implicitly")
@@ -1404,11 +1527,11 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
     if "remote" in resources:
         _charge_cotenants(resources, state, jobs, messages)
     try:
-        usage = gpu_usage() if usage is None else usage
+        usage = unlocked(gpu_usage) if usage is None else usage
         sessions = {item["pid"] for item in running if item["host"] == "local"}
         foreign = {uuid for uuid, procs in usage.items() if any(session_id(pid) not in sessions for pid, _ in procs)}
-        total, free = disk_usage(runs) if disk_bytes is None else disk_bytes
-        resources["local"] = {"available": host_available_gb() if available_gb is None else available_gb,
+        total, free = unlocked(disk_usage, runs) if disk_bytes is None else disk_bytes
+        resources["local"] = {"available": unlocked(host_available_gb) if available_gb is None else available_gb,
                               "disk_total": total, "disk_free": free, "foreign": foreign}
         # Use the same fresh MIG query as occupancy; reserve unallocated growth of every local job.
         local_shared = {}
@@ -1518,7 +1641,10 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
             request=lambda r: dict(ram_gb=ram_gb(r), cpu_threads=thread_limit(r.get('cpu_threads', 8)),
                                    disk_gb=float(r.get('disk_gb', 0))), messages=messages)
     from ops.jobs.admission_pause import paused, snapshot
-    pause_evidence = snapshot()  # refreshed once on every daemon tick, before any reservation
+    pause_revision = guard.pause_revision()
+    pause_evidence = unlocked(snapshot)  # refreshed once per tick; the fence rejects changes during the read
+    if pause_revision != guard.pause_revision():
+        raise _TickChanged
     from ops.jobs.local_readiness import LocalReadiness
     owner_ready = LocalReadiness(queue, state, REPO)
     ready_rows = eligible(list(jobs.values()), state)
@@ -1527,6 +1653,10 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
         if row['id'] not in ready_ids and state.get(row['id'], {}).get('status', PENDING) == PENDING:
             messages.append(f"{row['id']}: not ready; no priority reservation")
     for job in ready_rows:
+        changed = _dispatch_refusal(job, authoritative_jobs, jobs)
+        if changed:
+            messages.append(f"{job['id']}: admission held: {changed}")
+            continue
         host_name = job.get("host", "local")
         host, resource = queue["hosts"][host_name], resources.get(host_name)
         if resource is None or host.get("enabled", host_name == "local") is not True or host.get("hold", False):
@@ -1574,7 +1704,7 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
                 if purpose not in verification_evidence:
                     verification_evidence[purpose] = None
                     try:
-                        verification_evidence[purpose] = remote_backend.ready_verification(host, job)
+                        verification_evidence[purpose] = unlocked(remote_backend.ready_verification, host, job)
                     except (RemoteJobError, OSError, ValueError, RuntimeError, subprocess.SubprocessError):
                         messages.append(f"remote: {purpose} bootstrap/pushed-commit evidence invalid; admission held")
                 evidence = verification_evidence[purpose]
@@ -1582,7 +1712,7 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
                 if not remote_ready_checked:
                     remote_ready_checked = True
                     try:
-                        campaign_evidence = remote_backend.ready(host)
+                        campaign_evidence = unlocked(remote_backend.ready, host)
                     except (RemoteJobError, OSError, ValueError, RuntimeError, subprocess.SubprocessError):
                         messages.append("remote: acceptance/pushed-commit evidence invalid; admission held")
                 evidence = campaign_evidence
@@ -1602,7 +1732,7 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
                 # provenance accepts exactly this transition (ops/jobs/run_identity.py)
                 job = {**job, "repinned_from": previous["repinned_from"]}
         else:
-            identity = source_identity() if identity is None else identity
+            identity = unlocked(source_identity) if identity is None else identity
             moved = (host_roles.migrated_source_refusal(job["id"], ownership, identity.get("source_sha256", {}), REPO)
                      or host_roles.migrated_state_refusal(job, ownership, state.get(job["id"]), job_fingerprint(job), REPO))
             if moved is not None:
@@ -1611,8 +1741,8 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
             input_event = {}
             if host_roles.remote_resident(job, roles, jobs):
                 try:
-                    effective, inputs = realworld_local.localize(job, state, roles=roles, by_id=jobs, runs=runs,
-                                                                source_identity=identity, ownership=ownership)
+                    effective, inputs = unlocked(realworld_local.localize, job, state, roles=roles, by_id=jobs,
+                                                 runs=runs, source_identity=identity, ownership=ownership)
                 except realworld_local.LocalInputError as exc:
                     messages.append(f"{job['id']}: not admitted on local: {exc}")
                     continue
@@ -1635,7 +1765,7 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
             # prep; live prep quotas and exclusive GPU checks still apply below.
             from ops.jobs.prep_reservation import reserve as reserve_prep
             try:
-                reserve_prep(policy, prep_snapshot)
+                unlocked(reserve_prep, policy, prep_snapshot)
             except (OSError, ValueError, KeyError, TypeError, RuntimeError, subprocess.SubprocessError) as exc:
                 messages.append(f"{job['id']}: prep reservation evidence unavailable ({type(exc).__name__})")
                 continue
@@ -1714,6 +1844,26 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
         attempt = state.get(job["id"], {}).get("attempts", 0) + 1
         if host_name == "remote":
             path, spec = remote_backend.prepare(job, gpu, attempt, host, evidence)
+        # Compare-and-set at the commit point. Every unlocked read above checked the authoritative queue's token,
+        # so its row (including planned_commit) is still current while this lock is held. Fresh registry/owner checks
+        # and the pause snapshot's stat tokens fence stale dispatch copies, two schedulers, placement, offload and
+        # re-pins alike without rereading pause evidence per row. Retries compare
+        # their existing attempt; a first launch requires the same absence of state that planning observed.
+        # Keep this final replay locked: prepare may have created the immutable attempt spec, so no other scheduler
+        # may prepare/claim the same attempt before its launch intent is appended.
+        current = read_registry(registry).get(job["id"])
+        if current and current["status"] == "crashed" and current["failures"] <= int(job.get("max_restarts", 1)):
+            current = {**current, "status": PENDING}
+        fresh_ownership = host_roles.read_ownership()
+        changed = (_dispatch_refusal(jobs[job["id"]], authoritative_jobs, jobs, gpu)
+                   or ("registry state changed" if current != state.get(job["id"]) else None)
+                   or ("ownership changed" if fresh_ownership.get(job["id"]) != ownership.get(job["id"]) else None)
+                   or ("pause evidence changed" if guard.pause_revision() != pause_revision else None)
+                   or ("queue held" if (authoritative_queue.parent / "HOLD").exists() else None))
+        if changed:
+            messages.append(f"{job['id']}: admission held at commit: {changed}")
+            continue
+        if host_name == "remote":
             event = {"id": job["id"], "host": "remote", "gpu": gpu, "attempt": attempt,
                      "container": spec["container"], "commit": spec["commit"], "image_digest": spec["image_digest"],
                      "gpu_backend": spec["gpu_backend"],

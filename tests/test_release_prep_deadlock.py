@@ -215,7 +215,9 @@ def test_running_suite_is_not_subject_to_capacity_timeout(tmp_path, monkeypatch)
         clock[0] += names['ADMISSION_TIMEOUT_SECONDS'] + 1
         registry['verify-native-aaaaaaa']['status'] = 'done'
 
-    monkeypatch.setitem(names, 'jobs', SimpleNamespace(tick=lambda **_: [], read_registry=lambda _: registry,
+    ticks = []
+    monkeypatch.setitem(names, 'jobs', SimpleNamespace(tick=lambda **kw: ticks.append(kw) or [],
+                                                     read_registry=lambda _: registry,
                                                      RUNNING='running', DONE='done', PENDING='pending'))
     monkeypatch.setitem(names, 'RemoteBackend', lambda *_: SimpleNamespace(container_states=None))
     monkeypatch.setattr(names['release_poll'], 'wait_for_exit', watch)
@@ -223,3 +225,4 @@ def test_running_suite_is_not_subject_to_capacity_timeout(tmp_path, monkeypatch)
                                                      monotonic=lambda: clock[0]))
     release.drive(tmp_path/'queue.yaml', list(registry))
     assert clock[0] > names['ADMISSION_TIMEOUT_SECONDS']
+    assert ticks[0]['authoritative_queue'] == tmp_path/'queue.yaml'

@@ -1153,7 +1153,9 @@ if chosen and not DRY:
                       stream, indent=2)
         messages.append(f"ADMITTING {[(j['id'], j['gpu'][4:8]) for j in group]} on {commit[:7]}")
         backend = RemoteBackend(REPO, REPO / 'runs')
-        messages += jobs.tick(queue_path=qpath, remote_backend=backend)
+        # The dispatch file is a plan, possibly minutes old. tick compares its rows with the authoritative queue and
+        # ownership under registry.lock at launch, so local placement need not wait for this pass's remote lock.
+        messages += jobs.tick(queue_path=qpath, remote_backend=backend, authoritative_queue=jobs.QUEUE)
         observed = jobs.read_registry()
         pending_dispatch.extend({**j, 'gpu': by_id[j['id']].get('gpu', 'any')} for j in group
                                 if observed.get(j['id'], {}).get('status') not in jobs.ACTIVE | {jobs.DONE})

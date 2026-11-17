@@ -167,8 +167,10 @@ class Release:
         pending_since = dict.fromkeys(ids, time.monotonic())
         while True:
             self.check_deadline()
+            # Typed verification rows are published only in this scoped queue, never in the campaign queue.
+            # Use their published queue as the CAS authority while retaining every bootstrap/pin/isolation gate.
             for m in jobs.tick(queue_path=Path(qpath), registry=ROOT / 'experiments/registry.jsonl', runs=ROOT / 'runs',
-                                remote_backend=backend, scope=scope):
+                                remote_backend=backend, scope=scope, authoritative_queue=Path(qpath)):
                 log(m)
             state = jobs.read_registry(ROOT / 'experiments/registry.jsonl')
             status = {i: state.get(i, {}).get('status') for i in ids}

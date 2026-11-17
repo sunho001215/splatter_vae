@@ -117,7 +117,6 @@ BASELINE_INPUT_FIELDS = (("dataset", "hdf5_path"), ("data_interface", "split_man
 CLOSEOUT_CONSUMERS = (DSRESET_CHECK, DSRESET_ARTIFACT, "scripts/realworld_fql_dataset.py", "scripts/train_realworld_fql.py",
                       "scripts/train_mvp3d.py",
                       OURS_CONTINUATION, *OURS_EVAL_SCRIPTS)
-REMOTE_LOCK = REPO / "runs/setup/remote-driver.lock"
 
 
 class LocalInputError(ValueError):
@@ -1279,14 +1278,16 @@ def plan(queue: dict, state: dict, roles: dict, *, paused_fn, allow_pauses=(), p
 
 def apply(ids, reason, *, allow_pauses=(), queue_path=None, registry_path=None,
           manifest: Path = host_roles.POOL_MANIFEST, ownership_dir: Path = host_roles.OWNERSHIP_DIR,
-          admission_lock: Path = host_roles.ADMISSION_LOCK, remote_lock: Path = REMOTE_LOCK, blocking=False,
+          admission_lock: Path = host_roles.ADMISSION_LOCK, blocking=False,
           mirror: Path = MIRROR, input_manifest: Path | None = None, roles_path: Path = host_roles.ROLES_PATH,
           root: Path = REPO, paused_fn=None) -> dict:
-    """Prepare git scopes outside locks; recheck under stage2 -> remote -> registry, then move host fields only.
+    """Prepare git scopes outside locks; compare-and-set under stage2 -> registry, then move host fields only.
 
     Capacity is a planning policy, not a permanent ownership condition: rows placed by ``all`` can wait in the local
     queue. Every move retains the original row, fingerprints and release scope. Allowed pauses are recorded and are
-    never lifted here. A busy driver lock returns immediately unless the caller explicitly requested blocking.
+    never lifted here. A busy lock returns immediately unless the caller explicitly requested blocking.
+    Remote launches validate the authoritative row and ownership under registry.lock before recording an attempt;
+    they cannot claim a row between this fresh plan and its ownership/queue writes. No remote pass lock is needed.
     """
     from ops.jobs import scheduler
     from ops.jobs.admission_pause import active_pauses
@@ -1307,7 +1308,7 @@ def apply(ids, reason, *, allow_pauses=(), queue_path=None, registry_path=None,
         return revalidate_placement_scope(proof, root=root)
 
     with contextlib.ExitStack() as stack:
-        for path in (Path(admission_lock), Path(remote_lock), registry_path.with_suffix(".lock")):
+        for path in (Path(admission_lock), registry_path.with_suffix(".lock")):
             path.parent.mkdir(parents=True, exist_ok=True)
             lock = stack.enter_context(path.open("a"))
             try:
