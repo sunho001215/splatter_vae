@@ -1,4 +1,4 @@
-# Offline FQL: alpha 10 and normalize_q_loss=true (explicit new-task directive); seeds supplied by plan.
+# Offline FQL, end-to-end CNN: alpha 10, normalize_q_loss=false (established E2E setting, as drawer-open-v2); seeds from plan.
 # Template: resolve ${pnpv2.*} only through the pick-and-place-v2 task spec.
 condition: e2e_cnn
 agent:
@@ -21,7 +21,7 @@ agent:
   q_agg: mean
   alpha: 10.0
   flow_steps: 10
-  normalize_q_loss: true
+  normalize_q_loss: false
 encoder:
   proj_dim: 256
   feature_norm: none
@@ -39,7 +39,7 @@ train:
   deterministic: false
 data:
   dataset: runs/pnpv2-20261117-fqldata-e2e_cnn-pick-and-place-v2-S/dataset.h5
-  split_manifest: ${pnpv2.split}
+  split_manifest: ${pnpv2.rgb_split}
   gate_report: ${pnpv2.rgb_gate}
   store: ${pnpv2.rgb_store}
   frames_device: null

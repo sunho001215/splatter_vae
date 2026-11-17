@@ -16,7 +16,7 @@ def module(name,*args,python=None,env=None,cap=None):
             **({'cuda_cap_gib':cap} if cap else {})}
 
 
-def plan(phase_config,task,out,work,upstream):
+def plan(phase_config,task,out,work,upstream,stem=None):
     """One-process GPU matching, independent CPU solves; no historical driver import."""
     import yaml
     cfg=json.loads(Path(phase_config).read_text());source=json.loads(Path(cfg['jobs']).read_text())
@@ -39,7 +39,7 @@ def plan(phase_config,task,out,work,upstream):
         'variants':['full','all','half:0..4','group:0..1','block:0..1','loco:each camera','start:1..8'],
         'selection':'established automatic G1-G6; no task exceptions; held cameras do not publish accepted rig'})
     inputs={str(out/'spec.json'):digest(out/'spec.json'),str(freeze):digest(freeze)}
-    prefix=f'rwv2-20261113-calib-ours-{task}'
+    prefix=f'rwv2-20261113-calib-ours-{task}' if stem is None else f'{stem}-{task}'
     jobs=[]
     def add(name,steps,deps=(),gpu=1,ram=16,**extra):
         jid=prefix+'-'+name
@@ -195,8 +195,9 @@ def main():
     p=argparse.ArgumentParser(description=__doc__);p.add_argument('command',choices=['plan','view','init','publish'])
     p.add_argument('--spec',type=Path);p.add_argument('--phase-config',type=Path);p.add_argument('--task')
     p.add_argument('--out',type=Path);p.add_argument('--work',type=Path);p.add_argument('--upstream',type=Path)
+    p.add_argument('--id-stem',help='job-id stem for a new task namespace (pick-and-place-v2: pnpv2-20261117-calib)')
     a=p.parse_args()
-    if a.command=='plan':print(json.dumps({'jobs':plan(a.phase_config,a.task,a.out,a.work,a.upstream),'launched':False}));return
+    if a.command=='plan':print(json.dumps({'jobs':plan(a.phase_config,a.task,a.out,a.work,a.upstream,stem=a.id_stem),'launched':False}));return
     spec=json.loads(a.spec.read_text())
     if a.command=='publish':publish(spec,a.spec)
     else:globals()[a.command](spec)

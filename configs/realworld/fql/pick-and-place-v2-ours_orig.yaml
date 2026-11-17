@@ -39,7 +39,7 @@ train:
   deterministic: false
 data:
   dataset: runs/pnpv2-20261117-fqldata-ours_orig-pick-and-place-v2-S/dataset.h5
-  split_manifest: ${pnpv2.split}
+  split_manifest: ${pnpv2.geometry_split}
   gate_report: ${pnpv2.geometry_gate}
   store: null
   frames_device: null

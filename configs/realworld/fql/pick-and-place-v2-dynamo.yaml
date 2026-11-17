@@ -39,7 +39,7 @@ train:
   deterministic: false
 data:
   dataset: runs/pnpv2-20261117-fqldata-dynamo-pick-and-place-v2-S/dataset.h5
-  split_manifest: ${pnpv2.split}
+  split_manifest: ${pnpv2.rgb_split}
   gate_report: ${pnpv2.rgb_gate}
   store: null
   frames_device: null

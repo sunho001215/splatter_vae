@@ -1,52 +1,205 @@
-"""Dedicated future PNP v2 workflow entrypoint. No scheduler, robot or remote API.
+"""pick-and-place-v2 upstream producers (operator steps between arrival and queue registration).
 
-Config paths are templates resolved from one task spec before existing trainers
-are imported. This entrypoint is not called by the preparation-only registrar.
+Entries (each refuses before the dataset is complete/validated; none launches a job or contacts the Robot PC):
+
+  manifest     canonical S manifest + per-episode prep plan            -> <work>/ingest
+  rig-map      Phase-B rig map, only once the task rig is accepted      -> <work>/phaseB-rig-map.json
+  publish-rgb  calibration-independent RGB bundle from Phase A          -> <work>/publication/S/rgb
+  raw-proof    read-only remote sha256 of the raw copies (snapshot)     -> <work>/remote-raw-hashes.json
+  snapshot     NEW ingest snapshot from Phase A/B dispatcher records    -> <work>/ingest-snapshot
+  publish      geometry bundle from the snapshot (calibration records)  -> <work>/publication/S/geometry
+  upload       checked no-overwrite upload of one staged bundle + receipt (remote write; coordinator only)
+
+Queue rows never call this file; they use scripts/pnpv2_*.py. Status and next commands: scripts/pnpv2.py status.
 """
 
 from __future__ import annotations
 
 import argparse
-import importlib
 import json
 import sys
-import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-import yaml
+import yaml  # noqa: E402
 
-from s4d.rwlearn.pnpv2_spec import SPEC, config, load_spec, require_collected, values
+from s4d.rwlearn.pnpv2_spec import SPEC, TASK, load_spec, read_arrival, values  # noqa: E402
 
-ENTRIES = dict(
-    train="scripts.train",
-    dynamo="scripts.train_dynamo",
-    reviwo="scripts.train_reviwo",
-    sincro="scripts.train_sincro",
-    snerl="scripts.train_snerl",
-    mvp3d="scripts.train_mvp3d",
-    fql="scripts.train_realworld_fql",
-    fqldata="scripts.realworld_fql_dataset",
-    stats="scripts.compute_workspace_stats",
-    native="scripts.realworld_native_depth",
-    export="scripts.export_encoder",
-    artifact="scripts.realworld_dsreset_artifact",
-    snapshot="scripts.realworld_dsreset_snapshot",
-)
+
+def _atomic_json(path, doc):
+    from s4d.realworld.io import atomic_write_json
+
+    path = Path(path)
+    if path.exists():
+        raise ValueError(f"{path} exists; outputs are immutable")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    atomic_write_json(path, doc)
+
+
+def _check_data(spec, a):
+    from s4d.rwlearn.pnpv2_arrival import check_data
+
+    report = check_data(spec, raw_root=a.raw_root, settle_seconds=a.settle_seconds)
+    if not report["passed"]:
+        raise ValueError("check-data refuses: " + "; ".join(report["problems"][:5]))
+    return report
+
+
+def manifest(spec, a, argv):
+    from s4d.rwlearn.dsreset import prep_bundle, write_bundle
+    from s4d.rwlearn.pnpv2_publication import manifest_check
+    from s4d.rwlearn.pnpv2_spec import config
+
+    p = values(spec)
+    if not spec.get("sam3_prompts") or not spec.get("robot_urdf_sha256"):
+        raise ValueError(f"write the reviewed confirmation {p['arrival_doc']} first (prompts, robot URDF sha256)")
+    from s4d.rwlearn.pnpv2_arrival import sha256
+
+    if sha256(p["robot_urdf"]) != spec["robot_urdf_sha256"]:
+        raise ValueError("confirmed robot URDF sha256 differs from the asset file")
+    report = _check_data(spec, a)
+    m = manifest_check(report["manifest"], spec)
+    template = config(Path(__file__).resolve().parents[1] / "configs/realworld/prep/pick-and-place-v2.yaml", spec)
+    out = Path(p["ingest"])
+    if out.exists():
+        raise ValueError(f"{out} exists; the ingest bundle is immutable")
+    write_bundle(out, {"S": m}, prep_bundle({"S": m}, template, p["remote_processed"]))
+    print(json.dumps({"out": str(out), "episodes": len(m["episodes"]), "launched": False}))
+
+
+def rig_map(spec, a, argv):
+    from ops.jobs.pnpv2_registration import rig_evidence
+
+    p = values(spec)
+    stage = rig_evidence(spec)
+    if stage["status"] != "done":
+        raise ValueError(f"task rig not accepted: {stage['detail']}")
+    plan = json.loads(Path(p["prep_plan"]).read_text())
+    _atomic_json(Path(p["work"]) / "phaseB-rig-map.json", {r["episode"]: p["rig"] for r in plan})
+    print(json.dumps({"episodes": len(plan), "rig": p["rig"]}))
+
+
+def publish_rgb(spec, a, argv):
+    from ops.jobs.pnpv2_rgb import publish_rgb as publish
+
+    sub = argparse.ArgumentParser(prog="publish-rgb")
+    sub.add_argument("--execute", action="store_true")
+    b = sub.parse_args(argv)
+    p = values(spec)
+    _check_data(spec, a)
+    print(json.dumps(publish(spec, p["manifest"], p["phase_a"], execute=b.execute), indent=2))
+
+
+def raw_proof(spec, a, argv):
+    """Read-only: sha256 of each canonical raw recording's REMOTE copy; refuses any mismatch."""
+    from ops.remote.access import RemoteClient
+
+    p = values(spec)
+    m = json.loads(Path(p["manifest"]).read_text())
+    client = RemoteClient()
+    proofs = {}
+    for r in m["episodes"]:
+        remote = client._remote_checksum(f"{p['remote_raw_success']}/{r['filename']}", allow_missing=True)
+        if remote != r["sha256"]:
+            raise ValueError(f"{r['filename']}: remote raw copy missing or different")
+        proofs[r["sha256"]] = remote
+    _atomic_json(Path(p["work"]) / "remote-raw-hashes.json", proofs)
+    print(json.dumps({"verified": len(proofs)}))
+
+
+def snapshot(spec, a, argv):
+    import scripts.realworld_dsreset_snapshot as module
+    from s4d.rwlearn.pnpv2_publication import manifest_check
+
+    def read_manifest(path, *, success_only=False):
+        # The historical --success-only reader requires drawer/v1 amendments; v2 is the unamended 100-success set.
+        if not success_only:
+            raise ValueError("pick-and-place-v2 snapshot requires --success-only")
+        return manifest_check(json.loads(Path(path).read_text()), spec)
+
+    module.read_manifest = read_manifest
+    sys.argv = [module.__file__, *argv]
+    module.main()
+
+
+def publish(spec, a, argv):
+    """Geometry bundle: the established learning_inputs view of the NEW snapshot; refuses acceptance overrides."""
+    from s4d.rwlearn.dsreset import learning_inputs
+    from s4d.rwlearn.pnpv2_publication import manifest_check, no_override
+    from s4d.rwlearn.store import open_store
+
+    sub = argparse.ArgumentParser(prog="publish")
+    sub.add_argument("--ingest-manifest", type=Path, required=True)
+    b = sub.parse_args(argv)
+    p = values(spec)
+    m = manifest_check(json.loads(Path(p["manifest"]).read_text()), spec)
+    ingest = json.loads(b.ingest_manifest.read_text())
+    no_override(ingest)
+    paths = []
+    for r in m["episodes"]:
+        matches = [e for e in ingest["episodes"].values() if e.get("task") == TASK and e.get("sha256") == r["sha256"]]
+        if len(matches) != 1:
+            raise ValueError(f"{r['id']}: no unique snapshot record")
+        paths.append(matches[0]["preprocessing"]["stages"]["train_data"]["outputs"])
+    descriptor = {"kind": "compact", "paths": paths}
+    docs = learning_inputs(m, ingest, open_store(descriptor))
+    no_override(docs["gate_report.json"])
+    out = Path(p["geometry_dir_local"])
+    out.mkdir(parents=True, exist_ok=False)
+    (out / "store.yaml").write_text(yaml.safe_dump(descriptor, sort_keys=False))
+    for name, doc in docs.items():
+        (out / name).write_text(json.dumps(doc, indent=2) + "\n")
+    print(json.dumps({"out": str(out), "episodes": len(paths), "launched": False}))
+
+
+def upload(spec, a, argv):
+    """Checked, no-overwrite upload of a staged bundle (and RGB episodes) to its canonical remote directory."""
+    from ops.remote.access import RemoteClient
+    from s4d.rwlearn.pnpv2_arrival import sha256
+    from s4d.rwlearn.pnpv2_spec import BUNDLE_FILES
+
+    sub = argparse.ArgumentParser(prog="upload")
+    sub.add_argument("--view", choices=("rgb", "geometry"), required=True)
+    b = sub.parse_args(argv)
+    p = values(spec)
+    local, remote = Path(p[f"{b.view}_dir_local"]), p[f"{b.view}_dir"]
+    files = [local / n for _, n in BUNDLE_FILES]
+    if b.view == "rgb":
+        files += sorted(f for f in (local / "episodes").rglob("*") if f.is_file())
+    client = RemoteClient()
+    sent = {}
+    for f in files:
+        target = f"{remote}/{f.relative_to(local)}"
+        digest = sha256(f)
+        existing = client._remote_checksum(target, allow_missing=True)
+        if existing not in (None, digest):
+            raise ValueError(f"refusing to overwrite a different remote file: {target}")
+        if existing is None:
+            client.rsync_upload(f, target)
+        sent[target] = digest
+    _atomic_json(local.parent / f"{b.view}.UPLOADED.json",
+                 {"schema": "pick-and-place-v2-upload/1", "view": b.view, "files": sent})
+    print(json.dumps({"uploaded": len(sent), "view": b.view}))
+
+
+ENTRIES = {"manifest": manifest, "rig-map": rig_map, "publish-rgb": publish_rgb, "raw-proof": raw_proof,
+           "snapshot": snapshot, "publish": publish, "upload": upload}
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--entry", choices=(*ENTRIES, "gate", "eval", "manifest", "publish"), required=True)
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--entry", choices=sorted(ENTRIES), required=True)
     parser.add_argument("--task-spec", type=Path, default=Path(SPEC))
-    parser.add_argument("--config", type=Path)
+    parser.add_argument("--raw-root", type=Path, help="override <roots.raw> (layout <raw>/pick-and-place-v2/success)")
+    parser.add_argument("--settle-seconds", type=int, help="stable-inventory window when there is no VERIFIED marker")
     parser.add_argument("args", nargs=argparse.REMAINDER)
-    args = parser.parse_args(argv)
-    spec = load_spec(args.task_spec)
-    require_collected(spec)
-    forwarded = args.args[1:] if args.args[:1] == ["--"] else args.args
-    # Future operations keep the existing device guard ahead of torch imports.
+    a = parser.parse_args(argv)
+    spec = load_spec(a.task_spec)
+    doc = read_arrival(spec)
+    if doc is not None:
+        spec = load_spec(a.task_spec, overlay=doc)
+    forwarded = a.args[1:] if a.args[:1] == ["--"] else a.args
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     from _bootstrap import guard_gpus
 
@@ -54,119 +207,7 @@ def main(argv=None):
     from s4d.rwlearn.pnpv2_runtime import install
 
     install()
-    if args.entry == "gate":
-        from s4d.rwlearn.pnpv2_publication import check_publication
-
-        sub = argparse.ArgumentParser()
-        sub.add_argument("--view", choices=("rgb", "geometry"), required=True)
-        sub.add_argument("--out", type=Path, required=True)
-        a = sub.parse_args(forwarded)
-        result = check_publication(spec, a.view)
-        a.out.parent.mkdir(parents=True, exist_ok=True)
-        a.out.write_text(json.dumps(result, indent=2) + "\n")
-        return
-    if args.entry == "manifest":
-        from s4d.rwlearn.dsreset import paired_manifests, prep_bundle, write_bundle
-        from s4d.rwlearn.pnpv2_publication import manifest_check
-
-        sub = argparse.ArgumentParser()
-        sub.add_argument("--out", type=Path, required=True)
-        a = sub.parse_args(forwarded)
-        p = values(spec)
-        if not args.config or not spec["sam3_prompts"]:
-            raise ValueError("resolved task prep template and reviewed SAM3 prompts required")
-        manifests = paired_manifests(
-            spec["task"],
-            {"success": p["raw_success"]},
-            variants=("S",),
-            expected={"success": 100},
-            seed=0,
-            validation_fraction=0.1,
-        )
-        manifest_check(manifests["S"], spec)
-        prep = prep_bundle(manifests, config(args.config, spec), spec["roots"]["processed"])
-        write_bundle(a.out, manifests, prep)
-        return
-    if args.entry == "publish":
-        publish(spec, forwarded)
-        return
-    cfg = config(args.config, spec) if args.config else None
-    if args.entry in ("snerl", "mvp3d"):
-        keys = ("lookat", "pose_scale") if args.entry == "snerl" else ("bounds",)
-        if any(spec["scene"][key] is None for key in keys):
-            raise ValueError("measure task scene parameters on its accepted store first")
-    if args.entry == "eval":
-        if cfg != dict(
-            schema="pick-and-place-v2-offline-eval/1",
-            task=spec["task"],
-            method=cfg["method"],
-            kind="policy",
-            required_steps=1000000,
-            require_final_validation=True,
-            robot_io=False,
-            actuation_eligible=False,
-        ):
-            raise ValueError("only the prepared offline policy evaluation protocol is supported")
-        forwarded = ["--kind", "policy", *forwarded]
-        cfg = None
-    module = importlib.import_module(ENTRIES.get(args.entry, "scripts.realworld_dsreset_artifact"))
-    if args.entry == "snapshot":
-        # The historical --success-only reader requires drawer/v1 amendments.
-        # Substitute only its membership reader in this new-task process.
-        from s4d.rwlearn.pnpv2_publication import manifest_check
-
-        def read_manifest(path, *, success_only=False):
-            if not success_only:
-                raise ValueError("pick-and-place-v2 snapshot requires --success-only")
-            return manifest_check(json.loads(path.read_text()), spec)
-
-        module.read_manifest = read_manifest
-    with tempfile.TemporaryDirectory(prefix="pnpv2-config-") as temp:
-        if cfg is not None:
-            resolved = Path(temp) / "config.yaml"
-            resolved.write_text(yaml.safe_dump(cfg, sort_keys=False))
-            forwarded = ["--config", str(resolved), *forwarded]
-        sys.argv = [module.__file__, *forwarded]
-        module.main()
-
-
-def publish(spec, argv):
-    """Materialize a fresh consumer-specific view, preserving one common split."""
-    from s4d.rwlearn.dsreset import learning_inputs
-    from s4d.rwlearn.pnpv2_publication import manifest_check, no_override
-    from s4d.rwlearn.store import open_store
-
-    sub = argparse.ArgumentParser()
-    sub.add_argument("--view", choices=("rgb", "geometry"), required=True)
-    sub.add_argument("--manifest", type=Path, required=True)
-    sub.add_argument("--ingest-manifest", type=Path, required=True)
-    sub.add_argument("--store", type=Path, required=True)
-    a = sub.parse_args(argv)
-    m = manifest_check(json.loads(a.manifest.read_text()), spec)
-    ingest = json.loads(a.ingest_manifest.read_text())
-    no_override(ingest)
-    descriptor = yaml.safe_load(a.store.read_text())
-    docs = learning_inputs(m, ingest, open_store(descriptor))
-    p = values(spec)
-    view = Path(p[a.view + "_store"]).parent
-    common = {
-        Path(p[key]): json.dumps(docs[name], indent=2) + "\n"
-        for key, name in (("manifest", "manifest.json"), ("split", "split_seed0.json"), ("outcomes", "outcomes.json"))
-    }
-    if view.exists():
-        raise ValueError("publication view already exists; preserve immutable outputs")
-    for path, data in common.items():
-        if path.exists() and path.read_text() != data:
-            raise ValueError("RGB/geometry membership, split or outcomes differ")
-    view.mkdir(parents=True, exist_ok=False)
-    for path, data in common.items():
-        if not path.exists():
-            with path.open("x") as stream:
-                stream.write(data)
-    with (view / "store.yaml").open("x") as stream:
-        stream.write(yaml.safe_dump(descriptor, sort_keys=False))
-    with (view / "gate_report.json").open("x") as stream:
-        stream.write(json.dumps(docs["gate_report.json"], indent=2) + "\n")
+    ENTRIES[a.entry](spec, a, forwarded)
 
 
 if __name__ == "__main__":

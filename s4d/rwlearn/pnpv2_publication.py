@@ -1,9 +1,13 @@
-"""Read-only checks of new-task membership and publication evidence; no ops imports."""
+"""Read-only checks of pick-and-place-v2 membership and publication evidence; no ops imports, no writes."""
 
 import json
 from pathlib import Path
 
-from s4d.rwlearn.pnpv2_spec import TASK, values
+from s4d.rwlearn.pnpv2_spec import TASK
+
+RGB_CONSUMERS = ("dynamo", "reviwo", "e2e_cnn")
+GEOMETRY_CONSUMERS = ("ours", "sincro", "snerl", "mvp3d")
+STAGE_VIEW = {"prep": "rgb", "calib": "geometry"}  # gate rows reuse the established --stage spellings
 
 
 def no_override(obj):
@@ -18,13 +22,15 @@ def no_override(obj):
 
 
 def manifest_check(manifest, spec):
-    from s4d.rwlearn.dsreset import validate_manifest
+    from s4d.rwlearn.pnpv2_arrival import task_known
 
-    validate_manifest(manifest)
+    with task_known() as dsreset:
+        dsreset.validate_manifest(manifest)
     if (
         manifest["task"] != TASK
         or manifest["variant"] != "S"
         or len(manifest["episodes"]) != spec["collection"]["expected_success"]
+        or any(r["label"] != "success" for r in manifest["episodes"])
         or manifest.get("excluded")
         or manifest.get("amendment")
         or manifest.get("seed") != 0
@@ -35,19 +41,21 @@ def manifest_check(manifest, spec):
     return manifest
 
 
-def check_publication(spec, view):
+def readiness(stage, manifest_path, split_path, outcomes_path, gate_path, store_path, spec, *, open_store=None):
+    """Runtime barrier of one view: exact store/raw membership, split, outcomes and every consumer's gate."""
     from s4d.rwlearn.baseline_data import check_gate
     from s4d.rwlearn.dsreset_identity import store_identities
-    from s4d.rwlearn.store import open_store
 
-    p = values(spec)
-    read = lambda key: json.loads(Path(p[key]).read_text())
-    manifest = manifest_check(read("manifest"), spec)
-    split, outcomes, report = read("split"), read("outcomes"), read(view + "_gate")
+    if open_store is None:
+        from s4d.rwlearn.store import open_store
+    view = STAGE_VIEW[stage]
+    m = manifest_check(json.loads(Path(manifest_path).read_text()), spec)
+    split, outcomes = json.loads(Path(split_path).read_text()), json.loads(Path(outcomes_path).read_text())
+    report = json.loads(Path(gate_path).read_text())
     no_override(report)
-    store = open_store(p[view + "_store"])
+    store = open_store(str(store_path))
     ids = store_identities(store)
-    by_sha = {r["sha256"]: r for r in manifest["episodes"]}
+    by_sha = {r["sha256"]: r for r in m["episodes"]}
     if len(ids) != len(by_sha) or {r["raw_sha256"] for r in ids.values()} != set(by_sha):
         raise ValueError("store raw hashes must exactly match the task manifest")
     if set(outcomes) != set(ids) or any(v is not True for v in outcomes.values()):
@@ -56,15 +64,8 @@ def check_publication(spec, view):
         row = by_sha[rec["raw_sha256"]]
         if rec["task"] != TASK or ep not in split[row["split"]]:
             raise ValueError("store task or split differs from immutable membership")
-    consumers = ("dynamo", "reviwo", "e2e_cnn") if view == "rgb" else ("ours", "sincro", "snerl", "mvp3d")
+    consumers = RGB_CONSUMERS if view == "rgb" else GEOMETRY_CONSUMERS
     for consumer in consumers:
         check_gate(store, report, steps=None, split=split, target=TASK, consumer=consumer)
-    return dict(
-        schema="pick-and-place-v2-readiness/1",
-        task=TASK,
-        view=view,
-        passed=True,
-        episodes=len(ids),
-        consumers=list(consumers),
-        robot_io=False,
-    )
+    return dict(schema="pick-and-place-v2-readiness/1", task=TASK, view=view, stage=stage, passed=True,
+                episodes=len(ids), consumers=list(consumers), robot_io=False)

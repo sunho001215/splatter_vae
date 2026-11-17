@@ -48,7 +48,7 @@ train:
 wandb:
   project: splatter4d-baselines
 data_interface:
-  split_manifest: ${pnpv2.split}
+  split_manifest: ${pnpv2.geometry_split}
   lookat: ${pnpv2.lookat}
   pose_scale: ${pnpv2.pose_scale}
   gate_report: ${pnpv2.geometry_gate}

@@ -11,7 +11,7 @@ data:
   - 1
   - 3
   store: ${pnpv2.geometry_store}
-  split_manifest: ${pnpv2.split}
+  split_manifest: ${pnpv2.geometry_split}
   gate_report: ${pnpv2.geometry_gate}
   consumer: ours
   target: pick-and-place-v2
