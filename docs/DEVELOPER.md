@@ -210,8 +210,18 @@ S4D_TEST_EVIDENCE_DIR=$PWD/runs/test-evidence CUDA_VISIBLE_DEVICES="$GPU4" .venv
 files whose recorded pass has the same key: the sha256 of the file's dependency closure, the interpreter, torch, CUDA
 runtime, host and device names. Every run records the files that passed in `.cache/test-results` (or
 `S4D_TEST_RESULT_CACHE`, inside this or the main checkout's `.cache`). A complete run that reuses anything reports
-`full_suite_passed_with_reuse`, never `full_suite_passed`, so the long-work gate (`require_passed_tests`) is unchanged.
+`full_suite_passed_with_reuse`, never `full_suite_passed` (unless the release gate below accepts it as selective).
 The selection and widening rules are documented in `scripts/test_impact.py`.
+
+Release gate (user 2026-11-17, `scripts/test_gate.py`): every report carries `release_gate` {accepted, mode full|selective,
+baseline, reasons}. A `--changed BASE` run is accepted as *selective* only with an accepted complete-suite baseline record
+for BASE (an ancestor; recorded automatically after a complete passing local run on a clean commit, or with
+`scripts/test_gate.py record-baseline`), every changed path covered by the selection or inert documentation, every
+selected test executed or reused under its exact key, and no high-risk path (`test_impact.PROTECTED` and the global
+files: robot/policy serving, GPU guards and allowlists, container launchers, the runner/selector/gate, conftest, uv.lock).
+The accepted report composes executed + reused + baseline-carried tests: `full_suite_passed` true (so
+`require_passed_tests` and adoption checks accept it), `complete_suite_executed` false. Adopters check with
+`.venv/bin/python -I scripts/test_gate.py check --evidence docs` (exit 0 = accepted).
 
 The release suite's `--partition local` selects `metaworld_data or local_host_data`; `--partition remote` selects
 `not (metaworld_data or local_host_data)`. Use `local_host_data` for tests needing local campaign-host files such as

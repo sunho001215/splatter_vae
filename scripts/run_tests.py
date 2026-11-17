@@ -5,7 +5,9 @@ whose static dependency closure contains a path changed since BASE (scripts/test
 widening rules). ``--reuse`` (default for subsets) skips test files whose dependency closure, interpreter, torch and
 host are unchanged since they last passed; every run records the files that passed. ``--plan`` prints the selection
 and the reuse plan and runs nothing. A complete run that reuses anything reports ``full_suite_passed_with_reuse`` and
-never ``full_suite_passed``.
+never ``full_suite_passed``. Every report carries the ``release_gate`` verdict (scripts/test_gate.py): a ``--changed``
+run that the gate accepts as selective is written as the composed evidence (executed + exact-key reused + carried from
+the accepted baseline) with ``full_suite_passed`` true and ``complete_suite_executed`` false.
 """
 from __future__ import annotations
 
@@ -398,11 +400,38 @@ class ImpactState:
         if self.selection is None:
             return None
         out = dict(self.selection)
-        for name in ("changed", "unattributed", "widened", "global", "protected", "deleted_tests"):
+        for name in ("changed", "unattributed", "widened", "global", "protected", "deleted_tests", "guard_only"):
             if len(out.get(name, [])) > limit:
                 out[name + "_total"] = len(out[name])
                 out[name] = out[name][:limit]
         return out
+
+    def gate(self, report, executed_nodes, collected, output):
+        """The release-gate verdict (scripts/test_gate.py) and, for a complete local run on a clean commit, its baseline
+        record. Never raises: an error refuses the selective mode and leaves a complete run's verdict to the report."""
+        try:
+            import test_gate
+            import test_impact
+
+            baselines = test_gate.Baselines(test_impact.cache_root(REPO))
+            tests = test_impact.suite_files(self.graph().tree) if self.base is not None else []
+            verdict = test_gate.verdict(report, repo=REPO, baselines=baselines, current_tests=tests, base=self.base,
+                                        executed=executed_nodes, selection=self.selection)
+        except Exception as exc:  # noqa: BLE001
+            self.log(f"Release gate failed ({type(exc).__name__}: {exc})")
+            complete = report.get("full_suite_passed") is True
+            return {"version": 1, "accepted": complete, "mode": "full" if complete else None,
+                    "reasons": [] if complete else [f"release gate error ({type(exc).__name__}: {exc})"]}
+        if verdict.get("mode") == "full" and report.get("host") == "local" and report.get("partition", "all") == "all":
+            try:
+                head = verdict["candidate"]["head"]
+                if head and report.get("source_sha256") == test_gate.commit_sources(REPO, head):
+                    baselines.record(report, collected, head, REPO, str(output))
+                    verdict["baseline_recorded"] = head
+            except Exception as exc:  # noqa: BLE001 - a missing baseline only rules out later selective runs
+                verdict["baseline_recorded"] = None
+                verdict["baseline_error"] = f"{type(exc).__name__}: {exc}"
+        return verdict
 
     def summary(self):
         return {"lookup": self.lookup, "cache": str(self.cache.root) if self.cache else None,
@@ -518,6 +547,8 @@ def main():
             report = {"started_utc": started, "python": sys.version, "torch": torch.__version__, "host": HOST_NAME,
                       "exit_code": 0, "counts": dict.fromkeys(KINDS, 0), "total": 0, "collected_total": 0,
                       "full_suite_passed": False, "selection": reuse.report_selection(), "problems": [],
+                      "release_gate": {"version": 1, "accepted": False, "mode": None, "reasons": [
+                          "no test selected: evidence for unchanged sources stays valid; otherwise run the suite"]},
                       "duration_seconds": time.perf_counter() - clock}
             (output / "tests.json").write_text(json.dumps(report, indent=2))
             log("No test file depends on the changed paths; nothing to run.")
@@ -640,8 +671,20 @@ def main():
         "limitations": "Function evidence unions shard processes; nested test subprocesses are not profiled. "
                        "Gloo child results are asserted by tests/test_ddp.py. Synthetic renders are not CUDA acceptance.",
     }
+    # Release gate (user 2026-11-17 ~23:10, scripts/test_gate.py): a complete run, or a selective run proven equivalent
+    # to one. An accepted selective report is the composition executed + exact-key reused + baseline-carried tests, so
+    # every existing consumer of full_suite_passed (the launch gate, the scheduler, adoption checks) accepts it.
+    gate = reuse.gate(report, executed_nodes, collected, output)
+    report["complete_suite_executed"] = report["full_suite_passed"]
+    if gate.get("accepted") and gate.get("mode") == "selective":
+        report["run_counts"] = counts
+        report["counts"] = {"passed": gate["executed_tests"] + gate["reused_tests"] + gate["carried_tests"],
+                            "error": 0, "failed": 0, "skipped": 0}
+        report["full_suite_passed"] = True
+    report["release_gate"] = gate
     (output / "tests.json").write_text(json.dumps(report, indent=2))
-    log(json.dumps({k: report[k] for k in ("counts", "total", "exit_code", "full_suite_passed")}))
+    log(json.dumps({k: report[k] for k in ("counts", "total", "exit_code", "full_suite_passed")}
+                   | {"release_gate": {k: gate.get(k) for k in ("accepted", "mode", "reasons")}}))
     return code
 
 

@@ -64,11 +64,16 @@ IMPORT_ROOTS = ("", "scripts", "tests", "runs/setup/tools")
 GLOBAL_FILES = frozenset({CONFTEST, "scripts/run_tests.py", "scripts/_bootstrap.py", "pyproject.toml", "uv.lock",
                           ".gitmodules", "pytest.ini", "setup.cfg", "tox.ini", "conftest.py", ".python-version"})
 GLOBAL_PATTERNS = ("requirements*.txt", "third_party", "third_party/*")
-# Robot-facing, GPU-guard and container-launch code: a change here always runs every test file (protected paths,
-# infra roadmap 2026-11-17, C5), whatever its static closure says.
+# High-risk code: a change here always selects every test file, and the release gate (scripts/test_gate.py) accepts
+# only a complete run for it (user 2026-11-17 ~23:10): robot client/executor and policy serving, GPU guards and the
+# MIG/host allowlists, container launchers (ops/containers, the docker wrappers in scripts/remote, the remote launch
+# backend), the test runner and selector themselves.
 PROTECTED = ("ops/robot_pc/", "scripts/robot_pc/", "configs/robot_pc/", "ops/policy_serving/", "ops/inference_server/",
              "s4d/rwlearn/deploy/", "configs/realworld/policy_serving.yaml", "configs/realworld/inference_server.yaml",
-             "ops/resources/gpu_guard.py", "s4d/gpu_guard.py", "ops/containers/launch.py", "mujoco_mig_setup.py")
+             "ops/resources/gpu_guard.py", "ops/resources/mig_inventory.py", "s4d/gpu_guard.py", "mujoco_mig_setup.py",
+             "configs/hosts/", "scripts/gpu_env.sh", "scripts/check_gpu_isolation.py",
+             "ops/containers/", "scripts/remote/", "ops/jobs/remote_backend.py",
+             "scripts/run_tests.py", "scripts/test_impact.py", "scripts/test_gate.py")
 INVENTORY_TESTS = ("tests/test_run_tests_sharding.py",)
 WIDEN_ANY = ("tests/",)          # unattributed changes here (Python or not) widen to every test file
 WIDEN_DATA = ("configs/",)       # unattributed non-Python changes here widen to every test file
@@ -92,7 +97,10 @@ REPO_EXPRESSION = re.compile(r"repo|root|__file__|parent|cwd", re.I)
 TOKEN_SPLIT = re.compile(r"""[\s:=,;'"()\[\]{}<>|*?!&^%$#@`]+""")
 IGNORED_EXTERNAL = (Path("/tmp"), Path("/proc"), Path("/dev"), Path("/sys"))
 MAX_EXTERNAL_BYTES = 256 << 20
-CACHE_VERSION = 1
+CACHE_VERSION = 2  # 2: keys also cover KEY_FILES (2026-11-17 release gate)
+# Dependency and runner files every key covers: an environment lock or runner change never reuses an older pass.
+KEY_FILES = ("uv.lock", "pyproject.toml", ".gitmodules", "tests/conftest.py", "scripts/run_tests.py",
+             "scripts/test_impact.py", "scripts/test_gate.py", "scripts/_bootstrap.py")
 
 
 def _git(root: Path, *args: str) -> str:
@@ -498,7 +506,7 @@ def select(graph: Graph, changed: list[str]) -> dict:
 
     global_hits = [p for p in changed if is_global(p)]
     protected_hits = [p for p in changed if is_protected(p) and not is_global(p)]
-    widened, unattributed, deleted = [], [], []
+    widened, unattributed, deleted, guard_only = [], [], [], []
     for path in changed:
         if is_global(path):
             continue
@@ -517,6 +525,8 @@ def select(graph: Graph, changed: list[str]) -> dict:
             add(test, f"closure:{path}")
         if test_module or any(graph.depends_on(t, path, specific=True) for t in hits):
             continue
+        if hits and not path.startswith(WIDEN_ANY + WIDEN_DATA):
+            guard_only.append(path)  # only a scope guard's whole tree contains it: selected, but mapped to no test
         if path.startswith(WIDEN_ANY) or (path.startswith(WIDEN_DATA) and not path.endswith(".py")):
             widened.append(path)
         elif not hits:
@@ -531,7 +541,7 @@ def select(graph: Graph, changed: list[str]) -> dict:
     selected = sorted(reasons)
     return {"files": selected, "all": bool(tests) and len(selected) == len(tests), "total_files": len(tests),
             "changed": list(changed), "global": global_hits, "protected": protected_hits, "widened": widened,
-            "unattributed": unattributed,
+            "unattributed": unattributed, "guard_only": guard_only,
             "deleted_tests": deleted, "reasons": {t: sorted(r)[:8] for t, r in sorted(reasons.items())}}
 
 
@@ -590,7 +600,8 @@ def reuse_key(graph: Graph, hasher: Hasher, test_file: str, environment: dict,
             return None, f"unhashable external input {path}"
         external[path] = digest
     material = {"version": CACHE_VERSION, "file": test_file, "deps": deps, "external": external,
-                "third_party": third_party, "environment": environment}
+                "third_party": third_party, "environment": environment,
+                "key_files": {f: hasher.file(f) for f in KEY_FILES if graph.tree.exists(f)}}
     if closure.reads_head:
         material["head"] = _git(graph.root, "rev-parse", "HEAD").strip()
     blob = json.dumps(material, sort_keys=True, separators=(",", ":")).encode()
