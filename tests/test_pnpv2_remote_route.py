@@ -439,3 +439,35 @@ def test_rig_fetch_and_phase_b_refuse_before_an_accepted_rig(spec, tmp_path, mon
         P.rig_fetch(spec, None, [])
     with pytest.raises(ValueError, match="task rig not accepted"):
         P.phase_b_remote(spec, None, [])
+
+
+def test_upload_stages_copies_inside_the_transfer_root_and_writes_the_receipt(spec, tmp_path, monkeypatch):
+    import hashlib
+
+    import scripts.pick_and_place_v2 as P
+    from ops.remote import access
+    from s4d.rwlearn.pnpv2_spec import BUNDLE_FILES, values
+
+    spec["roots"]["work"] = str(tmp_path / "work")
+    monkeypatch.setattr(P, "ATTACH_ROOT", tmp_path / "runs")
+    p = values(spec)
+    local = Path(p["rgb_dir_local"])
+    local.mkdir(parents=True)
+    for _, name in BUNDLE_FILES:
+        (local / name).write_text(name)
+    remote_files, uploads = {}, []
+
+    class Client:
+        def _remote_checksum(self, target, allow_missing=False):
+            return remote_files.get(target)
+
+        def rsync_upload(self, source, target):
+            assert Path(source).is_relative_to(tmp_path / "runs")  # never from the work root
+            uploads.append(target)
+            remote_files[target] = hashlib.sha256(Path(source).read_bytes()).hexdigest()
+
+    monkeypatch.setattr(access, "RemoteClient", Client)
+    P.upload(spec, None, ["--view", "rgb"])
+    receipt = json.loads((local.parent / "rgb.UPLOADED.json").read_text())
+    assert receipt["schema"] == "pick-and-place-v2-upload/1" and set(receipt["files"]) == set(uploads)
+    assert len(uploads) == len(BUNDLE_FILES) and not list((tmp_path / "runs").iterdir())

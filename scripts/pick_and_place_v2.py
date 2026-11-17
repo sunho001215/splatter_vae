@@ -199,15 +199,28 @@ def upload(spec, a, argv):
         files += sorted(f for f in (local / "episodes").rglob("*") if f.is_file())
     client = RemoteClient()
     sent = {}
-    for f in files:
-        target = f"{remote}/{f.relative_to(local)}"
-        digest = sha256(f)
-        existing = client._remote_checksum(target, allow_missing=True)
-        if existing not in (None, digest):
-            raise ValueError(f"refusing to overwrite a different remote file: {target}")
-        if existing is None:
-            client.rsync_upload(f, target)
-        sent[target] = digest
+    # RemoteClient uploads only from the repository/data roots: stage a verified copy under runs/ for each file.
+    import shutil
+    import tempfile
+
+    ATTACH_ROOT.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix=f"pnpv2-20261117-upload-{b.view}-", dir=ATTACH_ROOT) as tmp:
+        for f in files:
+            target = f"{remote}/{f.relative_to(local)}"
+            digest = sha256(f)
+            existing = client._remote_checksum(target, allow_missing=True)
+            if existing not in (None, digest):
+                raise ValueError(f"refusing to overwrite a different remote file: {target}")
+            if existing is None:
+                copy = Path(tmp) / f.relative_to(local)
+                copy.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(f, copy)
+                if sha256(copy) != digest:
+                    raise ValueError(f"staging copy differs: {f}")
+                client.rsync_upload(copy, target)
+                if client._remote_checksum(target) != digest:
+                    raise ValueError(f"uploaded file differs: {target}")
+            sent[target] = digest
     _atomic_json(local.parent / f"{b.view}.UPLOADED.json",
                  {"schema": "pick-and-place-v2-upload/1", "view": b.view, "files": sent})
     print(json.dumps({"uploaded": len(sent), "view": b.view}))
