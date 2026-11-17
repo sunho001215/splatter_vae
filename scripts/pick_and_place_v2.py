@@ -225,6 +225,27 @@ def _remote_raw_verified(spec):
     return m
 
 
+ATTACH_ROOT = Path(__file__).resolve().parents[1] / "runs"
+
+
+def _attachment(link, bundle):
+    """(real, link): local bundle attachments live in the repository runs/ directory, the remote client's authorized
+    transfer root (staging uploads code/bundle archives from there); ``link`` in the work root points at it."""
+    link = Path(link)
+    real = ATTACH_ROOT / bundle
+    if link.exists() or link.is_symlink() or real.exists():
+        raise ValueError(f"{link} or {real} exists; bundle attachments are immutable")
+    return real, link
+
+
+def _link(real, link):
+    import os
+
+    os.symlink(real, link, target_is_directory=True)
+    for name in ("code.tar", "bundle.tar"):  # staging archives, already published remotely
+        (real / name).unlink(missing_ok=True)
+
+
 def phase_a_remote(spec, a, argv):
     """Phase A (ingest, native depth, FoundationStereo, SAM3) on the remote prep route; launches nothing."""
     from ops.jobs import rwprep_remote
@@ -233,12 +254,11 @@ def phase_a_remote(spec, a, argv):
     p = values(spec)
     _check_data(spec, a)
     _remote_raw_verified(spec)
-    out = Path(p["phase_a"])
-    if out.exists():
-        raise ValueError(f"{out} exists; the Phase-A bundle is immutable")
+    out, link = _attachment(p["phase_a"], PHASE_A_BUNDLE)
     result = rwprep_remote.prepare([Path(p["prep_plan"])], out, rwprep_remote.RemoteClient(),
                                    release=rwprep_remote_release(spec), stem=STAGE_IDS["phaseA"],
                                    name=PHASE_A_BUNDLE)
+    _link(out, link)
     print(json.dumps(result))
 
 
@@ -262,15 +282,14 @@ def rgb_remote(spec, a, argv):
     _check_data(spec, a)
     config = json.loads((Path(p["phase_a"]) / "dispatcher.json").read_text())
     jobs = json.loads(Path(config["jobs"]).read_text())
-    out = Path(p["work"]) / "rgb-remote"
-    if out.exists():
-        raise ValueError(f"{out} exists; the RGB bundle is immutable")
+    out, link = _attachment(Path(p["work"]) / "rgb-remote", pnpv2_rgb.RGB_BUNDLE)
     out.mkdir(parents=True)
     shutil.copyfile(p["manifest"], out / "manifest.json")
     job = pnpv2_rgb.remote_job(spec, out, config["remote"], [j["id"] for j in jobs])
     result = rwprep_remote.stage([job], out, rwprep_remote.RemoteClient(), commit=config["commit"],
                                  release=rwprep_remote_release(spec), name=pnpv2_rgb.RGB_BUNDLE,
                                  image=config["image"], files=("manifest.json",))
+    _link(out, link)
     print(json.dumps(result))
 
 
@@ -364,9 +383,7 @@ def calib_remote(spec, a, argv):
 
     p = values(spec)
     base = _phase_a_config(spec)
-    out = Path(p["calib"])
-    if out.exists():
-        raise ValueError(f"{out} exists; the calibration attachment is immutable")
+    out, link = _attachment(p["calib"], CALIB_BUNDLE)
     remote = f"{REMOTE_RW}/configs/{CALIB_BUNDLE}"
     client = rwprep_remote.RemoteClient()
     print(rwprep_remote.planner(client, base, [
@@ -374,6 +391,7 @@ def calib_remote(spec, a, argv):
         f"{p['remote_processed']}/calibration/{TASK}", CALIB_UPSTREAM, STAGE_IDS["rig"],
         json.dumps([*CALIB_READONLY])]))
     print(json.dumps(rwprep_remote.attach(remote, out, client, base)))
+    _link(out, link)
 
 
 def rig_fetch(spec, a, argv):
@@ -409,15 +427,14 @@ def phase_b_remote(spec, a, argv):
     if stage["status"] != "done":
         raise ValueError(f"task rig not accepted: {stage['detail']}")
     base = _phase_a_config(spec)
-    out = Path(p["phase_b"])
-    if out.exists():
-        raise ValueError(f"{out} exists; the Phase-B attachment is immutable")
+    out, link = _attachment(p["phase_b"], PHASE_B_BUNDLE)
     remote = f"{REMOTE_RW}/configs/{PHASE_B_BUNDLE}"
     client = rwprep_remote.RemoteClient()
     print(rwprep_remote.planner(client, base, [
         "-c", _PHASE_B_PLAN, base["remote"], remote, p["rig"], STAGE_IDS["phaseB"],
         f"{p['remote_processed']}/calibration/{TASK}"]))
     print(json.dumps(rwprep_remote.attach(remote, out, client, base)))
+    _link(out, link)
 
 
 ENTRIES = {"manifest": manifest, "rig-map": rig_map, "publish-rgb": publish_rgb, "raw-proof": raw_proof,

@@ -316,6 +316,7 @@ def test_phase_a_remote_refuses_before_every_remote_raw_copy_is_verified(spec, t
     rows = [{"sha256": f"{i:064x}"} for i in range(3)]
     (ingest / "manifest.json").write_text(json.dumps({"episodes": rows}))
     monkeypatch.setattr(P, "_check_data", lambda spec, a: {"passed": True})
+    monkeypatch.setattr(P, "ATTACH_ROOT", tmp_path / "runs")
     called = []
     monkeypatch.setattr(R, "prepare", lambda *a, **kw: called.append(kw) or {"launched": False})
     monkeypatch.setattr(R, "RemoteClient", lambda: None)
@@ -329,6 +330,10 @@ def test_phase_a_remote_refuses_before_every_remote_raw_copy_is_verified(spec, t
     proof.write_text(json.dumps({r["sha256"]: r["sha256"] for r in rows}))
     P.phase_a_remote(spec, None, [])
     assert called == [{"release": "pnpv2-20261117", "stem": "pnpv2-20261117-prepA", "name": "pnpv2-20261117-phaseA"}]
+    # The attachment lives in the transfer root (repository runs/); the work root links to it.
+    assert (tmp_path / "work/phaseA").readlink() == tmp_path / "runs/pnpv2-20261117-phaseA"
+    with pytest.raises(ValueError, match="immutable"):
+        P.phase_a_remote(spec, None, [])
 
 
 def test_status_points_at_the_remote_phase_a_route(spec, tmp_path):
@@ -353,6 +358,7 @@ def test_calib_remote_plans_on_the_remote_and_attaches(spec, tmp_path, monkeypat
     (phase / "dispatcher.json").write_text(json.dumps(base))
     calls = []
     monkeypatch.setattr(R, "RemoteClient", lambda: "client")
+    monkeypatch.setattr(P, "ATTACH_ROOT", tmp_path / "runs")
     monkeypatch.setattr(R, "planner", lambda client, config, argv: calls.append(("plan", config, argv)) or "{}")
     monkeypatch.setattr(R, "attach", lambda remote, out, client, b: calls.append(("attach", remote, out, b)) or {})
     P.calib_remote(spec, None, [])
@@ -361,8 +367,8 @@ def test_calib_remote_plans_on_the_remote_and_attaches(spec, tmp_path, monkeypat
     assert argv[2:8] == [base["remote"] + "/dispatcher.json", TASK, remote,
                          f"{R.RW}/processed/pnpv2-20261117/calibration/{TASK}", P.CALIB_UPSTREAM,
                          "pnpv2-20261117-calib"]
-    assert out == tmp_path / "work/calib"
-    (tmp_path / "work/calib").mkdir()
+    assert out == tmp_path / "runs/pnpv2-20261117-calib"
+    assert (tmp_path / "work/calib").readlink() == out
     with pytest.raises(ValueError, match="immutable"):
         P.calib_remote(spec, None, [])
 
