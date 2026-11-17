@@ -200,18 +200,33 @@ class Release:
                 time.sleep(PENDING_RETRY_SECONDS)
 
     def pick_native_gpu(self):
-        """Without --native-gpu: the scheduler's own criterion (least declared memory of executing remote jobs and
-        fewest jobs, as choose_gpu), measured free memory as the tie-break; GPUs with processes of other users are
-        avoided. A choice only: admission and the launch guard still decide; first GPU on any error."""
+        """Choose with fresh scheduler admission evidence; never pin to an arbitrary
+        busy device after an inventory error. The scheduler and launch guard still
+        recheck capacity before launch."""
+        for attempt in range(3):
+            try:
+                self._pick_native_gpu()
+                return
+            except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as exc:
+                log(f'native GPU inventory unavailable ({type(exc).__name__}: {str(exc)[:160]}); '
+                    f'reading fresh evidence ({attempt + 1}/3)')
+        raise SystemExit('native GPU selection failed: no readable admission inventory; no GPU pinned')
+
+    def _pick_native_gpu(self):
         try:
             snapshot = RemoteBackend(ROOT, ROOT / 'runs').snapshot()
+            if not snapshot.resources_ready:
+                raise ValueError('remote resource evidence unavailable')
             state = jobs.read_registry(ROOT / 'experiments/registry.jsonl')
             executing = [c for c in state.values() if c.get('host') == 'remote' and c.get('status') in jobs.RESERVING]
             declared = {g: sum(float(c.get('mem_gb', 0)) for c in executing if c.get('gpu') == g) for g in self.gpus}
             count = {g: sum(1 for c in executing if c.get('gpu') == g) for g in self.gpus}
             # own reservations passed so guard-accounted (MIG) charges report only the residual beyond them (no double count)
-            cotenants = cotenant_charges(snapshot, [(c['gpu'], c.get('container'), float(c.get('mem_gb', 0)))
-                                                    for c in executing if c.get('gpu')])['gpus']
+            charges = cotenant_charges(snapshot, [(c['gpu'], c.get('container'), float(c.get('mem_gb', 0)))
+                                                  for c in executing if c.get('gpu')])
+            if charges['unbounded']:
+                raise ValueError('remote tenants without enforced RAM limits')
+            cotenants = charges['gpus']
             need = float(POLICIES['native_suite'][3])
             short = set()  # GPUs whose co-tenant-measured free memory cannot hold the suite (choose_gpu's margin test)
             for g, charge in cotenants.items():
@@ -226,14 +241,28 @@ class Release:
             known = {g: set(c['pids']) for g, c in cotenants.items()}
             busy = {g for g, procs in snapshot.usage.items()  # processes of other users (the tick's foreign test)
                     if g in self.gpus and any(pid not in owned and pid not in known.get(g, ()) for pid, _ in procs)}
-            order = sorted(self.gpus, key=lambda g: (g in busy or g in short, declared[g], count[g], -free[g]))
+            host = jobs.load_queue(ROOT / 'experiments/queue.yaml')['hosts']['remote']
+            running = [dict(host='remote', gpu=c['gpu'], mem_gb=float(c.get('mem_gb', 0)),
+                            exclusive_gpu=jobs.exclusive(c)) for c in executing]
+            request = dict(id='native GPU selection', host='remote', gpu='any', mem_gb=need,
+                           verification_purpose='native_suite')
+            order = sorted(self.gpus, key=lambda g: (declared[g], count[g], -free[g]))
+            fitting = [g for g in order if jobs.choose_gpu({**request, 'gpu': g}, host['limits'], running,
+                                                          busy, cotenants) == g]
+            if fitting:
+                order = fitting
+            else:
+                # Genuine capacity pressure: retain a valid candidate and let the
+                # bounded admission wait report it. Never ignore corrupt evidence.
+                order = [g for g in order if not cotenants.get(g, {}).get('admission_error')]
+                if not order:
+                    raise ValueError('unreadable GPU admission evidence on every device')
             self.native_gpu = order[0]
             log(f'native GPU {self.native_gpu} (declared {declared[self.native_gpu]:.0f} GB, '
                 f'{count[self.native_gpu]} jobs, {free[self.native_gpu] / 1024:.0f} GiB measured free)')
             return
-        except Exception as exc:  # noqa: BLE001  (a choice, never a gate)
-            log(f'native GPU choice fell back to the first GPU ({type(exc).__name__})')
-        self.native_gpu = self.gpus[0]
+        except (KeyError, TypeError) as exc:
+            raise ValueError('incomplete native GPU inventory') from exc
 
     def start_local_partition(self):
         """Run tests needing local data from the release commit on this host (background)."""

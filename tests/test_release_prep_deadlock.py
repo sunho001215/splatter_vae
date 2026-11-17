@@ -139,6 +139,41 @@ def chain_module(root):
     return names
 
 
+@pytest.mark.parametrize('failures', [0, 1, 2, 3])
+def test_native_gpu_choice_never_pins_busy_first_mig_after_inventory_error(tmp_path, monkeypatch, failures):
+    from ops.jobs import remote_backend
+
+    names = chain_module(tmp_path)
+    release = names['Release'](['release_chain', 'a'*40])
+    first, idle = GPUS[:2]
+    release.gpus = [first, idle]
+    item = slot_container(tmp_path, gpu=first, managed='true')
+    item['Name'] = '/s4d-live'
+    snapshot = RemoteSnapshot({first: [(777, 8740)], idle: []}, 1468, 10000*GIB, 8000*GIB,
+                             {'s4d-live': {**item, 'pids': {777}}},
+                             gpu_memory={first: (24192, 8810), idle: (24192, 64)},
+                             admission_records=[(item, {777}, 2*GIB)])
+    reads = []
+
+    def fresh():
+        reads.append(None)
+        if len(reads) <= failures:
+            raise ValueError('unreadable owned host resource evidence')
+        return snapshot
+
+    monkeypatch.setitem(names, 'RemoteBackend', lambda *_: SimpleNamespace(snapshot=fresh))
+    monkeypatch.setattr(names['jobs'], 'read_registry', lambda _: {})
+    monkeypatch.setattr(names['jobs'], 'load_queue', lambda _: {'hosts': {'remote': {'limits': {
+        g: dict(max_jobs=4, max_mem_gb=21.5) for g in release.gpus}}}})
+    if failures == 3:
+        with pytest.raises(SystemExit, match='no GPU pinned'):
+            release.pick_native_gpu()
+        assert release.native_gpu is None and len(reads) == 3
+    else:
+        release.pick_native_gpu()
+        assert release.native_gpu == idle and len(reads) == failures + 1
+
+
 @pytest.mark.parametrize('status', [None, 'pending', 'crashed'])
 def test_capacity_timeout_fails_main_and_clears_reservation(tmp_path, monkeypatch, status):
     names = chain_module(tmp_path)

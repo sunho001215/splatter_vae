@@ -1249,8 +1249,9 @@ def _charge_cotenants(resources: dict, state: dict, jobs: dict, messages: list[s
            for job_id, current in state.items() if current.get("host") == "remote" and current["status"] in RESERVING]
     try:
         charges = cotenant_charges(snapshot, own)
-    except (ValueError, KeyError, TypeError):
-        messages.append('remote admission inventory is unreadable; no remote jobs launched')
+    except (ValueError, KeyError, TypeError) as exc:
+        messages.append(f'remote admission inventory is unreadable ({type(exc).__name__}: {exc}); '
+                        'no remote jobs launched')
         del resources['remote']
         return
     if charges["unbounded"]:
@@ -1358,9 +1359,10 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
                 # processes of campaign-owned co-tenants (remote_backend.identify_cotenant) are known on their GPU only
                 try:
                     charges = cotenant_charges(snapshot)
-                except (ValueError, KeyError, TypeError):
+                except (ValueError, KeyError, TypeError) as exc:
                     # Admission evidence can be absent while running-job identity is valid.
-                    messages.append('remote admission inventory is unreadable; no remote jobs launched')
+                    messages.append(f'remote admission inventory is unreadable ({type(exc).__name__}: {exc}); '
+                                    'no remote jobs launched')
                 else:
                     known = {uuid: charge["pids"] for uuid, charge in charges["gpus"].items()}
                     foreign = {uuid for uuid, procs in snapshot.usage.items()

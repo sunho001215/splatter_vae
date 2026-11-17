@@ -25,7 +25,7 @@ import time
 from pathlib import Path
 
 ROOT = Path('/home/ws/ws/splatter4d')
-sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from ops.remote.access import RemoteClient, RemoteUnreachable  # noqa: E402
 
 LEDGER = ROOT / 'runs/setup/remote-ledger'
@@ -193,7 +193,7 @@ def main():
         save(state)
         return
     if now - state.get('last_ledger', 0) > LEDGER_EVERY_S:
-        r = subprocess.run([sys.executable, '-I', str(ROOT / 'runs/setup/tools/remote_ledger.py')], capture_output=True,
+        r = subprocess.run([sys.executable, '-I', str(Path(__file__).with_name('ledger.py'))], capture_output=True,
                            text=True, timeout=300)
         log((r.stdout or r.stderr).strip()[-200:])
         if r.returncode == 0 and 'LEDGER' in r.stdout:

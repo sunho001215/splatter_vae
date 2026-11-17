@@ -173,6 +173,38 @@ class RemoteAccessTests(unittest.TestCase):
                 self.client.rsync_upload(self.credentials, "data/credentials")
         validate.assert_not_called()
 
+    def test_large_ssh_script_executes_over_stdin_without_an_oversized_argument(self):
+        # A real exec, not just an argv assertion: the former transport raises
+        # E2BIG here before the fixture can execute. No SSH/network is involved.
+        command = '# ' + 'ledger payload ' * 15000 + '\nprintf "done\\n"; printf "warning\\n" >&2; exit 9'
+        real_run = subprocess.run
+        local_transport = [sys.executable, '-c', "import os; os.execl('/bin/sh', 'sh', '-s')"]
+        with patch.object(self.client, 'check_tunnel'), \
+                patch.object(self.client, 'ssh_args', return_value=local_transport), \
+                patch.object(access.subprocess, 'run', wraps=real_run) as run:
+            result = self.client.ssh(command, wait=False)
+        self.assertEqual((result.returncode, result.stdout, result.stderr), (9, 'done\n', 'warning\n'))
+        self.assertLess(max(len(arg.encode()) for arg in run.call_args.args[0]), 64 * 1024)
+        self.assertEqual(run.call_args.kwargs['input'], command + '\n')
+
+    def test_streamed_ssh_retries_replay_the_whole_utf8_payload_and_redact_output(self):
+        command = '# ' + '\uac00' * 30000 + '\ntrue'
+        with patch.object(self.client, 'check_tunnel'), \
+                patch.object(access.subprocess, 'run', side_effect=[self.result(255),
+                             self.result(stdout=self.secret)]) as run:
+            result = self.client.ssh(command, wait=False, idempotent=True)
+        self.assertEqual(result.stdout, '[REDACTED]')
+        self.assertEqual(run.call_count, 2)
+        for call in run.call_args_list:
+            self.assertEqual(call.args[0][-1], 'sh -s')
+            self.assertEqual(call.kwargs['input'], command + '\n')
+        with patch.object(access.subprocess, 'run') as run:
+            with self.assertRaises(ValueError):
+                self.client.ssh(command + self.secret)
+            with self.assertRaises(ValueError):
+                self.client.ssh(command + '\x00')
+        run.assert_not_called()
+
     def test_transport_loss_does_not_retry_nonidempotent_command(self):
         with patch.object(self.client, "check_tunnel"), \
                 patch.object(access.subprocess, "run", return_value=self.result(255)) as run:

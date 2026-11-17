@@ -19,7 +19,7 @@ import time
 from pathlib import Path
 
 ROOT = Path('/home/ws/ws/splatter4d')
-sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from ops.remote.access import RemoteClient, RemoteUnreachable  # noqa: E402
 from ops.jobs import scheduler as jobs  # noqa: E402
 
@@ -45,8 +45,8 @@ def run_dir(job):
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
     now = time.strftime('%Y-%m-%dT%H:%M:%S%z')
-    queue = {j['id']: j for j in jobs.load_queue()['jobs']}
-    state = jobs.read_registry()
+    queue = {j['id']: j for j in jobs.load_queue(ROOT / 'experiments/queue.yaml')['jobs']}
+    state = jobs.read_registry(ROOT / 'experiments/registry.jsonl')
     tracked = []
     for jid, job in queue.items():
         if job.get('host') != 'remote':
