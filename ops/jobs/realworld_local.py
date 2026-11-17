@@ -306,7 +306,7 @@ def _arguments(job: dict):
                    and known.schedule_config == "configs/realworld/ours_ext/continuation400k.yaml"
                    and known.start_step == "200000" and known.stop_step == "400000")
         matrix_eval = (script == OURS_TASK_EVAL and len(configs) == 1 and re.fullmatch(
-            r"configs/realworld/ours_matrix/(?:drawer-open-v2|covering|pick-and-place)-(?:S|SF)-"
+            r"configs/realworld/ours_matrix/(?:drawer-open-v2|covering|pick-and-place|pick-and-place-v2)-(?:S|SF)-"
             r"(?:orig|ch01)-scratch400k\.yaml", configs[0]))
         if not dsreset and not matrix_eval and (len(configs) != 1 or not re.fullmatch(
                 r"configs/realworld/ours_ext/(?:baseline200k|baseline200k-[a-z0-9-]+-(?:S|SF))\.yaml", configs[0])):
