@@ -1340,6 +1340,17 @@ class _TickLock:
         setup = REPO / "runs/setup"
         paths.update(setup.glob("*registration*.json"))
         paths.update((setup / "cnn-freeze-20261024.json", setup / "stage2-admission-hold.json"))
+        return self._stat_tokens(paths)
+
+    def pause_revision(self):
+        """Identity of the pause snapshot, including legacy prep holds and directory membership."""
+        from ops.jobs import admission_pause
+        return self._stat_tokens({admission_pause.FILE, admission_pause.PREP_PRIORITY,
+                                  admission_pause.PREP_PRIORITY_DIR,
+                                  *admission_pause.PREP_PRIORITY_DIR.glob("*.json")})
+
+    @staticmethod
+    def _stat_tokens(paths):
         tokens = {}
         for path in paths:
             try:
@@ -1630,7 +1641,10 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
             request=lambda r: dict(ram_gb=ram_gb(r), cpu_threads=thread_limit(r.get('cpu_threads', 8)),
                                    disk_gb=float(r.get('disk_gb', 0))), messages=messages)
     from ops.jobs.admission_pause import paused, snapshot
-    pause_evidence = snapshot()  # refreshed once on every daemon tick, before any reservation
+    pause_revision = guard.pause_revision()
+    pause_evidence = unlocked(snapshot)  # refreshed once per tick; the fence rejects changes during the read
+    if pause_revision != guard.pause_revision():
+        raise _TickChanged
     from ops.jobs.local_readiness import LocalReadiness
     owner_ready = LocalReadiness(queue, state, REPO)
     ready_rows = eligible(list(jobs.values()), state)
@@ -1831,8 +1845,9 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
         if host_name == "remote":
             path, spec = remote_backend.prepare(job, gpu, attempt, host, evidence)
         # Compare-and-set at the commit point. Every unlocked read above checked the authoritative queue's token,
-        # so its row (including planned_commit) is still current while this lock is held. A fresh registry/owner/pause
-        # check fences stale dispatch copies, two schedulers, placement, offload and re-pins alike. Retries compare
+        # so its row (including planned_commit) is still current while this lock is held. Fresh registry/owner checks
+        # and the pause snapshot's stat tokens fence stale dispatch copies, two schedulers, placement, offload and
+        # re-pins alike without rereading pause evidence per row. Retries compare
         # their existing attempt; a first launch requires the same absence of state that planning observed.
         # Keep this final replay locked: prepare may have created the immutable attempt spec, so no other scheduler
         # may prepare/claim the same attempt before its launch intent is appended.
@@ -1843,7 +1858,7 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
         changed = (_dispatch_refusal(jobs[job["id"]], authoritative_jobs, jobs, gpu)
                    or ("registry state changed" if current != state.get(job["id"]) else None)
                    or ("ownership changed" if fresh_ownership.get(job["id"]) != ownership.get(job["id"]) else None)
-                   or ("paused" if paused(job["id"]) else None)
+                   or ("pause evidence changed" if guard.pause_revision() != pause_revision else None)
                    or ("queue held" if (authoritative_queue.parent / "HOLD").exists() else None))
         if changed:
             messages.append(f"{job['id']}: admission held at commit: {changed}")

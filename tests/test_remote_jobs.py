@@ -204,20 +204,64 @@ def test_stale_dispatch_compares_the_authoritative_row(tmp_path, changed):
     assert jobs.load_queue(authoritative)["jobs"] == payload["jobs"]
 
 
-def test_pause_written_during_prepare_fences_remote_commit(tmp_path, monkeypatch):
+@pytest.mark.parametrize("source", ["pause", "legacy-prep", "prep-directory"])
+@pytest.mark.parametrize("mutation", ["create", "replace", "rewrite", "invalid", "delete"])
+def test_pause_written_during_prepare_fences_remote_commit(tmp_path, monkeypatch, source, mutation):
+    """A single snapshot remains safe even when a non-locking pause writer changes evidence during prepare."""
     from ops.jobs import admission_pause
+    path = {"pause": admission_pause.FILE, "legacy-prep": admission_pause.PREP_PRIORITY,
+            "prep-directory": admission_pause.PREP_PRIORITY_DIR / "hold.json"}[source]
+    if mutation != "create":
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"pauses": []} if source == "pause" else {"active": False}))
     queue = write_queue(tmp_path, [job()])
     backend = FakeBackend(tmp_path / "runs")
     prepare = backend.prepare
+    snapshot, reads = admission_pause.snapshot, []
+    monkeypatch.setattr(admission_pause, "snapshot", lambda: reads.append(True) or snapshot())
 
     def held(*args):
         prepared = prepare(*args)
-        admission_pause.FILE.write_text(json.dumps({"pauses": [{"active": True, "name": "new hold", "ids": ["r"]}]}))
+        payload = json.dumps({"pauses": [{"active": True, "name": "new hold", "ids": ["r"]}]}
+                             if source == "pause" else {"active": True, "host": "local"})
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if mutation == "delete":
+            path.unlink()
+        elif mutation == "replace":
+            replacement = path.with_suffix(".new")
+            replacement.write_text(payload)
+            replacement.replace(path)
+        else:
+            path.write_text("invalid" if mutation == "invalid" else payload)
         return prepared
 
     monkeypatch.setattr(backend, "prepare", held)
     messages = tick(tmp_path, queue, backend)
     assert not backend.launches, messages
+    assert "r" not in jobs.read_registry(tmp_path / "registry.jsonl")
+    assert reads == [True]
+    assert any("pause evidence changed" in message for message in messages)
+
+
+def test_pause_changed_during_snapshot_discards_the_plan(tmp_path, monkeypatch):
+    """The one snapshot must itself be fenced; returning old evidence cannot authorize a launch."""
+    from ops.jobs import admission_pause
+    queue = write_queue(tmp_path, [job()])
+    backend = FakeBackend(tmp_path / "runs")
+    snapshot, reads = admission_pause.snapshot, []
+
+    def changed():
+        with (tmp_path / "registry.lock").open("a") as probe:
+            fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        reads.append(True)
+        evidence = snapshot()
+        admission_pause.FILE.write_text(json.dumps({"pauses": [{"active": True, "ids": ["r"]}]}))
+        return evidence
+
+    monkeypatch.setattr(admission_pause, "snapshot", changed)
+    messages = tick(tmp_path, queue, backend)
+    assert reads == [True]
+    assert not backend.launches and any("inputs changed" in message for message in messages)
     assert "r" not in jobs.read_registry(tmp_path / "registry.jsonl")
 
 
