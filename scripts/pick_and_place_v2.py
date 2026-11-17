@@ -25,6 +25,11 @@ Remote Phase-A route (the local host controller needs host Docker, canonical bin
   phase-b-remote  compile Phase B on the remote against the accepted rig as bundle pnpv2-20261117-phaseB
                                                                                            -> <work>/phaseB
 
+  geometry-remote stage snapshot/release/publication/native measurement as one admitted remote job
+                                                                                           -> <work>/geometry-remote
+  geometry-fetch  hash-verified compact closure into runs/realworld-inputs + local status evidence
+                  (then ``upload -- --view geometry`` publishes canonical learning-input documents)
+
 Ticks: ``python -m ops.jobs.rwprep_remote tick --config <bundle>/dispatcher.json --apply --loop`` (from main).
 
 Queue rows never call this file; they use scripts/pnpv2_*.py. Status and next commands: scripts/pnpv2.py status.
@@ -148,39 +153,24 @@ def snapshot(spec, a, argv):
             raise ValueError("pick-and-place-v2 snapshot requires --success-only")
         return manifest_check(json.loads(Path(path).read_text()), spec)
 
-    module.read_manifest = read_manifest
-    sys.argv = [module.__file__, *argv]
-    module.main()
+    previous_reader, previous_argv = module.read_manifest, sys.argv
+    try:
+        module.read_manifest = read_manifest
+        sys.argv = [module.__file__, *argv]
+        module.main()
+    finally:
+        module.read_manifest, sys.argv = previous_reader, previous_argv
 
 
 def publish(spec, a, argv):
     """Geometry bundle: the established learning_inputs view of the NEW snapshot; refuses acceptance overrides."""
-    from s4d.rwlearn.dsreset import learning_inputs
-    from s4d.rwlearn.pnpv2_publication import manifest_check, no_override
-    from s4d.rwlearn.store import open_store
+    from s4d.rwlearn.pnpv2_publication import build_geometry
 
     sub = argparse.ArgumentParser(prog="publish")
     sub.add_argument("--ingest-manifest", type=Path, required=True)
     b = sub.parse_args(argv)
     p = values(spec)
-    m = manifest_check(json.loads(Path(p["manifest"]).read_text()), spec)
-    ingest = json.loads(b.ingest_manifest.read_text())
-    no_override(ingest)
-    paths = []
-    for r in m["episodes"]:
-        matches = [e for e in ingest["episodes"].values() if e.get("task") == TASK and e.get("sha256") == r["sha256"]]
-        if len(matches) != 1:
-            raise ValueError(f"{r['id']}: no unique snapshot record")
-        paths.append(matches[0]["preprocessing"]["stages"]["train_data"]["outputs"])
-    descriptor = {"kind": "compact", "paths": paths}
-    docs = learning_inputs(m, ingest, open_store(descriptor))
-    no_override(docs["gate_report.json"])
-    out = Path(p["geometry_dir_local"])
-    out.mkdir(parents=True, exist_ok=False)
-    (out / "store.yaml").write_text(yaml.safe_dump(descriptor, sort_keys=False))
-    for name, doc in docs.items():
-        (out / name).write_text(json.dumps(doc, indent=2) + "\n")
-    print(json.dumps({"out": str(out), "episodes": len(paths), "launched": False}))
+    print(json.dumps(build_geometry(spec, p["manifest"], b.ingest_manifest, p["geometry_dir_local"])))
 
 
 def upload(spec, a, argv):
@@ -197,6 +187,9 @@ def upload(spec, a, argv):
     files = [local / n for _, n in BUNDLE_FILES]
     if b.view == "rgb":
         files += sorted(f for f in (local / "episodes").rglob("*") if f.is_file())
+    if b.view == "geometry" and (Path(p["work"]) / "geometry-remote").exists():
+        from ops.jobs.pnpv2_geometry import mirror_evidence
+        mirror_evidence(spec, canonical=False)  # validate the fetched publication BEFORE any canonical upload
     client = RemoteClient()
     sent = {}
     # RemoteClient uploads only from the repository/data roots: stage a verified copy under runs/ for each file.
@@ -221,6 +214,9 @@ def upload(spec, a, argv):
                 if client._remote_checksum(target) != digest:
                     raise ValueError(f"uploaded file differs: {target}")
             sent[target] = digest
+    if b.view == "geometry" and (Path(p["work"]) / "geometry-remote").exists():
+        from ops.jobs.pnpv2_geometry import mirror_published
+        mirror_published(spec, client)
     _atomic_json(local.parent / f"{b.view}.UPLOADED.json",
                  {"schema": "pick-and-place-v2-upload/1", "view": b.view, "files": sent})
     print(json.dumps({"uploaded": len(sent), "view": b.view}))
@@ -450,10 +446,82 @@ def phase_b_remote(spec, a, argv):
     _link(out, link)
 
 
+def geometry_remote(spec, a, argv):
+    """Stage the remote geometry publisher; no tick, launch, registry or controller changes."""
+    from ops.jobs import pnpv2_geometry as geometry, rwprep_remote
+    from ops.jobs.pnpv2_registration import STAGE_IDS, dispatcher_evidence, rig_evidence
+    from s4d.rwlearn.pnpv2_publication import manifest_check, no_override
+
+    sub = argparse.ArgumentParser(prog="geometry-remote")
+    sub.add_argument("--source", type=Path, default=Path("/home/ws/ws/realworld-ops/ingest/manifest.json"))
+    b = sub.parse_args(argv)
+    p = values(spec)
+    _check_data(spec, a)
+    m = manifest_check(_remote_raw_verified(spec), spec)
+    ids = {r["id"] for r in m["episodes"]}
+    phases = {}
+    for key, stage in (("phase_a", "phaseA"), ("phase_b", "phaseB")):
+        evidence = dispatcher_evidence(p[key], ids, STAGE_IDS[stage])
+        if evidence["status"] != "done":
+            raise ValueError(f"{stage} not complete: {evidence['detail']}")
+        phases[key] = json.loads((Path(p[key]) / "dispatcher.json").read_text())
+    rig = rig_evidence(spec)
+    if rig["status"] != "done":
+        raise ValueError(f"task rig not accepted: {rig['detail']}")
+    out, link = _attachment(Path(p["work"]) / "geometry-remote", geometry.BUNDLE)
+    rwprep_remote_release(spec)
+    source_bytes = b.source.read_bytes()
+    source = json.loads(source_bytes)
+    names = {r["filename"] for r in m["episodes"]}
+    # Freeze only this collection in the new snapshot; never transfer v1/drawer state into it.
+    selected = {k: e for k, e in source["episodes"].items() if e.get("task") == TASK
+                and Path((e.get("source") or {}).get("path") or e.get("filename") or k).name in names}
+    frozen = {"schema": "rw-ingest-manifest", "schema_version": 2, "episodes": selected}
+    no_override(frozen)
+    client = rwprep_remote.RemoteClient()
+    remote_inputs, phase_ids = {}, {}
+    for key, config in phases.items():
+        remote = config["remote"]
+        expected = PHASE_A_BUNDLE if key == "phase_a" else PHASE_B_BUNDLE
+        if remote != f"{REMOTE_RW}/configs/{expected}":
+            raise ValueError("geometry requires the canonical pnpv2 Phase-A/B bundles")
+        jobs = json.loads((Path(p[key]) / "jobs.json").read_text())
+        phase_ids[remote] = [j["id"] for j in jobs]
+        for name in ("dispatcher.json", "jobs.json"):
+            path = f"{remote}/{name}"
+            remote_inputs[path] = client._remote_checksum(path)
+    for path in (p["rig"], str(Path(p["rig"]).with_suffix(".reference.npz"))):
+        remote_inputs[path] = client._remote_checksum(path)
+    from s4d.rwlearn.pnpv2_arrival import sha256
+    if remote_inputs[p["rig"]] != sha256(p["rig_local"]) or remote_inputs[
+            str(Path(p["rig"]).with_suffix(".reference.npz"))] != sha256(Path(p["rig_local"]).with_suffix(".reference.npz")):
+        raise ValueError("remote rig differs from the accepted local mirror")
+    import hashlib
+    out.mkdir(parents=True)
+    geometry.json_once(out / "manifest.json", m)
+    geometry.json_once(out / "source-ingest.json", frozen)
+    geometry.json_once(out / "path-provenance.json", dict(source=str(b.source),
+                       source_sha256=hashlib.sha256(source_bytes).hexdigest(), manifest_sha256=sha256(p["manifest"])))
+    job = geometry.remote_job(spec, out, phases["phase_a"]["remote"], phases["phase_b"]["remote"],
+                              phase_ids, remote_inputs)
+    # stage() defaults to this checkout's HEAD. Phase A's commit predates the geometry worker.
+    result = rwprep_remote.stage([job], out, client, release=rwprep_remote_release(spec), name=geometry.BUNDLE,
+                                 image=phases["phase_a"]["image"],
+                                 files=("manifest.json", "source-ingest.json", "path-provenance.json"))
+    _link(out, link)
+    print(json.dumps(result))
+
+
+def geometry_fetch(spec, a, argv):
+    from ops.jobs.pnpv2_geometry import fetch
+    print(json.dumps(fetch(spec)))
+
+
 ENTRIES = {"manifest": manifest, "rig-map": rig_map, "publish-rgb": publish_rgb, "raw-proof": raw_proof,
            "snapshot": snapshot, "publish": publish, "upload": upload,
            "phase-a-remote": phase_a_remote, "rgb-remote": rgb_remote, "rgb-fetch": rgb_fetch,
-           "calib-remote": calib_remote, "rig-fetch": rig_fetch, "phase-b-remote": phase_b_remote}
+           "calib-remote": calib_remote, "rig-fetch": rig_fetch, "phase-b-remote": phase_b_remote,
+           "geometry-remote": geometry_remote, "geometry-fetch": geometry_fetch}
 
 
 def main(argv=None):

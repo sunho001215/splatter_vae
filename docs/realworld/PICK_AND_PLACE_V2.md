@@ -27,8 +27,8 @@ registration. Queue rows start at each view's readiness barrier.
 | RGB publication | `--entry publish-rgb -- --execute`, `--entry upload -- --view rgb` | 5-file bundle, RGB consumers pass, geometry refused, upload receipt |
 | rig | `realworld_dsreset_calibration.py plan --id-stem pnpv2-20261117-calib` (waits for Phase A) | accepted `rig-pick-and-place-v2-accepted.json` + reference, every camera validated, no override |
 | Phase B (100 jobs) | `--entry rig-map`, `realworld_prep_register.py --phase B --id-stem pnpv2-20261117-prepB` | all jobs `done` |
-| geometry publication | `--entry raw-proof`, `--entry snapshot`, `realworld_prep_followup.py records --id-stem pnpv2-20261117-qa`, `calib.release apply`, `--entry publish`, `--entry upload -- --view geometry` | geometry consumers pass (per-episode `calibration_validated`), same split/outcomes as RGB, receipt |
-| scene | `realworld_prep_followup.py measure --id-stem pnpv2-20261117-qa` | accepted train-only native measurement bound to the manifest and rig |
+| geometry publication | `--entry geometry-remote`, remote tick, `--entry geometry-fetch`, `--entry upload -- --view geometry` | snapshot + per-episode `calibration_validated`, geometry consumers pass, RGB-identical split/outcomes, verified compact and canonical mirrors, upload receipt |
+| scene | included in the geometry remote job; mirrored by `--entry geometry-fetch` | accepted train-only native measurement bound to the canonical manifest and rig |
 
 Queue rows (90; ids `pnpv2-20261117-<stage>-<method>-pick-and-place-v2-S[-s<seed>]`):
 
@@ -81,7 +81,39 @@ upstream `configs/dsreset-upstream-20261114`, automatic G1-G6, no override) insi
 `<work>/calib`; its view job waits on the Phase-A state mirror. After its publish job, `--entry rig-fetch` mirrors the
 accepted rig + reference locally (what `status` checks) and `--entry phase-b-remote` compiles Phase B
 (`pnpv2-20261117-prepB-*`) on the remote against that rig; `attach` gives every pnpv2 bundle the pnpv2 release.
-The geometry publication (snapshot, records, release apply, publish, scene measurement) is not yet on this route.
+After all Phase-B jobs are done, the geometry route is:
+
+1. `--entry geometry-remote` (stage only): attachment `runs/pnpv2-20261117-geometry`, linked from
+   `<work>/geometry-remote`. It freezes only this collection's ingest entries (default source
+   `/home/ws/ws/realworld-ops/ingest/manifest.json`; optional `-- --source <absolute manifest>`), the canonical
+   membership and source hashes. It uses the **current main commit**, because Phase A's older code lacks the worker.
+2. From main, detach `python -m ops.jobs.rwprep_remote tick --config <work>/geometry-remote/dispatcher.json --apply --loop`.
+   The single job `pnpv2-20261117-geopub-pick-and-place-v2-S` waits for the real Phase-A/B state mirrors; the worker
+   rechecks exact membership, queue/config hashes, done states, STOPs and automatic rig acceptance. It independently
+   rehashes remote raw files, calls the existing v2 snapshot adapter, plans calibration records, previews/applies them
+   through `calib.release` to the **new snapshot**, and uses the same geometry publisher as `--entry publish`.
+3. The immutable five-file geometry bundle is published under
+   `<remote processed>/learning-inputs/pick-and-place-v2/S/geometry/`. It references the existing compact Phase-B stores,
+   so no episode copies are made remotely. Snapshot, calibration plan, input binding, raw proof and measurement live
+   under `<remote processed>/geometry-publication/pick-and-place-v2/S/`. The measurement uses `SampledNativeStore`
+   (8 native frames/camera on the 90 training episodes, existing estimator and validation), then a completion marker
+   hashes all publication documents, the snapshot, measurement, rig and reference. Private building directories are
+   renamed only after validation; complete retries check hashes and gates; partial/conflicting output stays held.
+4. After that job is done, `--entry geometry-fetch` uses `realworld_local.fetch` with dependency priority, expands the
+   compact descriptor to every episode H5/completion file, and fully verifies the closure in `runs/realworld-inputs`.
+   It preserves remote descriptors under `_remote`, checks the localized store's actual calibration gates, verifies the
+   completion marker and canonical membership, then writes equality-only local copies of staging documents,
+   `<work>/ingest-snapshot`, the rig/reference and `<processed>/measurements/pick-and-place-v2/scene.json`.
+5. `--entry upload -- --view geometry` checks the fetch receipt and staging hashes before uploading verified copies
+   from repository `runs/`. It keeps the established canonical `learning_inputs/pnpv2-20261117/.../S/geometry` path and
+   upload receipt, and mirrors those canonical row-input paths with their compact closure so local rows resolve them.
+   Status requires both the fetched processed closure and canonical mirror receipts for this remote route.
+6. `scripts/pnpv2.py status` reports `geometry.ready_after_check_data` after the existing RGB, rig, Phase-B,
+   geometry-publication and scene gates pass. Registration still requires a fresh successful `check-data`.
+
+These entries do not tick existing controllers, register/place rows, edit pauses, or contact the Robot PC.
+Keep the approved MIG environment used by other producer entries (the bootstrap also guards CPU-only commands).
+The local-host `snapshot` / `publish` entries remain available and share the same publication implementation.
 
 ## Guarantees
 
@@ -96,3 +128,6 @@ The geometry publication (snapshot, records, release apply, publish, scene measu
 Tests: `tests/test_pick_and_place_v2.py` (science parity, spec, runtime, readiness barrier) and
 `tests/test_pnpv2_pipeline.py` (arrival, check-data, waves, registrar dry run/execute/refusals, v1 isolation,
 producer stems, resolvers).
+
+Remote geometry tests: `tests/test_pnpv2_geometry_route.py` (CPU shard; synthetic remote inventories and compact closure,
+real snapshot/release writer integration marked `local_host_data`), plus the existing pnpv2 remote/pipeline tests.

@@ -1,4 +1,4 @@
-"""Read-only checks of pick-and-place-v2 membership and publication evidence; no ops imports, no writes."""
+"""Pick-and-place-v2 membership/readiness checks and the shared geometry bundle producer; no ops imports."""
 
 import json
 from pathlib import Path
@@ -54,18 +54,54 @@ def readiness(stage, manifest_path, split_path, outcomes_path, gate_path, store_
     report = json.loads(Path(gate_path).read_text())
     no_override(report)
     store = open_store(str(store_path))
-    ids = store_identities(store)
-    by_sha = {r["sha256"]: r for r in m["episodes"]}
-    if len(ids) != len(by_sha) or {r["raw_sha256"] for r in ids.values()} != set(by_sha):
-        raise ValueError("store raw hashes must exactly match the task manifest")
-    if set(outcomes) != set(ids) or any(v is not True for v in outcomes.values()):
-        raise ValueError("S-only outcomes must equal exactly the store episode set")
-    for ep, rec in ids.items():
-        row = by_sha[rec["raw_sha256"]]
-        if rec["task"] != TASK or ep not in split[row["split"]]:
-            raise ValueError("store task or split differs from immutable membership")
-    consumers = RGB_CONSUMERS if view == "rgb" else GEOMETRY_CONSUMERS
-    for consumer in consumers:
-        check_gate(store, report, steps=None, split=split, target=TASK, consumer=consumer)
-    return dict(schema="pick-and-place-v2-readiness/1", task=TASK, view=view, stage=stage, passed=True,
-                episodes=len(ids), consumers=list(consumers), robot_io=False)
+    try:
+        ids = store_identities(store)
+        by_sha = {r["sha256"]: r for r in m["episodes"]}
+        if len(ids) != len(by_sha) or {r["raw_sha256"] for r in ids.values()} != set(by_sha):
+            raise ValueError("store raw hashes must exactly match the task manifest")
+        if set(outcomes) != set(ids) or any(v is not True for v in outcomes.values()):
+            raise ValueError("S-only outcomes must equal exactly the store episode set")
+        for ep, rec in ids.items():
+            row = by_sha[rec["raw_sha256"]]
+            if rec["task"] != TASK or ep not in split[row["split"]]:
+                raise ValueError("store task or split differs from immutable membership")
+        consumers = RGB_CONSUMERS if view == "rgb" else GEOMETRY_CONSUMERS
+        for consumer in consumers:
+            check_gate(store, report, steps=None, split=split, target=TASK, consumer=consumer)
+        return dict(schema="pick-and-place-v2-readiness/1", task=TASK, view=view, stage=stage, passed=True,
+                    episodes=len(ids), consumers=list(consumers), robot_io=False)
+    finally:
+        close = getattr(store, 'close', None)
+        if close:
+            close()
+
+
+def build_geometry(spec, manifest_path, ingest_path, out):
+    """The geometry publication used by both the local producer and the remote worker."""
+    import yaml
+    from s4d.rwlearn.dsreset import learning_inputs
+    from s4d.rwlearn.store import open_store
+
+    m = manifest_check(json.loads(Path(manifest_path).read_text()), spec)
+    ingest = json.loads(Path(ingest_path).read_text())
+    no_override(ingest)
+    paths = []
+    for row in m['episodes']:
+        matches = [e for e in ingest['episodes'].values()
+                   if e.get('task') == TASK and e.get('sha256') == row['sha256']]
+        if len(matches) != 1:
+            raise ValueError(f"{row['id']}: no unique snapshot record")
+        paths.append(matches[0]['preprocessing']['stages']['train_data']['outputs'])
+    descriptor = {'kind': 'compact', 'paths': paths}
+    store = open_store(descriptor)
+    try:
+        docs = learning_inputs(m, ingest, store)
+    finally:
+        store.close()
+    no_override(docs['gate_report.json'])
+    out = Path(out)
+    out.mkdir(parents=True, exist_ok=False)
+    (out / 'store.yaml').write_text(yaml.safe_dump(descriptor, sort_keys=False))
+    for name, doc in docs.items():
+        (out / name).write_text(json.dumps(doc, indent=2) + '\n')
+    return {'out': str(out), 'episodes': len(paths), 'launched': False}

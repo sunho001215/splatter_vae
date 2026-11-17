@@ -226,7 +226,14 @@ def bundle_evidence(spec, view, manifest):
     if sent.get("schema") != "pick-and-place-v2-upload/1" or any(sent.get("files", {}).get(k) != v
                                                                  for k, v in remote.items()):
         return _stage("blocked", f"{view} upload receipt differs from the staged bundle")
-    return _stage("done", f"{len(ids)} episodes", inputs={**local, str(receipt): file_sha(receipt)},
+    mirror_inputs = {}
+    if view == "geometry" and (Path(p["work"]) / "geometry-remote").exists():
+        from ops.jobs.pnpv2_geometry import mirror_evidence
+        try:
+            mirror_inputs = mirror_evidence(spec)
+        except (OSError, ValueError, KeyError, RuntimeError) as exc:
+            return _stage("blocked", f"geometry mirror: {exc}")
+    return _stage("done", f"{len(ids)} episodes", inputs={**local, **mirror_inputs, str(receipt): file_sha(receipt)},
                   split=split, outcomes=outcomes)
 
 
@@ -531,20 +538,12 @@ def next_steps(spec, ev):
                    f"{PY} -m ops.jobs.rwprep_remote tick --config {p['phase_b']}/dispatcher.json --apply --loop "
                    "(detached, from main)"],
         "geometry-publication": [
-            f"{producer} raw-proof",
-            f"{producer} snapshot -- --success-only --source /home/ws/ws/realworld-ops/ingest/manifest.json "
-            f"--manifest {p['manifest']} --prep-config {p['phase_a']}/dispatcher.json --prep-config "
-            f"{p['phase_b']}/dispatcher.json --remote-hashes {w}/remote-raw-hashes.json --out-dir {p['snapshot']}",
-            f"{PY} scripts/realworld_prep_followup.py records --id-stem {dispatcher_stem('qa')} --task {TASK} "
-            f"--base-config {p['phase_b']}/dispatcher.json --rig {p['rig']} --manifest {p['snapshot']}/manifest.json "
-            f"--out {w}/records --result {p['remote_processed']}/calibration-records/{TASK}",
-            f"{PY} -m s4d.realworld.calib.release apply --plan {p['remote_processed']}/calibration-records/{TASK}/"
-            f"plan.json --state-dir {p['snapshot']} [--apply]",
-            f"{producer} publish -- --ingest-manifest {p['snapshot']}/manifest.json",
+            f"{producer} geometry-remote   # after Phase B; stage only, current main source pin",
+            f"{PY} -m ops.jobs.rwprep_remote tick --config {w}/geometry-remote/dispatcher.json --apply --loop "
+            "(detached, from main; snapshot, calibration records/release, publication, native scene)",
+            f"{producer} geometry-fetch   # after the remote job is done; full verified compact closure",
             f"{producer} upload -- --view geometry"],
-        "scene": [f"{PY} scripts/realworld_prep_followup.py measure --id-stem {dispatcher_stem('qa')} --task {TASK} "
-                  f"--base-config {p['phase_b']}/dispatcher.json --rig {p['rig']} --inputs {p['geometry_dir_local']} "
-                  f"--out {w}/measure --result {p['remote_processed']}/measurements/{TASK}"],
+        "scene": [f"{producer} geometry-fetch   # fetches the train-only native measurement and accepted rig"],
     }
     out = {}
     for stage, (kind, needs) in STAGES.items():
