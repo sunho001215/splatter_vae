@@ -12,6 +12,7 @@ from pathlib import Path
 
 FILE_CLASSES = {
     "tests/test_prep_reservation.py": "cpu",
+    "tests/test_release_prep_deadlock.py": "cpu",  # release verification vs rwprep reservation deadlock, 2026-11-17
     "tests/test_ours_matrix.py": "cpu",
     "tests/test_local_devices.py": "cpu",
     "tests/test_rwprep_mig.py": "cpu",
