@@ -465,7 +465,7 @@ def test_status_reports_progress_and_next_commands(spec, arrived):
     ev = reg.evidence(spec, None, arrival_state=arrived["arrival"])
     nxt = reg.next_steps(spec, ev)
     assert ev["phaseA"]["status"] == "done" and ev["rgb-publication"]["status"] == "done"
-    assert "rig" in nxt and "--id-stem pnpv2-20261117-calib" in nxt["rig"][0]
+    assert "rig" in nxt and "calib-remote" in nxt["rig"][0]  # remote route; job stem pnpv2-20261117-calib
     assert "wave:rgb" not in nxt  # check-data has not run in this evidence view
 
 

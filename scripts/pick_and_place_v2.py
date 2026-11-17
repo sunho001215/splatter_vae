@@ -19,6 +19,12 @@ Remote Phase-A route (the local host controller needs host Docker, canonical bin
   rgb-fetch       copy the small RGB bundle documents of the finished remote publication -> <work>/publication/S/rgb
                   (then ``upload -- --view rgb`` publishes them to the canonical directory)
 
+  calib-remote    compile the task LoMa-G rig plan on the remote (planner container) as bundle
+                  pnpv2-20261117-calib; its view job waits on the Phase-A state mirror     -> <work>/calib
+  rig-fetch       mirror the published accepted rig + reference locally (what ``status`` checks)
+  phase-b-remote  compile Phase B on the remote against the accepted rig as bundle pnpv2-20261117-phaseB
+                                                                                           -> <work>/phaseB
+
 Ticks: ``python -m ops.jobs.rwprep_remote tick --config <bundle>/dispatcher.json --apply --loop`` (from main).
 
 Queue rows never call this file; they use scripts/pnpv2_*.py. Status and next commands: scripts/pnpv2.py status.
@@ -301,9 +307,123 @@ def rgb_fetch(spec, a, argv):
     print(json.dumps({"out": str(local), "files": sorted(docs), "remote": remote}))
 
 
+REMOTE_RW = "/home/compu/kaist/sunho/realworld"
+CALIB_BUNDLE = "pnpv2-20261117-calib"
+PHASE_B_BUNDLE = "pnpv2-20261117-phaseB"
+# The established LoMa/romav2 upstream staged for the dsreset calibrations (read-only; torch-home links into
+# calib-loma / calib-dw, which the jobs therefore also mount read-only, as the drawer-open-v2 calibration does).
+CALIB_UPSTREAM = f"{REMOTE_RW}/configs/dsreset-upstream-20261114"
+CALIB_READONLY = (f"{REMOTE_RW}/calib-loma", f"{REMOTE_RW}/calib-dw", f"{REMOTE_RW}/assets/validation-20261031")
+_CALIB_PLAN = """
+import json, pathlib, sys
+from ops.jobs.rwprep_mig import atomic
+from scripts.realworld_dsreset_calibration import plan
+phase, task, out, work, upstream, stem, extra = sys.argv[1:8]
+out = pathlib.Path(out)
+if not out.exists():
+    plan(phase, task, out, work, upstream, stem=stem)
+c = json.loads((out / 'dispatcher.json').read_text())
+want = list(dict.fromkeys([*c.get('extra_readonly', []), *json.loads(extra)]))
+if c.get('extra_readonly') != want:
+    assert not (out / 'state/state.json').exists(), 'HELD: calibration queue already used'
+    c['extra_readonly'] = want
+    atomic(out / 'dispatcher.json', c)
+print(json.dumps({'jobs': len(json.loads((out / 'jobs.json').read_text())), 'extra_readonly': want}))
+"""
+_PHASE_B_PLAN = """
+import json, pathlib, subprocess, sys
+from ops.jobs.rwprep_mig import atomic
+base, out, rig, stem, extra = sys.argv[1:6]
+base, out = pathlib.Path(base), pathlib.Path(out)
+c = json.loads((base / 'dispatcher.json').read_text())
+rows = json.loads((base / 'prep-plan.json').read_text())
+rigmap, doc = out.parent / (out.name + '.rig-map.json'), {r['episode']: rig for r in rows}
+if rigmap.exists():
+    assert json.loads(rigmap.read_text()) == doc, 'HELD: rig map differs'
+else:
+    atomic(rigmap, doc)
+if not out.exists():
+    args = [sys.executable, 'scripts/realworld_prep_register.py', '--phase', 'B', '--id-stem', stem,
+            '--plan', str(base / 'prep-plan.json'), '--out', str(out), '--host', 'remote',
+            '--code', '/opt/src/splatter4d', '--rig-map', str(rigmap), '--extra-readonly', extra]
+    for k in ('processed', 'raw', 'weights', 'image', 'tools', 'assets'):
+        args += ['--' + k, c[k]]
+    subprocess.run(args, check=True)
+print(json.dumps({'jobs': len(json.loads((out / 'jobs.json').read_text()))}))
+"""
+
+
+def _phase_a_config(spec):
+    return json.loads((Path(values(spec)["phase_a"]) / "dispatcher.json").read_text())
+
+
+def calib_remote(spec, a, argv):
+    """Task LoMa-G rig on the remote route (established planner and automatic G1-G6 publication; no override)."""
+    from ops.jobs import rwprep_remote
+    from ops.jobs.pnpv2_registration import STAGE_IDS
+
+    p = values(spec)
+    base = _phase_a_config(spec)
+    out = Path(p["calib"])
+    if out.exists():
+        raise ValueError(f"{out} exists; the calibration attachment is immutable")
+    remote = f"{REMOTE_RW}/configs/{CALIB_BUNDLE}"
+    client = rwprep_remote.RemoteClient()
+    print(rwprep_remote.planner(client, base, [
+        "-c", _CALIB_PLAN, f"{base['remote']}/dispatcher.json", TASK, remote,
+        f"{p['remote_processed']}/calibration/{TASK}", CALIB_UPSTREAM, STAGE_IDS["rig"],
+        json.dumps([*CALIB_READONLY])]))
+    print(json.dumps(rwprep_remote.attach(remote, out, client, base)))
+
+
+def rig_fetch(spec, a, argv):
+    """Mirror the remote accepted rig and its reference (sha-checked download); refuses before publication."""
+    from ops.jobs import rwprep_remote
+
+    p = values(spec)
+    state = json.loads((Path(p["calib"]) / "state/state.json").read_text())["jobs"]
+    from ops.jobs.pnpv2_registration import STAGE_IDS
+
+    publish_job = f"{STAGE_IDS['rig']}-{TASK}-publish"
+    if (state.get(publish_job) or {}).get("status") != "done":
+        raise ValueError(f"calibration publication {publish_job} is not done")
+    local = Path(p["rig_local"])
+    if local.exists() or local.with_suffix(".reference.npz").exists():
+        raise ValueError(f"{local} exists; the rig mirror is immutable")
+    client = rwprep_remote.RemoteClient()
+    for remote, target in ((p["rig"], local), (str(Path(p["rig"]).with_suffix(".reference.npz")),
+                                               local.with_suffix(".reference.npz"))):
+        client.rsync_download(remote, target)
+    from ops.jobs.pnpv2_registration import rig_evidence
+
+    print(json.dumps({k: v for k, v in rig_evidence(spec).items() if k != "inputs"}))
+
+
+def phase_b_remote(spec, a, argv):
+    """Phase B compiled on the remote against the automatically accepted task rig (compiler checks every camera)."""
+    from ops.jobs import rwprep_remote
+    from ops.jobs.pnpv2_registration import STAGE_IDS, rig_evidence
+
+    p = values(spec)
+    stage = rig_evidence(spec)
+    if stage["status"] != "done":
+        raise ValueError(f"task rig not accepted: {stage['detail']}")
+    base = _phase_a_config(spec)
+    out = Path(p["phase_b"])
+    if out.exists():
+        raise ValueError(f"{out} exists; the Phase-B attachment is immutable")
+    remote = f"{REMOTE_RW}/configs/{PHASE_B_BUNDLE}"
+    client = rwprep_remote.RemoteClient()
+    print(rwprep_remote.planner(client, base, [
+        "-c", _PHASE_B_PLAN, base["remote"], remote, p["rig"], STAGE_IDS["phaseB"],
+        f"{p['remote_processed']}/calibration/{TASK}"]))
+    print(json.dumps(rwprep_remote.attach(remote, out, client, base)))
+
+
 ENTRIES = {"manifest": manifest, "rig-map": rig_map, "publish-rgb": publish_rgb, "raw-proof": raw_proof,
            "snapshot": snapshot, "publish": publish, "upload": upload,
-           "phase-a-remote": phase_a_remote, "rgb-remote": rgb_remote, "rgb-fetch": rgb_fetch}
+           "phase-a-remote": phase_a_remote, "rgb-remote": rgb_remote, "rgb-fetch": rgb_fetch,
+           "calib-remote": calib_remote, "rig-fetch": rig_fetch, "phase-b-remote": phase_b_remote}
 
 
 def main(argv=None):

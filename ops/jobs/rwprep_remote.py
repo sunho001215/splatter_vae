@@ -509,18 +509,29 @@ print(json.dumps(out))
 
 def attach(remote, out, client, base):
     """Attach an already compiled remote candidate bundle; launch nothing."""
+    out=Path(out).resolve()
     if not any(remote.startswith(RW+'/configs/'+prefix) for prefix in RELEASES.values()):
         raise ValueError('expected isolated dsreset/pnpv2 bundle')
     script="import json,pathlib,sys; p=pathlib.Path(sys.argv[1]); print(json.dumps({n:json.loads((p/n).read_text()) for n in ('dispatcher.json','jobs.json')}))"
     docs=json.loads(client.checked_ssh('python3 -I -c '+shlex.quote(script)+' '+shlex.quote(remote),idempotent=True).stdout)
-    out=Path(out).resolve();out.mkdir(parents=True,exist_ok=False);(out/'state').mkdir()
     jobs=docs['jobs.json']
     for j in jobs:j['priority']=-4
     if docs['dispatcher.json']['commit']!=base['commit']:raise ValueError('source pin mismatch')
+    # A bundle compiled by an established compiler (no release key) inherits the base bundle's writable release.
+    declared=docs['dispatcher.json'].get('release')
+    if declared is not None and declared!=base.get('release',DEFAULT_RELEASE):
+        raise ValueError('bundle release differs from its base bundle')
+    release=release_of(base)
+    if not remote.startswith(RW+'/configs/'+RELEASES[release]):
+        raise ValueError('bundle name must carry its release prefix '+RELEASES[release])
     config={**docs['dispatcher.json'],'code':base['code'],'tools_id':base['tools_id'],'image':base['image'],'host':'remote','remote':remote,'jobs':str(out/'jobs.json'),
             'state_dir':str(out/'state'),
             'priority_file':priority_path('/home/ws/ws/splatter4d/runs/setup/rwprep-mig-priority.d',out/'state')}
-    validate(config,jobs);atomic(out/'jobs.json',jobs);atomic(out/'dispatcher.json',config)
+    if release!=DEFAULT_RELEASE:
+        config['release']=release
+    validate(config,jobs)
+    out.mkdir(parents=True,exist_ok=False);(out/'state').mkdir()
+    atomic(out/'jobs.json',jobs);atomic(out/'dispatcher.json',config)
     return {'registered':len(jobs),'launched':False,'config':str(out/'dispatcher.json')}
 
 

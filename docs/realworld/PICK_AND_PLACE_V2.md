@@ -76,6 +76,13 @@ local MIGs. From the campaign container, Phase A and the RGB publication therefo
 5. `--entry rgb-fetch` copies only the bundle documents (never the episodes) into `<work>/publication/S/rgb`, then
    `--entry upload -- --view rgb` publishes them to the canonical directory with the receipt `status` checks.
 
+Geometry on the same route: `--entry calib-remote` compiles the established LoMa-G plan (stem `pnpv2-20261117-calib`,
+upstream `configs/dsreset-upstream-20261114`, automatic G1-G6, no override) inside the remote planner and attaches
+`<work>/calib`; its view job waits on the Phase-A state mirror. After its publish job, `--entry rig-fetch` mirrors the
+accepted rig + reference locally (what `status` checks) and `--entry phase-b-remote` compiles Phase B
+(`pnpv2-20261117-prepB-*`) on the remote against that rig; `attach` gives every pnpv2 bundle the pnpv2 release.
+The geometry publication (snapshot, records, release apply, publish, scene measurement) is not yet on this route.
+
 ## Guarantees
 
 - No row exists before check-data passes on the real recordings; each wave only after its inputs exist.

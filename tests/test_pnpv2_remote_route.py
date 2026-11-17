@@ -67,7 +67,7 @@ def test_guard_wrapper_mounts_the_configured_release(tmp_path, monkeypatch):
         job = dict(name="n", episode="ep", gpu="MIG-x", docker_args=["docker", "run", "w", "j"])
         calls = []
 
-        def run(*args):
+        def run(*args, calls=calls):
             calls.append(args)
             if args[:2] == ("docker", "ps"):
                 return ""
@@ -208,16 +208,42 @@ def test_dsreset_default_staging_is_unchanged(staging):
         f"rwv2-20261113-prep-ours-{ep}-phaseA"]
 
 
+def _attach_client(docs):
+    return SimpleNamespace(checked_ssh=lambda *a, **kw: SimpleNamespace(stdout=json.dumps(docs)))
+
+
+def _jobs(prefix):
+    return [{"id": prefix + "x", "gpu_profile": "1g.24gb", "gpu_gib": 2, "ram_gib": 32, "cpus": 4,
+             "inputs": {"/m": "a" * 64}, "steps": [{"kind": "python", "argv": ["-m", "x"]}]}]
+
+
 def test_attach_accepts_only_known_release_bundles(tmp_path):
-    base = {"commit": COMMIT, "code": "/code", "tools_id": "t", "image": IMAGE}
+    base = {"commit": COMMIT, "code": "/code", "tools_id": "t", "image": IMAGE, "release": "pnpv2-20261117"}
     with pytest.raises(ValueError, match="isolated"):
         R.attach(R.RW + "/configs/rwv2-other", tmp_path / "a", None, base)
-    jobs = [{"id": "pnpv2-20261117-rgbpub-x", "gpu_profile": "1g.24gb", "gpu_gib": 2, "ram_gib": 32, "cpus": 4,
-             "inputs": {"/m": "a" * 64}, "steps": [{"kind": "python", "argv": ["-m", "x"]}]}]
-    docs = {"dispatcher.json": {"commit": COMMIT, "release": "pnpv2-20261117"}, "jobs.json": jobs}
-    client = SimpleNamespace(checked_ssh=lambda *a, **kw: SimpleNamespace(stdout=json.dumps(docs)))
-    R.attach(R.RW + "/configs/pnpv2-20261117-rgb", tmp_path / "b", client, base)
+    docs = {"dispatcher.json": {"commit": COMMIT, "release": "pnpv2-20261117"}, "jobs.json": _jobs("pnpv2-20261117-")}
+    R.attach(R.RW + "/configs/pnpv2-20261117-rgb", tmp_path / "b", _attach_client(docs), base)
     assert json.loads((tmp_path / "b/dispatcher.json").read_text())["release"] == "pnpv2-20261117"
+    # A dsreset-prefixed bundle can never be attached to the pnpv2 release (or the reverse).
+    with pytest.raises(ValueError, match="release prefix"):
+        R.attach(R.RW + "/configs/dsreset-x", tmp_path / "c", _attach_client(docs | {"dispatcher.json": {
+            "commit": COMMIT}}), base)
+    assert not (tmp_path / "c").exists()
+
+
+def test_attach_inherits_the_base_release_and_keeps_dsreset_unchanged(tmp_path):
+    """Phase B compiled by realworld_prep_register has no release key: it must write the base bundle's release."""
+    pn = {"commit": COMMIT, "code": "/code", "tools_id": "t", "image": IMAGE, "release": "pnpv2-20261117"}
+    docs = {"dispatcher.json": {"commit": COMMIT, "host": "remote"}, "jobs.json": _jobs("pnpv2-20261117-prepB-")}
+    R.attach(R.RW + "/configs/pnpv2-20261117-phaseB", tmp_path / "b", _attach_client(docs), pn)
+    assert R.release_of(json.loads((tmp_path / "b/dispatcher.json").read_text())) == "pnpv2-20261117"
+    with pytest.raises(ValueError, match="differs from its base"):
+        R.attach(R.RW + "/configs/pnpv2-20261117-x", tmp_path / "x", _attach_client(
+            {**docs, "dispatcher.json": {"commit": COMMIT, "release": "dsreset-20261113"}}), pn)
+    ds = {k: v for k, v in pn.items() if k != "release"}
+    docs = {"dispatcher.json": {"commit": COMMIT, "host": "remote"}, "jobs.json": _jobs("rwv2-20261113-calib-")}
+    R.attach(R.RW + "/configs/dsreset-calib-x", tmp_path / "d", _attach_client(docs), ds)
+    assert "release" not in json.loads((tmp_path / "d/dispatcher.json").read_text())
 
 
 # ------------------------------------------------------------------------------------------ remote RGB route
@@ -314,3 +340,96 @@ def test_status_points_at_the_remote_phase_a_route(spec, tmp_path):
     nxt = reg.next_steps(spec, ev)
     assert any("phase-a-remote" in c for c in nxt["phaseA"]) and any("raw-proof" in c for c in nxt["phaseA"])
     assert not any("LOCAL HOST" in c for c in nxt["phaseA"])
+
+
+# --------------------------------------------------------------------------------- geometry route entries
+def test_calib_remote_plans_on_the_remote_and_attaches(spec, tmp_path, monkeypatch):
+    import scripts.pick_and_place_v2 as P
+
+    spec["roots"]["work"] = str(tmp_path / "work")
+    phase = tmp_path / "work/phaseA"
+    phase.mkdir(parents=True)
+    base = {"remote": R.RW + "/configs/pnpv2-20261117-phaseA", "release": "pnpv2-20261117", "commit": COMMIT}
+    (phase / "dispatcher.json").write_text(json.dumps(base))
+    calls = []
+    monkeypatch.setattr(R, "RemoteClient", lambda: "client")
+    monkeypatch.setattr(R, "planner", lambda client, config, argv: calls.append(("plan", config, argv)) or "{}")
+    monkeypatch.setattr(R, "attach", lambda remote, out, client, b: calls.append(("attach", remote, out, b)) or {})
+    P.calib_remote(spec, None, [])
+    (_, config, argv), (_, remote, out, b) = calls
+    assert config == base == b and argv[0] == "-c" and remote == R.RW + "/configs/pnpv2-20261117-calib"
+    assert argv[2:8] == [base["remote"] + "/dispatcher.json", TASK, remote,
+                         f"{R.RW}/processed/pnpv2-20261117/calibration/{TASK}", P.CALIB_UPSTREAM,
+                         "pnpv2-20261117-calib"]
+    assert out == tmp_path / "work/calib"
+    (tmp_path / "work/calib").mkdir()
+    with pytest.raises(ValueError, match="immutable"):
+        P.calib_remote(spec, None, [])
+
+
+def test_calibration_planner_code_keeps_the_frozen_plan_and_adds_readonly_mounts(tmp_path, monkeypatch):
+    import scripts.pick_and_place_v2 as P
+    import scripts.realworld_dsreset_calibration as C
+
+    def plan(phase, task, out, work, upstream, stem=None):
+        assert stem == "pnpv2-20261117-calib"
+        out.mkdir()
+        (out / "jobs.json").write_text(json.dumps([{"id": "j"}]))
+        (out / "dispatcher.json").write_text(json.dumps({"extra_readonly": [upstream]}))
+
+    monkeypatch.setattr(C, "plan", plan)
+    out = tmp_path / "calib"
+    argv = ["x", "phase.json", TASK, str(out), "work", "/up", "pnpv2-20261117-calib", json.dumps(["/ro"])]
+    for _ in range(2):  # re-running is idempotent
+        monkeypatch.setattr(sys, "argv", argv)
+        exec(P._CALIB_PLAN, {})
+        assert json.loads((out / "dispatcher.json").read_text())["extra_readonly"] == ["/up", "/ro"]
+    (out / "state").mkdir()
+    (out / "state/state.json").write_text("{}")
+    monkeypatch.setattr(sys, "argv", argv[:-1] + [json.dumps(["/other"])])
+    with pytest.raises(AssertionError, match="already used"):
+        exec(P._CALIB_PLAN, {})
+
+
+def test_phase_b_planner_code_binds_one_rig_for_every_episode(tmp_path, monkeypatch):
+    import scripts.pick_and_place_v2 as P
+
+    base = tmp_path / "phaseA"
+    base.mkdir()
+    keys = ("processed", "raw", "weights", "image", "tools", "assets")
+    (base / "dispatcher.json").write_text(json.dumps({k: f"/{k}" for k in keys}))
+    (base / "prep-plan.json").write_text(json.dumps([{"episode": "e1"}, {"episode": "e2"}]))
+    out = tmp_path / "phaseB"
+    ran = []
+
+    def run(args, check):
+        ran.append(args)
+        out.mkdir()
+        (out / "jobs.json").write_text("[]")
+
+    monkeypatch.setattr(subprocess, "run", run)
+    monkeypatch.setattr(sys, "argv", ["x", str(base), str(out), "/rig.json", "pnpv2-20261117-prepB", "/calib"])
+    exec(P._PHASE_B_PLAN, {})
+    rigmap = tmp_path / "phaseB.rig-map.json"
+    assert json.loads(rigmap.read_text()) == {"e1": "/rig.json", "e2": "/rig.json"}
+    args = ran[0]
+    assert args[1:5] == ["scripts/realworld_prep_register.py", "--phase", "B", "--id-stem"]
+    assert "pnpv2-20261117-prepB" in args and args[args.index("--rig-map") + 1] == str(rigmap)
+    assert all(args[args.index("--" + k) + 1] == f"/{k}" for k in keys)
+    monkeypatch.setattr(sys, "argv", ["x", str(base), str(out), "/other-rig.json", "pnpv2-20261117-prepB", "/c"])
+    with pytest.raises(AssertionError, match="rig map differs"):
+        exec(P._PHASE_B_PLAN, {})
+
+
+def test_rig_fetch_and_phase_b_refuse_before_an_accepted_rig(spec, tmp_path, monkeypatch):
+    import scripts.pick_and_place_v2 as P
+
+    spec["roots"]["work"] = str(tmp_path / "work")
+    spec["roots"]["processed"] = str(tmp_path / "processed")
+    (tmp_path / "work/calib/state").mkdir(parents=True)
+    (tmp_path / "work/calib/state/state.json").write_text(json.dumps({"jobs": {}}))
+    monkeypatch.setattr(R, "RemoteClient", lambda: pytest.fail("no remote access before acceptance"))
+    with pytest.raises(ValueError, match="publish is not done"):
+        P.rig_fetch(spec, None, [])
+    with pytest.raises(ValueError, match="task rig not accepted"):
+        P.phase_b_remote(spec, None, [])
