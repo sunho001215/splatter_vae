@@ -10,6 +10,17 @@ Entries (each refuses before the dataset is complete/validated; none launches a 
   publish      geometry bundle from the snapshot (calibration records)  -> <work>/publication/S/geometry
   upload       checked no-overwrite upload of one staged bundle + receipt (remote write; coordinator only)
 
+Remote Phase-A route (the local host controller needs host Docker, canonical bind mounts and free local MIGs):
+
+  phase-a-remote  compile + stage the 100 Phase-A jobs as remote bundle pnpv2-20261117-phaseA (ops/jobs/rwprep_remote,
+                  writable release processed/pnpv2-20261117 only); needs raw-proof        -> <work>/phaseA
+  rgb-remote      compile + stage the one-job RGB publication bundle pnpv2-20261117-rgb (waits on the Phase-A state
+                  mirror)                                                                  -> <work>/rgb-remote
+  rgb-fetch       copy the small RGB bundle documents of the finished remote publication -> <work>/publication/S/rgb
+                  (then ``upload -- --view rgb`` publishes them to the canonical directory)
+
+Ticks: ``python -m ops.jobs.rwprep_remote tick --config <bundle>/dispatcher.json --apply --loop`` (from main).
+
 Queue rows never call this file; they use scripts/pnpv2_*.py. Status and next commands: scripts/pnpv2.py status.
 """
 
@@ -196,8 +207,103 @@ def upload(spec, a, argv):
     print(json.dumps({"uploaded": len(sent), "view": b.view}))
 
 
+def _remote_raw_verified(spec):
+    p = values(spec)
+    proof = Path(p["work"]) / "remote-raw-hashes.json"
+    m = json.loads(Path(p["manifest"]).read_text())
+    if not proof.is_file():
+        raise ValueError("run --entry raw-proof first: every remote raw copy must be verified before Phase A")
+    proofs = json.loads(proof.read_text())
+    if any(proofs.get(r["sha256"]) != r["sha256"] for r in m["episodes"]) or len(proofs) != len(m["episodes"]):
+        raise ValueError("remote raw proof differs from the canonical manifest")
+    return m
+
+
+def phase_a_remote(spec, a, argv):
+    """Phase A (ingest, native depth, FoundationStereo, SAM3) on the remote prep route; launches nothing."""
+    from ops.jobs import rwprep_remote
+    from ops.jobs.pnpv2_registration import STAGE_IDS
+
+    p = values(spec)
+    _check_data(spec, a)
+    _remote_raw_verified(spec)
+    out = Path(p["phase_a"])
+    if out.exists():
+        raise ValueError(f"{out} exists; the Phase-A bundle is immutable")
+    result = rwprep_remote.prepare([Path(p["prep_plan"])], out, rwprep_remote.RemoteClient(),
+                                   release=rwprep_remote_release(spec), stem=STAGE_IDS["phaseA"],
+                                   name=PHASE_A_BUNDLE)
+    print(json.dumps(result))
+
+
+PHASE_A_BUNDLE = "pnpv2-20261117-phaseA"
+
+
+def rwprep_remote_release(spec):
+    release = Path(values(spec)["remote_processed"]).name
+    if release != "pnpv2-20261117":
+        raise ValueError("pick-and-place-v2 writes only the pnpv2-20261117 processed release")
+    return release
+
+
+def rgb_remote(spec, a, argv):
+    """One-job remote RGB publication bundle; admitted by its tick only after every Phase-A job is done."""
+    import shutil
+
+    from ops.jobs import pnpv2_rgb, rwprep_remote
+
+    p = values(spec)
+    _check_data(spec, a)
+    config = json.loads((Path(p["phase_a"]) / "dispatcher.json").read_text())
+    jobs = json.loads(Path(config["jobs"]).read_text())
+    out = Path(p["work"]) / "rgb-remote"
+    if out.exists():
+        raise ValueError(f"{out} exists; the RGB bundle is immutable")
+    out.mkdir(parents=True)
+    shutil.copyfile(p["manifest"], out / "manifest.json")
+    job = pnpv2_rgb.remote_job(spec, out, config["remote"], [j["id"] for j in jobs])
+    result = rwprep_remote.stage([job], out, rwprep_remote.RemoteClient(), commit=config["commit"],
+                                 release=rwprep_remote_release(spec), name=pnpv2_rgb.RGB_BUNDLE,
+                                 image=config["image"], files=("manifest.json",))
+    print(json.dumps(result))
+
+
+def rgb_fetch(spec, a, argv):
+    """Copy the finished remote RGB bundle documents into the local staging directory (never the episodes)."""
+    import shlex
+
+    from ops.jobs import pnpv2_rgb
+    from ops.remote.access import RemoteClient
+    from s4d.rwlearn.pnpv2_publication import manifest_check
+
+    p = values(spec)
+    state = json.loads((Path(p["work"]) / "rgb-remote/state/state.json").read_text())["jobs"]
+    if (state.get(pnpv2_rgb.RGB_JOB) or {}).get("status") != "done":
+        raise ValueError("remote RGB publication job is not done")
+    local = Path(p["rgb_dir_local"])
+    if local.exists():
+        raise ValueError(f"{local} exists; publications are immutable")
+    remote = pnpv2_rgb.remote_out(spec)
+    script = ("import json,pathlib,sys; d=pathlib.Path(sys.argv[1]); "
+              "print(json.dumps({n:(d/n).read_text() for n in sys.argv[2:]}))")
+    docs = json.loads(RemoteClient().checked_ssh("python3 -I -c " + shlex.quote(script) + " " + shlex.join(
+        [remote, *pnpv2_rgb.DOCS]), idempotent=True).stdout)
+    m = manifest_check(json.loads(docs["manifest.json"]), spec)
+    if m != json.loads(Path(p["manifest"]).read_text()):
+        raise ValueError("remote RGB publication manifest differs from the ingest manifest")
+    store = yaml.safe_load(docs["store.yaml"])
+    if store.get("kind") != "compact" or len(store.get("paths", [])) != 100 or not all(
+            x.startswith(remote + "/episodes/") for x in store["paths"]):
+        raise ValueError("remote RGB store.yaml must name the 100 remote published episodes")
+    local.mkdir(parents=True)
+    for name, text in docs.items():
+        (local / name).write_text(text)
+    print(json.dumps({"out": str(local), "files": sorted(docs), "remote": remote}))
+
+
 ENTRIES = {"manifest": manifest, "rig-map": rig_map, "publish-rgb": publish_rgb, "raw-proof": raw_proof,
-           "snapshot": snapshot, "publish": publish, "upload": upload}
+           "snapshot": snapshot, "publish": publish, "upload": upload,
+           "phase-a-remote": phase_a_remote, "rgb-remote": rgb_remote, "rgb-fetch": rgb_fetch}
 
 
 def main(argv=None):

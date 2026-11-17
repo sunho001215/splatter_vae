@@ -511,10 +511,20 @@ def next_steps(spec, ev):
         "check-data": [f"{PY} scripts/pnpv2.py check-data"],
         "ingest": [f"write {p['arrival_doc']} (schema pick-and-place-v2-arrival/1: reviewed sam3_prompts, "
                    "robot_urdf_sha256, confirmed_by)", f"{producer} manifest"],
-        "phaseA": [f"{PY} scripts/realworld_prep_register.py --phase A --id-stem {STAGE_IDS['phaseA']} "
-                   f"--plan {p['prep_plan']} --out {p['phase_a']} {prep}",
-                   f"LOCAL HOST: launch-prep-controller.sh {p['phase_a']} (dsreset RUNBOOK section 3)"],
-        "rgb-publication": [f"{producer} publish-rgb -- --execute", f"{producer} upload -- --view rgb"],
+        # Remote route (ops/jobs/rwprep_remote, release pnpv2-20261117): driven from this container over SSH.
+        # The local-host route (realworld_prep_register.py + launch-prep-controller.sh) needs host Docker, canonical
+        # bind mounts and free local MIGs; it remains available as: {PY} scripts/realworld_prep_register.py --phase A
+        # --id-stem {STAGE_IDS['phaseA']} --plan <prep plan> --out <work>/phaseA {prep}.
+        "phaseA": [f"{producer} raw-proof   # every remote raw copy verified (once the upload finished)",
+                   f"{producer} phase-a-remote",
+                   f"{PY} -m ops.jobs.rwprep_remote tick --config {p['phase_a']}/dispatcher.json --apply --loop "
+                   "(detached, from main)",
+                   f"{producer} rgb-remote   # one-job RGB bundle; its tick admits it after all Phase-A jobs",
+                   f"{PY} -m ops.jobs.rwprep_remote tick --config {w}/rgb-remote/dispatcher.json --apply --loop "
+                   "(detached, from main)"],
+        "rgb-publication": [f"{producer} rgb-fetch   # after the remote RGB job is done",
+                            f"{producer} upload -- --view rgb",
+                            f"(local-host route instead: {producer} publish-rgb -- --execute; then upload)"],
         "rig": [f"{PY} scripts/realworld_dsreset_calibration.py plan --id-stem {STAGE_IDS['rig']} --task {TASK} "
                 f"--phase-config {p['phase_a']}/dispatcher.json --out {p['calib']} "
                 f"--work {p['remote_processed']}/calibration/{TASK} --upstream <calib-upstream>",

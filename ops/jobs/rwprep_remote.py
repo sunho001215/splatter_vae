@@ -32,6 +32,18 @@ RAW = '/home/compu/kaist/sunho/data/real_world'
 TOOLS = Path('/home/ws/ws/realworld-ops/pre/tools')
 IMAGE = 's4d-rwprep-f7e075f51c79:20261106'
 GIB = 2**30
+# Writable processed release -> required remote bundle-name prefix. Every other processed release stays read-only in
+# workers and planners. pick-and-place-v2 has its own release and job-id stem (v1 discontinuation prefixes).
+DEFAULT_RELEASE = 'dsreset-20261113'
+RELEASES = {'dsreset-20261113': 'dsreset-', 'pnpv2-20261117': 'pnpv2-20261117-'}
+RELEASE_STEMS = {'pnpv2-20261117': 'pnpv2-20261117-'}
+
+
+def release_of(config):
+    release = config.get('release', DEFAULT_RELEASE)
+    if release not in RELEASES:
+        raise ValueError('unknown processed release: '+str(release))
+    return release
 
 
 def established():
@@ -49,25 +61,51 @@ def rewrite(value, old, new):
     return value
 
 
-def prepare(plans, out, client, commit=None):
-    """Compile without canonical local aliases, stage in two batched uploads, launch nothing."""
-    import yaml
+def prepare(plans, out, client, commit=None, release=DEFAULT_RELEASE, stem=None, name=None):
+    """Compile without canonical local aliases, stage in two batched uploads, launch nothing.
+
+    ``release`` names the only writable processed release; ``name`` is the remote bundle name (default: the local
+    attachment directory name) and must carry the release's prefix; non-default releases require their own job stem.
+    """
     from scripts.realworld_prep_register import compile_plans
-    from ops.resources.gpu_guard import REMOTE_MIG_DEVICES
     out = Path(out).resolve()
-    commit = commit or subprocess.check_output(['git','-C',str(REPO),'rev-parse','HEAD'],text=True).strip()
-    remote = RW + '/configs/' + out.name
-    if not out.name.startswith('dsreset-'):
-        raise ValueError('bundle name must start with dsreset-')
+    name = name or out.name
+    if release not in RELEASES:
+        raise ValueError('unknown processed release: '+str(release))
+    if not name.startswith(RELEASES[release]):
+        raise ValueError('bundle name must start with '+RELEASES[release])
+    if release in RELEASE_STEMS and not str(stem or '').startswith(RELEASE_STEMS[release]):
+        raise ValueError('release '+release+' requires a job-id stem starting with '+RELEASE_STEMS[release])
     image = client.checked_ssh('docker image inspect --format '+shlex.quote('{{.Id}}')+' '+IMAGE,
                                idempotent=True).stdout.strip()
-    jobs = compile_plans(plans, out, RW+'/processed/dsreset-20261113', RAW)
+    processed = RW+'/processed/'+release
+    jobs = compile_plans(plans, out, processed, RAW, stem=stem)
+    return stage(jobs, out, client, commit, release=release, name=name, image=image)
+
+
+def stage(jobs, out, client, commit=None, release=DEFAULT_RELEASE, name=None, image=None, files=()):
+    """Bind compiled jobs to remote paths, publish source + bundle immutably; launch nothing.
+
+    ``files`` are extra local bundle files (relative to ``out``) published with the bundle (e.g. a manifest).
+    """
+    import yaml
+    from ops.resources.gpu_guard import REMOTE_MIG_DEVICES
+    out = Path(out).resolve()
+    name = name or out.name
+    if release not in RELEASES or not name.startswith(RELEASES[release]):
+        raise ValueError('bundle name must start with '+RELEASES.get(release, '<known release>'))
+    commit = commit or subprocess.check_output(['git','-C',str(REPO),'rev-parse','HEAD'],text=True).strip()
+    remote = RW + '/configs/' + name
+    image = image or client.checked_ssh('docker image inspect --format '+shlex.quote('{{.Id}}')+' '+IMAGE,
+                                        idempotent=True).stdout.strip()
+    processed = RW+'/processed/'+release
     for job in jobs:
         job['priority'] = -4
-        path = next(Path(x) for x in job['inputs'] if x.endswith('.yaml'))
+        bundled = [Path(x) for x in job['inputs'] if Path(x).is_relative_to(out)]
         # The server path emitted by the compiler is replaced along with the config paths.
         job.update(rewrite(job, out, remote))
-        job['inputs'][str(path).replace(str(out),remote)] = digest(path)
+        for path in bundled:
+            job['inputs'][str(path).replace(str(out),remote)] = digest(path)
     (out/'state').mkdir()
     server = yaml.safe_load((TOOLS/'rwprep/configs/rwprep_server.yaml').read_text())
     server.update(gpu_allowlist=list(REMOTE_MIG_DEVICES),
@@ -79,13 +117,16 @@ def prepare(plans, out, client, commit=None):
     config = dict(host='remote', image=image, commit=commit, jobs=str(out/'jobs.json'),
                   state_dir=str(out/'state'), remote=remote, code=code, tools_id=tools_id,
                   priority_file=priority_path('/home/ws/ws/splatter4d/runs/setup/rwprep-mig-priority.d',out/'state'))
+    if release != DEFAULT_RELEASE:  # dsreset bundles keep their established dispatcher documents
+        config['release'] = release
     validate(config,jobs)
     atomic(out/'jobs.json',jobs)
     # Keep a local plan for inspection; remote copy uses its own canonical config paths.
-    atomic(out/'prep-plan.json',rewrite(json.loads((out/'prep-plan.json').read_text()),out,remote))
+    if (out/'prep-plan.json').exists():
+        atomic(out/'prep-plan.json',rewrite(json.loads((out/'prep-plan.json').read_text()),out,remote))
     atomic(out/'dispatcher.json',config)
     remote_config={**config,'jobs':remote+'/jobs.json','state_dir':remote+'/state',
-        'server':remote+'/state/server.yaml','bundle':remote,'processed':RW+'/processed/dsreset-20261113',
+        'server':remote+'/state/server.yaml','bundle':remote,'processed':processed,
         'raw':RAW,'weights':RW+'/weights','tools':RW+'/tools/'+tools_id,
         'assets':RW+'/assets/validation-20261031','extra_readonly':[]}
     atomic(out/'remote-dispatcher.json',remote_config)
@@ -111,11 +152,12 @@ def prepare(plans, out, client, commit=None):
         publish_archive(client,archive,code,commit)
     archive=out/'bundle.tar'
     with tarfile.open(archive,'w') as tar:
-        for name in ('configs','state/server.yaml','jobs.json','prep-plan.json'):
-            tar.add(out/name,arcname=name)
+        for member in ('configs','state/server.yaml','jobs.json','prep-plan.json',*files):
+            if (out/member).exists():
+                tar.add(out/member,arcname=member)
         tar.add(out/'remote-dispatcher.json',arcname='dispatcher.json')
     publish_archive(client,archive,remote)
-    return {'registered':len(jobs),'launched':False,'config':str(out/'dispatcher.json')}
+    return {'registered':len(jobs),'launched':False,'config':str(out/'dispatcher.json'),'remote':remote}
 
 
 def publish_archive(client, archive, destination, expected_commit=''):
@@ -144,10 +186,12 @@ subprocess.run(['tar','-xf',src,'-C',dest],check=True)
     client.checked_ssh('python3 -I -c '+shlex.quote(script)+' '+shlex.join([incoming,destination,token,expected_commit]))
 
 
-def protect_processed(args, root):
+def protect_processed(args, root, release='dsreset-20261113'):
     """Only this new release is writable; symlink escapes hit read-only mounts."""
+    if release not in ('dsreset-20261113', 'pnpv2-20261117'):
+        raise ValueError('unknown processed release')
     parent = Path(root) / 'processed'
-    target = parent / 'dsreset-20261113'
+    target = parent / release
     if target.resolve() != Path(root).resolve() / 'processed' / target.name:
         raise ValueError('processed root must not alias another path or release')
     target.mkdir(parents=True, exist_ok=True)
@@ -212,7 +256,7 @@ if run('git','-C',spec['code'],'status','--porcelain','--untracked-files=no').st
 # Input verification can take time; recheck the deadline immediately before launch.
 if time.time()>spec['deadline']:
     print(json.dumps({'refused':['expired launch intent']}));sys.exit(20)
-args=protect_processed(job['docker_args'], spec['storage_root'])
+args=protect_processed(job['docker_args'], spec['storage_root'], spec.get('release', 'dsreset-20261113'))
 for path in spec.get('extra_readonly',[]):
     assert path.startswith('/home/compu/kaist/sunho/realworld/')
     args[2:2]=['--mount','type=bind,src='+path+',dst='+path+',readonly']
@@ -242,7 +286,7 @@ def launch_job(client, config, job, intent):
     if (Path(config['state_dir'])/'STOP').exists():
         raise RuntimeError('STOP requested')
     spec=dict(inputs=job['inputs'],code=config['code'],commit=config['commit'],
-              stop_path=config['remote']+'/state/STOP',storage_root=RW,
+              stop_path=config['remote']+'/state/STOP',storage_root=RW,release=release_of(config),
               worker_job=worker_path,deadline=intent['deadline'],extra_readonly=config.get('extra_readonly',[]),
               slot_guard=guard_payload(dict(gpu=intent['gpu'],gpu_need_bytes=int(job['gpu_gib']*GIB),
                   ram_bytes=int(job['ram_gib']*GIB),cpus=job['cpus'],disk_bytes=int(job.get('disk_gib',32)*GIB)),
@@ -465,8 +509,8 @@ print(json.dumps(out))
 
 def attach(remote, out, client, base):
     """Attach an already compiled remote candidate bundle; launch nothing."""
-    if not remote.startswith(RW+'/configs/dsreset-'):
-        raise ValueError('expected isolated dsreset bundle')
+    if not any(remote.startswith(RW+'/configs/'+prefix) for prefix in RELEASES.values()):
+        raise ValueError('expected isolated dsreset/pnpv2 bundle')
     script="import json,pathlib,sys; p=pathlib.Path(sys.argv[1]); print(json.dumps({n:json.loads((p/n).read_text()) for n in ('dispatcher.json','jobs.json')}))"
     docs=json.loads(client.checked_ssh('python3 -I -c '+shlex.quote(script)+' '+shlex.quote(remote),idempotent=True).stdout)
     out=Path(out).resolve();out.mkdir(parents=True,exist_ok=False);(out/'state').mkdir()
@@ -504,12 +548,12 @@ def planner(client,config,argv):
             's4d.gpu':'none'}
     for k,v in labels.items():args[2:2]=['--label',k+'='+v]
     source=GUARD_LIBRARY+'\ndata='+repr(data)+'\nargs='+repr(args)+'\n'+r'''
-args=protect_processed(args, STORAGE_ROOT)
+args=protect_processed(args, STORAGE_ROOT, RELEASE)
 verdict=decide(data)
 if not verdict['admit']:
     print(json.dumps(verdict));sys.exit(20)
 subprocess.run(args,check=True,timeout=280)
-'''.replace('STORAGE_ROOT',repr(RW))
+'''.replace('STORAGE_ROOT',repr(RW)).replace('RELEASE',repr(release_of(config)))
     command=launch_hold.locked('set -eu; '+launch_hold.check_shell()+'; python3 -I -c '+shlex.quote(source))
     return client.checked_ssh(command,timeout=300).stdout
 
@@ -518,11 +562,13 @@ def main():
     p=argparse.ArgumentParser(description=__doc__)
     sub=p.add_subparsers(dest='command',required=True)
     prep=sub.add_parser('prepare');prep.add_argument('--plan',type=Path,action='append',required=True);prep.add_argument('--out',type=Path,required=True)
+    prep.add_argument('--release',choices=sorted(RELEASES),default=DEFAULT_RELEASE);prep.add_argument('--id-stem');prep.add_argument('--name')
     run=sub.add_parser('tick');run.add_argument('--config',type=Path,required=True);run.add_argument('--apply',action='store_true');run.add_argument('--loop',action='store_true');run.add_argument('--max-launch',type=int,default=16)
     attach_p=sub.add_parser('attach');attach_p.add_argument('--remote',required=True);attach_p.add_argument('--out',type=Path,required=True);attach_p.add_argument('--base-config',type=Path,required=True)
     plan_p=sub.add_parser('plan');plan_p.add_argument('--config',type=Path,required=True);plan_p.add_argument('argv',nargs=argparse.REMAINDER)
     a=p.parse_args();client=RemoteClient()
-    if a.command=='prepare':print(json.dumps(prepare(a.plan,a.out,client)));return
+    if a.command=='prepare':
+        print(json.dumps(prepare(a.plan,a.out,client,release=a.release,stem=a.id_stem,name=a.name)));return
     if a.command=='attach':print(json.dumps(attach(a.remote,a.out,client,json.loads(a.base_config.read_text()))));return
     if a.command=='plan':
         argv=a.argv[1:] if a.argv[:1]==['--'] else a.argv
