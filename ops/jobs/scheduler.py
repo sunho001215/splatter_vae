@@ -1539,6 +1539,12 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
         if host_name == "remote" and release_invalid:
             continue
         release_job = host_name == "remote" and release_reservation.covers(release_hold, job)
+        if release_job:
+            # Release priority precedes every waiting row, including prep holds
+            # installed by an earlier campaign row in this same tick. Keep the
+            # shared policy intact for subsequent campaign admissions.
+            policy = PriorityReservations(policy.limits, policy.budgets, policy.slots, policy.remaining,
+                                          request=policy.request, messages=messages)
         held_back = host_name == "remote" and bool(release_hold) and not release_job
         if (host_name == "remote" and validate_verification(job, queued=True) is None
                 and (registry.parent.parent / "runs/setup/remote-hold-admissions").exists()):
@@ -1621,9 +1627,10 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
         if not policy.feasible(job):
             policy.log(job, 'infeasible on empty host')
             continue
-        if host_name == 'remote':
+        if host_name == 'remote' and not release_job:
             # Dispatch batches may outlive prep readiness changes. Re-read intents
-            # before each admission; these in-memory holds never constrain prep.
+            # before each campaign admission. The reserved release outranks pending
+            # prep; live prep quotas and exclusive GPU checks still apply below.
             from ops.jobs.prep_reservation import reserve as reserve_prep
             try:
                 reserve_prep(policy, prep_snapshot)

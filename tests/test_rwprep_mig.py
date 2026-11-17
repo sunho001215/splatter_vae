@@ -191,7 +191,7 @@ def test_remote_stop_drains_current_batch_offline(tmp_path, monkeypatch, stop_du
         return {'candidates':list(REMOTE_MIG_DEVICES), 'host':[]}
     parallel = SimpleNamespace(load=lambda *a: ({}, ''), snapshot=snapshot, decide=decide)
     monkeypatch.setattr(R, 'established', lambda: (None, parallel))
-    monkeypatch.setattr(R, 'guard_payload', lambda *a, **kw: {'input':{'cpu_thread_budget':320}})
+    monkeypatch.setattr(R, 'remote_host_policy', lambda *a, **kw: {'cpu_thread_budget':320})
     monkeypatch.setattr(release_reservation, 'reserved_gpus', lambda: set())
     def launch(*a):
         calls.append(a[2]['id'])

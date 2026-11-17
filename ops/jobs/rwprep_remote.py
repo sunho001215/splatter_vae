@@ -19,7 +19,7 @@ import time
 
 from ops.jobs.rwprep_mig import atomic, digest, validate, priority_path
 from ops.containers.slot_guard import SOURCE
-from ops.containers.rwprep_capacity import guard_payload
+from ops.containers.rwprep_capacity import guard_payload, remote_host_policy
 from ops.remote.access import RemoteClient
 
 LIVE_QUEUE = Path('/home/ws/ws/splatter4d/experiments/queue.yaml')
@@ -353,8 +353,7 @@ print(json.dumps(out))
                 # our quota budget. Preserve every RAM and disk check in decide().
                 decision=parallel.decide({**snap,'psi_cpu_some_avg60':0},policy,list(REMOTE_MIG_DEVICES),
                     int(j['gpu_gib']*GIB),int(j['ram_gib']*GIB),j['cpus'],int(j.get('disk_gib',32)*GIB),
-                    cpu_rule='quota',cpu_budget_threads=guard_payload(dict(gpu=next(iter(REMOTE_MIG_DEVICES)),
-                        gpu_need_bytes=1,ram_bytes=1,cpus=1),queue_path=LIVE_QUEUE)['input']['cpu_thread_budget'])
+                    cpu_rule='quota',cpu_budget_threads=remote_host_policy(LIVE_QUEUE)['cpu_thread_budget'])
                 candidates=[g for g in decision['candidates'] if g not in release_reservation.reserved_gpus()]
                 if not candidates:
                     blocked[j['id']]=decision['host'] or 'no fitting scheduler-accounted MIG';break

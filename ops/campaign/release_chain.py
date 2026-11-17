@@ -15,6 +15,8 @@ Release turnaround (user 2026-11-12; every gate step above is unchanged):
   POLL_SECONDS (no snapshot, no registry lock), ticking as soon as one stops (at least every MAX_QUIET_SECONDS for the
   live evidence sync); a job still waiting for admission is retried every PENDING_RETRY_SECONDS.
 - timing: the wall time of every stage is logged and written to runs/setup/release-timing/<short>.json.
+- admission: a verification job waiting ten minutes for capacity fails the chain and clears the reservation;
+  running verification jobs retain their normal execution deadline.
 """
 import fcntl
 import hashlib
@@ -52,6 +54,7 @@ HEARTBEAT_SECONDS = 60  # reservation renewal by a background thread (independen
 DEADLINE_SECONDS = release_reservation.MAX_LIFETIME_SECONDS - release_reservation.EXPIRY_SECONDS - 600
 MAX_QUIET_SECONDS = 240
 PENDING_RETRY_SECONDS = 15
+ADMISSION_TIMEOUT_SECONDS = 600  # fail and clear the reservation if a job cannot acquire capacity within ten minutes
 NATIVE_LOAD = 1.0  # remote driver load units of the native suite on its GPU
 ISOLATION_LOAD = 0.0  # the isolation checks take about a minute; memory and RAM are reserved, no load unit
 
@@ -161,6 +164,7 @@ class Release:
         scope = set(ids)
         launched_logged = set()
         stage_start = time.time()
+        pending_since = dict.fromkeys(ids, time.monotonic())
         while True:
             self.check_deadline()
             for m in jobs.tick(queue_path=Path(qpath), registry=ROOT / 'experiments/registry.jsonl', runs=ROOT / 'runs',
@@ -168,6 +172,15 @@ class Release:
                 log(m)
             state = jobs.read_registry(ROOT / 'experiments/registry.jsonl')
             status = {i: state.get(i, {}).get('status') for i in ids}
+            now = time.monotonic()
+            for i in ids:
+                if status[i] in (None, jobs.PENDING, 'crashed'):
+                    pending_since.setdefault(i, now)
+                    if now - pending_since[i] >= ADMISSION_TIMEOUT_SECONDS:
+                        raise SystemExit(f'{i}: capacity admission timeout ({ADMISSION_TIMEOUT_SECONDS} s); '
+                                         'failing the chain and clearing its reservation')
+                else:
+                    pending_since.pop(i, None)
             for i in ids:
                 if i not in launched_logged and status[i] in (jobs.RUNNING, 'sync_pending', jobs.DONE):
                     launched_logged.add(i)  # observed after the tick that launched it (an upper bound)
