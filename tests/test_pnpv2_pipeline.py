@@ -1,6 +1,7 @@
 """pick-and-place-v2 pipeline: arrival/check-data, evidence-gated waves, registrar dry run/execute, v1 isolation.
 
-Everything runs on a synthetic 100-episode fixture in tmp_path; no network, Robot PC, queue or registry access.
+Dataset fixtures use synthetic episodes in tmp_path. Registrar tests load local campaign
+helpers; the marked live-pause check reads coordinator files without writing them.
 """
 
 import hashlib
@@ -365,6 +366,7 @@ def arrived(spec, tmp_path):
     return report
 
 
+@pytest.mark.local_host_data  # reg._reviewed() loads runs/setup/tools from the local checkout.
 def test_dry_run_registers_only_the_calibration_independent_wave_first(spec, arrived, tmp_path):
     repo = make_repo(tmp_path)
     before = snapshot(repo)
@@ -379,6 +381,7 @@ def test_dry_run_registers_only_the_calibration_independent_wave_first(spec, arr
         reg.prepare(repo, spec, arrived, RELEASE, waves=["geometry"])
 
 
+@pytest.mark.local_host_data  # reg._reviewed() loads runs/setup/tools from the local checkout.
 def test_geometry_wave_waits_for_rig_phase_b_publication_and_scene(spec, arrived, tmp_path, monkeypatch):
     repo = make_repo(tmp_path)
     m = arrived["manifest"]
@@ -427,6 +430,7 @@ def test_register_refuses_without_arrived_data(spec, tmp_path):
     assert snapshot(repo) == before and not (tmp_path / "w").exists()
 
 
+@pytest.mark.local_host_data  # reg._reviewed() loads runs/setup/tools from the local checkout.
 def test_execute_appends_rows_behind_an_exact_pause_and_is_not_repeatable(spec, arrived, tmp_path, monkeypatch):
     repo = make_repo(tmp_path)
     record = reg.prepare(repo, spec, arrived, RELEASE)
@@ -452,6 +456,7 @@ def test_execute_appends_rows_behind_an_exact_pause_and_is_not_repeatable(spec, 
         reg.prepare(repo, spec, arrived, RELEASE, waves=["rgb"])
 
 
+@pytest.mark.local_host_data  # reg._reviewed() loads runs/setup/tools from the local checkout.
 def test_execute_refuses_outside_the_adopted_main(spec, arrived, tmp_path):
     repo = make_repo(tmp_path)
     record = reg.prepare(repo, spec, arrived, RELEASE)
@@ -469,6 +474,7 @@ def test_status_reports_progress_and_next_commands(spec, arrived):
     assert "wave:rgb" not in nxt  # check-data has not run in this evidence view
 
 
+@pytest.mark.local_host_data  # reg._reviewed() loads runs/setup/tools from the local checkout.
 def test_register_refuses_while_any_v1_row_is_resumable(spec, arrived, tmp_path):
     repo = make_repo(tmp_path)
     q = repo / "experiments/queue.yaml"
@@ -482,6 +488,7 @@ def test_register_refuses_while_any_v1_row_is_resumable(spec, arrived, tmp_path)
     assert reg.prepare(repo, spec, arrived, RELEASE)["waves"] == ["rgb"]
 
 
+@pytest.mark.local_host_data  # Reads the coordinator's live queue and admission pauses.
 def test_live_v1_pause_still_covers_every_v1_row_and_no_v2_row():
     """Read-only check against the coordinator's live files when present (skipped elsewhere)."""
     main = Path("/home/ws/ws/splatter4d")
