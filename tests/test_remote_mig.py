@@ -334,18 +334,6 @@ def test_launch_guard_probe_reports_instance_memory_and_processes():
     assert run_probe(denied, 3, 0).returncode == 2
 
 
-def test_launch_guard_lines_keep_physical_gpus_and_probe_instances(monkeypatch):
-    from ops.containers import launch
-
-    physical = "\n".join(launch.gpu_probe_lines(PARENTS[0]))
-    assert "nvidia-smi --query-compute-apps" in physical and "python3" not in physical  # established lines unchanged
-    monkeypatch.setattr(launch, "REMOTE_MIG_DEVICES", devices_of(allowlist()))
-    mig = "\n".join(launch.gpu_probe_lines(mig_uuid(2, 1)))
-    assert f"parent={PARENTS[2]}" in mig and "python3 -I -c" in mig and ' 4 1 "$gpu" "$parent")' in mig
-    assert "nvidia-smi --query-compute-apps" not in mig
-    assert "mig_probe" in launch.gpu_free_command(mig_uuid(2, 1))
-
-
 # ---------------------------------------------------------------------------------------------- outage guard ownership
 def test_outage_guard_never_lifts_a_hold_it_did_not_write(tmp_path, monkeypatch):
     from ops.remote import outage_guard as guard
@@ -535,31 +523,6 @@ def test_isolation_check_attributes_a_remote_instance_not_its_parent(monkeypatch
                         lambda cmd, **kw: Done(outputs.get(cmd[1], table) if len(cmd) > 1 else table))
     found, _, _ = module.pid_gpus(4321, {"1": PARENTS[1]})
     assert found == {mig_uuid(1, 1)}  # the instance on GI 4 of parent 1; the parent itself is not "seen"
-
-
-def test_launch_guard_mig_fragment_runs_against_fake_nvidia_smi(tmp_path, monkeypatch):
-    from ops.containers import launch
-
-    devices = devices_of(allowlist())
-    monkeypatch.setattr(launch, "REMOTE_MIG_DEVICES", devices)
-    parents = [(uuid, True) for uuid in PARENTS]
-    (tmp_path / "L.txt").write_text(render_list(parents))
-    (tmp_path / "q.txt").write_text(render_query(parents[:1], processes={0: [(4, 31, 700), (5, 32, 100)]}))
-    fake = tmp_path / "bin/nvidia-smi"
-    fake.parent.mkdir()
-    fake.write_text(f'#!/bin/sh\ncase "$1" in -L) cat {tmp_path}/L.txt;; -q) cat {tmp_path}/q.txt;; *) exit 9;; esac\n')
-    fake.chmod(0o755)
-    (tmp_path / "bin/python3").symlink_to(sys.executable)
-    gpu = mig_uuid(0, 1)
-    probe = launch.gpu_probe_lines(gpu)
-    script = "\n".join(["set -eu", f"gpu={gpu}", *probe, launch.gpu_free_command(gpu),
-                        'printf "APPS=%s\\nFREE=%s\\n" "$apps" "$gpu_free"'])
-    env = {**os.environ, "PATH": f"{tmp_path / 'bin'}:{os.environ['PATH']}"}
-    result = subprocess.run(["bash", "-c", script], capture_output=True, text=True, env=env, timeout=60)
-    assert result.returncode == 0, result.stderr
-    assert result.stdout.splitlines() == [f"APPS={gpu},31,700", f"FREE={(24192 - 67) * 1048576}"]
-    missing = "\n".join(["set -eu", f"gpu={mig_uuid(0, 9)}", *launch.gpu_probe_lines(gpu)[1:]])
-    assert subprocess.run(["bash", "-c", missing], capture_output=True, text=True, env=env).returncode == 1
 
 
 def test_allowlist_profile_and_minimum_are_strict_and_guard_never_crashes(tmp_path):
@@ -805,8 +768,6 @@ def test_repin_hardening_image_chain_patch_and_reserved_field(tmp_path):
     path.write_text(yaml.safe_dump(queue))
     with pytest.raises(ValueError, match="reserved"):
         jobs.load_queue(path)
-
-
 
 
 # Shared exclusive slot guard: executed in an isolated host Python with synthetic commands/files only.

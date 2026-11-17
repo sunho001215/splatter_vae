@@ -199,8 +199,19 @@ scripts/remote/sync_code.sh <commit>                     # ops/remote/access.py 
 # Tests (run targeted files; the full suite writes docs/tests.json evidence)
 CUDA_VISIBLE_DEVICES="$GPU4" .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_ops_layout.py tests/test_jobs.py
 CUDA_VISIBLE_DEVICES="$GPU4" .venv/bin/python -I scripts/run_tests.py
+# change-impact subset (development only, never acceptance): test files whose static closure contains a path changed
+# since main (committed, staged, unstaged or untracked); unchanged files that passed before are reused
+S4D_TEST_EVIDENCE_DIR=$PWD/runs/test-evidence CUDA_VISIBLE_DEVICES="$GPU4" .venv/bin/python -I scripts/run_tests.py --changed main --shards-cpu 4 --shards-gpu 1
+.venv/bin/python -I scripts/test_impact.py --base main               # dry run: the selection and why, nothing executed
 .venv/bin/ruff check s4d ops scripts tests
 ```
+
+`--changed BASE` and `--files` are subsets (`full_suite_passed` stays false); `--reuse` (their default) skips test
+files whose recorded pass has the same key: the sha256 of the file's dependency closure, the interpreter, torch, CUDA
+runtime, host and device names. Every run records the files that passed in `.cache/test-results` (or
+`S4D_TEST_RESULT_CACHE`, inside this or the main checkout's `.cache`). A complete run that reuses anything reports
+`full_suite_passed_with_reuse`, never `full_suite_passed`, so the long-work gate (`require_passed_tests`) is unchanged.
+The selection and widening rules are documented in `scripts/test_impact.py`.
 
 The release suite's `--partition local` selects `metaworld_data or local_host_data`; `--partition remote` selects
 `not (metaworld_data or local_host_data)`. Use `local_host_data` for tests needing local campaign-host files such as

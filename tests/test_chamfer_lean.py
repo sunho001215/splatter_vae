@@ -47,13 +47,20 @@ def test_nearest_neighbours_match_brute_force_on_every_backend(device):
 
 
 def test_unbuildable_kernel_falls_back_to_the_exact_tiles(monkeypatch):
+    """A CUDA device whose Triton kernel cannot build (an image without a C compiler) takes the exact tiles by default.
+    (Test audit 2026-11-17: the former CPU version never consulted the build record - CPU tensors always take the
+    tiles - so it repeated test_nearest_neighbours_match_brute_force_on_every_backend[cpu].)"""
+    if not torch.cuda.is_available():
+        pytest.fail("the native suite runs with a guarded GPU; CUDA must be available")
     g = torch.Generator().manual_seed(3)
     src, dst = torch.randn(2, 70, 3, generator=g), torch.randn(2, 41, 3, generator=g)
-    monkeypatch.setattr(chamfer_mod, "_FUSED_OK", {"cpu": False})
     ref_d, ref_i = _brute(src.double(), dst.double())
+    src, dst = src.cuda(), dst.cuda()
+    monkeypatch.setitem(chamfer_mod._FUSED_OK, str(src.device), False)  # the build probe failed on this device
+    monkeypatch.setattr(chamfer_mod, "_nearest_kernel", None, raising=False)  # launching it would raise
     d, i = nearest_neighbours(src, dst)
-    assert torch.equal(i, ref_i)
-    torch.testing.assert_close(d.double(), ref_d, atol=1e-5, rtol=1e-5)
+    assert d.is_cuda and torch.equal(i.cpu(), ref_i)
+    torch.testing.assert_close(d.cpu().double(), ref_d, atol=1e-5, rtol=1e-5)
 
 
 def test_chamfer_value_and_gradient_equal_the_dense_min_formulation():

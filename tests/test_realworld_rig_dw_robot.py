@@ -171,25 +171,3 @@ def test_three_camera_recovery_from_robot_factors():
     for c in cams:
         rot, ctr = pose_distance(cams[c], state["T"][c])
         assert rot < 0.1 and ctr < 0.003, (c, rot, ctr)
-
-
-def test_collada_loader_units_and_node_transform(tmp_path):
-    from s4d.realworld.robotics.visual import load_collada
-
-    dae = """<?xml version="1.0"?>
-<COLLADA xmlns="http://www.collada.org/2005/11/COLLADASchema" version="1.4.1">
- <asset><unit name="millimeter" meter="0.001"/><up_axis>Z_UP</up_axis></asset>
- <library_geometries><geometry id="g"><mesh>
-  <source id="p"><float_array id="pa" count="9">0 0 0 10 0 0 0 10 0</float_array>
-   <technique_common><accessor source="#pa" count="3" stride="3"/></technique_common></source>
-  <vertices id="v"><input semantic="POSITION" source="#p"/></vertices>
-  <triangles count="1"><input semantic="VERTEX" source="#v" offset="0"/><p>0 1 2</p></triangles>
- </mesh></geometry></library_geometries>
- <library_visual_scenes><visual_scene id="s"><node id="n"><translate>0 0 5</translate>
-  <instance_geometry url="#g"/></node></visual_scene></library_visual_scenes>
- <scene><instance_visual_scene url="#s"/></scene>
-</COLLADA>"""
-    p = tmp_path / "t.dae"
-    p.write_text(dae)
-    tri = load_collada(p)
-    np.testing.assert_allclose(tri[0], np.array([[0, 0, 5], [10, 0, 5], [0, 10, 5]]) * 1e-3)

@@ -40,22 +40,9 @@ def test_far4_version_differs_from_its_far3_profile_only_in_render_far(name):
     assert _differ(base, far4) == {"render.far": (3.0, 4.0)}
     assert far4["render.near"] == 0.05 and far4["loss.depth_valid_far"] is True  # validity follows render.far
     assert far4["data.regime"] == "droid_largescale" and far4["aug.synth_camera_rig"] == "training_cameras"
-
-
-def test_vits_far4_relates_to_csw4_far4_exactly_as_vits_to_csw4():
-    (csw4, csw4_far4), (vits, vits_far4) = ([flatten(load_config([p])) for p in VERSIONS[n]] for n in ("csw4", "vits"))
-    assert _differ(csw4_far4, vits_far4) == _differ(csw4, vits) and "render.far" not in _differ(csw4, vits)
-
-
-@pytest.mark.parametrize("name", VERSIONS)
-def test_far4_versions_pass_the_geometry_guards(name):
-    from s4d.train.augment import synth_camera_rig
-    from s4d.train.loop import anchor_statistics_path
-
-    cfg = load_config([VERSIONS[name][1]])
-    assert synth_camera_rig(cfg) == "training_cameras"
-    with pytest.raises(ValueError, match="needs model.anchor_stats"):
-        anchor_statistics_path(cfg)
+    # Hence (test audit 2026-11-17) the far4 profiles relate to each other exactly as their far-3.0 profiles do, and
+    # pass the far-independent geometry guards (synth_camera_rig, anchor_statistics_path read no render.* key) exactly
+    # as tests/test_droid_{csw4,vits}_profile.py::test_profile_passes_the_geometry_guards check for the far-3.0 files.
 
 
 def test_metaworld_configurations_keep_far_3():
