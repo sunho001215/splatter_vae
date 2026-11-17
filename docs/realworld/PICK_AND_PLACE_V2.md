@@ -58,6 +58,24 @@ the established input resolvers; the registrar checks `needed_inputs` and host r
    and lift `pnpv2-await-placement-20261117` for them. These rows start while calibration/Phase B continue.
 5. When the geometry wave is ready, repeat step 4 with `--wave geometry`.
 
+## Remote Phase-A route (2026-11-18)
+
+The local-host controller route needs the host Docker daemon, the canonical `/home/compu/...` bind mounts and free
+local MIGs. From the campaign container, Phase A and the RGB publication therefore run on the REMOTE prep route
+(`ops/jobs/rwprep_remote.py`, the drawer-open-v2 SAM3/Phase-B route), with the processed release
+`pnpv2-20261117` as the only writable processed directory (`--release`; dsreset bundles keep `dsreset-20261113`):
+
+1. `--entry raw-proof` once the raw upload is complete (every remote copy's sha256 equals the manifest).
+2. `--entry phase-a-remote`: 100 jobs `pnpv2-20261117-prepA-<episode>` (ingest, native depth, FoundationStereo,
+   SAM3), remote bundle `pnpv2-20261117-phaseA`, local attachment `<work>/phaseA` (what `status` reads).
+3. `--entry rgb-remote`: one job `pnpv2-20261117-rgbpub-pick-and-place-v2-S` (bundle `pnpv2-20261117-rgb`, attachment
+   `<work>/rgb-remote`). Its tick admits it only when the Phase-A state mirror marks all 100 jobs done; it runs
+   `python -m ops.jobs.pnpv2_rgb remote` in the prep image: the same export/contracts/gate as `publish-rgb`, written
+   into `<remote processed>/learning-inputs/pick-and-place-v2/S/rgb` through a private staging directory.
+4. Ticks, detached, from main: `python -m ops.jobs.rwprep_remote tick --config <bundle>/dispatcher.json --apply --loop`.
+5. `--entry rgb-fetch` copies only the bundle documents (never the episodes) into `<work>/publication/S/rgb`, then
+   `--entry upload -- --view rgb` publishes them to the canonical directory with the receipt `status` checks.
+
 ## Guarantees
 
 - No row exists before check-data passes on the real recordings; each wave only after its inputs exist.
