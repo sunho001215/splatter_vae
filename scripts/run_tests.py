@@ -308,6 +308,23 @@ def full_suite_passed(*, targeted, code, counts, problems):
             and not any(counts[kind] for kind in ("failed", "error", "skipped")))
 
 
+def foreign_checkout(repository=REPO, cwd=None):
+    """The git checkout containing the working directory when it is not this runner's own checkout, else None.
+
+    A subset run selects, executes and writes evidence for the checkout of the runner file, whatever the working
+    directory: started from another checkout it would judge and overwrite the wrong tree (2026-11-18: a --changed run
+    meant for one worktree rewrote another worktree's docs/tests.json and dirtied its release)."""
+    try:
+        top = subprocess.run(["git", "-C", str(cwd or os.getcwd()), "rev-parse", "--show-toplevel"],
+                             capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if top.returncode != 0 or not top.stdout.strip():
+        return None  # not inside a git checkout
+    found = Path(top.stdout.strip()).resolve()
+    return None if found == Path(repository).resolve() else found
+
+
 def suite_acceptance(*, mode, targeted, code, counts, problems, executed, reused_tests, selected, collected):
     """(full_suite_passed, full_suite_passed_with_reuse, partition_passed) of a run.
 
@@ -356,7 +373,7 @@ class ImpactState:
         import test_impact
 
         self.selection = test_impact.select(self.graph(), test_impact.changed_files(self.base, REPO))
-        self.selection["base"] = self.base
+        self.selection.update(base=self.base, checkout=str(REPO))
         return self.selection
 
     def plan(self, selected, gpu_mapping, host):
@@ -459,6 +476,11 @@ def main():
     ap.add_argument("--worker", type=Path, help=argparse.SUPPRESS)
     ap.add_argument("--collect", action="store_true", help=argparse.SUPPRESS)
     options = ap.parse_args()
+    if not options.worker and (options.files is not None or options.changed is not None or options.plan):
+        other = foreign_checkout()
+        if other is not None:
+            ap.error(f"this runner belongs to {REPO} but runs from the checkout {other}; "
+                     f"run {other / 'scripts/run_tests.py'} there (or cd {REPO})")
     from ops.resources.gpu_guard import HOST_NAME, validate_runtime_path
     if not options.worker:
         output = validate_runtime_path(Path(options.output_dir))
@@ -500,7 +522,9 @@ def main():
     source_before = source_fingerprints()
     problems = []
     log_path = output / "tests.log"
-    log_path.write_text(f"Collecting authoritative suite; CPU budget={budget}, CPU shards={cpu}, GPU shards={gpu}\n")
+    head = subprocess.run(["git", "-C", str(REPO), "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+    log_path.write_text(f"Checkout {REPO} at {head or 'unknown'}\n"
+                        f"Collecting authoritative suite; CPU budget={budget}, CPU shards={cpu}, GPU shards={gpu}\n")
 
     def log(message):
         print(message, flush=True)
@@ -543,18 +567,15 @@ def main():
         log(f"Change impact since {options.changed}: {len(selection['changed'])} changed path(s), "
             f"{len(selection['files'])}/{selection['total_files']} test files selected"
             + (" (complete suite)" if selection["all"] else ""))
-        if not selection["files"]:
-            report = {"started_utc": started, "python": sys.version, "torch": torch.__version__, "host": HOST_NAME,
-                      "exit_code": 0, "counts": dict.fromkeys(KINDS, 0), "total": 0, "collected_total": 0,
-                      "full_suite_passed": False, "selection": reuse.report_selection(), "problems": [],
-                      "release_gate": {"version": 1, "accepted": False, "mode": None, "reasons": [
-                          "no test selected: evidence for unchanged sources stays valid; otherwise run the suite"]},
-                      "duration_seconds": time.perf_counter() - clock}
-            (output / "tests.json").write_text(json.dumps(report, indent=2))
-            log("No test file depends on the changed paths; nothing to run.")
-            return 0
-    collection_files = options.files or (reuse.selection["files"] if reuse.selection else ["tests/"])
-    collect_code, collection, _, timed_out = invoke("collection", collection_files, budget, True)
+    # Nothing selected still yields a complete, fresh report for this checkout (source fingerprints, release-gate verdict:
+    # an inert-only change set is accepted as selective from the baseline), never a stub (2026-11-18).
+    nothing_selected = reuse.selection is not None and not reuse.selection["files"]
+    if nothing_selected:
+        log("No test file depends on the changed paths; nothing to run (the release gate still judges the change set).")
+        collect_code, collection, timed_out = 0, {"nodeids": [], "problems": []}, False
+    else:
+        collection_files = options.files or (reuse.selection["files"] if reuse.selection else ["tests/"])
+        collect_code, collection, _, timed_out = invoke("collection", collection_files, budget, True)
     collected = collection.get("nodeids", []) if collection else []
     (output / "collected.json").write_text(json.dumps(collected, indent=2))
     if collect_code or not collection or collection.get("problems") or timed_out:
@@ -565,7 +586,7 @@ def main():
     # on the local host. Only the combination of both is a complete suite (full_suite_passed stays false here).
     mode = options.partition or ("remote" if HOST_NAME == "remote" else "all")
     marked = []
-    if mode != "all" and not problems:
+    if mode != "all" and not problems and not nothing_selected:
         marked_code, marked_result, _, marked_timeout = invoke("collection-marked", collection_files, budget, True,
                                                                marker=("-m", MARKER))
         marked = marked_result.get("nodeids", []) if marked_result else []
@@ -606,10 +627,10 @@ def main():
         by_index.update(zip((shard["index"] for shard in parallel),
                             pool.map(lambda shard: run(shard, threads), parallel)))
     executed = [by_index[shard["index"]] for shard in shards]
-    if executed_nodes or not reuse.reused:
+    if executed_nodes or not (reuse.reused or nothing_selected):
         counts, completeness = validate_completeness(executed_nodes, [(r[0], r[1]) for r in executed])
         problems.extend(completeness)
-    else:  # every selected file reused a recorded pass: nothing executed, nothing to validate
+    else:  # nothing selected, or every selected file reused a recorded pass: nothing executed, nothing to validate
         counts = dict.fromkeys(KINDS, 0)
     for shard, result in zip(shards, executed):
         shard["seconds"] = result[1].get("duration_seconds", 0) if result[1] else 0
@@ -620,8 +641,9 @@ def main():
                                 output / "tests.junit.xml"))
     with log_path.open("a") as stream:
         for name in ["collection", *(f"shard-{s['index']}" for s in shards)]:
-            stream.write(f"\n===== {name} =====\n")
-            stream.write((output / name / "tests.log").read_text())
+            if (output / name / "tests.log").is_file():  # no collection when nothing was selected
+                stream.write(f"\n===== {name} =====\n")
+                stream.write((output / name / "tests.log").read_text())
     for shard, (_, result, _, _) in zip(shards, executed):
         junit = output / f"shard-{shard['index']}" / "tests.junit.xml"
         if result and junit.is_file():
@@ -648,7 +670,8 @@ def main():
         mode=mode, targeted=targeted, code=code, counts=counts, problems=problems, executed=len(executed_nodes),
         reused_tests=reuse.reused_tests, selected=len(selected), collected=len(collected))
     report = {
-        "started_utc": started, "python": sys.version, "torch": torch.__version__,
+        "started_utc": started, "checkout": str(REPO), "head": head or None, "python": sys.version,
+        "torch": torch.__version__,
         "cuda_runtime": torch.version.cuda, "host": HOST_NAME,
         "expected_commit": os.environ.get("S4D_EXPECTED_COMMIT"),
         "expected_image_digest": os.environ.get("S4D_IMAGE_DIGEST"), "gpu_mapping": gpu_mapping,

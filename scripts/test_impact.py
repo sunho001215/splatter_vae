@@ -539,6 +539,10 @@ def select(graph: Graph, changed: list[str]) -> dict:
         for path in widened[:3]:
             add(test, f"widen:{path}")
     selected = sorted(reasons)
+    # invariant (2026-11-18): every changed test file of this tree selects itself, whatever else the change set holds
+    missed = [p for p in changed if p in tests and p not in reasons]
+    if missed:
+        raise RuntimeError(f"changed test files were not selected: {missed}")
     return {"files": selected, "all": bool(tests) and len(selected) == len(tests), "total_files": len(tests),
             "changed": list(changed), "global": global_hits, "protected": protected_hits, "widened": widened,
             "unattributed": unattributed, "guard_only": guard_only,

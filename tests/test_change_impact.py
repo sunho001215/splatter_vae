@@ -111,6 +111,7 @@ def test_selection_rules(repo, changed, expected):
     plan = selected(repo, *changed)
     tests = set(impact.suite_files(impact.Tree(repo)))
     assert set(plan["files"]) == (tests if expected == "all" else expected)
+    assert {p for p in changed if p in tests} <= set(plan["files"])  # a changed test file always selects itself
     assert plan["all"] is (expected == "all")
     if expected == set():
         assert plan["unattributed"] == changed
@@ -300,3 +301,19 @@ def test_dry_run_cli_prints_the_selection(repo, monkeypatch, capsys):
     plan = json.loads(capsys.readouterr().out)
     assert plan["files"] == ["tests/test_helper_user.py", "tests/test_scope.py", "tests/test_three.py"]
     assert plan["changed"] == ["s4d/c.py"]
+
+
+def test_subset_runs_refuse_to_start_from_another_checkout(repo, tmp_path):
+    """2026-11-18: a --changed run started from the wrong working directory judged and rewrote another worktree's
+    evidence. The runner names its checkout and refuses a working directory inside a different one."""
+    assert runner.foreign_checkout(REPO, cwd=REPO) is None
+    assert runner.foreign_checkout(REPO, cwd=Path(REPO, "tests")) is None
+    assert runner.foreign_checkout(REPO, cwd=repo) == repo.resolve()
+    assert runner.foreign_checkout(REPO, cwd="/") is None  # outside any checkout: the runner's own tree is unambiguous
+    evidence = Path(REPO, "docs", "tests.json")  # (separate segments: no path literal of this checkout's docs tree)
+    before = evidence.stat().st_mtime_ns if evidence.exists() else None
+    process = subprocess.run([sys.executable, "-I", str(REPO / "scripts/run_tests.py"), "--changed", "HEAD", "--plan"],
+                             cwd=repo, capture_output=True, text=True, timeout=120)
+    assert process.returncode == 2 and "runs from the checkout" in process.stderr, process.stderr
+    assert not list(repo.rglob("tests.json")) and not list(repo.rglob("tests.log"))  # nothing written in either tree
+    assert (evidence.stat().st_mtime_ns if evidence.exists() else None) == before
