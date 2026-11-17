@@ -423,7 +423,7 @@ class ImpactState:
                 out[name] = out[name][:limit]
         return out
 
-    def gate(self, report, executed_nodes, collected, output):
+    def gate(self, report, executed_nodes, collected, output, passed=()):
         """The release-gate verdict (scripts/test_gate.py) and, for a complete local run on a clean commit, its baseline
         record. Never raises: an error refuses the selective mode and leaves a complete run's verdict to the report."""
         try:
@@ -433,7 +433,7 @@ class ImpactState:
             baselines = test_gate.Baselines(test_impact.cache_root(REPO))
             tests = test_impact.suite_files(self.graph().tree) if self.base is not None else []
             verdict = test_gate.verdict(report, repo=REPO, baselines=baselines, current_tests=tests, base=self.base,
-                                        executed=executed_nodes, selection=self.selection)
+                                        executed=executed_nodes, selection=self.selection, passed=list(passed))
         except Exception as exc:  # noqa: BLE001
             self.log(f"Release gate failed ({type(exc).__name__}: {exc})")
             complete = report.get("full_suite_passed") is True
@@ -697,7 +697,14 @@ def main():
     # Release gate (user 2026-11-17 ~23:10, scripts/test_gate.py): a complete run, or a selective run proven equivalent
     # to one. An accepted selective report is the composition executed + exact-key reused + baseline-carried tests, so
     # every existing consumer of full_suite_passed (the launch gate, the scheduler, adoption checks) accepts it.
-    gate = reuse.gate(report, executed_nodes, collected, output)
+    try:  # node-level passes: counts also count unittest subtest reports, so they never equal executed node ids
+        import test_impact
+
+        passed_nodes = test_impact.passed_nodes([o for _, result, _, _ in executed if result
+                                                 for o in result.get("outcomes", [])])
+    except Exception:  # noqa: BLE001 - malformed worker evidence: no node counts as passed (selective refused)
+        passed_nodes = []
+    gate = reuse.gate(report, executed_nodes, collected, output, passed=passed_nodes)
     report["complete_suite_executed"] = report["full_suite_passed"]
     if gate.get("accepted") and gate.get("mode") == "selective":
         report["run_counts"] = counts

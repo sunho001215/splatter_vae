@@ -143,12 +143,14 @@ class Baselines:
 
 # ---------------------------------------------------------------------------------------------------- verdict
 def verdict(report: dict, *, repo: Path, baselines: Baselines | None, current_tests: list[str], base: str | None,
-            executed: list[str], selection: dict | None = None) -> dict:
+            executed: list[str], selection: dict | None = None, passed: list[str] | None = None) -> dict:
     """The release-gate verdict of a finished run (``report`` as run_tests builds it, before the gate fields).
 
     ``executed`` are the node ids this run executed (all reported passing when the run passed), ``current_tests`` the
     checkout's test files, ``base`` the --changed BASE (None for a run without one), ``selection`` the complete
-    (untruncated) test_impact.select result of this run."""
+    (untruncated) test_impact.select result of this run, ``passed`` the node ids whose setup, call and teardown passed
+    with no failed or skipped subtest (test_impact.passed_nodes of the worker outcomes). Tests are counted by node id:
+    ``counts`` also counts subtest reports, so it never equals the number of executed nodes (2026-11-18)."""
     reasons: list[str] = []
     candidate = {"head": _head(repo), "source_digest": source_digest(report.get("source_sha256") or {})}
     if base is None:
@@ -198,8 +200,10 @@ def verdict(report: dict, *, repo: Path, baselines: Baselines | None, current_te
         reasons.append(f"result reuse failed ({reuse['error']})")
     reused = {item["file"]: item["tests"] for item in reuse.get("reused_files", [])}
     counts = report.get("counts") or {}
-    if counts.get("passed") != len(executed) or any(counts.get(kind) for kind in ("failed", "error", "skipped")):
-        reasons.append("executed tests did not all pass")
+    not_passed = sorted(set(executed) - set(passed or []))
+    if not_passed or any(counts.get(kind) for kind in ("failed", "error", "skipped")):
+        reasons.append(f"executed tests did not all pass ({len(not_passed)} of {len(executed)} node ids without a "
+                       "complete pass)" + (f", e.g. {not_passed[0]}" if not_passed else ""))
     if len(executed) + sum(reused.values()) != report.get("collected_total"):
         reasons.append("selected tests are neither executed nor reused")
     selected = set(selection.get("files", []))
@@ -226,12 +230,18 @@ def _head(repo: Path) -> str | None:
         return None
 
 
-def accepted(report: dict, sources: dict | None = None) -> tuple[bool, str | None, list[str]]:
+def accepted(report: dict, sources: dict | None = None,
+             checkout: Path | None = None) -> tuple[bool, str | None, list[str]]:
     """The acceptance function for adoption and release checks: (accepted, "full"|"selective", reasons).
 
-    A report without ``release_gate`` (before 2026-11-17) is accepted as a complete suite exactly as before."""
+    A report without ``release_gate`` (before 2026-11-17) is accepted as a complete suite exactly as before. A report
+    naming its checkout (``checkout``, since 2026-11-18) must name ``checkout`` when one is given; a selective report's
+    counts must be its executed + reused + carried node ids."""
     counts = report.get("counts") or {}
     reasons = []
+    if checkout is not None and report.get("checkout") is not None and \
+            Path(report["checkout"]).resolve() != Path(checkout).resolve():
+        reasons.append(f"evidence of another checkout ({report['checkout']})")
     if report.get("full_suite_passed") is not True or report.get("exit_code") != 0:
         reasons.append("no accepted suite")
     if any(counts.get(kind, 1) for kind in ("failed", "error", "skipped")) or counts.get("passed", 0) < 1:
@@ -242,7 +252,8 @@ def accepted(report: dict, sources: dict | None = None) -> tuple[bool, str | Non
         mode = gate.get("mode")
         if gate.get("accepted") is not True or mode not in ("full", "selective"):
             reasons.append("release gate refused: " + "; ".join(gate.get("reasons") or ["no verdict"]))
-        if mode == "selective" and report.get("complete_suite_executed") is not False:
+        if mode == "selective" and (report.get("complete_suite_executed") is not False or counts.get("passed") != sum(
+                gate.get(name, 0) for name in ("executed_tests", "reused_tests", "carried_tests"))):
             reasons.append("inconsistent selective report")
         if mode == "full" and report.get("complete_suite_executed", True) is not True:
             reasons.append("inconsistent complete report")
@@ -263,15 +274,18 @@ def main(argv: list[str] | None = None) -> int:
     base.add_argument("--commit", default="HEAD")
     options = ap.parse_args(argv)
     if options.command == "check":
-        report = json.loads((options.evidence / "tests.json").read_text())
+        path = (options.evidence / "tests.json").resolve()
+        report = json.loads(path.read_text())
         sources = None
         if not options.any_sources:
             from _bootstrap import source_fingerprints
 
             sources = source_fingerprints()
-        ok, mode, reasons = accepted(report, sources)
-        print(json.dumps({"accepted": ok, "mode": mode, "reasons": reasons,
-                          "release_gate": report.get("release_gate")}, indent=1))
+        ok, mode, reasons = accepted(report, sources, REPO)
+        gate = report.get("release_gate") or {}
+        print(json.dumps({"accepted": ok, "mode": mode, "reasons": reasons, "evidence": str(path),
+                          "checkout": str(REPO), "report_checkout": report.get("checkout"),
+                          "report_gate": {k: gate.get(k) for k in ("accepted", "mode", "reasons")}}, indent=1))
         return 0 if ok else 1
     commit = _git(REPO, "rev-parse", "--verify", f"{options.commit}^{{commit}}")
     report = json.loads((options.evidence / "tests.json").read_text())

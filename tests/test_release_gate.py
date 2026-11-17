@@ -67,7 +67,7 @@ def baseline(repo, tmp_path):
     return SimpleNamespace(commit=commit, store=store, report=report, ids=ids)
 
 
-def run(repo, baseline, *, commit=True, reused=(), mutate=None, base=None):
+def run(repo, baseline, *, commit=True, reused=(), mutate=None, base=None, passed=None):
     """Commit the candidate, select, and build the selective run's report and verdict."""
     if commit:
         git(repo, "add", "-A")
@@ -86,7 +86,8 @@ def run(repo, baseline, *, commit=True, reused=(), mutate=None, base=None):
     if mutate:
         mutate(report, selection, executed)
     return gate.verdict(report, repo=repo, baselines=baseline.store, current_tests=gate.test_impact.suite_files(tree),
-                        base=base, executed=executed, selection=selection)
+                        base=base, executed=executed, selection=selection,
+                        passed=executed if passed is None else passed(executed))
 
 
 def test_selective_run_is_accepted_with_executed_reused_and_carried_tests(repo, baseline):
@@ -201,8 +202,9 @@ def evidence(**over):
 @pytest.mark.parametrize("report,expected", [
     (evidence(), (True, "full")),  # before the gate: a complete suite exactly as before
     (evidence(complete_suite_executed=True, release_gate={"accepted": True, "mode": "full"}), (True, "full")),
-    (evidence(complete_suite_executed=False, release_gate={"accepted": True, "mode": "selective"}),
-     (True, "selective")),
+    (evidence(complete_suite_executed=False, release_gate={"accepted": True, "mode": "selective", "executed_tests": 2,
+                                                          "reused_tests": 1, "carried_tests": 2}), (True, "selective")),
+    (evidence(complete_suite_executed=False, release_gate={"accepted": True, "mode": "selective"}), (False, None)),
     (evidence(complete_suite_executed=False, release_gate={"accepted": False, "mode": None, "reasons": ["x"]}),
      (False, None)),
     (evidence(complete_suite_executed=True, release_gate={"accepted": True, "mode": "selective"}), (False, None)),
@@ -235,3 +237,55 @@ def test_runner_gate_errors_never_accept_a_selective_run(monkeypatch, tmp_path):
     verdict = state.gate({"full_suite_passed": False}, [], [], tmp_path)
     assert verdict["accepted"] is False and verdict["mode"] is None and "graph" in verdict["reasons"][0]
     assert state.gate({"full_suite_passed": True}, [], [], tmp_path)["mode"] == "full"
+
+
+def test_subtests_never_change_node_level_accounting(repo, baseline, tmp_path):
+    """2026-11-18: a selective run was refused because ``counts`` (which also counts unittest subtest reports: 2661)
+    was compared with the executed node ids (2634). Acceptance is decided per node id."""
+    from tests.test_run_tests_sharding import synthetic_worker
+
+    source = ("import unittest\nclass T(unittest.TestCase):\n    def test_parent(self):\n        for i in range(3):\n"
+              "            with self.subTest(i=i):\n                self.assertTrue(True)\n")
+    _, payload = synthetic_worker(tmp_path, source)
+    assert payload["counts"]["passed"] > len(payload["outcomes"]) == 1  # subtest reports inflate counts
+    assert gate.test_impact.passed_nodes(payload["outcomes"]) == [payload["outcomes"][0]["nodeid"]]
+    write(repo, "s4d/a.py", "A = 7\n")
+    inflated = run(repo, baseline, mutate=lambda r, s, e: r["counts"].update(passed=r["counts"]["passed"] + 3))
+    assert inflated["accepted"] and inflated["executed_tests"] == 2, inflated["reasons"]
+    failed_subtest = run(repo, baseline, commit=False, passed=lambda executed: executed[1:])
+    assert not failed_subtest["accepted"] and any("did not all pass" in r for r in failed_subtest["reasons"])
+
+
+def runner_report(tmp_path, **over):
+    """A report as scripts/run_tests.py writes it (refused selective run by default)."""
+    report = {"checkout": str(gate.REPO), "full_suite_passed": False, "complete_suite_executed": False,
+              "exit_code": 0, "source_sha256": SOURCES, "counts": {"passed": 2661, "error": 0, "failed": 0, "skipped": 0},
+              "release_gate": {"accepted": False, "mode": None, "reasons": ["executed tests did not all pass"]}}
+    report.update(over)
+    (tmp_path / "tests.json").write_text(json.dumps(report))
+    return report
+
+
+def test_check_agrees_with_the_report_verdict(tmp_path, capsys):
+    """2026-11-18: ``check`` must refuse every report whose own verdict refuses, and evidence of another checkout."""
+    def check():
+        code = gate.main(["check", "--evidence", str(tmp_path), "--any-sources"])
+        return code, json.loads(capsys.readouterr().out)
+
+    runner_report(tmp_path)
+    code, out = check()
+    assert code == 1 and not out["accepted"] and out["report_gate"]["accepted"] is False
+    assert out["evidence"] == str((tmp_path / "tests.json").resolve()) and out["checkout"] == str(gate.REPO)
+    selective = {"accepted": True, "mode": "selective", "executed_tests": 3, "reused_tests": 1, "carried_tests": 6}
+    runner_report(tmp_path, full_suite_passed=True, counts={"passed": 10, "error": 0, "failed": 0, "skipped": 0},
+                  release_gate=selective)
+    assert check()[0] == 0
+    runner_report(tmp_path, full_suite_passed=True, counts={"passed": 11, "error": 0, "failed": 0, "skipped": 0},
+                  release_gate=selective)  # composed counts disagree with the verdict
+    assert check()[0] == 1
+    runner_report(tmp_path, full_suite_passed=True, release_gate={"accepted": False, "mode": None, "reasons": ["x"]})
+    assert check()[0] == 1  # a verdict that refuses wins over full_suite_passed
+    runner_report(tmp_path, checkout="/elsewhere", full_suite_passed=True, complete_suite_executed=True,
+                  release_gate={"accepted": True, "mode": "full"})
+    code, out = check()
+    assert code == 1 and any("another checkout" in r for r in out["reasons"])
