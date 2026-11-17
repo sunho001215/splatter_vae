@@ -1,0 +1,33 @@
+# Single source for future dataset paths and task measurements. TODO values are deliberate blockers.
+# Template: resolve ${pnpv2.*} only through the pick-and-place-v2 task spec.
+schema: pick-and-place-v2-task/1
+task: pick-and-place-v2
+variants:
+- S
+seeds:
+- 0
+- 1
+- 2
+collection:
+  expected_success: 100
+  validation_fraction: 0.1
+  split_seed: 0
+  failures_enabled: false
+calibration:
+  criteria: rig_loma-release/2
+  acceptance_override: null
+roots:
+  raw: /__TODO_COLLECT_PICK_AND_PLACE_V2__/raw
+  processed: /__TODO_COLLECT_PICK_AND_PLACE_V2__/processed
+  publication: /__TODO_COLLECT_PICK_AND_PLACE_V2__/learning_inputs
+  calibration: /__TODO_COLLECT_PICK_AND_PLACE_V2__/calibration
+  robot_assets: /__TODO_COLLECT_PICK_AND_PLACE_V2__/robot_assets
+scene:
+  lookat: null
+  pose_scale: null
+  bounds: null
+sam3_prompts: null
+release:
+  commit: null
+  image: null
+status: 'PREPARATION_ONLY: not collected; no rows registered; no launches authorized'
