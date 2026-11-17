@@ -505,7 +505,10 @@ def test_live_v1_pause_still_covers_every_v1_row_and_no_v2_row():
     ids = [r["id"] for r in build_rows(load_spec(ROOT / SPEC), RELEASE, scene=SCENE)]
     hits, _, problems = v1_collisions(ids, doc)
     assert hits == [] and problems == []
-    assert not any(r["id"].startswith(STEM + "-") for r in rows)  # nothing registered yet
+    # Registered v2 rows (rgb wave since 2026-11-18 05:12) must never fall under the v1 pause either.
+    live_v2 = [r["id"] for r in rows if r["id"].startswith(STEM + "-")]
+    live_hits, _, live_problems = v1_collisions(live_v2, doc)
+    assert live_hits == [] and live_problems == []
 
 
 def test_calibration_and_followup_producers_use_v2_stems(tmp_path):
