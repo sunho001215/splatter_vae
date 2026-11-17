@@ -41,6 +41,19 @@ def _isolated_release_reservation(_release_reservation_dir, monkeypatch):
     monkeypatch.setattr(release_reservation, "PATH", path)
 
 
+@pytest.fixture(scope="session")
+def _memory_cache_dir(tmp_path_factory):
+    return tmp_path_factory.mktemp("memory-cache")
+
+
+@pytest.fixture(autouse=True)
+def _isolated_memory_cache(_memory_cache_dir, monkeypatch):
+    """Capacity probes may refresh their cache; worktree tests must never write the live controller's cache."""
+    from ops.resources import memory_budget
+
+    monkeypatch.setattr(memory_budget, "MAPPED_CACHE", _memory_cache_dir / "memory-mapped-disk-file.json")
+
+
 @pytest.fixture(autouse=True)
 def _no_real_activity_gate(monkeypatch):
     """The staging activity preflight fails closed onto the REAL activity gate (which probes the robot PC and the 5090
