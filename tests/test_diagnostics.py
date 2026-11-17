@@ -193,6 +193,10 @@ def test_all_evaluator_panels_with_explicit_synthetic_renderer(batch, tmp_path, 
     ):
         assert (output / name).exists(), name
     assert summary["metric/cross_source_std"] == 0
+    # every mirrored table thumbnail has a local path (test audit 2026-11-17: formerly a separate test that re-ran this
+    # whole synthetic media exercise only for these two lines)
+    rows = json.loads((output / "samples.json").read_text())
+    assert all((output / row["render_t0"]).exists() for row in rows)
 
 
 def test_temporal_ramp_boundary_and_encoder_state_keeps_all_slots(batch):
@@ -278,11 +282,3 @@ def test_deletion_entrypoint_is_disabled_and_never_touches_data(monkeypatch):
 
     monkeypatch.setattr("sys.argv", ["delete_stage0_cache.py", "--execute"])
     assert deletion.main() == 2
-
-
-def test_table_thumbnails_have_local_paths(batch, tmp_path, monkeypatch):
-    # Reuse the complete synthetic media exercise and verify each mirrored table thumbnail.
-    test_all_evaluator_panels_with_explicit_synthetic_renderer(batch, tmp_path, monkeypatch)
-    output = tmp_path / "eval/step_0000000/s2"
-    rows = json.loads((output / "samples.json").read_text())
-    assert all((output / row["render_t0"]).exists() for row in rows)

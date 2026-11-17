@@ -97,7 +97,7 @@ def test_shipped_role_declaration():
     lambda r: r["hosts"]["local"]["admit"].append("sim"),
     lambda r: r["classes"].pop("realworld_fql"),
     lambda r: r["hosts"].pop("inference"),
-    lambda r: r.update(version=1),
+    # version=1: test_only_integer_version_two_is_accepted[1] (same edit, stricter match; test audit 2026-11-17)
     lambda r: r.update(data_locality=None),
     lambda r: r["data_locality"].update(remote_resident=[]),
     lambda r: r["hosts"]["local"].update(drain_evaluators=True),
@@ -324,7 +324,10 @@ def replace(tmp_path, paused=lambda job_id: False, **kwargs):
         admission_lock=tmp_path / "admission.lock", root=tmp_path, roles_path=policy, **kwargs)
 
 
-def test_never_launched_remote_metaworld_rows_are_replaced_to_local(tmp_path):
+def test_never_launched_remote_rows_move_to_local_under_an_exclusive_policy(tmp_path):
+    """The replacement machinery under the synthetic EXCLUSIVE_ROLES policy: dry run, byte-preserved header, unchanged
+    job fingerprints, pool manifest, ownership records, idempotence. (Shadowed from 2026-11-12 to the 2026-11-17 test
+    audit by the later shipped-roles test of the same name, so it did not run; renamed, not removed.)"""
     rows = [remote_row(DRM, pin_host="remote"), remote_row(DRM_EVAL, pin_host="remote"), remote_row(PRETRAIN),
             remote_row(EXPORT), remote_row(DROID_PRETRAIN), remote_row(PLAIN), {**COLLECT}]
     queue, registry = sandbox(tmp_path, rows)

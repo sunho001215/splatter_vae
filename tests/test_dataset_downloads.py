@@ -80,6 +80,8 @@ class Server:
 # Archive codecs: the real zstd wherever the binary is installed (the remote host, LOCAL) and, always, a gzip stand-in
 # with the same stdin -> stdout contract (the release image has neither zstd nor the zstandard module). Every archive
 # test runs once per available codec; the production command stays zstd -dc -T1 (test_production_decompressor_*).
+# The tests in CODEC_FREE never compress or decompress: they run once, with the gzip stand-in installed (test audit
+# 2026-11-17: they ran once per codec with identical behaviour). Any other test, including every new one, gets both.
 def _zstd_compress(raw: bytes) -> bytes:
     return subprocess.run(["zstd", "-q", "-c"], input=raw, capture_output=True, check=True).stdout
 
@@ -97,12 +99,30 @@ if shutil.which("zstd"):
 COMPRESS = {"active": _gzip_compress}
 
 
-@pytest.fixture(autouse=True, params=sorted(CODECS))
+CODEC_FREE = frozenset({
+    "test_production_decompressor_is_single_threaded_zstd", "test_verifier_kinds_match_published_checksums",
+    "test_download_resumes_a_partial_file_by_byte_range", "test_server_ignoring_the_range_restarts_from_zero",
+    "test_checksum_mismatch_removes_the_file_and_interrupt_keeps_it",
+    "test_plain_http_and_bad_headers_are_refused_without_leaking", "test_authorization_goes_only_to_its_host",
+    "test_rate_limiter_paces_to_the_rate", "test_state_store_and_single_owner_lock",
+    "test_controller_scales_up_keeps_gains_reverts_plateaus", "test_controller_backs_off_then_caps_then_relaxes",
+    "test_host_signal_parsers", "test_remote_entry_point_runs_isolated", "test_low_margin_only_on_the_data_disk",
+    "test_stage_upload_paths_stay_on_the_data_disk", "test_mount_lookup_resolves_paths_and_decodes_escapes",
+    "test_memory_pressure_rule_follows_our_cgroup_with_a_host_floor"})
+
+
+def pytest_generate_tests(metafunc):
+    if metafunc.function.__name__ not in CODEC_FREE:
+        metafunc.parametrize("codec", sorted(CODECS), indirect=True)
+
+
+@pytest.fixture(autouse=True)
 def codec(request, monkeypatch):
-    compress, command = CODECS[request.param]
+    name = getattr(request, "param", "gzip")
+    compress, command = CODECS[name]
     monkeypatch.setattr(archives, "DECOMPRESS", tuple(command))
     monkeypatch.setitem(COMPRESS, "active", compress)
-    return request.param
+    return name
 
 
 def test_production_decompressor_is_single_threaded_zstd():
