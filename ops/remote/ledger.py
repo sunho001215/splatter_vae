@@ -42,6 +42,25 @@ def run_dir(job):
     return f"runs/{job['id']}"
 
 
+# Linux caps each argv string at 32 pages (128 KiB) independently of ARG_MAX; one
+# remote command per batch keeps the growing per-job ledger below it (2026-11-17 E2BIG).
+COMMAND_BATCH_BYTES = 96 * 1024
+
+
+def command_batches(parts, limit=COMMAND_BATCH_BYTES):
+    """Group independent shell fragments (each cds to an absolute path) into commands below ``limit`` bytes."""
+    batch, size = [], 0
+    for part in parts:
+        n = len(part.encode('utf-8')) + 3
+        if batch and size + n > limit:
+            yield batch
+            batch, size = [], 0
+        batch.append(part)
+        size += n
+    if batch:
+        yield batch
+
+
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
     now = time.strftime('%Y-%m-%dT%H:%M:%S%z')
@@ -67,8 +86,8 @@ def main():
     record = {'checked_at': now, 'reachable': False, 'jobs': {}}
     try:
         client = RemoteClient()
-        result = client.ssh(' ; '.join(parts), wait=False, idempotent=True, timeout=240)
-        text = result.stdout
+        text = ''.join(client.ssh(' ; '.join(batch), wait=False, idempotent=True, timeout=240).stdout
+                       for batch in command_batches(parts))
     except RemoteUnreachable as exc:
         with (OUT / 'history.jsonl').open('a') as f:
             f.write(json.dumps({'checked_at': now, 'reachable': False, 'reason': str(exc)[:200]}) + '\n')

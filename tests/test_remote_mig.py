@@ -1453,3 +1453,14 @@ def test_host_only_shared_admission_uses_campaign_limits(slot_evidence, tmp_path
     assert result['reserved_disk_bytes'] == 10*2**30
     calls = [json.loads(line) for line in (tmp_path/'calls').read_text().splitlines()]
     assert not any(c[0]=='nvidia-smi' or c[:2]==['docker','top'] for c in calls)
+
+
+def test_ledger_batches_stay_below_the_linux_argument_limit():
+    """2026-11-17: 397 tracked jobs made one ~154 KB ssh argument (E2BIG); batches keep order and every fragment."""
+    from ops.remote import ledger
+    parts = [f'echo "@@job j{i}"; cd /r/{i} && {{ stat x; }}' + ' ' * 380 for i in range(400)]
+    batches = list(ledger.command_batches(parts))
+    assert len(batches) > 1
+    assert [p for b in batches for p in b] == parts
+    assert all(len(' ; '.join(b).encode()) < 128 * 1024 for b in batches)
+    assert list(ledger.command_batches(['x' * 200_000])) == [['x' * 200_000]]  # a single fragment is never split

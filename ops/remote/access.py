@@ -208,18 +208,12 @@ class RemoteClient:
     ) -> subprocess.CompletedProcess:
         if "\x00" in command or self.credentials.password in command:
             raise ValueError("Unsafe remote command or credential in command arguments")
-        # Linux limits each argv string to 32 pages, independently of ARG_MAX.
-        # The ledger grows with the queue; stream large scripts before either
-        # sshpass or the remote login shell has to exec them as one argument.
-        streamed = len(command.encode("utf-8")) >= 64 * 1024
-        payload = {"input": command + "\n"} if streamed else {}
         attempts = 3 if idempotent else 1
         for attempt in range(attempts):
             self.check_tunnel(wait=wait)
-            args = [*self.ssh_args(), self.target, "sh -s" if streamed else command]
+            args = [*self.ssh_args(), self.target, command]
             try:
-                result = subprocess.run(args, capture_output=True, text=True, env=self._environment(), timeout=timeout,
-                                        **payload)
+                result = subprocess.run(args, capture_output=True, text=True, env=self._environment(), timeout=timeout)
             except subprocess.TimeoutExpired:
                 self._network_event(False, "SSHTimeout")
                 if idempotent and attempt + 1 < attempts:
