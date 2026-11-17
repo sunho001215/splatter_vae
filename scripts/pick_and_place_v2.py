@@ -46,7 +46,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import yaml  # noqa: E402
 
-from s4d.rwlearn.pnpv2_spec import SPEC, TASK, load_spec, read_arrival, values  # noqa: E402
+from s4d.rwlearn.pnpv2_spec import PREP_DISK_GIB, SPEC, TASK, load_spec, read_arrival, values  # noqa: E402
 
 
 def _atomic_json(path, doc):
@@ -266,7 +266,7 @@ def phase_a_remote(spec, a, argv):
     out, link = _attachment(p["phase_a"], PHASE_A_BUNDLE)
     result = rwprep_remote.prepare([Path(p["prep_plan"])], out, rwprep_remote.RemoteClient(),
                                    release=rwprep_remote_release(spec), stem=STAGE_IDS["phaseA"],
-                                   name=PHASE_A_BUNDLE)
+                                   name=PHASE_A_BUNDLE, disk_gib=PREP_DISK_GIB)
     _link(out, link)
     print(json.dumps(result))
 
@@ -361,7 +361,7 @@ print(json.dumps({'jobs': len(json.loads((out / 'jobs.json').read_text())), 'ext
 _PHASE_B_PLAN = """
 import json, pathlib, subprocess, sys
 from ops.jobs.rwprep_mig import atomic
-base, out, rig, stem, extra = sys.argv[1:6]
+base, out, rig, stem, extra, disk = sys.argv[1:7]
 base, out = pathlib.Path(base), pathlib.Path(out)
 c = json.loads((base / 'dispatcher.json').read_text())
 rows = json.loads((base / 'prep-plan.json').read_text())
@@ -377,7 +377,13 @@ if not out.exists():
     for k in ('processed', 'raw', 'weights', 'image', 'tools', 'assets'):
         args += ['--' + k, c[k]]
     subprocess.run(args, check=True)
-print(json.dumps({'jobs': len(json.loads((out / 'jobs.json').read_text()))}))
+jobs = json.loads((out / 'jobs.json').read_text())
+if any(j['disk_gib'] != int(disk) for j in jobs):  # measured declaration (the compiler's default is 32 GiB)
+    assert not (out / 'state/state.json').exists(), 'HELD: Phase-B queue already used'
+    for j in jobs:
+        j['disk_gib'] = int(disk)
+    atomic(out / 'jobs.json', jobs)
+print(json.dumps({'jobs': len(jobs), 'disk_gib': int(disk)}))
 """
 
 
@@ -441,7 +447,7 @@ def phase_b_remote(spec, a, argv):
     client = rwprep_remote.RemoteClient()
     print(rwprep_remote.planner(client, base, [
         "-c", _PHASE_B_PLAN, base["remote"], remote, p["rig"], STAGE_IDS["phaseB"],
-        f"{p['remote_processed']}/calibration/{TASK}"]))
+        f"{p['remote_processed']}/calibration/{TASK}", str(PREP_DISK_GIB)]))
     print(json.dumps(rwprep_remote.attach(remote, out, client, base)))
     _link(out, link)
 

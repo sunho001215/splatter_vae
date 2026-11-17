@@ -20,6 +20,11 @@ ARRIVAL_SCHEMA = "pick-and-place-v2-arrival/1"
 # Every new queue row and every new prep-dispatcher job uses this stem. The v1 families (rwv2-20261113-*,
 # rwv3-20261115-*, rwnt-/rwnq-/rwa100-/rwcal-*) are discontinued by prefix and must never match a v2 identity.
 STEM = "pnpv2-20261117"
+# Declared disk of pnp-v2 remote prep jobs (Phase B, geometry publication, future Phase A), user-approved measured
+# charge 2026-11-18: 52 finished Phase-A episodes wrote 0.81-1.40 GiB each (median 1.01; workers are read-only with
+# RAM tmpfs, so disk = outputs) and drawer-open-v2 Phase B adds <= 0.09 GiB per episode; 4 GiB = 2.9x the maximum.
+# The established compiler default (32 GiB) let the 15.5 % disk floor cap the remote route at ~13 concurrent jobs.
+PREP_DISK_GIB = 4
 PAUSE = "pnpv2-await-placement-20261117"
 V1_PAUSE = "pick-and-place-v1-discontinued-20261117"
 METHODS = (

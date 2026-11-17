@@ -19,7 +19,7 @@ import yaml
 from ops.jobs.pnpv2_rgb import REMOTE_RW, remote_raw, require
 from ops.jobs.rwprep_mig import digest
 from s4d.rwlearn.pnpv2_publication import manifest_check, no_override, readiness
-from s4d.rwlearn.pnpv2_spec import BUNDLE_FILES, SPEC, STEM, TASK, load_spec, values
+from s4d.rwlearn.pnpv2_spec import BUNDLE_FILES, PREP_DISK_GIB, SPEC, STEM, TASK, load_spec, values
 
 BUNDLE = f'{STEM}-geometry'
 JOB = f'{STEM}-geopub-{TASK}-S'
@@ -109,7 +109,7 @@ def remote_job(spec, bundle, phase_a, phase_b, phase_ids, remote_inputs):
     """Stage with the CURRENT source commit, rather than Phase A's older worker code."""
     remote = f'{REMOTE_RW}/configs/{BUNDLE}'
     files = ('manifest.json', 'source-ingest.json', 'path-provenance.json')
-    return dict(id=JOB, priority=-4, gpu_profile='1g.24gb', gpu_gib=1, ram_gib=32, cpus=4, disk_gib=32,
+    return dict(id=JOB, priority=-4, gpu_profile='1g.24gb', gpu_gib=1, ram_gib=32, cpus=4, disk_gib=PREP_DISK_GIB,
                 inputs={**{str(Path(bundle) / n): digest(Path(bundle) / n) for n in files}, **remote_inputs},
                 deps=[], external_states={f'{p}/state/state.json': list(ids) for p, ids in phase_ids.items()},
                 steps=[dict(kind='python', argv=['-m', 'ops.jobs.pnpv2_geometry', 'remote',
