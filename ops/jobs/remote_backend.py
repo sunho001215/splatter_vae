@@ -913,6 +913,13 @@ def acceptance_manifest(host: dict, repo: Path) -> dict:
             "data_identity": data["identity_sha256"]}
 
 
+# One snapshot runs several nvidia-smi listings plus a docker inspect per managed container. On 2026-11-17 the shared
+# remote host (8 MIG-mode GPUs, ~700 containers, load ~22) took 47-56 s for the plain nvidia-smi listing alone and the
+# whole snapshot exceeded the former 60 s bound on every attempt, so every remote driver pass, scheduler tick and release
+# check failed closed. The bound only limits how long unchanged read-only evidence may take; it relaxes no check.
+SNAPSHOT_TIMEOUT_SECONDS = 240
+
+
 class RemoteBackend:
     def __init__(self, repo: Path, runs: Path, client: RemoteClient | None = None):
         self.repo, self.runs = repo.resolve(), runs.resolve()
@@ -922,7 +929,8 @@ class RemoteBackend:
 
     def snapshot(self) -> RemoteSnapshot:
         try:
-            result = self.client.ssh(snapshot_command(self.client.root), wait=False, idempotent=True, timeout=60)
+            result = self.client.ssh(snapshot_command(self.client.root), wait=False, idempotent=True,
+                                     timeout=SNAPSHOT_TIMEOUT_SECONDS)
         except RemoteUnreachable:
             self._save_snapshot(reachable=False, query_ok=False)
             raise

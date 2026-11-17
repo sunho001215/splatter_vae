@@ -1074,12 +1074,18 @@ def test_prepare_rejects_ambiguous_or_contradictory_realworld_role(tmp_path, rol
     assert not (tmp_path / "runs/remote/jobs").exists()
 
 
+def test_snapshot_timeout_covers_the_measured_slow_remote_listing():
+    # 2026-11-17: the plain nvidia-smi listing alone took 47-56 s on the shared remote host; the snapshot must not time
+    # out on every attempt (fail-closed driver passes, scheduler ticks and release checks).
+    assert remote.SNAPSHOT_TIMEOUT_SECONDS >= 180
+
+
 def test_backend_snapshot_persists_reachability_without_discarding_last_state(tmp_path):
     class Client(FakeClient):
         error = False
 
         def ssh(self, command, **kwargs):
-            assert kwargs == {"wait": False, "idempotent": True, "timeout": 60}
+            assert kwargs == {"wait": False, "idempotent": True, "timeout": remote.SNAPSHOT_TIMEOUT_SECONDS}
             if self.error:
                 raise remote.RemoteUnreachable("lost")
             return subprocess.CompletedProcess([], 0, snapshot_output([inspected()]), "")
