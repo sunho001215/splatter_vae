@@ -38,7 +38,16 @@ from ops.policy_serving.client import (
     bound_command,
     check_action,
 )
-from ops.policy_serving.config import CATALOG_SCHEMA, DEFAULT_PATH, load_catalog, load_config, validate_catalog
+from ops.policy_serving.config import (
+    CATALOG_SCHEMA,
+    DEFAULT_PATH,
+    ELIGIBLE_CRITERIA,
+    EVIDENCE_DEMOTION,
+    FROZEN_ELIGIBLE_CRITERIA,
+    load_catalog,
+    load_config,
+    validate_catalog,
+)
 from ops.policy_serving.server import (
     PolicyServer,
     classify,
@@ -1458,7 +1467,8 @@ def _dynamo_grant_entries(root, fx):
                   "flags": ["fixture", "fql_setting_a10nq"], "input_spec": spec, "status": "restricted",
                   "reasons": ["e1 LayerNorm-spread FAIL (fixture label)"],
                   "usage": "dry_run_replay_only", "execution_eligible": False, "usage_reasons": ["decision"],
-                  "criteria": {"e1_layernorm_spread": {"pass": False, "value": 0.35, "threshold": ">= 0.5"}}}
+                  "criteria": {**{k: {"pass": True} for k in ELIGIBLE_CRITERIA + FROZEN_ELIGIBLE_CRITERIA},
+                               "e1_layernorm_spread": {"pass": False, "value": 0.35, "threshold": ">= 0.5"}}}
     grant = {"decided_by": "user", "at": "2026-11-12", "text": "fixture DynaMo decision",
              "scope": {"condition": "dynamo", "fql_setting": "a10nq"},
              "acknowledged_failures": ["e1_layernorm_spread"], "checkpoint_sha256": e["sha256"]}
@@ -1509,12 +1519,15 @@ def test_restricted_grant_is_scoped_bound_published_and_needs_the_client_capabil
                     {**granted, "execution_decision": {k: v for k, v in grant.items() if k != "scope"}},
                     {**granted, "condition": "reviwo", "run": "rwnq-20261112-fql-reviwo-fixture-task-s0"},
                     {**granted, "run": "r-fql-dynamo-fixture-task-s0", "flags": ["fixture"]},  # legacy DynaMo
-                    {**granted, "deploy_validation": None},  # not deployment-validated
                     {k: v for k, v in granted.items() if k != "input_spec"},  # no checkpoint-bound spec
                     {**granted, "status": "quarantined"}):
             write_catalog(cat, {pid: bad})
             assert srv.reload_catalog() is None  # refused by the validator: the current table stays
             assert welcome(srv)["policies"][pid]["info"]["execution_eligible"] is False
+        write_catalog(cat, {pid: {**granted, "deploy_validation": None}})  # not deployment-validated (audit F1):
+        assert srv.reload_catalog() is not None  # the catalog is applied with the entry DEMOTED, not refused
+        info = welcome(srv)["policies"][pid]["info"]
+        assert info["execution_eligible"] is False and info["usage_reasons"][0].startswith(EVIDENCE_DEMOTION)
         write_catalog(cat, {pid: granted})
         summary = srv.reload_catalog()
         assert summary["changed"] == [] and srv.policies[pid] is sp  # label refresh, model stays resident
@@ -1654,10 +1667,22 @@ def test_eligible_entries_are_advertised_only_with_their_checkpoint_spec_and_unc
 
     root, fx = staged
     pol, e, restricted, grant, granted = _dynamo_grant_entries(root, fx)
-    rpol, re_ = fx["e1"]  # an end-to-end CNN entry: the class that stays eligible (user decision 2026-11-12 ~16:00)
-    decision = {"decided_by": "user", "at": "2026-11-10T21:10+09:00", "text": "fixture decision"}
-    dep = {**re_, "input_spec": describe_entry(re_, root), "usage": "execution", "execution_eligible": True,
-           "execution_decision": decision}
+    rpol, re_ = fx["e1"]  # an end-to-end CNN entry: eligible with its checkpoint-bound validation (audit F1)
+    from ops.policy_serving.config import input_spec_digest
+
+    sidecar = root / "e1" / "deploy_contract.json"
+    sidecar.write_text('{"fixture": true}\n')
+    e2e_spec = describe_entry(re_, root)
+    decision = {"decided_by": "user", "at": "2026-11-10T21:10+09:00", "text": "fixture decision",
+                "checkpoint_sha256": re_["sha256"]}
+    dep = {**re_, "input_spec": e2e_spec, "training_contract": "e1/deploy_contract.json", "usage": "execution",
+           "execution_eligible": True, "execution_decision": decision,
+           "criteria": {k: {"pass": True} for k in ELIGIBLE_CRITERIA},
+           "deploy_validation": {"run": re_["run"], "checkpoint_sha256": re_["sha256"], "pass": True, "at": "fixture",
+                                 "training_contract_sha256": sha256_file(sidecar),
+                                 "input_spec_sha256": input_spec_digest(e2e_spec),
+                                 "checks": {k: {"pass": True} for k in ("l2_offline", "server_network",
+                                                                        "robotpc_client")}}}
     spec = importlib.util.spec_from_file_location("infer_for_test", REPO / "scripts/robot_pc/infer.py")
     infer = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(infer)

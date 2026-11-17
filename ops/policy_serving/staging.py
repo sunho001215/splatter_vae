@@ -11,6 +11,12 @@ deploy-contract sidecar; never training datasets) to the inference host's checkp
 never overwriting a differing file), into the server container's RAM root, rewrites the catalog there atomically
 and asks the running server to reload it (SIGHUP); ``hook`` re-applies the POL-CRITERIA.md checks first and stages
 only a deployable policy. Criteria: ``ops/policy_serving/criteria.py``. Nothing here talks to a robot.
+
+Integrity rules (pipeline audit 2026-11-17): every upload and catalog publication first passes the activity gate
+(``preflight``, fail closed; ``--no-activity-gate`` is the explicit opt-out); a policy id whose published entry is
+another run / checkpoint is refused (``--replace OLD_SHA256`` names it explicitly); an unreadable catalog is never
+treated as empty and a write never drops published ids; every execution-eligible entry, E2E included, carries a
+deployment validation bound to its checkpoint (``usage_of``, ``config.eligibility_evidence_refusal``).
 """
 
 from __future__ import annotations
@@ -515,6 +521,11 @@ LEGACY_FROZEN_REASON = ("user decision 2026-11-12 ~16:00: legacy frozen-encoder 
 COMPARISON_REASON = "FQL comparison setting a100: NOT execution-eligible unless separately authorized"
 AWAITING_VALIDATION = ("new-setting (a10nq) policy: execution-eligible automatically once its deployment validation "
                        "passes (offline equality, server direct == network, robot-PC client replay); not yet passed")
+# Pipeline audit 2026-11-17 (F1): the 2026-11-10 decision is no evidence by itself; an E2E CNN policy is eligible only
+# with the same checkpoint-bound deployment validation as a10nq (config.eligibility_evidence_refusal)
+AWAITING_E2E_VALIDATION = ("end-to-end CNN policy: execution-eligible once its deployment validation passes (offline "
+                           "equality, server direct == network, robot-PC client replay), bound to these weights, "
+                           "contract and input_spec (audit F1 2026-11-17); not yet passed")
 AUTO_NQ_DECISION = {"decided_by": "user", "at": "2026-11-12 ~16:00 KST (relayed by the coordinator)",
                     "text": "AUTOMATICALLY ENABLE new-setting FQL policies (agent.alpha=10 + agent.normalize_q_loss=true) "
                             "as soon as training finishes AND the required deployment validations pass (Ours, ReViWo, "
@@ -612,7 +623,8 @@ def usage_of(status: str, condition: str | None = None, setting: str | None = No
     """Usage restriction of a staged entry (user decisions 2026-11-10 21:10, 2026-11-12 Task 3 and ~16:00); a missing
     field means not eligible for every consumer (fail closed); execution on the robot PC still needs its manual mode.
     * quarantined: not usable; anything but deployable / restricted: dry run / replay only;
-    * e2e_cnn (legacy E2E setting) deployable: execution-eligible (``EXECUTION_DECISION``);
+    * e2e_cnn (legacy E2E setting) deployable: eligible (``EXECUTION_DECISION`` bound to the checkpoint) only once
+      ``validation`` is given, exactly like a10nq (audit F1 2026-11-17); before that dry run / replay only;
     * legacy frozen-encoder (every other condition, no FQL-setting prefix): NOT eligible, never re-enabled;
     * a100: NOT eligible;
     * a10nq deployable: eligible (``AUTO_NQ_DECISION`` bound to the checkpoint) once ``validation`` (the passed
@@ -630,13 +642,21 @@ def usage_of(status: str, condition: str | None = None, setting: str | None = No
     if held:
         return {"usage": "dry_run_replay_only", "execution_eligible": False, "execution_decision": None,
                 "usage_reasons": lead + held + [NOT_ELIGIBLE]}
-    validated = validation is not None and validation.get("checkpoint_sha256") == checkpoint_sha256 and \
-        validation.get("pass") is True
+    from ops.policy_serving.config import valid_sha256
+
+    validated = validation is not None and valid_sha256(checkpoint_sha256) and \
+        validation.get("checkpoint_sha256") == checkpoint_sha256 and validation.get("pass") is True
     if status == "deployable" and condition == "e2e_cnn" and setting in (None, "legacy"):
-        return {"usage": "execution", "execution_eligible": True, "execution_decision": dict(EXECUTION_DECISION),
+        if not validated:
+            return {"usage": "dry_run_replay_only", "execution_eligible": False, "execution_decision": None,
+                    "usage_reasons": [AWAITING_E2E_VALIDATION, NOT_ELIGIBLE]}
+        return {"usage": "execution", "execution_eligible": True,
+                "execution_decision": {**EXECUTION_DECISION, "checkpoint_sha256": checkpoint_sha256},
+                "deploy_validation": validation,
                 "usage_reasons": [f"user decision {EXECUTION_DECISION['at']} (E2E CNN kept eligible by the user "
-                                  "decision 2026-11-12 ~16:00): deployable (all criteria passed) -> execution-eligible; "
-                                  "robot-PC manual execution mode still required"]}
+                                  "decision 2026-11-12 ~16:00): deployable (all criteria passed) and deployment-"
+                                  "validated (audit F1 2026-11-17) -> execution-eligible; robot-PC manual execution "
+                                  "mode still required"]}
     grant = restricted_grant(status, condition, setting, checkpoint_sha256, failed_criteria) \
         if status == "restricted" else None
     if status == "restricted" and grant is None:
@@ -662,10 +682,12 @@ def usage_of(status: str, condition: str | None = None, setting: str | None = No
 
 
 def local_input_spec(src: Sources, row: dict, sidecar_dir: Path) -> dict:
+    """The advertised spec of the local checkpoint, unpickled only after it matches the EVALUATED sha256 (audit F8)."""
     from ops.policy_serving.server import describe_entry
 
-    return describe_entry({"checkpoint": str(src.runs / row["run"] / "policy.pt"),
-                           "training_contract": str(sidecar_dir / f"{row['run']}.deploy_contract.json")})
+    return describe_entry({"checkpoint": str(src.runs / row["run"] / "policy.pt"), "sha256": row["policy"]["sha256"],
+                           "training_contract": str(sidecar_dir / f"{row['run']}.deploy_contract.json")},
+                          require_sha256=True)
 
 
 def build_catalog(entries: dict[str, dict], *, aliases: dict[str, str], criteria_sha256: str | None) -> dict:
@@ -681,10 +703,15 @@ BCFLOW_REASON = ("EXPERIMENTAL bc_flow actor (DIAG 2026-11-11, realworld-ops/dia
                  "only unless a user decision names bc_flow")
 
 
-def bcflow_variant(base_id: str, base: dict, *, decision: dict | None = None) -> tuple[str, dict]:
+BCFLOW_NO_VALIDATION = ("experimental bc_flow actor: no deployment validation of its own (a validation covers the "
+                        "one-step policy only; audit F1 2026-11-17): never execution-eligible, dry run / replay only")
+
+
+def bcflow_variant(base_id: str, base: dict) -> tuple[str, dict]:
     """``(<base_id>+bcflow, entry)``: the same staged files served with ``actor: bc_flow`` under its own id (never
-    replacing ``base_id``). Not eligible unless ``decision`` (a user decision whose text names bc_flow) is given AND
-    the base entry is deployable; a non-servable base gives a quarantined variant (withdrawn with it)."""
+    replacing ``base_id``). NEVER execution-eligible (audit F1 2026-11-17: eligibility needs a deployment validation
+    bound to the served policy and a validation covers the one-step actor only; a user decision naming bc_flow is no
+    evidence on its own); a non-servable base gives a quarantined variant (withdrawn with it)."""
     from ops.policy_serving.config import BCFLOW_FLAG, BCFLOW_SUFFIX, SERVABLE_STATUSES
 
     if base.get("actor", "onestep") != "onestep" or base_id.endswith(BCFLOW_SUFFIX):
@@ -702,32 +729,17 @@ def bcflow_variant(base_id: str, base: dict, *, decision: dict | None = None) ->
                      if base["status"] != "deployable" else []))
         # exclusions are re-derived from the base's condition and run id, so an existing entry without the key (or an
         # older catalog) cannot carry a 3D-MVP / new-setting base to eligibility (Codex review of 618ed2f)
-        setting = fql_setting(str(base.get("run") or ""))
-        excluded = exclusions(base.get("condition"), setting)
-        if setting == "a10nq":  # the auto-eligibility covers the validated ONE-STEP policy, not its experimental BC flow
-            excluded = [AWAITING_VALIDATION.split(":")[0] + ": its +bcflow variant has no deployment validation of its "
-                        "own (dry run / replay only)"]
-        blocked = bool(excluded) or base.get("execution_eligible") is not True
-        if decision is not None and base["status"] == "deployable" and not blocked and \
-                decision.get("checkpoint_sha256", base["sha256"]) == base["sha256"]:
-            if decision.get("decided_by") != "user" or "bc_flow" not in str(decision.get("text", "")):
-                raise ValueError("a bc_flow execution decision is a user decision whose text names bc_flow")
-            # the grant is bound to these weights: a re-staged base (other checkpoint) drops it
-            entry.update(usage="execution", execution_eligible=True,
-                         execution_decision={**decision, "checkpoint_sha256": base["sha256"]},
-                         usage_reasons=[f"user decision {decision.get('at')}: experimental bc_flow actor -> "
-                                        "execution-eligible; robot-PC manual execution mode still required"])
-        else:  # an ineligible base (3D-MVP, new FQL setting, ...) keeps its variant ineligible with its reasons
-            held = (excluded or [r for r in base.get("usage_reasons", []) if r != NOT_ELIGIBLE]) \
-                if blocked and base["status"] == "deployable" else []
-            entry.update(usage="dry_run_replay_only", execution_eligible=False, usage_reasons=[BCFLOW_REASON, *held])
+        # exclusions of the base's setting first (legacy frozen encoder, a100), then the variant's own: it has no
+        # deployment validation (any base, E2E included), so it is never eligible
+        held = exclusions(base.get("condition"), fql_setting(str(base.get("run") or ""))) or [BCFLOW_NO_VALIDATION]
+        entry.update(usage="dry_run_replay_only", execution_eligible=False,
+                     usage_reasons=[BCFLOW_REASON, *(held if base["status"] == "deployable" else [])])
     return base_id + BCFLOW_SUFFIX, entry
 
 
 def sync_bcflow_variants(entries: dict[str, dict]) -> dict[str, dict]:
-    """Re-derive every ``+bcflow`` entry from its CURRENT base (files, labels, withdrawal follow the base; a granted
-    bc_flow decision is kept only while the base stays deployable with the SAME checkpoint sha256, and is dropped for
-    good once the variant is withdrawn). Returns a new dict."""
+    """Re-derive every ``+bcflow`` entry from its CURRENT base (files, labels, withdrawal follow the base; an earlier
+    bc_flow execution grant is dropped: a variant is never eligible, audit F1 2026-11-17). Returns a new dict."""
     from ops.policy_serving.config import BCFLOW_SUFFIX
 
     out = dict(entries)
@@ -736,8 +748,7 @@ def sync_bcflow_variants(entries: dict[str, dict]) -> dict[str, dict]:
             base_id = pid[:-len(BCFLOW_SUFFIX)]
             base = entries.get(base_id) or {"status": "withdrawn", **{k: e[k] for k in ("checkpoint", "sha256",
                                                                                            "condition", "task")}}
-            decision = e.get("execution_decision") if e.get("execution_eligible") is True else None
-            out[pid] = bcflow_variant(base_id, base, decision=decision)[1]
+            out[pid] = bcflow_variant(base_id, base)[1]
     return out
 
 
@@ -763,6 +774,36 @@ class Host:
     def run(self, cmd: str, *, stdin: str | None = None, check: bool = True) -> subprocess.CompletedProcess:
         return subprocess.run(["ssh", "-o", "BatchMode=yes", self.ssh, cmd], input=stdin, capture_output=True,
                               text=True, check=check)
+
+
+class PreflightBusy(Exception):
+    """The deployment's activity gate says an operator may be active (or cannot tell): stop before the next transfer /
+    publication (CLI exit 75 = defer)."""
+
+
+PREFLIGHT_ENV = "S4D_STAGING_PREFLIGHT"
+PREFLIGHT_OFF = "off"  # the explicit opt-out (``--no-activity-gate``); never the default
+ACTIVITY_GATE = Path("/home/ws/ws/realworld-ops/serving/tools/activity/activity_gate.sh")
+
+
+def preflight(what: str, log=print) -> None:
+    """Run the deployment's activity gate IMMEDIATELY before an upload or a catalog publication: the command line in
+    ``$S4D_STAGING_PREFLIGHT``, else ``ACTIVITY_GATE`` (FAIL CLOSED, audit F16 2026-11-17: an unset variable no longer
+    skips the gate); ``off`` (``--no-activity-gate``) is the only opt-out. A nonzero exit, a gate that cannot run or a
+    timeout raises ``PreflightBusy``."""
+    import os
+
+    cmd = os.environ.get(PREFLIGHT_ENV) or str(ACTIVITY_GATE)
+    if cmd.strip() == PREFLIGHT_OFF:
+        log(f"[preflight] activity gate explicitly DISABLED before {what} ({PREFLIGHT_ENV}={PREFLIGHT_OFF})")
+        return
+    try:
+        r = subprocess.run(shlex.split(cmd) + [f"staging {what}"], capture_output=True, text=True, timeout=300)
+    except (OSError, ValueError, subprocess.TimeoutExpired) as exc:
+        raise PreflightBusy(f"activity gate failed before {what}: {type(exc).__name__}") from None
+    if r.returncode != 0:
+        raise PreflightBusy(f"activity gate rc {r.returncode} before {what}")
+    log(f"[preflight] activity gate IDLE before {what}")
 
 
 def staging_files(src: Sources, row: dict, sidecar_dir: Path) -> dict[str, Path]:
@@ -809,6 +850,7 @@ def stage_files(host: Host, files: dict[str, Path], *, execute: bool, log=print)
     log(f"[stage] host root has {len(have)} of {len(shas)}; uploading {len(todo)} "
         f"({sum(files[r].stat().st_size for r in todo) / 1e6:.1f} MB)")
     if todo:
+        preflight("checkpoint upload", log)  # immediately before the transfer
         host.run(f"mkdir -p {host.stage_dir}")
         with tempfile.TemporaryDirectory() as tmp:
             for rel in todo:  # one tree of symlinks -> one rsync with relative paths
@@ -829,6 +871,7 @@ def stage_files(host: Host, files: dict[str, Path], *, execute: bool, log=print)
     in_ram = _verified(host, f"container:{host.ram_root}", shas)
     copy = [rel for rel in shas if rel not in in_ram]
     if copy:
+        preflight("checkpoint copy into the container RAM", log)
         rels = " ".join(shlex.quote(r) for r in copy)
         host.run(f"tar -C {host.root} -cf - {rels} | docker exec -i {host.container} tar -C {host.ram_root} -xf -")
     host.run(f"docker exec -i {host.container} sh -c 'cd {host.ram_root} && sha256sum --quiet -c -'", stdin=sums)
@@ -837,17 +880,57 @@ def stage_files(host: Host, files: dict[str, Path], *, execute: bool, log=print)
     return shas
 
 
+class CatalogUnreadable(RuntimeError):
+    """A published catalog copy exists (or cannot be told absent) but cannot be read or parsed: never an empty
+    catalog (audit F7 2026-11-17); nothing may be written on top of it."""
+
+
+class CatalogDropRefused(RuntimeError):
+    """A catalog write would drop policy ids that the published catalog holds without naming them as removals."""
+
+
+CATALOG_ABSENT_RC = 44  # the remote read's "no catalog file (and its directory is readable or absent)" exit code
+# ``$p``: the catalog path. Absent = the file does not exist while its directory is absent (a fresh host) or readable +
+# searchable; anything else (unsearchable directory, cat error, ssh / docker failure) is a read FAILURE.
+_CATALOG_READ = ('p={path}; d=$(dirname -- "$p"); if [ -e "$p" ]; then exec cat -- "$p"; fi; '
+                 'if [ ! -e "$d" ] || {{ [ -d "$d" ] && [ -r "$d" ] && [ -x "$d" ]; }}; then exit {absent}; fi; exit 45')
+
+
 def _catalog_text(host: Host, where: str) -> str | None:
-    """The published catalog text on the host root or (``container``) in the container RAM root; None if absent."""
+    """The published catalog text on the host root or (``container``) in the container RAM root; None ONLY if the
+    file is absent. Any other failure (ssh, docker, permissions, an empty file) raises ``CatalogUnreadable``."""
     path = f"{host.ram_root}/{CATALOG_NAME}" if where == "container" else f"{host.root}/{CATALOG_NAME}"
-    cmd = f"docker exec {host.container} cat {path}" if where == "container" else f"cat {path}"
+    script = _CATALOG_READ.format(path=shlex.quote(path), absent=CATALOG_ABSENT_RC)
+    cmd = f"docker exec {host.container} sh -c {shlex.quote(script)}" if where == "container" else script
     r = host.run(cmd, check=False)
-    return r.stdout if r.returncode == 0 and r.stdout.strip() else None
+    if r.returncode == CATALOG_ABSENT_RC:
+        return None
+    if r.returncode != 0:
+        raise CatalogUnreadable(f"{where} catalog {path} unreadable (rc {r.returncode}: "
+                                f"{(r.stderr or '').strip()[-200:]})")
+    if not r.stdout.strip():
+        raise CatalogUnreadable(f"{where} catalog {path} exists but is empty")
+    return r.stdout
+
+
+def _parse_catalog(text: str | None, where: str) -> dict:
+    """A read catalog text as a dict; None (absent) -> the empty catalog; unparsable -> ``CatalogUnreadable``."""
+    if text is None:
+        return {"policies": {}, "aliases": {}}
+    try:
+        cat = json.loads(text)
+    except ValueError as exc:
+        raise CatalogUnreadable(f"{where} catalog is not JSON: {exc}") from None
+    if not isinstance(cat, dict) or not isinstance(cat.get("policies") or {}, dict) or \
+            not isinstance(cat.get("aliases") or {}, dict):
+        raise CatalogUnreadable(f"{where} catalog is not a catalog object")
+    return cat
 
 
 def read_host_catalog(host: Host) -> dict:
-    text = _catalog_text(host, "host")
-    return json.loads(text) if text else {"policies": {}, "aliases": {}}
+    """The host root's published catalog; the empty catalog ONLY when no catalog file exists (a first publication).
+    An unreadable or unparsable catalog raises ``CatalogUnreadable`` (never treated as empty, audit F7)."""
+    return _parse_catalog(_catalog_text(host, "host"), "host")
 
 
 def catalog_copies_agree(host: Host) -> bool:
@@ -855,18 +938,34 @@ def catalog_copies_agree(host: Host) -> bool:
     return _catalog_text(host, "host") == _catalog_text(host, "container")
 
 
-def write_host_catalog(host: Host, catalog: dict, *, execute: bool, log=print) -> None:
+def write_host_catalog(host: Host, catalog: dict, *, execute: bool, log=print, removals=()) -> None:
     """Atomic replace on the host root and in the container RAM root (complete write to a unique temporary name,
-    then rename; the container copy is verified byte-identical)."""
+    then rename; the container copy is verified byte-identical). What is written is what the validator accepts: an
+    eligible entry without its execution evidence is published DEMOTED (config.demoted_entry, reported). Immediately
+    before the write, both published copies are re-read: an unreadable copy, or a policy id present there but absent
+    from ``catalog`` and not named in ``removals``, refuses the write (audit F7: never drop ids implicitly)."""
     import uuid
 
     from ops.policy_serving.config import validate_catalog
 
-    validate_catalog(catalog)
+    checked = validate_catalog(catalog)["policies"]
+    demoted = sorted(pid for pid, e in (catalog.get("policies") or {}).items()
+                     if e.get("execution_eligible") is True and checked[pid].get("execution_eligible") is not True)
+    if demoted:
+        log(f"[catalog] {len(demoted)} execution-eligible entries without checkpoint-bound evidence are published "
+            f"DEMOTED (dry run / replay only): {demoted}")
+        catalog = {**catalog, "policies": {pid: checked[pid] if pid in demoted else e
+                                           for pid, e in catalog["policies"].items()}}
     text = json.dumps(catalog, indent=1) + "\n"
     if not execute:
         log(f"[catalog] would write {len(catalog['policies'])} policies, {len(catalog['aliases'])} aliases (dry run)")
         return
+    preflight("catalog publication", log)  # immediately before the write (every publisher passes here)
+    present = {pid for where in ("host", "container")
+               for pid in (_parse_catalog(_catalog_text(host, where), where).get("policies") or {})}
+    dropped = sorted(present - set(catalog["policies"]) - set(removals))
+    if dropped:
+        raise CatalogDropRefused(f"the write would drop published policy ids {dropped} (not named as removals)")
     tmp = f".{CATALOG_NAME}.{uuid.uuid4().hex}.part"
     host.run(f"chmod u+w {host.root} && cat > {host.root}/{tmp} && mv {host.root}/{tmp} {host.root}/{CATALOG_NAME}",
              stdin=text)
@@ -1034,10 +1133,24 @@ def withdrawn_entry(entry: dict, row: dict) -> dict:
             "reasons": [f"re-evaluation {datetime.date.today()}: {row['class']['status']}"] + row["class"]["reasons"]}
 
 
+def id_collision(existing: dict | None, row: dict, replace=()) -> str | None:
+    """Why staging ``row`` under its policy id would REPLACE another checkpoint (None: no collision): the published
+    entry of that id names another run or another checkpoint sha256 and its sha256 is not named in ``replace`` (the
+    autodeploy daemon's merge() rule, audit F2 2026-11-17). A replacement never inherits eligibility: the new entry
+    needs its own deployment validation (usage_of)."""
+    if existing is None or (existing.get("run") == row["run"] and existing.get("sha256") == row["policy"]["sha256"]):
+        return None
+    if existing.get("sha256") in set(replace or ()):
+        return None
+    return (f"published entry is run {existing.get('run')!r} sha256 {str(existing.get('sha256'))[:12]}, not run "
+            f"{row['run']!r} sha256 {str(row['policy']['sha256'])[:12]}")
+
+
 def cmd_stage(a, *, hook: bool = False) -> int:
     """``stage``: stage rows the inventory classifies deployable / restricted (``hook``: exactly the given completed
     runs, re-evaluated; a run that does not pass is reported, NOT staged, and an existing catalog entry of that run is
-    withdrawn = quarantined) and merge them into the host catalog under a local lock; then reload."""
+    withdrawn = quarantined) and merge them into the host catalog under a local lock; then reload. An id whose
+    published entry is another run / checkpoint is REFUSED unless ``--replace OLD_SHA256`` names that checkpoint."""
     import fcntl
 
     comparison = [r for r in a.runs if fql_setting(r) in COMPARISON_SETTINGS]
@@ -1112,6 +1225,13 @@ def cmd_stage(a, *, hook: bool = False) -> int:
                        and (errs := _identity_errors(src, rows[r], a.sidecar_dir))}
             if changed:
                 raise RuntimeError(f"inputs changed since the evaluation (re-evaluate): {changed}")
+            replace = getattr(a, "replace", None) or ()
+            collide = {rows[r]["policy_id"]: why for r in a.runs
+                       if (rows[r]["class"]["status"] in ("deployable", "restricted") or labelled(rows[r]))
+                       and (why := id_collision(entries.get(rows[r]["policy_id"]), rows[r], replace))}
+            if collide:  # before any upload or catalog change of these runs
+                raise RuntimeError(f"refused policy id collision / replacement of another checkpoint: {collide} "
+                                   "(name the published checkpoint with --replace OLD_SHA256 to replace it)")
             for run in a.runs:
                 row = rows[run]
                 if row["class"]["status"] in ("deployable", "restricted") or labelled(row):
@@ -1129,6 +1249,8 @@ def cmd_stage(a, *, hook: bool = False) -> int:
                 bad = sorted(rel for rel, h in evaluated.items() if uploaded.get(rel) != h)
                 if bad:
                     raise RuntimeError(f"staged files differ from the evaluated inputs: {bad}")
+        except PreflightBusy:
+            raise
         except Exception as exc:  # the withdrawals are already published; no new entry is
             print(json.dumps({"error": f"staging failed: {type(exc).__name__}: {exc}", "runs": report},
                              default=str))
@@ -1144,18 +1266,19 @@ USAGE_KEYS = ("usage", "execution_eligible", "execution_decision", "usage_reason
 def relabel_entry(pid: str, entry: dict, validation_dir: Path | None, sidecar_dir: Path | None = None) -> dict:
     """An existing one-step catalog entry with its usage re-derived under the CURRENT rules (status, criteria,
     artefacts, reasons unchanged except the restricted-class decision line, which follows criteria.LN_SPREAD_DECISION);
-    a10nq entries take their deployment-validation record from ``validation_dir``. Entries that are not deployable /
-    restricted (quarantined, withdrawn) are returned unchanged."""
+    a10nq AND E2E entries take their deployment-validation record from ``validation_dir`` (audit F1 2026-11-17: an E2E
+    entry without a bound record becomes dry run / replay only). Entries that are not deployable / restricted
+    (quarantined, withdrawn) are returned unchanged."""
     if entry.get("status") not in ("deployable", "restricted") or entry.get("actor", "onestep") != "onestep":
         return dict(entry)
     setting = fql_setting(str(entry.get("run") or ""))
     failed = {k for k, v in (entry.get("criteria") or {}).items() if isinstance(v, dict) and v.get("pass") is False}
     sidecar = None if sidecar_dir is None else Path(sidecar_dir) / Path(str(entry.get("training_contract"))).name
     contract_sha = sha256_file(sidecar) if sidecar is not None and sidecar.is_file() else None
-    # an a10nq entry is relabelled eligible only against the CURRENT staged contract (local sidecar copy) and spec
+    # an entry is relabelled eligible only against the CURRENT staged contract (local sidecar copy) and spec; usage_of
+    # ignores a record for a setting that is excluded by rule (legacy frozen encoder, a100)
     validation = validation_record(validation_dir, entry["run"], entry["sha256"], input_spec=entry.get("input_spec"),
-                                   training_contract_sha256=contract_sha) \
-        if setting == "a10nq" and contract_sha is not None else None
+                                   training_contract_sha256=contract_sha) if contract_sha is not None else None
     u = usage_of(entry["status"], entry.get("condition"), setting, checkpoint_sha256=entry.get("sha256"),
                  failed_criteria=failed, validation=validation)
     if entry["status"] == "restricted" and u["execution_eligible"] and \
@@ -1222,9 +1345,9 @@ def cmd_bcflow(a) -> int:
     in the host catalog (no files are copied: the variant serves the base entry's staged files), then reload."""
     import fcntl
 
-    decision = json.loads(a.decision_json.read_text()) if a.decision_json else None
-    if decision is not None and len(a.policies) != 1:
-        print(json.dumps({"error": "a bc_flow execution decision is bound to ONE checkpoint: give one policy id"}))
+    if a.decision_json:
+        print(json.dumps({"error": "a +bcflow variant is never execution-eligible (no deployment validation of its "
+                                   "own; audit F1 2026-11-17): a decision cannot grant it; run without --decision-json"}))
         return 2
     host = Host(ssh=a.ssh)
     a.lock_file.parent.mkdir(parents=True, exist_ok=True)
@@ -1237,11 +1360,7 @@ def cmd_bcflow(a) -> int:
             if pid not in entries:
                 print(json.dumps({"error": f"{pid} is not in the host catalog"}))
                 return 2
-            bound = (decision or {}).get("checkpoint_sha256")
-            if bound is not None and bound != entries[pid].get("sha256"):
-                print(json.dumps({"error": f"the decision is bound to {bound}, {pid} serves {entries[pid].get('sha256')}"}))
-                return 2
-            vid, entry = bcflow_variant(pid, entries[pid], decision=decision)
+            vid, entry = bcflow_variant(pid, entries[pid])
             entries[vid] = entry
             report[vid] = {k: entry.get(k) for k in ("status", "usage", "execution_eligible")}
         aliases = {k: v for k, v in (catalog.get("aliases") or {}).items() if v in entries}
@@ -1289,6 +1408,9 @@ def main(argv=None) -> int:
         s.add_argument("--bwlimit", default="10m")
         s.add_argument("--validation-dir", type=Path, default=VALIDATION_DIR,
                        help="deployment-validation records <run>.json (auto-eligibility pipeline)")
+        s.add_argument("--replace", action="append", default=[], metavar="OLD_SHA256",
+                       help="allow replacing the published entry whose checkpoint has this sha256 (an id collision is "
+                            "refused otherwise; the replacement needs its own deployment validation to be eligible)")
     r = sub.add_parser("relabel", help="re-derive every catalog entry's execution eligibility under the current rules")
     r.add_argument("--execute", action="store_true", help="relabel the HOST catalog + reload (default: dry run)")
     r.add_argument("--from-json", type=Path, help="transform this local catalog copy instead of the host catalog")
@@ -1298,19 +1420,34 @@ def main(argv=None) -> int:
     r.add_argument("--lock-file", type=Path, default=Path("/home/ws/ws/realworld-ops/serving/.pol-staging.lock"))
     b = sub.add_parser("bcflow-variant", help="EXPERIMENTAL: serve staged policies' BC flow as <id>+bcflow")
     b.add_argument("policies", nargs="+", help="staged one-step policy ids")
-    b.add_argument("--decision-json", type=Path, help="user decision {decided_by: user, at, text naming bc_flow}; "
-                                                      "without it the variants are dry run / replay only")
+    b.add_argument("--decision-json", type=Path, help="REFUSED since audit F1 2026-11-17: a +bcflow variant has no "
+                                                      "deployment validation and is always dry run / replay only")
     b.add_argument("--execute", action="store_true", help="really write the catalog + reload (default: dry run)")
     b.add_argument("--ssh", default="irsl")
     b.add_argument("--lock-file", type=Path, default=Path("/home/ws/ws/realworld-ops/serving/.pol-staging.lock"))
+    for p in (sub.choices["stage"], sub.choices["hook"], r, b):
+        p.add_argument("--no-activity-gate", action="store_true",
+                       help=f"explicit opt-out of the activity preflight before uploads / publications (default: "
+                            f"${PREFLIGHT_ENV}, else {ACTIVITY_GATE}; fail closed)")
     a = ap.parse_args(argv)
-    if a.cmd == "inventory":
-        return cmd_inventory(a)
-    if a.cmd == "bcflow-variant":
-        return cmd_bcflow(a)
-    if a.cmd == "relabel":
-        return cmd_relabel(a)
-    return cmd_stage(a, hook=a.cmd == "hook")
+    if getattr(a, "no_activity_gate", False):
+        import os
+
+        os.environ[PREFLIGHT_ENV] = PREFLIGHT_OFF
+    try:
+        if a.cmd == "inventory":
+            return cmd_inventory(a)
+        if a.cmd == "bcflow-variant":
+            return cmd_bcflow(a)
+        if a.cmd == "relabel":
+            return cmd_relabel(a)
+        return cmd_stage(a, hook=a.cmd == "hook")
+    except PreflightBusy as exc:  # stopped right before a transfer / publication; earlier published steps stand
+        print(json.dumps({"deferred": str(exc)}))
+        return 75
+    except (CatalogUnreadable, CatalogDropRefused) as exc:  # nothing was written on top of an unknown catalog
+        print(json.dumps({"error": f"{type(exc).__name__}: {exc}"}))
+        return 2
 
 
 if __name__ == "__main__":

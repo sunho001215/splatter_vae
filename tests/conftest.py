@@ -41,6 +41,13 @@ def _isolated_release_reservation(_release_reservation_dir, monkeypatch):
     monkeypatch.setattr(release_reservation, "PATH", path)
 
 
+@pytest.fixture(autouse=True)
+def _no_real_activity_gate(monkeypatch):
+    """The staging activity preflight fails closed onto the REAL activity gate (which probes the robot PC and the 5090
+    over SSH, audit F16 2026-11-17): tests use a harmless stand-in; a test of the gate itself sets its own."""
+    monkeypatch.setenv("S4D_STAGING_PREFLIGHT", "true")
+
+
 @pytest.fixture
 def _admission_pause_paths(tmp_path):
     return {"FILE": tmp_path / "admission-pauses.json",

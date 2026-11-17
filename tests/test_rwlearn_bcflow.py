@@ -94,17 +94,24 @@ def test_offline_act_rounds_frozen_features_like_training_and_deploy(fixtures, c
 # ------------------------------------------------------------------------------------------------ catalog rules
 GOOD = {"checkpoint": "a/policy.pt", "sha256": "0" * 64, "condition": "reviwo", "task": "t", "status": "deployable"}
 DECISION = {"decided_by": "user", "at": "2026-11-11T18:00+09:00", "text": "run the bc_flow variants"}
-# a base a bc_flow decision can reach: an execution-eligible end-to-end entry (legacy frozen-encoder bases are never
-# eligible since the user decision 2026-11-12 ~16:00; a10nq bases' variants have no deployment validation of their own)
+# an execution-eligible end-to-end base (pre-F1 form). Since the pipeline audit 2026-11-17 (F1) NO +bcflow variant is
+# eligible: a deployment validation covers the one-step actor only, and a decision alone is no evidence
 E2E_GOOD = {**GOOD, "condition": "e2e_cnn", "usage": "execution", "execution_eligible": True,
             "execution_decision": {"decided_by": "user", "at": "t", "text": "E2E CNN stays eligible"}}
+
+
+def _hand_granted(base):
+    """A variant hand-labelled eligible under a bc_flow decision bound to the base's weights (what pre-F1 staging
+    produced for an eligible E2E base)."""
+    return {**ST.bcflow_variant("reviwo-t-s0", base)[1], "usage": "execution", "execution_eligible": True,
+            "execution_decision": {**DECISION, "checkpoint_sha256": base["sha256"]}}
 
 
 def _cat(policies, aliases=None):
     return {"schema": SC.CATALOG_SCHEMA, "policies": policies, "aliases": aliases or {}}
 
 
-def test_catalog_bc_flow_entries_are_separate_flagged_and_explicitly_decided():
+def test_catalog_bc_flow_entries_are_separate_flagged_and_never_eligible(tmp_path, capsys):
     vid, v = ST.bcflow_variant("reviwo-t-s0", GOOD)
     assert vid == "reviwo-t-s0+bcflow" and v["actor"] == "bc_flow" and SC.BCFLOW_FLAG in v["flags"]
     assert v["execution_eligible"] is False and v["usage"] == "dry_run_replay_only"
@@ -124,21 +131,23 @@ def test_catalog_bc_flow_entries_are_separate_flagged_and_explicitly_decided():
     for raw, match in bad:
         with pytest.raises(ValueError, match=match):
             SC.validate_catalog(raw)
-    vid, granted = ST.bcflow_variant("reviwo-t-s0", E2E_GOOD, decision=DECISION)
-    assert granted["execution_eligible"] is True
-    assert granted["execution_decision"] == {**DECISION, "checkpoint_sha256": GOOD["sha256"]}
-    SC.validate_catalog(_cat({"reviwo-t-s0": E2E_GOOD, vid: granted}))
-    assert ST.bcflow_variant("reviwo-t-s0", GOOD, decision=DECISION)[1]["execution_eligible"] is False  # legacy base
-    with pytest.raises(ValueError, match="names bc_flow"):
-        ST.bcflow_variant("reviwo-t-s0", E2E_GOOD, decision={**DECISION, "text": "yes"})
+    vid, v_e2e = ST.bcflow_variant("reviwo-t-s0", E2E_GOOD)  # even an eligible E2E base: no validation of its own
+    assert v_e2e["execution_eligible"] is False and v_e2e["usage"] == "dry_run_replay_only"
+    assert ST.BCFLOW_NO_VALIDATION in v_e2e["usage_reasons"] and "execution_decision" not in v_e2e
+    out = SC.validate_catalog(_cat({"reviwo-t-s0": E2E_GOOD, vid: _hand_granted(E2E_GOOD)}))
+    assert out["policies"][vid]["execution_eligible"] is False  # a hand-granted variant is demoted, catalog kept
+    assert out["policies"][vid]["usage_reasons"][0].startswith(SC.EVIDENCE_DEMOTION)
+    decision = tmp_path / "decision.json"
+    decision.write_text(json.dumps(DECISION))
+    assert ST.main(["bcflow-variant", "reviwo-t-s0", "--decision-json", str(decision)]) == 2  # refused, no host access
+    assert "never execution-eligible" in json.loads(capsys.readouterr().out)["error"]
 
 
 def test_bc_flow_variants_follow_their_base():
     restricted = {**GOOD, "condition": "dynamo", "status": "restricted", "reasons": ["e1 LN-spread FAIL"]}
-    vid, v = ST.bcflow_variant("dynamo-t-s0", restricted, decision=DECISION)
+    vid, v = ST.bcflow_variant("dynamo-t-s0", restricted)
     assert v["status"] == "restricted" and v["execution_eligible"] is False  # never eligible on a restricted base
-    entries = {"reviwo-t-s0": GOOD, "reviwo-t-s0+bcflow": ST.bcflow_variant("reviwo-t-s0", GOOD,
-                                                                            decision=DECISION)[1]}
+    entries = {"reviwo-t-s0": GOOD, "reviwo-t-s0+bcflow": ST.bcflow_variant("reviwo-t-s0", GOOD)[1]}
     withdrawn = copy.deepcopy(entries)
     withdrawn["reviwo-t-s0"] = {**GOOD, "status": "quarantined", "reasons": ["withdrawn"]}
     synced = ST.sync_bcflow_variants(withdrawn)
@@ -205,7 +214,7 @@ def test_robot_pc_selection_never_picks_a_bc_flow_variant_unless_asked():
 def test_catalog_binds_variants_to_their_base_and_its_weights():
     restricted = {**GOOD, "status": "restricted", "reasons": ["e1 LN-spread FAIL"]}
     vid, v = ST.bcflow_variant("reviwo-t-s0", GOOD)
-    _, granted = ST.bcflow_variant("reviwo-t-s0", E2E_GOOD, decision=DECISION)
+    granted = _hand_granted(E2E_GOOD)
     assert granted["execution_decision"]["checkpoint_sha256"] == GOOD["sha256"]
     bad = (
         (_cat({vid: v}), "without its one-step base"),  # orphan must be quarantined
@@ -224,8 +233,9 @@ def test_catalog_binds_variants_to_their_base_and_its_weights():
 
 
 def test_a_grant_never_moves_to_other_weights_or_survives_withdrawal():
-    _, granted = ST.bcflow_variant("reviwo-t-s0", GOOD, decision=DECISION)
-    entries = {"reviwo-t-s0": GOOD, "reviwo-t-s0+bcflow": granted}
+    granted = _hand_granted(E2E_GOOD)
+    entries = {"reviwo-t-s0": E2E_GOOD, "reviwo-t-s0+bcflow": granted}
+    assert ST.sync_bcflow_variants(entries)["reviwo-t-s0+bcflow"]["execution_eligible"] is False  # never kept
     restaged = ST.sync_bcflow_variants({**entries, "reviwo-t-s0": {**GOOD, "sha256": "2" * 64}})
     assert restaged["reviwo-t-s0+bcflow"]["execution_eligible"] is False  # new weights: no inherited grant
     SC.validate_catalog(_cat(restaged))

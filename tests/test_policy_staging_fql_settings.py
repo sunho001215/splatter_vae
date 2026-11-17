@@ -200,36 +200,41 @@ def test_new_setting_and_legacy_rules():
     assert _entry("sincro", "a100", validation=VALIDATED)["usage_reasons"][0] == S.COMPARISON_REASON
     base = _entry("reviwo")  # legacy frozen-encoder: no longer eligible (user decision 2026-11-12 ~16:00)
     assert base["execution_eligible"] is False and base["usage_reasons"][0] == S.LEGACY_FROZEN_REASON
-    e2e = _entry("e2e_cnn")  # E2E CNN stays eligible
-    assert e2e["execution_eligible"] is True and e2e["execution_decision"]
+    e2e = _entry("e2e_cnn")  # E2E CNN: eligible only with its checkpoint-bound deployment validation (audit F1)
+    assert e2e["execution_eligible"] is False and e2e["usage_reasons"] == [S.AWAITING_E2E_VALIDATION, S.NOT_ELIGIBLE]
+    e2e = _entry("e2e_cnn", validation=_validated("e2e_cnn", setting=None))
+    assert e2e["execution_eligible"] is True and e2e["execution_decision"]["checkpoint_sha256"] == "c" * 64
     dyn = _entry("dynamo", status="restricted")  # legacy DynaMo: legacy frozen-encoder, never eligible
     assert dyn["usage"] == "dry_run_replay_only" and dyn["usage_reasons"][0] == C.LN_SPREAD_DECISION
     q = _entry("mvp3d_single", status="quarantined")
     assert q["usage"] == "none" and "execution_decision" not in q
 
 
-def test_bcflow_variants_of_ineligible_bases_stay_ineligible_even_with_a_decision():
-    decision = {"decided_by": "user", "at": "t", "text": "bc_flow may execute"}
+def test_bcflow_variants_are_never_eligible_whatever_their_base():
+    """Audit F1 2026-11-17: a +bcflow variant has no deployment validation of its own (it covers the one-step actor),
+    so not even an eligible, validated E2E base makes it eligible."""
+    eligible_e2e = _entry("e2e_cnn", validation=_validated("e2e_cnn", setting=None))
+    assert eligible_e2e["execution_eligible"] is True
     for base in (_entry("mvp3d_multiview"), _entry("reviwo"), _entry("reviwo", "a10nq"),
-                 _entry("reviwo", "a10nq", validation=VALIDATED)):
-        pid, v = S.bcflow_variant("x-s0", base, decision=decision)
+                 _entry("reviwo", "a10nq", validation=VALIDATED), eligible_e2e):
+        pid, v = S.bcflow_variant("x-s0", base)
         assert v["execution_eligible"] is False and v["usage"] == "dry_run_replay_only"
         assert v["usage_reasons"][0] == S.BCFLOW_REASON and "execution_decision" not in v
-    _, ok = S.bcflow_variant("e2e_cnn-t-s0", _entry("e2e_cnn"), decision=decision)  # eligible E2E base
-    assert ok["execution_eligible"] is True
-    synced = S.sync_bcflow_variants({"m-s0": _entry("mvp3d_single"), "m-s0+bcflow": {**ok, "condition": "mvp3d_single"}})
-    assert synced["m-s0+bcflow"]["execution_eligible"] is False  # a granted decision does not survive an ineligible base
+    assert S.bcflow_variant("x-s0", eligible_e2e)[1]["usage_reasons"] == [S.BCFLOW_REASON, S.BCFLOW_NO_VALIDATION]
+    granted = {**S.bcflow_variant("m-s0", eligible_e2e)[1], "usage": "execution", "execution_eligible": True,
+               "execution_decision": {"decided_by": "user", "at": "t", "text": "bc_flow may execute"}}
+    synced = S.sync_bcflow_variants({"m-s0": eligible_e2e, "m-s0+bcflow": granted})
+    assert synced["m-s0+bcflow"]["execution_eligible"] is False  # an earlier grant is not kept
 
 
 def test_bcflow_decisions_never_reach_excluded_bases_even_without_the_key():
-    """Codex review of 618ed2f: an existing catalog entry WITHOUT execution_eligible (older catalogs) must not let a
-    bc_flow decision make an excluded base's variant eligible."""
-    decision = {"decided_by": "user", "at": "t", "text": "bc_flow may execute"}
+    """Codex review of 618ed2f: an existing catalog entry WITHOUT execution_eligible (older catalogs) never makes a
+    variant eligible."""
     bare = {"checkpoint": "a/policy.pt", "sha256": "0" * 64, "task": "t", "status": "deployable"}
     for base in ({**bare, "condition": "mvp3d_single", "run": "r-fql-mvp3d_single-t-s0"},
                  {**bare, "condition": "reviwo", "run": "rwnq-20261111-fql-reviwo-t-s0"},
                  {**bare, "condition": "reviwo", "run": "rwa100-20261111-fql-reviwo-t-s0"},
                  {**bare, "condition": "reviwo", "run": "r-fql-reviwo-t-s0"},
                  {**bare, "condition": "e2e_cnn", "run": "r-fql-e2e_cnn-t-s0"}):  # no explicit eligibility: blocked
-        _, v = S.bcflow_variant("x-s0", base, decision=decision)
+        _, v = S.bcflow_variant("x-s0", base)
         assert v["execution_eligible"] is False and v["usage"] == "dry_run_replay_only"
