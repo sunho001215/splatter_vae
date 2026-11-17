@@ -316,6 +316,7 @@ def test_phase_a_remote_refuses_before_every_remote_raw_copy_is_verified(spec, t
     rows = [{"sha256": f"{i:064x}"} for i in range(3)]
     (ingest / "manifest.json").write_text(json.dumps({"episodes": rows}))
     monkeypatch.setattr(P, "_check_data", lambda spec, a: {"passed": True})
+    monkeypatch.setattr(P, "ATTACH_ROOT", tmp_path / "runs")
     called = []
     monkeypatch.setattr(R, "prepare", lambda *a, **kw: called.append(kw) or {"launched": False})
     monkeypatch.setattr(R, "RemoteClient", lambda: None)
@@ -329,6 +330,10 @@ def test_phase_a_remote_refuses_before_every_remote_raw_copy_is_verified(spec, t
     proof.write_text(json.dumps({r["sha256"]: r["sha256"] for r in rows}))
     P.phase_a_remote(spec, None, [])
     assert called == [{"release": "pnpv2-20261117", "stem": "pnpv2-20261117-prepA", "name": "pnpv2-20261117-phaseA"}]
+    # The attachment lives in the transfer root (repository runs/); the work root links to it.
+    assert (tmp_path / "work/phaseA").readlink() == tmp_path / "runs/pnpv2-20261117-phaseA"
+    with pytest.raises(ValueError, match="immutable"):
+        P.phase_a_remote(spec, None, [])
 
 
 def test_status_points_at_the_remote_phase_a_route(spec, tmp_path):
@@ -353,6 +358,7 @@ def test_calib_remote_plans_on_the_remote_and_attaches(spec, tmp_path, monkeypat
     (phase / "dispatcher.json").write_text(json.dumps(base))
     calls = []
     monkeypatch.setattr(R, "RemoteClient", lambda: "client")
+    monkeypatch.setattr(P, "ATTACH_ROOT", tmp_path / "runs")
     monkeypatch.setattr(R, "planner", lambda client, config, argv: calls.append(("plan", config, argv)) or "{}")
     monkeypatch.setattr(R, "attach", lambda remote, out, client, b: calls.append(("attach", remote, out, b)) or {})
     P.calib_remote(spec, None, [])
@@ -361,8 +367,8 @@ def test_calib_remote_plans_on_the_remote_and_attaches(spec, tmp_path, monkeypat
     assert argv[2:8] == [base["remote"] + "/dispatcher.json", TASK, remote,
                          f"{R.RW}/processed/pnpv2-20261117/calibration/{TASK}", P.CALIB_UPSTREAM,
                          "pnpv2-20261117-calib"]
-    assert out == tmp_path / "work/calib"
-    (tmp_path / "work/calib").mkdir()
+    assert out == tmp_path / "runs/pnpv2-20261117-calib"
+    assert (tmp_path / "work/calib").readlink() == out
     with pytest.raises(ValueError, match="immutable"):
         P.calib_remote(spec, None, [])
 
@@ -433,3 +439,35 @@ def test_rig_fetch_and_phase_b_refuse_before_an_accepted_rig(spec, tmp_path, mon
         P.rig_fetch(spec, None, [])
     with pytest.raises(ValueError, match="task rig not accepted"):
         P.phase_b_remote(spec, None, [])
+
+
+def test_upload_stages_copies_inside_the_transfer_root_and_writes_the_receipt(spec, tmp_path, monkeypatch):
+    import hashlib
+
+    import scripts.pick_and_place_v2 as P
+    from ops.remote import access
+    from s4d.rwlearn.pnpv2_spec import BUNDLE_FILES, values
+
+    spec["roots"]["work"] = str(tmp_path / "work")
+    monkeypatch.setattr(P, "ATTACH_ROOT", tmp_path / "runs")
+    p = values(spec)
+    local = Path(p["rgb_dir_local"])
+    local.mkdir(parents=True)
+    for _, name in BUNDLE_FILES:
+        (local / name).write_text(name)
+    remote_files, uploads = {}, []
+
+    class Client:
+        def _remote_checksum(self, target, allow_missing=False):
+            return remote_files.get(target)
+
+        def rsync_upload(self, source, target):
+            assert Path(source).is_relative_to(tmp_path / "runs")  # never from the work root
+            uploads.append(target)
+            remote_files[target] = hashlib.sha256(Path(source).read_bytes()).hexdigest()
+
+    monkeypatch.setattr(access, "RemoteClient", Client)
+    P.upload(spec, None, ["--view", "rgb"])
+    receipt = json.loads((local.parent / "rgb.UPLOADED.json").read_text())
+    assert receipt["schema"] == "pick-and-place-v2-upload/1" and set(receipt["files"]) == set(uploads)
+    assert len(uploads) == len(BUNDLE_FILES) and not list((tmp_path / "runs").iterdir())
