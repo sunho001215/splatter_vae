@@ -434,6 +434,15 @@ class PolicyServer:
             spec = e.get("input_spec")
             entry = CatalogEntry(pid, dict(e), e.get("status", "deployable"), tuple(e.get("reasons", ())),
                                  None if spec is None else spec_json(spec), source)
+            # the describe and setting checks of this entry share ONE verified read of its checkpoint (hash before
+            # unpickle, audit F8; a catalog entry always needs its sha256), made only if a check needs it
+            verified: list = []
+
+            def load(entry_=entry.entry, required=source == "catalog", cache=verified):
+                if not cache:
+                    cache.append(verified_checkpoint(entry_, self.checkpoint_root, require_sha256=required))
+                return cache[0]
+
             old = previous.get(pid)
             if old is not None and old.source == source and old.identity() == entry.identity():
                 entry.spec = old.spec  # same artefacts: keep the described spec; labels come from the new entry
@@ -444,7 +453,7 @@ class PolicyServer:
                     entry.status, entry.reasons = old.status, old.reasons
             elif entry.spec is None:
                 try:
-                    entry.spec = describe_entry(entry.entry, self.checkpoint_root)
+                    entry.spec = describe_entry(entry.entry, self.checkpoint_root, load=load)
                     entry.spec_checked = True
                 except Exception as exc:  # noqa: BLE001 - one broken entry must not take the registry down
                     LOG.error("policy %s cannot be described (%s: %s); not offered", pid, type(exc).__name__, exc)
@@ -454,7 +463,7 @@ class PolicyServer:
                 # no model build), so its published condition / contract are never just catalog claims (Codex
                 # review of f69a9d2); _load compares the loaded policy with it again
                 try:
-                    described = describe_entry(entry.entry, self.checkpoint_root)
+                    described = describe_entry(entry.entry, self.checkpoint_root, load=load)
                 except Exception as exc:  # noqa: BLE001
                     described, why = None, f"cannot be described: {type(exc).__name__}: {exc}"
                 else:
@@ -467,7 +476,7 @@ class PolicyServer:
             if entry.status != "error" and entry.entry.get("execution_eligible") is True and not entry.setting_checked:
                 # eligibility follows the FQL setting: the WEIGHTS must have trained with the setting of the entry's
                 # identity (checkpoint agent.config; Codex review of 7518c4f)
-                why = checkpoint_setting_refusal(pid, entry.entry, self.checkpoint_root)
+                why = checkpoint_setting_refusal(pid, entry.entry, self.checkpoint_root, load=load)
                 if why is None:
                     entry.setting_checked, entry.setting_key = True, setting_key(entry.entry)
                 else:
@@ -1496,16 +1505,39 @@ def spec_json(spec) -> dict:
     return json.loads(json.dumps(P.jsonable(spec.to_json() if hasattr(spec, "to_json") else spec), sort_keys=True))
 
 
-def describe_entry(entry: dict, root=None) -> dict:
-    """Advertised unbound input spec of a policy entry WITHOUT building the model: the checkpoint's meta + its
-    training contract (deploy-contract sidecar or FQL dataset; the deploy API's own reader and checks) ->
-    ``spec_json(InputSpec.from_meta(...))``, identical to the loaded ``DeployPolicy.input_spec`` (checked at load)."""
+def verified_checkpoint(entry: dict, root=None, *, require_sha256: bool = True) -> dict:
+    """The checkpoint payload of an entry, UNPICKLED ONLY AFTER its bytes match the entry's sha256 (audit F8
+    2026-11-17): the file is read once, hashed, and exactly those bytes are deserialised (no window between the check
+    and the load). An entry naming a sha256 is always verified (an invalid one is refused); without one it is refused
+    when ``require_sha256`` (every catalog entry) and loaded unverified otherwise (static config entries, which
+    ``load_policy`` serves unverified too)."""
+    import io
+
     import torch
 
     from ops.policy_serving.config import resolve
+
+    path = resolve(root, entry["checkpoint"])
+    expected = entry.get("sha256")
+    if (expected or require_sha256) and not valid_sha256(expected):
+        raise ValueError(f"{path}: no valid sha256 to verify the checkpoint against: not unpickled")
+    data = Path(path).read_bytes()
+    if expected:
+        digest = hashlib.sha256(data).hexdigest()
+        if digest != expected:
+            raise ValueError(f"{path}: sha256 {digest} != the entry's {expected}: not unpickled")
+    return torch.load(io.BytesIO(data), map_location="cpu", weights_only=False)
+
+
+def describe_entry(entry: dict, root=None, *, require_sha256: bool = False, load=None) -> dict:
+    """Advertised unbound input spec of a policy entry WITHOUT building the model: the checkpoint's meta + its
+    training contract (deploy-contract sidecar or FQL dataset; the deploy API's own reader and checks) ->
+    ``spec_json(InputSpec.from_meta(...))``, identical to the loaded ``DeployPolicy.input_spec`` (checked at load).
+    The checkpoint is read through ``verified_checkpoint`` (``load``: a shared loader of the same verified payload)."""
+    from ops.policy_serving.config import resolve
     from s4d.rwlearn.deploy.contracts import InputSpec, read_training_contract
 
-    meta = torch.load(resolve(root, entry["checkpoint"]), map_location="cpu", weights_only=False, mmap=True)["meta"]
+    meta = (load or (lambda: verified_checkpoint(entry, root, require_sha256=require_sha256)))()["meta"]
     contract = entry.get("training_contract") or entry.get("dataset")
     training = read_training_contract(meta, None if contract is None else str(resolve(root, contract)))
     return spec_json(InputSpec.from_meta(meta, training))
@@ -1518,16 +1550,15 @@ def setting_key(entry: dict) -> str:
                       default=str)
 
 
-def checkpoint_setting_refusal(pid, entry: dict, root=None) -> str | None:
+def checkpoint_setting_refusal(pid, entry: dict, root=None, *, load=None) -> str | None:
     """Why an entry's checkpoint did not train with the FQL setting of the entry's identity, or why its deployment
-    validation does not cover the served training contract (None: fine)."""
-    import torch
-
+    validation does not cover the served training contract (None: fine). The checkpoint is read only through
+    ``verified_checkpoint`` against the entry's sha256 (``load``: a shared loader of the same verified payload)."""
     from ops.policy_serving.config import agent_setting_matches, entry_fql_setting, resolve
 
     try:
         setting = entry_fql_setting(pid, entry)
-        payload = torch.load(resolve(root, entry["checkpoint"]), map_location="cpu", weights_only=False, mmap=True)
+        payload = (load or (lambda: verified_checkpoint(entry, root, require_sha256=True)))()
         cfg = (payload.get("agent") or {}).get("config")
     except Exception as exc:  # noqa: BLE001 - an unreadable checkpoint is never advertised as eligible
         return f"checkpoint setting cannot be read: {type(exc).__name__}: {exc}"

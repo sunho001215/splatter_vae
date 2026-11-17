@@ -15,7 +15,7 @@ import yaml
 
 from ops.policy_serving import criteria as C
 from ops.policy_serving import staging as S
-from ops.policy_serving.config import validate_catalog
+from ops.policy_serving.config import EVIDENCE_DEMOTION, validate_catalog
 from s4d.rwlearn.deploy.fixtures import FIXTURE_NATIVE_HW, make_fixture_policy, session_choices, synthetic_frames
 
 
@@ -315,11 +315,26 @@ def test_staging_files_never_include_datasets_and_dry_run_touches_no_host(tmp_pa
     S.signal_reload(host, execute=False, log=lambda m: None)
 
 
+def _summary_checks(condition, ln_pass=True):
+    """Evaluated checks of a policy that passes every criterion (``ln_pass`` False: the restricted LN-spread failure),
+    with every field ``criteria_summary`` publishes, so the catalog carries the complete criteria (audit F1)."""
+    checks = {"b": C.check(True, steps=1_000_000, budget=1_000_000, checkpoint_step=1_000_000),
+              "c": C.check(True, export_sha256={"policy_meta": "e"}, deploy_load_cpu=True),
+              "d": C.check(True, sha256="s"),
+              "e2": C.check(True, d_vis_over_spread=0.69, d_vis_over_noise=34.3, samples=192),
+              "f": C.check(True, final_q_mean=-40.0, late_q_mean_median=-41.0, peak_q_mean=[5000, -12.0])}
+    if condition != "e2e_cnn":
+        checks["a"] = C.check(True, kind="epochs", budget=40, done=40)
+        checks["e1"] = C.check(ln_pass, offset_pass=True, ln_pass=ln_pass, offset_to_signal=2.48,
+                               ln_unit_std_raw=0.8 if ln_pass else 0.355)
+    return checks
+
+
 def _vrow(condition="reviwo", status="deployable", run=None, seed=0, task="t"):
-    """A row of the given condition / FQL setting (run-id prefix) with a consistent identity."""
+    """A row of the given condition / FQL setting (run-id prefix) with a consistent identity and complete criteria."""
     run = run or f"rwnq-20261111-fql-{condition}-{task}-s{seed}"
     row = {**_row(status=status, seed=seed), "condition": condition, "task": task, "run": run,
-           "fql_setting": S.fql_setting(run)}
+           "fql_setting": S.fql_setting(run), "checks": _summary_checks(condition)}
     row["policy_id"] = S.policy_id(condition, task, seed, row["fql_setting"])
     return row
 
@@ -343,11 +358,17 @@ def _cat(pid, e):
 
 
 def test_usage_rules_of_the_user_decisions_2026_11_12_1600():
-    """E2E CNN stays eligible; legacy frozen-encoder never; a10nq of every condition only once validated; a100 never;
-    quarantined none; the old blanket 3D-MVP block is gone (3D-MVP follows the same setting rules)."""
-    e2e = S.usage_of("deployable", "e2e_cnn", None)
-    assert e2e["execution_eligible"] is True and e2e["usage"] == "execution"
-    assert e2e["execution_decision"]["decided_by"] == "user"
+    """E2E CNN eligible only once validated (audit F1 2026-11-17, like a10nq); legacy frozen-encoder never; a10nq of
+    every condition only once validated; a100 never; quarantined none; the old blanket 3D-MVP block is gone (3D-MVP
+    follows the same setting rules)."""
+    e2e = S.usage_of("deployable", "e2e_cnn", None, checkpoint_sha256="c" * 64)
+    assert e2e["execution_eligible"] is False and e2e["usage"] == "dry_run_replay_only"  # the decision alone: no
+    assert S.AWAITING_E2E_VALIDATION in e2e["usage_reasons"] and e2e["execution_decision"] is None
+    e2e = S.usage_of("deployable", "e2e_cnn", None, checkpoint_sha256="c" * 64, validation=_validation())
+    assert e2e["execution_eligible"] is True and e2e["usage"] == "execution" and e2e["deploy_validation"]["pass"]
+    assert e2e["execution_decision"]["decided_by"] == "user" and e2e["execution_decision"]["checkpoint_sha256"] == "c" * 64
+    assert S.usage_of("deployable", "e2e_cnn", None, checkpoint_sha256="c" * 64,
+                      validation=_validation("d" * 64))["execution_eligible"] is False  # other weights' record
     for cond in ("reviwo", "sincro", "dynamo", "snerl", "ours", "mvp3d_single", "mvp3d_multiview"):
         legacy = S.usage_of("deployable", cond, None, checkpoint_sha256="c" * 64, validation=_validation())
         assert legacy["execution_eligible"] is False and S.LEGACY_FROZEN_REASON in legacy["usage_reasons"]
@@ -368,11 +389,22 @@ def test_usage_rules_of_the_user_decisions_2026_11_12_1600():
     assert S.usage_of("restricted", "reviwo", None)["usage_reasons"][0] == C.LN_SPREAD_DECISION
 
 
-def test_validator_allows_only_e2e_legacy_and_validated_new_setting_entries():
+def _demoted(catalog, pid, match):
+    """validate_catalog keeps the catalog but publishes ``pid`` demoted (not eligible, the reason in usage_reasons)."""
+    e = validate_catalog(catalog)["policies"][pid]
+    assert e["execution_eligible"] is False and e["usage"] == "dry_run_replay_only", e
+    assert "execution_decision" not in e and "deploy_validation" not in e
+    assert e["usage_reasons"][0].startswith(EVIDENCE_DEMOTION) and match in e["usage_reasons"][0], e["usage_reasons"]
+    return e
+
+
+def test_validator_allows_only_validated_e2e_legacy_and_validated_new_setting_entries():
     e2e_row = _vrow("e2e_cnn", run="r-fql-e2e_cnn-t-s0")
-    e2e = S.catalog_entry(e2e_row, {"condition": "e2e_cnn"})
-    assert e2e["execution_eligible"] is True
-    validate_catalog(_cat("e2e_cnn-t-s0", e2e))
+    assert S.catalog_entry(e2e_row, {"condition": "e2e_cnn"})["execution_eligible"] is False  # no record: not eligible
+    e2e = S.catalog_entry(e2e_row, {"condition": "e2e_cnn"}, _vfor(e2e_row, {"condition": "e2e_cnn"}))
+    assert e2e["execution_eligible"] is True and e2e["execution_decision"]["checkpoint_sha256"] == e2e["sha256"]
+    assert validate_catalog(_cat("e2e_cnn-t-s0", e2e))["policies"]["e2e_cnn-t-s0"]["execution_eligible"] is True
+    _demoted(_cat("e2e_cnn-t-s0", {**e2e, "deploy_validation": None}), "e2e_cnn-t-s0", "no deploy_validation")
     nq = S.catalog_entry(_vrow("reviwo"), {"condition": "reviwo"}, _vfor(_vrow("reviwo"), {"condition": "reviwo"}))
     assert nq["execution_eligible"] is True and "fql_setting_a10nq" in nq["flags"]
     validate_catalog(_cat("reviwo-t-s0-a10nq", nq))
@@ -382,17 +414,29 @@ def test_validator_allows_only_e2e_legacy_and_validated_new_setting_entries():
     a100 = {**nq, "run": "rwa100-20261111-fql-reviwo-t-s0", "flags": ["fql_setting_a100"]}
     with pytest.raises(ValueError, match="never execution-eligible"):
         validate_catalog(_cat("reviwo-t-s0-a100", a100))
-    for bad in ({**nq, "deploy_validation": None}, {**nq, "deploy_validation": _validation("d" * 64)},
-                {**nq, "deploy_validation": {**_validation(), "pass": False}},
-                {**nq, "deploy_validation": {**nq["deploy_validation"], "checks": {"l2_offline": {"pass": True}}}},
-                {**nq, "deploy_validation": {**nq["deploy_validation"], "run": "other-run"}},
-                {**nq, "deploy_validation": {**nq["deploy_validation"], "input_spec_sha256": "0" * 64}},
-                {**nq, "deploy_validation": {**nq["deploy_validation"], "training_contract_sha256": None}}):
-        with pytest.raises(ValueError, match="deploy_validation"):
-            validate_catalog(_cat("reviwo-t-s0-a10nq", bad))
-    with pytest.raises(ValueError, match="one-step policy only"):  # a one-step validation never covers a BC flow
-        validate_catalog(_cat("reviwo-t-s0-a10nq+bcflow", {**nq, "actor": "bc_flow",
-                                                          "flags": ["fql_setting_a10nq", "experimental_bc_flow"]}))
+    # an eligible entry whose evidence does not bind is DEMOTED (logged, reason published), never refusing the catalog
+    for bad, match in (({**nq, "deploy_validation": None}, "no deploy_validation"),
+                       ({**nq, "deploy_validation": _validation("d" * 64)}, "checkpoint_sha256"),
+                       ({**nq, "deploy_validation": {**_validation(), "pass": False}}, "pass"),
+                       ({**nq, "deploy_validation": {**nq["deploy_validation"], "checks": {"l2_offline": {"pass": True}}}},
+                        "checks"),
+                       ({**nq, "deploy_validation": {**nq["deploy_validation"], "checks": {
+                           **nq["deploy_validation"]["checks"], "robotpc_client": {"pass": False}}}}, "not passed"),
+                       ({**nq, "deploy_validation": {**nq["deploy_validation"], "run": "other-run"}}, "run"),
+                       ({**nq, "deploy_validation": {**nq["deploy_validation"], "input_spec_sha256": "0" * 64}},
+                        "input_spec"),
+                       ({**nq, "deploy_validation": {**nq["deploy_validation"], "training_contract_sha256": None}},
+                        "training_contract"),
+                       ({**nq, "execution_decision": {k: v for k, v in nq["execution_decision"].items()
+                                                      if k != "checkpoint_sha256"}}, "execution decision"),
+                       ({**nq, "criteria": {k: v for k, v in nq["criteria"].items() if k != "e2_visual_sensitivity"}},
+                        "e2_visual_sensitivity"),
+                       ({**nq, "criteria": {**nq["criteria"], "f_stability": {"pass": False}}}, "f_stability")):
+        _demoted(_cat("reviwo-t-s0-a10nq", bad), "reviwo-t-s0-a10nq", match)
+    variant = {**nq, "actor": "bc_flow", "flags": ["fql_setting_a10nq", "experimental_bc_flow"],
+               "execution_decision": {**nq["execution_decision"], "text": "bc_flow may execute"}}
+    _demoted({**_cat("reviwo-t-s0-a10nq", nq), "policies": {"reviwo-t-s0-a10nq": nq, "reviwo-t-s0-a10nq+bcflow": variant}},
+             "reviwo-t-s0-a10nq+bcflow", "one-step policy only")  # a one-step validation never covers a BC flow
     with pytest.raises(ValueError, match="non-eligible"):  # a record never decorates a non-eligible entry
         validate_catalog(_cat("reviwo-t-s0-a10nq", {**nq, "execution_eligible": False, "usage": "dry_run_replay_only",
                                                     "execution_decision": None}))
@@ -415,8 +459,9 @@ def test_validator_allows_only_e2e_legacy_and_validated_new_setting_entries():
     with pytest.raises(ValueError, match="usage 'execution'"):
         validate_catalog(cat(usage="dry_run_replay_only"))
     with pytest.raises(ValueError, match="requires execution_eligible"):
-        validate_catalog(cat(execution_eligible=False, execution_decision=None))
-    validate_catalog(cat(execution_eligible=False, usage="dry_run_replay_only", execution_decision=None))
+        validate_catalog(cat(execution_eligible=False, execution_decision=None, deploy_validation=None))
+    validate_catalog(cat(execution_eligible=False, usage="dry_run_replay_only", execution_decision=None,
+                         deploy_validation=None))
     with pytest.raises(ValueError, match="non-finite"):
         validate_catalog(cat(criteria={"e2_visual_sensitivity": {"d_vis_over_noise": float("inf")}}))
     with pytest.raises(ValueError, match="true or false"):
@@ -484,12 +529,8 @@ def _restricted_dynamo_row(condition="dynamo", seed=0, run=None):
     """A restricted row as the inventory classifies DynaMo: every criterion passes except e1's LN-spread gate
     (default: the new-setting a10nq run, the scope of the DynaMo decision)."""
     row = _vrow(condition, status="restricted", seed=seed, run=run)
-    row["checks"] = {"a": C.check(True, kind="epochs", budget=40, done=40),
-                     "b": C.check(True, steps=1_000_000, budget=1_000_000, checkpoint_step=1_000_000),
-                     "e1": C.check(False, offset_pass=True, ln_pass=False, offset_to_signal=2.48, ln_unit_std_raw=0.355),
-                     "e2": C.check(True, d_vis_over_spread=0.69, d_vis_over_noise=34.3, samples=192)}
-    row["class"] = C.classify(condition, {**row["checks"], "c": C.check(True), "d": C.check(True),
-                                          "f": C.check(True)})
+    row["checks"] = _summary_checks(condition, ln_pass=False)
+    row["class"] = C.classify(condition, row["checks"])
     return row
 
 
@@ -555,8 +596,9 @@ def test_restricted_grant_needs_every_failed_criterion_acknowledged_and_the_chec
         validate_catalog(cat(criteria={**good["criteria"], "f_stability": {"pass": False}}))
     with pytest.raises(ValueError, match="FAILED criterion"):
         validate_catalog(cat(criteria={}))
-    with pytest.raises(ValueError, match="deploy_validation"):
-        validate_catalog(cat(deploy_validation=None))
+    _demoted(cat(deploy_validation=None), pid, "no deploy_validation")  # demoted, the catalog stays valid
+    _demoted(cat(criteria={k: v for k, v in good["criteria"].items() if k != "a_pretraining_complete"}), pid,
+             "a_pretraining_complete")  # a frozen-encoder grant publishes its pretraining criterion as passed
     with pytest.raises(ValueError, match="never execution-eligible"):
         validate_catalog(cat(status="quarantined"))
 
@@ -610,10 +652,15 @@ def test_a_restricted_grant_needs_the_checkpoint_bound_input_spec_of_its_conditi
 
 
 def test_relabel_applies_the_current_rules_to_an_existing_catalog(tmp_path):
-    """The live catalog of 2026-11-12 (legacy entries eligible, DynaMo legacy restricted) relabelled: E2E stays
-    eligible, legacy frozen-encoder entries become ineligible (artefacts, criteria, status kept), an a10nq entry with a
-    passed record becomes eligible; the restricted decision line follows LN_SPREAD_DECISION."""
-    e2e = S.catalog_entry(_vrow("e2e_cnn", run="r-fql-e2e_cnn-t-s0"), {"condition": "e2e_cnn"})
+    """The live catalog of 2026-11-12 (legacy entries eligible, DynaMo legacy restricted) relabelled: an E2E entry
+    stays eligible only with a record bound to its checkpoint / contract / spec (audit F1 2026-11-17; without one it
+    becomes dry run / replay only), legacy frozen-encoder entries become ineligible (artefacts, criteria, status kept),
+    an a10nq entry with a passed record becomes eligible; the restricted decision line follows LN_SPREAD_DECISION."""
+    def decided(e):  # the pre-F1 E2E form: eligible by the blanket decision alone, no validation
+        return {**e, "usage": "execution", "execution_eligible": True, "execution_decision": dict(S.EXECUTION_DECISION)}
+
+    e2e = decided(S.catalog_entry(_vrow("e2e_cnn", run="r-fql-e2e_cnn-t-s0"), {"condition": "e2e_cnn"}))
+    e2e_bare = decided(S.catalog_entry(_vrow("e2e_cnn", run="r-fql-e2e_cnn-t-s1", seed=1), {"condition": "e2e_cnn"}))
     legacy = {**S.catalog_entry(_vrow("reviwo", run="r-fql-reviwo-t-s0"), {"condition": "reviwo"}),
               "usage": "execution", "execution_eligible": True, "execution_decision": dict(S.EXECUTION_DECISION)}
     old_dyn = S.catalog_entry(_restricted_dynamo_row(run="r-fql-dynamo-t-s0"), DYNAMO_SPEC)
@@ -621,25 +668,31 @@ def test_relabel_applies_the_current_rules_to_an_existing_catalog(tmp_path):
                           "LayerNorm-spread criterion and passes visual sensitivity (no waiver)"]
     nq = S.catalog_entry(_vrow("sincro"), {"condition": "sincro"})
     assert nq["execution_eligible"] is False
-    old = S.build_catalog({"e2e_cnn-t-s0": e2e, "reviwo-t-s0": legacy, "dynamo-t-s0": old_dyn,
-                           "sincro-t-s0-a10nq": nq}, aliases={"reviwo-t": "reviwo-t-s0"}, criteria_sha256="f" * 64)
+    old = S.build_catalog({"e2e_cnn-t-s0": e2e, "e2e_cnn-t-s1": e2e_bare, "reviwo-t-s0": legacy,
+                           "dynamo-t-s0": old_dyn, "sincro-t-s0-a10nq": nq}, aliases={"reviwo-t": "reviwo-t-s0"},
+                          criteria_sha256="f" * 64)
     from ops.policy_serving.config import input_spec_digest
 
-    rec = {"run": nq["run"], "checkpoint_sha256": nq["sha256"], "at": "t", "pass": True,
-           "training_contract_sha256": "a" * 64, "input_spec_sha256": input_spec_digest(nq["input_spec"]),
-           "checks": {k: {"pass": True} for k in S.VALIDATION_CHECKS}}
-    (tmp_path / f"{nq['run']}.json").write_text(json.dumps(rec))
     sc = tmp_path / "sc"
     sc.mkdir()
-    (sc / Path(nq["training_contract"]).name).write_text("{}")
-    rec["training_contract_sha256"] = S.sha256_file(sc / Path(nq["training_contract"]).name)
-    (tmp_path / f"{nq['run']}.json").write_text(json.dumps(rec))
+    for entry in (nq, e2e):  # e2e_cnn-t-s1 has no record
+        (sc / Path(entry["training_contract"]).name).write_text("{}")
+        rec = {"run": entry["run"], "checkpoint_sha256": entry["sha256"], "at": "t", "pass": True,
+               "training_contract_sha256": S.sha256_file(sc / Path(entry["training_contract"]).name),
+               "input_spec_sha256": input_spec_digest(entry["input_spec"]),
+               "checks": {k: {"pass": True} for k in S.VALIDATION_CHECKS}}
+        (tmp_path / f"{entry['run']}.json").write_text(json.dumps(rec))
+    (sc / Path(e2e_bare["training_contract"]).name).write_text("{}")
     assert S.relabel_catalog(json.loads(json.dumps(old)), tmp_path)["policies"]["sincro-t-s0-a10nq"][
         "execution_eligible"] is False  # without the current contract copy: not eligible
     new = S.relabel_catalog(json.loads(json.dumps(old)), tmp_path, sc)
     validate_catalog(json.loads(json.dumps(new)))
     p = new["policies"]
     assert p["e2e_cnn-t-s0"]["execution_eligible"] is True and p["reviwo-t-s0"]["execution_eligible"] is False
+    assert p["e2e_cnn-t-s0"]["deploy_validation"]["checkpoint_sha256"] == e2e["sha256"]
+    assert p["e2e_cnn-t-s0"]["execution_decision"]["checkpoint_sha256"] == e2e["sha256"]
+    assert p["e2e_cnn-t-s1"]["execution_eligible"] is False and p["e2e_cnn-t-s1"]["usage"] == "dry_run_replay_only"
+    assert S.AWAITING_E2E_VALIDATION in p["e2e_cnn-t-s1"]["usage_reasons"]
     assert S.LEGACY_FROZEN_REASON in p["reviwo-t-s0"]["usage_reasons"] and p["reviwo-t-s0"]["status"] == "deployable"
     assert p["dynamo-t-s0"]["execution_eligible"] is False and p["dynamo-t-s0"]["reasons"][1] == C.LN_SPREAD_DECISION
     assert p["sincro-t-s0-a10nq"]["execution_eligible"] is True and p["sincro-t-s0-a10nq"]["deploy_validation"]["pass"]
@@ -709,18 +762,22 @@ class FakeHost(S.Host):
         super().__init__()
         self.copies, self.writes, self.reloads, self.slow_read = {}, 0, 0, slow_read
         self.fail_container_write = False
+        self.read_failure = None  # host catalog read: "ssh" (rc 255), "empty", "garbage", "not-an-object"
 
     def run(self, cmd, *, stdin=None, check=True):
         import time as _t
 
         out, rc = "", 0
-        if cmd.startswith(f"cat {self.root}/"):
+        if cmd.startswith("p=") and f"{self.root}/{S.CATALOG_NAME}" in cmd:  # host catalog read (absent: 44)
             _t.sleep(self.slow_read)
             out = self.copies.get("host", "")
-            rc = 0 if out else 1
-        elif cmd.startswith(f"docker exec {self.container} cat "):
+            rc = 0 if out else S.CATALOG_ABSENT_RC
+            if self.read_failure is not None:
+                out, rc = {"ssh": ("", 255), "empty": ("", 0), "garbage": ("{not json", 0),
+                           "not-an-object": ("[1, 2]", 0)}[self.read_failure]
+        elif cmd.startswith(f"docker exec {self.container} sh -c") and "exec cat" in cmd:  # container catalog read
             out = self.copies.get("container", "")
-            rc = 0 if out else 1
+            rc = 0 if out else S.CATALOG_ABSENT_RC
         elif cmd.startswith("chmod u+w"):
             self.copies["host"] = stdin
             self.writes += 1
@@ -733,10 +790,13 @@ class FakeHost(S.Host):
         return subprocess.CompletedProcess(cmd, rc, out, "")
 
 
-def _stage_env(tmp_path, monkeypatch, runs=("r-fql-e2e_cnn-t-s0",), status="deployable"):
+def _stage_env(tmp_path, monkeypatch, runs=("r-fql-e2e_cnn-t-s0",), status="deployable", validated=True):
+    """``validated``: a passed deployment-validation record bound to each run's checkpoint + contract (the evidence an
+    eligible E2E entry needs since audit F1 2026-11-17)."""
     import argparse
 
-    data, sc = tmp_path / "data", tmp_path / "sc"
+    data, sc, val = tmp_path / "data", tmp_path / "sc", tmp_path / "validation"
+    val.mkdir(exist_ok=True)
     rows = []
     for run in runs:
         (data / "runs" / run).mkdir(parents=True, exist_ok=True)
@@ -744,14 +804,18 @@ def _stage_env(tmp_path, monkeypatch, runs=("r-fql-e2e_cnn-t-s0",), status="depl
         sc.mkdir(exist_ok=True)
         (sc / f"{run}.deploy_contract.json").write_text("{}")
         seed = int(run[-1])
-        f_ok = {"pass": True, "final_q_mean": -40.0, "late_q_mean_median": -41.0, "peak_q_mean": [5000, -12.0]}
+        sha, contract = S.sha256_file(data / "runs" / run / "policy.pt"), S.sha256_file(sc / f"{run}.deploy_contract.json")
+        checks = _summary_checks("e2e_cnn")
+        checks["d"] = C.check(True, sha256=contract)
         rows.append({"run": run, "condition": "e2e_cnn", "task": "t", "seed": seed, "policy_id": f"e2e_cnn-t-s{seed}",
-                     "policy": {"path": f"runs/{run}/policy.pt", "sha256": S.sha256_file(data / "runs" / run /
-                                                                                         "policy.pt"), "local": True},
+                     "fql_setting": None, "policy": {"path": f"runs/{run}/policy.pt", "sha256": sha, "local": True},
                      "export": None, "class": {"status": status, "reasons": [] if status == "deployable" else ["x"],
                                                "flags": []},
-                     "checks": {"d": {"pass": True, "sha256": S.sha256_file(sc / f"{run}.deploy_contract.json")},
-                                "f": f_ok}})
+                     "checks": checks})
+        if validated:  # input_spec None (local_input_spec is stubbed): the record binds no spec digest
+            (val / f"{run}.json").write_text(json.dumps({
+                "run": run, "checkpoint_sha256": sha, "pass": True, "at": "t", "training_contract_sha256": contract,
+                "checks": {k: {"pass": True} for k in S.VALIDATION_CHECKS}}))
     crit = tmp_path / "criteria.md"
     crit.write_text("criteria")
     inv = tmp_path / "inv.json"
@@ -761,7 +825,7 @@ def _stage_env(tmp_path, monkeypatch, runs=("r-fql-e2e_cnn-t-s0",), status="depl
     args = argparse.Namespace(inventory=inv, criteria=crit, runs=list(runs), sidecar_dir=sc, ssh="irsl", bwlimit="1m",
                               lock_file=tmp_path / "stage.lock", execute=True, read_host=False,
                               label_quarantined=False, data_root=data, splits=tmp_path, raw_root=tmp_path,
-                              rig_dir=None, no_probe=False, evaluate=False)
+                              rig_dir=None, no_probe=False, evaluate=False, validation_dir=val, replace=[])
     return args, inv
 
 
@@ -866,3 +930,125 @@ def test_native_depth_pretraining_rows_are_recognised():
     assert m and m["task"] == "drawer-open"
     assert not S.PRE_RE.match("rwcal-20261110-fqldata-mvp3d_single-drawer-open-native")
     assert not S.PRE_RE.match("rwcal-20261110-nativedepth-mvp3d-drawer-open")
+
+
+# ------------------------------------------------------------------------------------------------ audit 2026-11-17
+def test_stage_refuses_a_policy_id_collision_with_another_run_or_checkpoint(tmp_path, monkeypatch, capsys):
+    """Audit F2: an id published for another run / checkpoint is never silently replaced (the autodeploy daemon's
+    merge() rule); ``--replace OLD_SHA256`` names it explicitly and the replacement is eligible only with its OWN
+    deployment validation (audit F1)."""
+    host = FakeHost()
+    monkeypatch.setattr(S, "Host", lambda **k: host)
+    args, _ = _stage_env(tmp_path, monkeypatch)
+    assert S.cmd_stage(args) == 0
+    old = json.loads(host.copies["host"])["policies"]["e2e_cnn-t-s0"]
+    assert old["execution_eligible"] is True and host.writes == 1
+    capsys.readouterr()
+    # a retrained run of the same condition / task / seed maps to the same id (ids carry no run date)
+    retrained, _ = _stage_env(tmp_path, monkeypatch, runs=("r2-fql-e2e_cnn-t-s0",), validated=False)
+    assert S.cmd_stage(retrained) == 2 and host.writes == 1
+    assert "collision" in json.loads(capsys.readouterr().out)["error"]
+    assert json.loads(host.copies["host"])["policies"]["e2e_cnn-t-s0"] == old  # untouched, nothing uploaded
+    for wrong in (["d" * 64], [S.sha256_file(retrained.data_root / "runs/r2-fql-e2e_cnn-t-s0/policy.pt")]):
+        assert S.cmd_stage(type(retrained)(**{**vars(retrained), "replace": wrong})) == 2 and host.writes == 1
+    capsys.readouterr()
+    assert S.cmd_stage(type(retrained)(**{**vars(retrained), "replace": [old["sha256"]]})) == 0  # named explicitly
+    new = json.loads(host.copies["host"])["policies"]["e2e_cnn-t-s0"]
+    assert new["run"] == "r2-fql-e2e_cnn-t-s0" and new["sha256"] != old["sha256"]
+    assert new["execution_eligible"] is False and S.AWAITING_E2E_VALIDATION in new["usage_reasons"]  # no inheritance
+    row = {"run": "r", "policy": {"sha256": "a" * 64}}
+    assert S.id_collision(None, row) is None and S.id_collision({"run": "r", "sha256": "a" * 64}, row) is None
+    assert S.id_collision({"run": "r", "sha256": "b" * 64}, row) and S.id_collision({"run": "q", "sha256": "a" * 64}, row)
+
+
+@pytest.mark.parametrize("failure", ["ssh", "empty", "garbage", "not-an-object"])
+def test_an_unreadable_catalog_is_never_treated_as_empty(tmp_path, monkeypatch, capsys, failure):
+    """Audit F7: a failed / unparsable read is not "no catalog": nothing is merged or written on top of it."""
+    assert S.read_host_catalog(FakeHost()) == {"policies": {}, "aliases": {}}  # ABSENT (first publication) only
+    host = FakeHost()
+    monkeypatch.setattr(S, "Host", lambda **k: host)
+    args, inv = _stage_env(tmp_path, monkeypatch, runs=("r-fql-e2e_cnn-t-s0", "r-fql-e2e_cnn-t-s1"))
+    assert S.cmd_stage(type(args)(**{**vars(args), "runs": ["r-fql-e2e_cnn-t-s0"]})) == 0
+    before, writes = dict(host.copies), host.writes
+    host.read_failure = failure
+    with pytest.raises(S.CatalogUnreadable):
+        S.read_host_catalog(host)
+    with pytest.raises(S.CatalogUnreadable):
+        S.cmd_stage(type(args)(**{**vars(args), "runs": ["r-fql-e2e_cnn-t-s1"]}))
+    assert host.copies == before and host.writes == writes
+    capsys.readouterr()
+    rc = S.main(["--data-root", str(args.data_root), "--sidecar-dir", str(args.sidecar_dir), "--criteria",
+                 str(args.criteria), "stage", "r-fql-e2e_cnn-t-s1", "--inventory", str(inv), "--execute",
+                 "--lock-file", str(args.lock_file), "--validation-dir", str(args.validation_dir)])
+    assert rc == 2 and "CatalogUnreadable" in json.loads(capsys.readouterr().out)["error"]
+    assert host.copies == before and host.writes == writes
+
+
+def test_a_catalog_write_never_drops_published_ids_implicitly(tmp_path, monkeypatch):
+    """Audit F7: both published copies are re-read right before a write; an id present there must be in the new
+    catalog or named in ``removals``."""
+    host = FakeHost()
+    monkeypatch.setattr(S, "Host", lambda **k: host)
+    args, _ = _stage_env(tmp_path, monkeypatch, runs=("r-fql-e2e_cnn-t-s0", "r-fql-e2e_cnn-t-s1"))
+    assert S.cmd_stage(args) == 0
+    published = json.loads(host.copies["host"])
+    one = S.build_catalog({"e2e_cnn-t-s0": published["policies"]["e2e_cnn-t-s0"]}, aliases={}, criteria_sha256=None)
+    with pytest.raises(S.CatalogDropRefused, match="e2e_cnn-t-s1"):
+        S.write_host_catalog(host, one, execute=True, log=lambda m: None)
+    assert json.loads(host.copies["host"]) == published
+    host.copies["host"] = json.dumps(one)  # an id held only by the container copy is not dropped either
+    with pytest.raises(S.CatalogDropRefused, match="e2e_cnn-t-s1"):
+        S.write_host_catalog(host, one, execute=True, log=lambda m: None)
+    S.write_host_catalog(host, one, execute=True, log=lambda m: None, removals=["e2e_cnn-t-s1"])  # explicit
+    assert set(json.loads(host.copies["container"])["policies"]) == {"e2e_cnn-t-s0"}
+
+
+def test_the_activity_preflight_fails_closed_and_is_disabled_only_explicitly(tmp_path, monkeypatch):
+    """Audit F16: with ``S4D_STAGING_PREFLIGHT`` unset the default activity gate runs (a missing gate = BUSY); ``off``
+    / ``--no-activity-gate`` is the only opt-out; a busy gate stops the publication before anything is written."""
+    logs = []
+    monkeypatch.delenv(S.PREFLIGHT_ENV, raising=False)
+    monkeypatch.setattr(S, "ACTIVITY_GATE", tmp_path / "missing" / "activity_gate.sh")
+    with pytest.raises(S.PreflightBusy, match="failed"):
+        S.preflight("catalog publication", logs.append)
+    gate = tmp_path / "activity_gate.sh"
+    gate.write_text('#!/bin/sh\necho "$1" > "$(dirname "$0")/label"\nexit 75\n')
+    gate.chmod(0o755)
+    monkeypatch.setattr(S, "ACTIVITY_GATE", gate)
+    with pytest.raises(S.PreflightBusy, match="rc 75"):
+        S.preflight("catalog publication", logs.append)
+    assert (tmp_path / "label").read_text().strip() == "staging catalog publication"
+    host = FakeHost()
+    with pytest.raises(S.PreflightBusy):
+        S.write_host_catalog(host, S.build_catalog({}, aliases={}, criteria_sha256=None), execute=True,
+                             log=logs.append)
+    assert host.writes == 0 and host.copies == {}
+    monkeypatch.setenv(S.PREFLIGHT_ENV, S.PREFLIGHT_OFF)
+    S.preflight("catalog publication", logs.append)
+    assert "DISABLED" in logs[-1]
+    monkeypatch.delenv(S.PREFLIGHT_ENV)
+    cat = tmp_path / "cat.json"
+    cat.write_text(json.dumps(S.build_catalog({}, aliases={}, criteria_sha256=None)))
+    assert S.main(["relabel", "--from-json", str(cat), "--no-activity-gate"]) == 0
+    import os
+
+    assert os.environ[S.PREFLIGHT_ENV] == S.PREFLIGHT_OFF  # the flag is the explicit opt-out
+
+
+def test_a_write_publishes_legacy_decision_only_e2e_entries_demoted_and_keeps_the_rest(tmp_path, monkeypatch):
+    """Audit F1: the pre-F1 live form (E2E eligible by the 2026-11-10 decision alone) does not block a publication:
+    the writer publishes it demoted (reason in usage_reasons), the newly staged validated entry is eligible."""
+    host = FakeHost()
+    monkeypatch.setattr(S, "Host", lambda **k: host)
+    args, _ = _stage_env(tmp_path, monkeypatch, runs=("r-fql-e2e_cnn-t-s0", "r-fql-e2e_cnn-t-s1"))
+    assert S.cmd_stage(type(args)(**{**vars(args), "runs": ["r-fql-e2e_cnn-t-s0"]})) == 0
+    published = json.loads(host.copies["host"])
+    legacy = {k: v for k, v in published["policies"]["e2e_cnn-t-s0"].items() if k != "deploy_validation"}
+    legacy["execution_decision"] = dict(S.EXECUTION_DECISION)  # no checkpoint binding, no validation
+    host.copies["host"] = host.copies["container"] = json.dumps({**published, "policies": {"e2e_cnn-t-s0": legacy}})
+    assert S.cmd_stage(type(args)(**{**vars(args), "runs": ["r-fql-e2e_cnn-t-s1"]})) == 0
+    out = json.loads(host.copies["host"])["policies"]
+    assert out["e2e_cnn-t-s1"]["execution_eligible"] is True
+    assert out["e2e_cnn-t-s0"]["execution_eligible"] is False and out["e2e_cnn-t-s0"]["usage"] == "dry_run_replay_only"
+    assert out["e2e_cnn-t-s0"]["usage_reasons"][0].startswith(EVIDENCE_DEMOTION)
+    assert host.copies["host"] == host.copies["container"]

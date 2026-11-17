@@ -9,10 +9,12 @@ from __future__ import annotations
 
 import copy
 import json
+import logging
 import math
 import re
 from pathlib import Path
 
+LOG = logging.getLogger(__name__)
 REPO = Path(__file__).resolve().parents[2]
 DEFAULT_PATH = REPO / "configs/realworld/policy_serving.yaml"
 
@@ -90,6 +92,17 @@ E2E_CONDITIONS = frozenset({"e2e_cnn"})
 E2E_ELIGIBLE_SETTINGS = (LEGACY_SETTING,)
 FROZEN_ELIGIBLE_SETTINGS = ("a10nq",)
 DEPLOY_VALIDATION_CHECKS = ("l2_offline", "server_network", "robotpc_client")
+# Execution evidence (pipeline audit 2026-11-17, F1): EVERY execution-eligible entry, end-to-end CNN included, carries
+# (1) a passed deployment validation bound to its run, checkpoint sha256, training contract and input_spec, (2) a user
+# execution decision bound to the same checkpoint sha256, and (3) its criteria published as PASSED (criteria.
+# criteria_summary names; frozen-encoder conditions add pretraining + feature conditioning; a restricted grant may leave
+# exactly its acknowledged failures FAILED, never missing). A decision alone is never evidence. An eligible entry that
+# lacks this evidence is DEMOTED to dry run / replay only with a logged reason (``demoted_entry``) instead of refusing
+# the whole catalog: the other entries stay served, and the demotion is visible in the entry's usage_reasons.
+ELIGIBLE_CRITERIA = ("b_fql_complete", "c_export_chain_and_load", "d_deploy_contract", "e2_visual_sensitivity",
+                     "f_stability")
+FROZEN_ELIGIBLE_CRITERIA = ("a_pretraining_complete", "e1_offset_to_signal", "e1_layernorm_spread")
+EVIDENCE_DEMOTION = "demoted by the catalog validator: no checkpoint-bound execution evidence (audit F1 2026-11-17)"
 # The FQL agent configuration each setting trains with (checkpoint ``agent.config``; a missing normalize_q_loss = the
 # earlier code = false): eligibility is bound to the WEIGHTS' setting, not only to the run id (Codex review of 7518c4f).
 SETTING_AGENT_CONFIG = {LEGACY_SETTING: (10.0, False), "a10nq": (10.0, True), "a100": (100.0, False)}
@@ -232,26 +245,61 @@ def _check_restricted_grant(source, pid, entry: dict, decision) -> None:
                          "checkpoint_sha256 (both valid sha256 hex, equal)")
 
 
-def _check_deploy_validation(source, pid, entry: dict) -> None:
-    v = entry.get("deploy_validation")
+def deploy_validation_refusal(entry: dict) -> str | None:
+    """Why an entry's ``deploy_validation`` does not cover it (None: a passed record bound to this run, checkpoint
+    sha256, a valid training-contract sha256 and this input_spec, with exactly the checks DEPLOY_VALIDATION_CHECKS,
+    each passed). The server additionally binds the contract digest to the SERVED sidecar
+    (server.checkpoint_setting_refusal)."""
     if entry.get("actor", "onestep") != "onestep":
-        raise ValueError(f"{source}: policy {pid}: a deployment validation covers the one-step policy only (actor "
-                         f"{entry.get('actor')!r})")
-    checks = v.get("checks") if isinstance(v, dict) else None
-    if not isinstance(checks, dict) or v.get("pass") is not True or v.get("checkpoint_sha256") != entry.get("sha256") \
-            or v.get("run") != entry.get("run") or not valid_sha256(v.get("training_contract_sha256")) \
-            or v.get("input_spec_sha256") != input_spec_digest(entry.get("input_spec")) \
-            or set(checks) != set(DEPLOY_VALIDATION_CHECKS) \
-            or not all(isinstance(checks.get(k), dict) and checks[k].get("pass") is True
-                       for k in DEPLOY_VALIDATION_CHECKS):
-        raise ValueError(f"{source}: policy {pid}: an execution-eligible new-setting entry needs a passed "
-                         "deploy_validation {run, checkpoint_sha256 (== sha256), training_contract_sha256, "
-                         "input_spec_sha256 (== the entry's input_spec), pass, checks "
-                         f"{list(DEPLOY_VALIDATION_CHECKS)}}}")
+        return f"a deployment validation covers the one-step policy only (actor {entry.get('actor')!r})"
+    v = entry.get("deploy_validation")
+    if not isinstance(v, dict):
+        return "no deploy_validation record"
+    checks = v.get("checks")
+    for bad, why in ((v.get("pass") is not True, "pass is not true"),
+                     (v.get("checkpoint_sha256") != entry.get("sha256"), "checkpoint_sha256 != the entry's sha256"),
+                     (v.get("run") != entry.get("run"), "run != the entry's run"),
+                     (not valid_sha256(v.get("training_contract_sha256")), "no valid training_contract_sha256"),
+                     (v.get("input_spec_sha256") != input_spec_digest(entry.get("input_spec")),
+                      "input_spec_sha256 != the entry's input_spec"),
+                     (not isinstance(checks, dict) or set(checks) != set(DEPLOY_VALIDATION_CHECKS),
+                      f"checks are not exactly {list(DEPLOY_VALIDATION_CHECKS)}")):
+        if bad:
+            return f"deploy_validation does not bind: {why}"
+    failed = [k for k in DEPLOY_VALIDATION_CHECKS if not (isinstance(checks[k], dict) and checks[k].get("pass") is True)]
+    return f"deploy_validation does not bind: checks {failed} not passed" if failed else None
+
+
+def eligibility_evidence_refusal(entry: dict) -> str | None:
+    """Why an execution-eligible entry lacks the execution evidence (``ELIGIBLE_CRITERIA`` comment; None: complete):
+    the bound deployment validation, the checkpoint-bound execution decision, the criteria published as passed."""
+    why = deploy_validation_refusal(entry)
+    if why is not None:
+        return why
+    decision = entry.get("execution_decision")
+    if not isinstance(decision, dict) or not valid_sha256(decision.get("checkpoint_sha256")) or \
+            decision.get("checkpoint_sha256") != entry.get("sha256"):
+        return "the execution decision is not bound to the checkpoint (execution_decision.checkpoint_sha256 != sha256)"
+    crit = entry.get("criteria") or {}
+    needed = ELIGIBLE_CRITERIA + (() if entry.get("condition") in E2E_CONDITIONS else FROZEN_ELIGIBLE_CRITERIA)
+    acknowledged = set(decision.get("acknowledged_failures") or ()) if entry.get("status") == "restricted" else set()
+    missing = [k for k in needed if not (isinstance(crit.get(k), dict) and (
+        crit[k].get("pass") is True or (crit[k].get("pass") is False and k in acknowledged)))]
+    return f"criteria {missing} are not published as passed" if missing else None
+
+
+def demoted_entry(entry: dict, why: str) -> dict:
+    """An execution-eligible entry without its execution evidence, demoted to dry run / replay only (status, criteria,
+    artefacts unchanged; the decision and any validation summary dropped; the reason published in usage_reasons)."""
+    out = {k: v for k, v in entry.items() if k not in ("execution_decision", "deploy_validation")}
+    out.update(usage="dry_run_replay_only", execution_eligible=False,
+               usage_reasons=[f"{EVIDENCE_DEMOTION}: {why}", "not execution-eligible"])
+    return out
 
 
 def _check_eligible_setting(source, pid, entry: dict) -> None:
-    """Execution eligibility by condition class and FQL setting (derived from the entry's identity)."""
+    """Execution eligibility by condition class and FQL setting (derived from the entry's identity); the execution
+    evidence (deployment validation etc.) is checked for every condition by ``eligibility_evidence_refusal``."""
     try:
         setting = entry_fql_setting(pid, entry)
     except ValueError as exc:
@@ -265,7 +313,6 @@ def _check_eligible_setting(source, pid, entry: dict) -> None:
         raise ValueError(f"{source}: policy {pid}: a frozen-encoder entry of FQL setting {setting} is never "
                          "execution-eligible (user decision 2026-11-12 ~16:00: legacy frozen-encoder policies are not "
                          "re-enabled; a100 comparison not authorized)")
-    _check_deploy_validation(source, pid, entry)
 
 
 def _check_eligibility(source, pid, entry: dict) -> None:
@@ -274,7 +321,8 @@ def _check_eligibility(source, pid, entry: dict) -> None:
     within ``RESTRICTED_EXECUTION_SCOPES`` whose scoped user decision acknowledges its failed criteria and is bound to
     its checkpoint (``_check_restricted_grant``, user decision 2026-11-12); every eligible entry names a valid
     checkpoint sha256 (the server verifies the weights against it); quarantined entries can never be eligible; usage
-    ``execution`` without eligibility is refused (fail closed)."""
+    ``execution`` without eligibility is refused (fail closed). A violation of these rules refuses the catalog; an
+    eligible entry that passes them but lacks its execution EVIDENCE is demoted by ``validate_catalog``."""
     eligible, usage, decision = entry.get("execution_eligible") is True, entry.get("usage"), entry.get("execution_decision")
     if entry.get("deploy_validation") is not None and not eligible:
         raise ValueError(f"{source}: policy {pid}: a deploy_validation record on a non-eligible entry")
@@ -338,7 +386,9 @@ def _check_bcflow_base(source, pid: str, entry: dict, policies: dict) -> None:
 
 def validate_catalog(raw: dict, source="catalog") -> dict:
     """Checked catalog dict (see ``CATALOG_*``): unknown keys refused, status values checked, aliases point at existing
-    ids and never shadow one. Returns ``{"schema", ..., "policies": {id: entry}, "aliases": {alias: id}}``."""
+    ids and never shadow one. Returns ``{"schema", ..., "policies": {id: entry}, "aliases": {alias: id}}``. An
+    execution-eligible entry without its execution evidence (``eligibility_evidence_refusal``) is returned DEMOTED
+    (``demoted_entry``, logged) instead of refusing the whole catalog; every other rule violation raises."""
     if not isinstance(raw, dict):
         raise ValueError(f"{source}: a catalog is a JSON object")
     bad = set(raw) - CATALOG_TOP_KEYS
@@ -387,6 +437,9 @@ def validate_catalog(raw: dict, source="catalog") -> dict:
                 not (isinstance(spec, dict) and spec.get("condition") == entry["condition"]):
             raise ValueError(f"{source}: policy {pid}: a restricted grant needs the entry's input_spec (its condition "
                              "bound to the checkpoint by the server)")
+        if entry.get("execution_eligible") is True and (why := eligibility_evidence_refusal(entry)) is not None:
+            LOG.warning("%s: policy %s demoted to dry_run_replay_only (not execution-eligible): %s", source, pid, why)
+            entry = demoted_entry(entry, why)
         out["policies"][str(pid)] = copy.deepcopy(entry)
     for pid, entry in out["policies"].items():
         if entry.get("actor", "onestep") == "bc_flow":
