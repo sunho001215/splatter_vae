@@ -819,7 +819,16 @@ def priority_policy():
         lambda: dict(ram_gb=min((CAP-total) / 2**30, _ram_available-(total-reserved) / 2**30),
                      cpu_threads=CPU_BUDGET-cpu_used, disk_gb=disk_free),
         request=priority_request, messages=messages)
-    return reserve(policy, globals().get('snapshot'))
+    snap = globals().get('snapshot')
+    if snap is None:
+        # 2026-11-17: a pass without remote candidates takes no snapshot, yet remote prep holds still need
+        # resource evidence. Read it on demand instead of aborting the whole pass; reserve() still fails
+        # closed when the evidence is unreadable.
+        try:
+            snap = RemoteBackend(REPO, REPO / 'runs').snapshot()
+        except (OSError, ValueError, RuntimeError, subprocess.SubprocessError):
+            snap = None
+    return reserve(policy, snap)
 
 
 def capacity_fits(job, g):
