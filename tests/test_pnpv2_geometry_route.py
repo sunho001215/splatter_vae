@@ -4,6 +4,7 @@ import hashlib
 import json
 import shlex
 import subprocess
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -18,6 +19,32 @@ from s4d.rwlearn.pnpv2_spec import SPEC, STEM, TASK, load_spec, values
 ROOT = Path(__file__).resolve().parents[1]
 IMAGE = 'sha256:' + 'b' * 64
 COMMIT = 'a' * 40
+
+
+@pytest.fixture(autouse=True)
+def _restore_runtime_globals(monkeypatch):
+    """Runtime task installs are process-local in production; never leak them into other test files.
+
+    Binds the re-exporting modules (ops.jobs.realworld_plan, alias s4d.rwlearn.launch) to the original objects first,
+    then registers restores for every global the pnp-v2/dsreset runtime installs rebind (including the sys.modules
+    aliases of dsreset_runtime.install), so teardown returns them even if a test installs or patches them.
+    """
+    import s4d.rwlearn as rwlearn
+    from ops.jobs import realworld_plan  # noqa: F401
+    from s4d.rwlearn import configs, dsreset, dsreset_configs, dsreset_gate, dsreset_tasks
+
+    for name in ("tasks", "identity", "gate", "configs", "outcomes"):
+        key = "s4d.rwlearn." + name
+        if key in sys.modules:
+            monkeypatch.setitem(sys.modules, key, sys.modules[key])
+        if hasattr(rwlearn, name):
+            monkeypatch.setattr(rwlearn, name, getattr(rwlearn, name))
+    for module, names in ((dsreset, ("TASKS",)), (dsreset_tasks, ("TARGETS", "TARGET_TASKS")),
+                          (dsreset_configs._impl, ("TARGETS", "TARGET_TASKS", "SCENE_PARAMETERS")),
+                          (dsreset_gate._impl, ("TARGETS",)), (configs, ("TARGETS", "TARGET_TASKS"))):
+        for attribute in names:
+            if hasattr(module, attribute):
+                monkeypatch.setattr(module, attribute, getattr(module, attribute))
 
 
 def write(path, doc):
