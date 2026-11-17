@@ -1,0 +1,56 @@
+# Retained baseline: same drawer-open-v2 architecture, loss and schedule; no inherited scene measurements.
+# Template: resolve ${pnpv2.*} only through the pick-and-place-v2 task spec.
+dataset:
+  hdf5_path: ${pnpv2.rgb_store}
+  batch_size: 64
+  num_workers: 15
+  pin_memory: true
+  window_size: 5
+  max_episodes: null
+encoder:
+  pretrained: false
+  output_dim: 512
+  unit_norm: false
+projector:
+  n_layer: 6
+  n_head: 6
+  n_embd: 120
+  output_dim: 14
+  dropout: 0.0
+ssl:
+  n_layer: 6
+  n_head: 6
+  n_embd: 120
+  dropout: 0.0
+  covariance_reg_coef: 0.04
+  dynamics_loss_coef: 1.0
+  ema_beta: null
+  beta_scheduling: true
+  projector_use_ema: true
+  separate_single_views: true
+train:
+  ssl_lr: 0.0001
+  ssl_weight_decay: 0.0
+  betas:
+  - 0.9
+  - 0.999
+  clip_grad_norm: 0.1
+  seed: 42
+  sync_bn: true
+  use_lr_scheduling: true
+  warmup_epochs: 5
+  num_epochs: 40
+  save_every_epochs: 10
+  device: cuda
+  max_global_steps: null
+  save_every: 2000
+  log_every: 50
+wandb:
+  project: splatter4d-baselines
+data_interface:
+  split_manifest: ${pnpv2.rgb_split}
+  frame_spacing: 1
+  gate_report: ${pnpv2.rgb_gate}
+  consumer: dynamo
+  source: realworld
+  target: pick-and-place-v2

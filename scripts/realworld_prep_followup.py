@@ -17,6 +17,7 @@ def main():
     p.add_argument('--manifest',type=Path,help='ingest snapshot for records')
     p.add_argument('--out',type=Path,required=True,help='new queue bundle')
     p.add_argument('--result',type=Path,required=True,help='output under the processed mount')
+    p.add_argument('--id-stem',help='job-id stem for a new task namespace (pick-and-place-v2: pnpv2-20261117-qa)')
     a=p.parse_args();cfg=json.loads(a.base_config.read_text())
     if not a.result.resolve().is_relative_to(Path(cfg['processed']).resolve()):raise ValueError('result must be under processed mount')
     a.out.mkdir(parents=True,exist_ok=False);a.result.mkdir(parents=True,exist_ok=True)
@@ -26,8 +27,12 @@ def main():
         argv=['-m','s4d.realworld.calib.release','plan','--manifest',str(a.manifest),'--rig',a.task+'='+str(a.rig),'--out',str(a.result/'plan.json')]
     else:
         files += [a.inputs/n for n in ('store.yaml','manifest.json','split_seed0.json','outcomes.json','gate_report.json')]
-        argv=['scripts/realworld_dsreset_measure.py','--inputs',str(a.inputs),'--rig',str(a.rig),'--out',str(a.result)]
-    job=dict(id=f'rwv2-20261113-qa-ours-{a.task}-{a.kind}',gpu_profile='1g.24gb',priority=-4,
+        # pick-and-place-v2 is unknown to the paired dsreset task list; its wrapper installs it process-locally
+        script=('scripts/pnpv2_realworld_dsreset_measure.py' if a.task=='pick-and-place-v2'
+                else 'scripts/realworld_dsreset_measure.py')
+        argv=[script,'--inputs',str(a.inputs),'--rig',str(a.rig),'--out',str(a.result)]
+    jid=f'rwv2-20261113-qa-ours-{a.task}-{a.kind}' if a.id_stem is None else f'{a.id_stem}-{a.task}-{a.kind}'
+    job=dict(id=jid,gpu_profile='1g.24gb',priority=-4,
              gpu_gib=1,ram_gib=16,cpus=4,disk_gib=32,inputs={str(p.resolve()):digest(p) for p in files},
              deps=[],steps=[{'kind':'python','argv':argv}])
     cfg.update(bundle=str(a.out.resolve()),state_dir=str(a.out.resolve()/'state'),jobs=str(a.out.resolve()/'jobs.json'),

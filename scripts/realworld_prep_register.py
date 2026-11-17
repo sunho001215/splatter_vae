@@ -12,7 +12,7 @@ from ops.jobs.rwprep_mig import atomic, digest, priority_path, validate
 from ops.resources.memory_budget import TRAINING_CEILING
 
 
-def compile_plans(plans, out, processed, raw, phase='A', rig_map=None):
+def compile_plans(plans, out, processed, raw, phase='A', rig_map=None, stem=None):
     jobs=[]
     compiled=[]
     out=Path(out).resolve()
@@ -57,7 +57,8 @@ def compile_plans(plans, out, processed, raw, phase='A', rig_map=None):
                            '--server',server,'--episode',ep]},
                           {'kind':'rwprep','argv':['qa','--roots',cfg['output_root'],'--episode',ep,
                            '--out',cfg['output_root']+'/qa.json','--families']}]
-            jobs.append(dict(id=f'rwv2-20261113-prep-ours-{ep}-phase{phase}',episode=ep,phase=phase,
+            jid=f'rwv2-20261113-prep-ours-{ep}-phase{phase}' if stem is None else f'{stem}-{ep}'
+            jobs.append(dict(id=jid,episode=ep,phase=phase,
                 priority=-4,gpu_profile='1g.24gb',gpu_gib=16 if phase=='A' else 7,
                 ram_gib=48 if phase=='A' else 16,cpus=4,disk_gib=32,inputs=inputs,deps=[],steps=steps))
             compiled.append({'episode':ep,'config':str(path),'raw_sha256':row['raw_sha256']})
@@ -74,6 +75,7 @@ def main():
     p.add_argument('--raw',type=Path,default=Path('/home/ws/data/real_world'))
     p.add_argument('--phase',choices=['A','A-sam3','B'],default='A')
     p.add_argument('--rig-map',type=Path)
+    p.add_argument('--id-stem',help='job-id stem for a new task namespace (pick-and-place-v2: pnpv2-20261117-prepA|B)')
     p.add_argument('--host',choices=['local','remote'],default='local')
     p.add_argument('--image',required=True,help='installed prep image immutable sha256 ID')
     p.add_argument('--code',type=Path,default=Path(__file__).resolve().parents[1])
@@ -92,7 +94,7 @@ def main():
         from ops.jobs.local_phase_a_hybrid import remote_jobs
         jobs=remote_jobs(a.plan,a.out,a.processed,a.raw)
     else:
-        jobs=compile_plans(a.plan,a.out,a.processed,a.raw,a.phase,rigmap)
+        jobs=compile_plans(a.plan,a.out,a.processed,a.raw,a.phase,rigmap,stem=a.id_stem)
     (a.out/'state').mkdir()
     a.processed.mkdir(parents=True,exist_ok=True)
     inventory=MIG_DEVICES if a.host=='local' else REMOTE_MIG_DEVICES

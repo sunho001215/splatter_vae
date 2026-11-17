@@ -45,8 +45,10 @@ if str(REPO) not in sys.path:
 from ops.jobs.retired import retired_reason  # noqa: E402
 from s4d.rwlearn.tasks import TARGETS  # noqa: E402
 from ops.jobs.native_depth_override_registration import install_resolver_alias  # noqa: E402
+from ops.jobs.pnpv2_resolver import install_resolver_alias as install_pnpv2_alias  # noqa: E402
 
 install_resolver_alias()
+install_pnpv2_alias()  # pick-and-place-v2 entrypoints resolve as their established scripts (after the override alias)
 
 ROLES_PATH = REPO / "configs/hosts/roles.yaml"
 OWNERSHIP_DIR = REPO / "runs/setup/ownership"
@@ -412,6 +414,11 @@ def refusal(job: dict, host: str, roles: dict, ownership: dict | None = None, by
     if (not allowed and host == "local" and found.cls == "realworld_preprocess"
             and job.get("script") in ("scripts/realworld_dsreset_check.py", "scripts/realworld_local_phase_a.py")
             and str(job.get("id", "")).startswith("rwv2-20261113-")):
+        allowed = True
+    # pick-and-place-v2 readiness barriers (pnpv2 wave gates) are the same read-only audit on either host.
+    if (not allowed and host == "local" and found.cls == "realworld_preprocess"
+            and job.get("script") == "scripts/pnpv2_realworld_dsreset_check.py"
+            and str(job.get("id", "")).startswith("pnpv2-20261117-gate-")):
         allowed = True
     if not allowed and retry_in_place(job["id"], host, current, exceptions):
         allowed = True  # an explicit retry in place of a run that executed here (load_exceptions)
