@@ -7,7 +7,7 @@ fingerprint is unchanged and asserted. Refused per row unless: it is in the queu
 and no runs/<id> (never launched); its ownership record is the role_placement written by `place` (owner local, state
 placed); the latest pool move of the row went remote -> local with an `original` row on the remote; no active admission
 pause holds it (unless named with --allow-pause); the remote roles admit the restored row (ownership aside). Under
-runs/setup/remote-driver.lock -> runs/setup/stage2-driver.lock -> experiments/registry.lock (each polled up to 120 s;
+runs/setup/stage2-driver.lock -> runs/setup/remote-driver.lock -> experiments/registry.lock (each polled up to 120 s;
 busy -> nothing changes, retry), every rule is re-checked, then: ownership record -> owner remote (state placed, history kept;
 blocks local admission), queue rewrite (host_roles.write_queue: the rest of the file byte for byte, validated before
 the atomic rename), pool-placement.json move entry. Remote inputs are the originals on the remote; the remote driver
@@ -30,7 +30,7 @@ sys.path.insert(0, str(ROOT))
 from ops.jobs import host_roles, scheduler  # noqa: E402
 from ops.jobs.admission_pause import active_pauses  # noqa: E402
 
-LOCKS = (ROOT / 'runs/setup/remote-driver.lock', host_roles.ADMISSION_LOCK, scheduler.REGISTRY.with_suffix('.lock'))
+LOCKS = (host_roles.ADMISSION_LOCK, ROOT / 'runs/setup/remote-driver.lock', scheduler.REGISTRY.with_suffix('.lock'))
 
 
 def original_row(job_id, pool):

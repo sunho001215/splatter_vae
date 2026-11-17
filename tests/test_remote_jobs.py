@@ -5,6 +5,7 @@ import math
 import importlib.util
 import json
 import os
+import fcntl
 import subprocess
 from pathlib import Path
 
@@ -183,6 +184,99 @@ def launch_event(tmp_path, run_id="r", kind="launched", **overrides):
                  "required_results": ["metrics.jsonl"], "script": "tests/_job_worker.py", "args": ["0"],
                  **overrides},
                 tmp_path / "registry.jsonl")
+
+
+@pytest.mark.parametrize("changed", ["host", "planned_commit", "priority", "gpu"])
+def test_stale_dispatch_compares_the_authoritative_row(tmp_path, changed):
+    queued = job(planned_commit=COMMIT)
+    authoritative = write_queue(tmp_path, [queued])
+    dispatch = tmp_path / "dispatch.yaml"
+    dispatch.write_bytes(authoritative.read_bytes())
+    payload = yaml.safe_load(authoritative.read_bytes())
+    payload["jobs"][0].update({"host": "local", "gpu": LOCAL} if changed == "host" else {
+        changed: {"planned_commit": "f" * 40, "priority": -1,
+                  "gpu": APPROVED_HOST_GPUS["remote"][1]}[changed]})
+    authoritative.write_text(yaml.safe_dump(payload))
+    backend = FakeBackend(tmp_path / "runs")
+    messages = tick(tmp_path, dispatch, backend, authoritative_queue=authoritative)
+    assert not backend.launches, messages
+    assert "r" not in jobs.read_registry(tmp_path / "registry.jsonl")
+    assert jobs.load_queue(authoritative)["jobs"] == payload["jobs"]
+
+
+def test_pause_written_during_prepare_fences_remote_commit(tmp_path, monkeypatch):
+    from ops.jobs import admission_pause
+    queue = write_queue(tmp_path, [job()])
+    backend = FakeBackend(tmp_path / "runs")
+    prepare = backend.prepare
+
+    def held(*args):
+        prepared = prepare(*args)
+        admission_pause.FILE.write_text(json.dumps({"pauses": [{"active": True, "name": "new hold", "ids": ["r"]}]}))
+        return prepared
+
+    monkeypatch.setattr(backend, "prepare", held)
+    messages = tick(tmp_path, queue, backend)
+    assert not backend.launches, messages
+    assert "r" not in jobs.read_registry(tmp_path / "registry.jsonl")
+
+
+def test_adoption_during_evidence_read_discards_the_plan(tmp_path, monkeypatch):
+    queue = write_queue(tmp_path, [job()])
+    gitdir = tmp_path / ".git"
+    ref = gitdir / "refs/heads/main"
+    ref.parent.mkdir(parents=True)
+    (gitdir / "HEAD").write_text("ref: refs/heads/main\n")
+    ref.write_text("a" * 40 + "\n")
+    monkeypatch.setattr(jobs, "REPO", tmp_path)
+    backend = FakeBackend(tmp_path / "runs")
+
+    def ready(host):
+        with (tmp_path / "registry.lock").open("a") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            ref.write_text("b" * 40 + "\n")
+        return {"data_identity": DATA, "manifest_sha256": "f" * 64}
+
+    monkeypatch.setattr(backend, "ready", ready)
+    messages = tick(tmp_path, queue, backend)
+    assert not backend.launches and any("inputs changed" in m for m in messages)
+    assert "r" not in jobs.read_registry(tmp_path / "registry.jsonl")
+
+
+def test_remote_observation_and_cleanup_yield_the_registry_lock(tmp_path, monkeypatch):
+    queue = write_queue(tmp_path, [job()])
+    registry = tmp_path / "registry.jsonl"
+    backend = FakeBackend(tmp_path / "runs")
+    observed = []
+
+    def wrap(name):
+        original = getattr(backend, name)
+
+        def call(*args, **kwargs):
+            with registry.with_suffix(".lock").open("a") as probe:
+                fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            observed.append(name)
+            return original(*args, **kwargs)
+
+        monkeypatch.setattr(backend, name, call)
+
+    for name in ("snapshot", "ready", "verify_remote_artifacts", "backup_record", "remove_container"):
+        wrap(name)
+    original_launch = backend.launch
+
+    def launch(path):
+        with registry.with_suffix(".lock").open("a") as probe:
+            with pytest.raises(BlockingIOError):
+                fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        return original_launch(path)
+
+    monkeypatch.setattr(backend, "launch", launch)
+    tick(tmp_path, queue, backend)
+    backend.value.containers["s4d-r-a1"]["State"].update(Status="exited", ExitCode=0)
+    tick(tmp_path, queue, backend)
+    assert set(observed) == {"snapshot", "ready", "verify_remote_artifacts", "backup_record", "remove_container"}
+    assert jobs.read_registry(registry)["r"]["status"] == "done"
+    assert len(backend.launches) == len(backend.removals) == 1
 
 
 def test_host_pools_are_not_unioned_and_legacy_queue_stays_local(tmp_path):

@@ -6,6 +6,8 @@ import importlib.util
 import json
 import os
 import time
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
@@ -31,6 +33,35 @@ LIMITS = {GPU4: {"max_jobs": 2, "max_mem_gb": 40}, GPU5: {"max_jobs": 1, "max_me
 def write_queue(path: Path, job_list, limits=LIMITS) -> Path:
     path.write_text(yaml.safe_dump({"limits": limits, "jobs": job_list}))
     return path
+
+
+def test_two_scheduler_plans_cannot_launch_the_same_row(tmp_path, monkeypatch):
+    queued = {"id": "race", "script": "tests/_job_worker.py", "args": [0], "gpu": GPU4,
+              "mem_gb": 1, "ram_gb": 1}
+    queue = write_queue(tmp_path / "q.yaml", [queued])
+    registry, runs = tmp_path / "registry.jsonl", tmp_path / "runs"
+    barrier, launches = threading.Barrier(2), []
+
+    def identity():
+        barrier.wait(timeout=10)  # both schedulers have planned the same row without holding registry.lock
+        return {"commit": "c", "source_sha256": {}}
+
+    def launch(job, *args):
+        launches.append(job["id"])
+        return 2**30
+
+    monkeypatch.setattr(jobs, "source_identity", identity)
+    monkeypatch.setattr(jobs, "launch", launch)
+    monkeypatch.setattr(jobs, "pid_alive", lambda _: True)
+    with ThreadPoolExecutor(2) as pool:
+        futures = [pool.submit(jobs.tick, queue, registry, runs, usage={}, available_gb=100) for _ in range(2)]
+        messages = [future.result(timeout=20) for future in futures]
+    assert launches == ["race"], messages
+    assert jobs.read_registry(registry)["race"]["attempts"] == 1
+    assert jobs.load_queue(queue)["jobs"] == [queued]
+    monkeypatch.setattr(jobs, "source_identity", lambda: {"commit": "c", "source_sha256": {}})
+    jobs.tick(queue, registry, runs, usage={}, available_gb=100)
+    assert launches == ["race"]
 
 
 def test_queue_validation_and_registry_replay(tmp_path):

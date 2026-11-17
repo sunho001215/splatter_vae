@@ -16,6 +16,8 @@ import shlex
 import shutil
 import subprocess
 import tempfile
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -515,7 +517,7 @@ def test_placement_reserves_active_and_already_placed_capacity(mirrored):
 def apply_placement(f, ids, **kwargs):
     return rw.apply(ids, "synthetic directive P", queue_path=f.root / "queue.yaml", registry_path=f.root / "registry.jsonl",
                     manifest=f.root / "pool.json", ownership_dir=f.root / "ownership", admission_lock=f.root / "local.lock",
-                    remote_lock=f.root / "remote.lock", mirror=f.mirror, input_manifest=f.manifest, root=f.root,
+                    mirror=f.mirror, input_manifest=f.manifest, root=f.root,
                     paused_fn=kwargs.pop("paused_fn", lambda _: []), **kwargs)
 
 
@@ -550,7 +552,7 @@ def test_apply_preserves_science_and_records_ownership(mirrored, monkeypatch):
     assert host_roles.refusal(moved, "local", ROLES, owned) is None
 
 
-@pytest.mark.parametrize("lock_name", ["remote.lock", "local.lock", "registry.lock"])
+@pytest.mark.parametrize("lock_name", ["local.lock", "registry.lock"])
 def test_apply_refuses_busy_locks(mirrored, lock_name):
     f = mirrored
     queue, _ = queue_files(f.root, [row(deps=[])])
@@ -570,6 +572,139 @@ def test_apply_rechecks_launched_since_plan(mirrored):
     result = apply_placement(f, ["fql"])
     assert result["moved"] == [] and result["kept"]["fql"] == "launched or started rows never move"
     assert jobs.load_queue(queue)["jobs"][0] == job
+
+
+def placement_ready(f):
+    """An untouched FQL row with the same verified synthetic dataset used by local input tests."""
+    queue, registry = queue_files(f.root, [row(), row("dataset", script=rw.FQL_DATASET, deps=[], args=[])])
+    jobs.record({"event": "launched", "id": "dataset", "attempt": 1, "host": "remote", "gpu": REMOTE_GPU}, registry)
+    jobs.record({"event": "results_synced", "id": "dataset", "sync": {
+        "final": True, "verified": True, "files": f.state["dataset"]["sync"]["files"]}}, registry)
+    jobs.record({"event": "exited", "id": "dataset", "attempt": 1, "code": 0}, registry)
+    return queue, registry
+
+
+def test_placement_ignores_a_busy_remote_pass(mirrored):
+    f = mirrored
+    queue, _ = placement_ready(f)
+    with (f.root / "remote-driver.lock").open("a") as remote:
+        fcntl.flock(remote, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        assert apply_placement(f, ["fql"])["moved"] == ["fql"]
+    assert jobs.load_queue(queue)["jobs"][0]["host"] == "local"
+
+
+def test_two_placers_compare_and_set_the_same_row(mirrored, monkeypatch):
+    f = mirrored
+    queue, registry = placement_ready(f)
+    barrier = threading.Barrier(2)
+    original_scope = rw.placement_scope
+
+    def scope(job, **kwargs):
+        proof = original_scope(job, **kwargs)
+        barrier.wait(timeout=10)  # both have prepared the same remote row before either commits
+        return proof
+
+    monkeypatch.setattr(rw, "placement_scope", scope)
+    with ThreadPoolExecutor(2) as pool:
+        futures = [pool.submit(apply_placement, f, ["fql"], blocking=True) for _ in range(2)]
+        results = [future.result(timeout=20) for future in futures]
+    assert sorted(len(r["moved"]) for r in results) == [0, 1]
+    assert len(json.loads((f.root / "pool.json").read_text())["moves"]) == 1
+    assert jobs.load_queue(queue)["jobs"][0]["host"] == "local"
+    assert host_roles.read_ownership(f.root / "ownership")["fql"]["owner_host"] == "local"
+    assert "fql" not in jobs.read_registry(registry)
+
+
+@pytest.mark.parametrize("change", ["host", "ownership", "attempt", "pause", "planned_commit"])
+def test_placement_rechecks_assumptions_after_scope_preparation(mirrored, monkeypatch, change):
+    f = mirrored
+    queue, registry = placement_ready(f)
+    original_scope, pauses = rw.placement_scope, []
+
+    def scope(job, **kwargs):
+        proof = original_scope(job, **kwargs)
+        with registry.with_suffix(".lock").open("a") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            if change in ("host", "planned_commit"):
+                rows = jobs.load_queue(queue)["jobs"]
+                if change == "host":
+                    rows[0].update(host="local", gpu="any", pin_host="local")
+                else:
+                    rows[0]["planned_commit"] = "d" * 40
+                host_roles.write_queue(queue, rows, jobs.load_queue)
+            elif change == "ownership":
+                host_roles.write_ownership(placed(), f.root / "ownership")
+            elif change == "attempt":
+                jobs.record({"event": "launching", "id": "fql", "host": "remote", "attempt": 1}, registry)
+            else:
+                pauses.append("new hold")
+        return proof
+
+    monkeypatch.setattr(rw, "placement_scope", scope)
+    result = apply_placement(f, ["fql"], paused_fn=lambda _: pauses)
+    assert result["moved"] == [] and "fql" in result["kept"]
+    assert {j["id"] for j in jobs.load_queue(queue)["jobs"]} == {"fql", "dataset"}
+    assert not (f.root / "pool.json").exists()
+
+
+@pytest.mark.parametrize("interleave", ["placement_before_tick", "placement_during_ready", "remote_launch_first"])
+def test_remote_launch_vs_local_placement_commit_points(mirrored, monkeypatch, interleave):
+    """A driver's stale dispatch never wins after placement; a committed remote attempt fences the local mover."""
+    from ops.jobs.remote_backend import ROOT, RemoteBackend, RemoteSnapshot
+
+    f = mirrored
+    queue, registry = placement_ready(f)
+    payload = jobs.load_queue(queue)
+    payload["hosts"]["remote"].update(enabled=True, commit=COMMIT, image_digest="sha256:" + "e" * 64,
+                                       limits={REMOTE_GPU: {"max_jobs": 2, "max_mem_gb": 12}},
+                                       cleanup_completed_containers=False)
+    queue.write_text(yaml.safe_dump(payload))
+    dispatch = f.root / "dispatch.yaml"
+    dispatch.write_bytes(queue.read_bytes())  # captured before local placement, like the remote campaign driver
+    monkeypatch.setattr(host_roles, "OWNERSHIP_DIR", f.root / "ownership")
+    launches, placements = [], []
+    evidence = {"data_identity": "c" * 64, "manifest_sha256": "d" * 64}
+
+    def ready(host):
+        # Evidence is slow: another placer must be able to acquire registry.lock here.
+        with registry.with_suffix(".lock").open("a") as probe:
+            fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        if interleave == "placement_during_ready":
+            placements.append(apply_placement(f, ["fql"]))
+        return evidence
+
+    def launch(path):
+        spec = json.loads(path.read_bytes())
+        assert jobs.read_registry(registry)["fql"]["status"] == "launching"
+        # Once the remote attempt is committed, no move can pass its commit check.
+        assert apply_placement(f, ["fql"]) == {"moved": [], "busy": True}
+        launches.append(spec)
+        return {"container_id": "f" * 64}
+
+    backend = SimpleNamespace(snapshot=lambda: RemoteSnapshot({REMOTE_GPU: []}, 200, 2000 * 2**30, 1000 * 2**30, {},
+                                                             gpu_memory={REMOTE_GPU: (24000, 0)},
+                                                             admission_records=[], container_names=set()),
+                              ready=ready, launch=launch,
+                              prepare=RemoteBackend(jobs.REPO, f.runs, SimpleNamespace(root=ROOT)).prepare)
+    if interleave == "placement_before_tick":
+        placements.append(apply_placement(f, ["fql"]))
+    messages = jobs.tick(dispatch, registry, f.runs, usage={}, available_gb=200,
+                         disk_bytes=(2000 * 2**30, 1000 * 2**30), remote_backend=backend,
+                         authoritative_queue=queue)
+    if interleave == "remote_launch_first":
+        assert len(launches) == 1, messages
+        assert apply_placement(f, ["fql"])["moved"] == []
+        assert jobs.read_registry(registry)["fql"]["host"] == "remote"
+        assert jobs.load_queue(queue)["jobs"][0]["host"] == "remote"
+        assert "fql" not in host_roles.read_ownership(f.root / "ownership")
+    else:
+        assert not launches, messages
+        assert placements[0]["moved"] == ["fql"]
+        assert jobs.load_queue(queue)["jobs"][0]["host"] == "local"
+        assert "fql" not in jobs.read_registry(registry)
+        # The winning move remains a complete, unlaunched local row; another stale pass cannot lose or launch it.
+        assert host_roles.read_ownership(f.root / "ownership")["fql"]["owner_host"] == "local"
+        assert apply_placement(f, ["fql"])["moved"] == []
 
 
 def tick(f, monkeypatch, rows, events=()):
