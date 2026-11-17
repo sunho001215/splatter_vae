@@ -44,6 +44,9 @@ if str(REPO) not in sys.path:
 
 from ops.jobs.retired import retired_reason  # noqa: E402
 from s4d.rwlearn.tasks import TARGETS  # noqa: E402
+from ops.jobs.native_depth_override_registration import install_resolver_alias  # noqa: E402
+
+install_resolver_alias()
 
 ROLES_PATH = REPO / "configs/hosts/roles.yaml"
 OWNERSHIP_DIR = REPO / "runs/setup/ownership"

@@ -11,6 +11,7 @@ from collections import Counter
 from pathlib import Path
 
 FILE_CLASSES = {
+    "tests/test_native_depth_override_registration.py": "cpu",
     "tests/test_prep_reservation.py": "cpu",
     "tests/test_release_prep_deadlock.py": "cpu",  # release verification vs rwprep reservation deadlock, 2026-11-17
     "tests/test_rwprep_admission_deferral.py": "cpu",  # rwprep launch refusals deferred without consuming attempts, 2026-11-17
