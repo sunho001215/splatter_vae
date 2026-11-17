@@ -1,4 +1,12 @@
-"""Run the complete guarded suite in isolated, duration-balanced pytest processes."""
+"""Run the complete guarded suite in isolated, duration-balanced pytest processes.
+
+Development subsets (never full-suite acceptance): ``--files`` names them, ``--changed BASE`` selects the test files
+whose static dependency closure contains a path changed since BASE (scripts/test_impact.py documents the graph and the
+widening rules). ``--reuse`` (default for subsets) skips test files whose dependency closure, interpreter, torch and
+host are unchanged since they last passed; every run records the files that passed. ``--plan`` prints the selection
+and the reuse plan and runs nothing. A complete run that reuses anything reports ``full_suite_passed_with_reuse`` and
+never ``full_suite_passed``.
+"""
 from __future__ import annotations
 
 import argparse
@@ -298,6 +306,19 @@ def full_suite_passed(*, targeted, code, counts, problems):
             and not any(counts[kind] for kind in ("failed", "error", "skipped")))
 
 
+def suite_acceptance(*, mode, targeted, code, counts, problems, executed, reused_tests, selected, collected):
+    """(full_suite_passed, full_suite_passed_with_reuse, partition_passed) of a run.
+
+    A file whose recorded pass was reused did not run here, so any reuse rules out full-suite and partition
+    acceptance; ``full_suite_passed_with_reuse`` states that a complete, unpartitioned, untargeted run executed or
+    reused every collected test without a failure, error or skip (the adoption gate does not read it)."""
+    complete = full_suite_passed(targeted=targeted, code=code, counts=counts, problems=problems) and not reused_tests
+    with_reuse = (mode == "all" and not targeted and code == 0 and not problems and reused_tests > 0
+                  and not any(counts[kind] for kind in ("failed", "error", "skipped"))
+                  and executed + reused_tests == selected == collected)
+    return mode == "all" and complete, with_reuse, complete
+
+
 def read_result(path):
     try:
         value = json.loads(path.read_text())
@@ -306,10 +327,101 @@ def read_result(path):
         return None
 
 
+class ImpactState:
+    """Change-impact selection and per-file result reuse (scripts/test_impact.py) for one runner invocation.
+
+    Selection errors propagate (an explicit --changed request never silently runs everything). Reuse and recording
+    are optional: any failure there is logged and the run proceeds exactly as without them."""
+
+    def __init__(self, options, targeted, output, log):
+        self.lookup = targeted if options.reuse is None else options.reuse
+        self.base, self.output, self.log = options.changed, output, log
+        self.selection, self.reused, self.keys, self.ineligible, self.recorded = None, [], {}, {}, []
+        self.cache, self.error, self._graph = None, None, None
+
+    @property
+    def reused_tests(self):
+        return sum(item["tests"] for item in self.reused)
+
+    def graph(self):
+        if self._graph is None:
+            import test_impact
+
+            self._graph = test_impact.Graph(test_impact.Tree(REPO))
+        return self._graph
+
+    def select(self):
+        import test_impact
+
+        self.selection = test_impact.select(self.graph(), test_impact.changed_files(self.base, REPO))
+        self.selection["base"] = self.base
+        return self.selection
+
+    def plan(self, selected, gpu_mapping, host):
+        try:
+            import test_impact
+
+            from ops.provenance.upstreams import working_tree_identity
+
+            self.cache = test_impact.ResultCache(test_impact.cache_root(REPO))
+            environment = test_impact.environment_identity(gpu_mapping, host)
+            plan = test_impact.plan_reuse(self.graph(), self.cache, selected, environment,
+                                          working_tree_identity(REPO), lookup=self.lookup)
+        except Exception as exc:  # noqa: BLE001 - reuse is an optimisation; the run continues without it
+            self.error = f"{type(exc).__name__}: {exc}"
+            self.log(f"Result reuse disabled ({self.error})")
+            self.cache = None
+            return selected
+        self.keys, self.ineligible, self.reused = plan["keys"], plan["ineligible"], plan["reused"]
+        if self.reused:
+            self.log(f"Reusing recorded passes of {len(self.reused)} test file(s), {self.reused_tests} test(s): "
+                     + ", ".join(item["file"] for item in self.reused))
+        return plan["run"]
+
+    def record(self, executed_nodes, results):
+        if self.cache is None:
+            return
+        try:
+            import test_impact
+
+            outcomes = [o for result in results if result for o in result.get("outcomes", [])]
+            commit = subprocess.run(["git", "-C", str(REPO), "rev-parse", "HEAD"], capture_output=True,
+                                    text=True).stdout.strip() or None
+            self.recorded = test_impact.record_passes(self.cache, self.keys, executed_nodes, outcomes, commit=commit,
+                                                      evidence=str(self.output))
+        except Exception as exc:  # noqa: BLE001 - recording never fails a run
+            self.error = f"{type(exc).__name__}: {exc}"
+            self.log(f"Recording passes failed ({self.error})")
+
+    def report_selection(self, limit=200):
+        """The selection with long path lists truncated (untracked evidence trees can list thousands of files)."""
+        if self.selection is None:
+            return None
+        out = dict(self.selection)
+        for name in ("changed", "unattributed", "widened", "global", "protected", "deleted_tests"):
+            if len(out.get(name, [])) > limit:
+                out[name + "_total"] = len(out[name])
+                out[name] = out[name][:limit]
+        return out
+
+    def summary(self):
+        return {"lookup": self.lookup, "cache": str(self.cache.root) if self.cache else None,
+                "reused_files": self.reused, "reused_tests": self.reused_tests, "recorded_files": len(self.recorded),
+                "ineligible": self.ineligible, "error": self.error}
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--output-dir", default=os.environ.get("S4D_TEST_EVIDENCE_DIR", str(REPO / "docs")))
-    ap.add_argument("--files", nargs="+", help="Development subset; never produces full-suite acceptance")
+    subset = ap.add_mutually_exclusive_group()
+    subset.add_argument("--files", nargs="+", help="Development subset; never produces full-suite acceptance")
+    subset.add_argument("--changed", metavar="BASE",
+                        help="Change-impact subset: test files depending on paths changed in BASE...HEAD, uncommitted "
+                             "or untracked (scripts/test_impact.py); never produces full-suite acceptance")
+    ap.add_argument("--reuse", action=argparse.BooleanOptionalAction, default=None,
+                    help="Reuse recorded passes of test files with an unchanged dependency closure (default: on for "
+                         "--files/--changed, off for the complete suite)")
+    ap.add_argument("--plan", action="store_true", help="Print the selection and reuse plan; run no test")
     ap.add_argument("--partition", choices=("all", REMOTE, LOCAL),
                     help="local: tests needing local-host files or Meta-World development data; "
                          "default: remote on the remote host, all elsewhere")
@@ -395,7 +507,22 @@ def main():
             code, timed_out = 127, False
         return code, read_result(result_path), args, timed_out
 
-    collection_files = options.files or ["tests/"]
+    targeted = options.files is not None or options.changed is not None
+    reuse = ImpactState(options, targeted, output, log)
+    if options.changed is not None:
+        selection = reuse.select()  # raises on a git/graph failure: an explicit subset request never runs everything
+        log(f"Change impact since {options.changed}: {len(selection['changed'])} changed path(s), "
+            f"{len(selection['files'])}/{selection['total_files']} test files selected"
+            + (" (complete suite)" if selection["all"] else ""))
+        if not selection["files"]:
+            report = {"started_utc": started, "python": sys.version, "torch": torch.__version__, "host": HOST_NAME,
+                      "exit_code": 0, "counts": dict.fromkeys(KINDS, 0), "total": 0, "collected_total": 0,
+                      "full_suite_passed": False, "selection": reuse.report_selection(), "problems": [],
+                      "duration_seconds": time.perf_counter() - clock}
+            (output / "tests.json").write_text(json.dumps(report, indent=2))
+            log("No test file depends on the changed paths; nothing to run.")
+            return 0
+    collection_files = options.files or (reuse.selection["files"] if reuse.selection else ["tests/"])
     collect_code, collection, _, timed_out = invoke("collection", collection_files, budget, True)
     collected = collection.get("nodeids", []) if collection else []
     (output / "collected.json").write_text(json.dumps(collected, indent=2))
@@ -416,7 +543,15 @@ def main():
             problems.append({"phase": "collection", "error": f"Marker collection failed (exit {marked_code})"})
     mode, marker, selected, deselected, selection_problems = select_partition(mode, collected, marked)
     problems.extend(selection_problems)
-    shards = partition(selected, REPO, cpu, gpu) if not problems else []
+    executed_nodes = reuse.plan(selected, gpu_mapping, HOST_NAME) if not problems else selected
+    if options.plan:
+        plan = {"selection": reuse.report_selection(), "reuse": reuse.summary(), "selected_tests": len(selected),
+                "tests_to_run": len(executed_nodes), "problems": problems}
+        (output / "plan.json").write_text(json.dumps(plan, indent=2))
+        print(json.dumps({k: v for k, v in plan.items() if k != "selection"} | {
+            "selected_files": len(reuse.selection["files"]) if reuse.selection else None}, indent=2))
+        return 1 if problems else 0
+    shards = partition(executed_nodes, REPO, cpu, gpu) if not problems and executed_nodes else []
     # The serial shard (timing-, signal- and port-sensitive files) runs first and ALONE with the whole budget: under a
     # container CPU quota, concurrent shards throttle it and its live deadlines become flaky (remote 2026-11-12: two
     # attempts failed different hwtest deadline tests while every other shard passed). The rest then run in parallel.
@@ -440,8 +575,11 @@ def main():
         by_index.update(zip((shard["index"] for shard in parallel),
                             pool.map(lambda shard: run(shard, threads), parallel)))
     executed = [by_index[shard["index"]] for shard in shards]
-    counts, completeness = validate_completeness(selected, [(r[0], r[1]) for r in executed])
-    problems.extend(completeness)
+    if executed_nodes or not reuse.reused:
+        counts, completeness = validate_completeness(executed_nodes, [(r[0], r[1]) for r in executed])
+        problems.extend(completeness)
+    else:  # every selected file reused a recorded pass: nothing executed, nothing to validate
+        counts = dict.fromkeys(KINDS, 0)
     for shard, result in zip(shards, executed):
         shard["seconds"] = result[1].get("duration_seconds", 0) if result[1] else 0
         shard["exit_code"] = result[0]
@@ -472,7 +610,12 @@ def main():
     changed = fingerprints != source_before
     if changed:
         problems.append({"phase": "evidence", "error": "Sources changed during the full suite."})
+    if not changed:  # a file's pass is recorded only for sources that stayed fixed during the run
+        reuse.record(executed_nodes, [r[1] for r in executed])
     code = 1 if problems else 0
+    passed_all, passed_with_reuse, partition_passed = suite_acceptance(
+        mode=mode, targeted=targeted, code=code, counts=counts, problems=problems, executed=len(executed_nodes),
+        reused_tests=reuse.reused_tests, selected=len(selected), collected=len(collected))
     report = {
         "started_utc": started, "python": sys.version, "torch": torch.__version__,
         "cuda_runtime": torch.version.cuda, "host": HOST_NAME,
@@ -481,8 +624,8 @@ def main():
         "pytest_args": [r[2] for r in executed], "exit_code": code,
         "duration_seconds": time.perf_counter() - clock, "counts": counts, "total": sum(counts.values()),
         "collected_total": len(collected),
-        "full_suite_passed": mode == "all" and full_suite_passed(targeted=options.files is not None, code=code,
-                                                                 counts=counts, problems=problems),
+        "full_suite_passed": passed_all, "full_suite_passed_with_reuse": passed_with_reuse,
+        "reuse": reuse.summary(), **({"selection": reuse.report_selection()} if reuse.selection else {}),
         "source_sha256": fingerprints, "source_sha256_before": source_before,
         "source_changed_during_suite": changed,
         "executed_functions": {path: sorted(names) for path, names in sorted(functions.items())},
@@ -493,8 +636,7 @@ def main():
         "problems": problems,
         **({} if mode == "all" else {
             "partition": mode, "partition_marker": MARKER, "selected": selected, "deselected": deselected,
-            "partition_passed": full_suite_passed(targeted=options.files is not None, code=code, counts=counts,
-                                                  problems=problems)}),
+            "partition_passed": partition_passed}),
         "limitations": "Function evidence unions shard processes; nested test subprocesses are not profiled. "
                        "Gloo child results are asserted by tests/test_ddp.py. Synthetic renders are not CUDA acceptance.",
     }

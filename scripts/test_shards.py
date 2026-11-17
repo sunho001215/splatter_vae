@@ -170,6 +170,7 @@ FILE_CLASSES = {
     "tests/test_watch.py": "cpu",
     "tests/test_workers.py": "gpu",
     "tests/test_run_tests_sharding.py": "cpu",
+    "tests/test_change_impact.py": "cpu",  # change-impact selection/result reuse, synthetic git repos, 2026-11-17
 }
 
 # Summed setup/call/teardown times from the supplied native release report.
