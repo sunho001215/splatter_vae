@@ -28,13 +28,26 @@ from s4d.rwlearn.pnpv2_spec import SPEC, TASK, load_spec, read_arrival, values  
 
 
 def _atomic_json(path, doc):
-    from s4d.realworld.io import atomic_write_json
+    # Inline equivalent of the real-world package atomic JSON writer: scripts outside scripts/realworld_* must not import
+    # that package (tests/test_realworld_contract_workers.py import boundary).
+    import os
 
     path = Path(path)
     if path.exists():
         raise ValueError(f"{path} exists; outputs are immutable")
     path.parent.mkdir(parents=True, exist_ok=True)
-    atomic_write_json(path, doc)
+    raw = (json.dumps(doc, indent=2, sort_keys=True, allow_nan=False) + "\n").encode()
+    tmp = path.with_name(f".{path.name}.tmp.{os.getpid()}")
+    with open(tmp, "wb") as f:
+        f.write(raw)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, path)
+    fd = os.open(path.parent, os.O_RDONLY)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
 
 
 def _check_data(spec, a):
