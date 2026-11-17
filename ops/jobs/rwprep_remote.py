@@ -5,6 +5,7 @@ remote boot hold and both remote launch locks. No campaign driver imports.
 """
 from __future__ import annotations
 import argparse
+import ast
 import fcntl
 import importlib
 import inspect
@@ -16,6 +17,7 @@ import sys
 import tarfile
 import tempfile
 import time
+from contextlib import contextmanager
 
 from ops.jobs.rwprep_mig import atomic, digest, validate, priority_path
 from ops.containers.slot_guard import SOURCE
@@ -304,6 +306,65 @@ def reconcile(states, observed, config, qsha, now):
             s['exit_code']=running['ExitCode']
 
 
+# Only the established launcher's exit-20, pre-docker resource refusals qualify.
+# Duplicate writers, input/source errors, unknown messages and transport failures
+# retain the durable intent and deadline reconciliation.
+RESOURCE_REFUSALS = frozenset((
+    'GPU reservation sum exceeds capacity', 'measured free GPU memory/headroom',
+    'disk floor', 'host RAM reserve', 'host CPU thread budget', 'campaign RAM cap',
+    '/data_8T free floor', 'slot container limit reached', 'foreign processes on instance',
+    'instance framebuffer above idle threshold', 'exclusive GPU placement',
+    'declared GPU need exceeds capacity'))
+
+
+def resource_refusal(exc):
+    prefix = 'admission refused (locked guard): '
+    if not isinstance(exc, SystemExit) or not str(exc).startswith(prefix):
+        return None
+    try:
+        reasons = ast.literal_eval(str(exc)[len(prefix):])
+    except (ValueError, SyntaxError, MemoryError, RecursionError):
+        return None
+    if (not isinstance(reasons, list) or not reasons
+            or any(not isinstance(r, str) or r not in RESOURCE_REFUSALS for r in reasons)):
+        return None
+    return reasons
+
+
+@contextmanager
+def launch_gate(config):
+    """Optional route-owned fleet cap; reconciliation always runs outside it."""
+    if 'launch_policy' not in config:
+        yield {}
+        return
+    policy = json.loads(Path(config['launch_policy']).read_text())
+    roots = policy['state_dirs']
+    if (policy.get('schema') != 'rwprep-launch-policy/1'
+            or type(policy['max_active']) is not int or policy['max_active'] < 1
+            or type(policy['max_launch_per_tick']) is not int or policy['max_launch_per_tick'] < 1
+            or not isinstance(roots, list) or not roots
+            or any(not isinstance(r, str) or not Path(r).is_absolute() for r in roots)
+            or len(set(roots)) != len(roots) or config['state_dir'] not in roots
+            or not Path(policy['lock']).is_absolute()):
+        raise ValueError('invalid route launch policy')
+    with Path(policy['lock']).open('a') as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            yield None
+            return
+        active = 0
+        for root in roots:
+            root = Path(root)
+            state = json.loads((root/'state.json').read_text())
+            jobs = json.loads((root.parent/'jobs.json').read_text())
+            if (state['queue_sha256'] != digest(root.parent/'jobs.json')
+                    or set(state['jobs']) != {j['id'] for j in jobs}):
+                raise ValueError('route launch policy queue/state mismatch')
+            active += sum(s['status'] in ('launching', 'running', 'unknown') for s in state['jobs'].values())
+        yield {**policy, 'active': active}
+
+
 def tick(config, client, apply=False, max_launch=16):
     from ops.jobs import release_reservation
     from ops.resources.gpu_guard import REMOTE_MIG_DEVICES
@@ -343,36 +404,54 @@ print(json.dumps(out))
         launched=[];blocked={}
         if apply:atomic(path,state)
         if not stopped and not uncertain:
-            _,parallel=established()
-            policy,why=parallel.load(TOOLS.parent/'prep_parallel.json','calrel-6c3b9ec-prep')
-            if policy is None:raise ValueError('established resource policy unavailable: '+str(why))
-            snap=parallel.snapshot(client) if pending else None
-            for j in pending:
-                if (root/'STOP').exists() or len(launched)>=max_launch:break
-                # No global load/idle/PSI admission: unrelated users cannot consume
-                # our quota budget. Preserve every RAM and disk check in decide().
-                decision=parallel.decide({**snap,'psi_cpu_some_avg60':0},policy,list(REMOTE_MIG_DEVICES),
-                    int(j['gpu_gib']*GIB),int(j['ram_gib']*GIB),j['cpus'],int(j.get('disk_gib',32)*GIB),
-                    cpu_rule='quota',cpu_budget_threads=remote_host_policy(LIVE_QUEUE)['cpu_thread_budget'])
-                candidates=[g for g in decision['candidates'] if g not in release_reservation.reserved_gpus()]
-                if not candidates:
-                    blocked[j['id']]=decision['host'] or 'no fitting scheduler-accounted MIG';break
-                if not apply:
-                    launched.append({'would_launch':j['id'],'candidates':candidates});continue
-                if (root/'STOP').exists():break
-                s=states[j['id']];attempt=s['attempt']+1
-                s.update(status='launching',attempt=attempt,gpu=candidates[0],deadline=time.time()+600,
-                         container='s4d-rwprep-'+j['id']+'-a'+str(attempt))
-                atomic(path,state)
-                try:
-                    launch_job(client,config,j,s)
-                except (Exception,SystemExit) as exc:
-                    # Includes confirmed refusal: next tick reconciles exact name;
-                    # no blind retry on ambiguous remote transport failures.
-                    s['launch_error']=type(exc).__name__;blocked[j['id']]=str(exc)[:300]
-                    atomic(path,state);break
-                s['status']='running';launched.append(j['id']);atomic(path,state)
-                snap=parallel.snapshot(client)  # charge newly enforced quotas before next launch
+            with launch_gate(config) as gate:
+                if gate is None:
+                    blocked['launch_gate'] = 'route launch lock busy'
+                elif gate and gate['active'] >= gate['max_active']:
+                    blocked['launch_gate'] = 'route active cap'
+                else:
+                    if gate:
+                        max_launch = min(max_launch, gate['max_launch_per_tick'], gate['max_active'] - gate['active'])
+                    _,parallel=established()
+                    policy,why=parallel.load(TOOLS.parent/'prep_parallel.json','calrel-6c3b9ec-prep')
+                    if policy is None:raise ValueError('established resource policy unavailable: '+str(why))
+                    snap=parallel.snapshot(client) if pending else None
+                    for j in pending:
+                        if (root/'STOP').exists() or len(launched)>=max_launch:break
+                        # No global load/idle/PSI admission: unrelated users cannot consume
+                        # our quota budget. Preserve every RAM and disk check in decide().
+                        decision=parallel.decide({**snap,'psi_cpu_some_avg60':0},policy,list(REMOTE_MIG_DEVICES),
+                            int(j['gpu_gib']*GIB),int(j['ram_gib']*GIB),j['cpus'],int(j.get('disk_gib',32)*GIB),
+                            cpu_rule='quota',cpu_budget_threads=remote_host_policy(LIVE_QUEUE)['cpu_thread_budget'])
+                        candidates=[g for g in decision['candidates'] if g not in release_reservation.reserved_gpus()]
+                        if not candidates:
+                            blocked[j['id']]=decision['host'] or 'no fitting scheduler-accounted MIG';break
+                        if not apply:
+                            launched.append({'would_launch':j['id'],'candidates':candidates});continue
+                        if (root/'STOP').exists():break
+                        s=states[j['id']]
+                        previous=dict(s)
+                        attempt=s['attempt']+1
+                        s.update(status='launching',attempt=attempt,gpu=candidates[0],deadline=time.time()+600,
+                                 container='s4d-rwprep-'+j['id']+'-a'+str(attempt))
+                        atomic(path,state)
+                        try:
+                            launch_job(client,config,j,s)
+                        except (Exception,SystemExit) as exc:
+                            reasons = resource_refusal(exc)
+                            if reasons is not None:
+                                # Exit 20 is emitted before docker run. Preserve the
+                                # prior counter/status; a capacity wait is not an attempt.
+                                s.clear()
+                                s.update(previous)
+                                s['admission_deferral'] = dict(reasons=reasons, time=time.time(),
+                                    count=previous.get('admission_deferral', {}).get('count', 0)+1)
+                            else:
+                                s['launch_error']=type(exc).__name__
+                            blocked[j['id']]=str(exc)[:300]
+                            atomic(path,state);break
+                        s['status']='running';launched.append(j['id']);atomic(path,state)
+                        snap=parallel.snapshot(client)  # charge newly enforced quotas before next launch
         result={'launched':launched,'blocked':blocked,'counts':{status:sum(s['status']==status for s in states.values())
                 for status in ('pending','launching','running','done','retry','failed','unknown')}}
         if apply:
