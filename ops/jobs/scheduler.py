@@ -1359,13 +1359,27 @@ class _TickLock:
                                   admission_pause.PREP_PRIORITY_DIR,
                                   *admission_pause.PREP_PRIORITY_DIR.glob("*.json")})
 
-    @staticmethod
-    def _stat_tokens(paths):
+    CONTENT_LIMIT = 16 * 2**20
+
+    def _stat_tokens(self, paths):
+        """Content identity for policy files and directory membership; stat identity for the large append-only registry.
+
+        2026-11-18 production finding: controllers rewrite admission-pauses.json and prep hold files idempotently
+        (same bytes, new inode) every ~40 s, which stat tokens reported as changes on almost every observation.
+        Equal bytes cannot change a decision, so small files compare by content."""
         tokens = {}
         for path in paths:
             try:
-                st = path.stat()
-                tokens[path] = (st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns, st.st_ctime_ns)
+                if path == getattr(self, "registry", None):
+                    st = path.stat()
+                    tokens[path] = (st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns, st.st_ctime_ns)
+                elif path.is_dir():
+                    tokens[path] = ("dir", tuple(sorted(child.name for child in path.iterdir())))
+                elif path.stat().st_size <= self.CONTENT_LIMIT:
+                    tokens[path] = ("sha256", hashlib.sha256(path.read_bytes()).hexdigest())
+                else:
+                    st = path.stat()
+                    tokens[path] = (st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns, st.st_ctime_ns)
             except FileNotFoundError:
                 tokens[path] = None
         return tokens
