@@ -61,7 +61,7 @@ def rewrite(value, old, new):
     return value
 
 
-def prepare(plans, out, client, commit=None, release=DEFAULT_RELEASE, stem=None, name=None):
+def prepare(plans, out, client, commit=None, release=DEFAULT_RELEASE, stem=None, name=None, disk_gib=None):
     """Compile without canonical local aliases, stage in two batched uploads, launch nothing.
 
     ``release`` names the only writable processed release; ``name`` is the remote bundle name (default: the local
@@ -80,6 +80,11 @@ def prepare(plans, out, client, commit=None, release=DEFAULT_RELEASE, stem=None,
                                idempotent=True).stdout.strip()
     processed = RW+'/processed/'+release
     jobs = compile_plans(plans, out, processed, RAW, stem=stem)
+    if disk_gib is not None:  # measured declared disk (pnp-v2); the compiler default stays for dsreset bundles
+        if not 0 < disk_gib <= 32:
+            raise ValueError('declared disk must be within (0, 32] GiB')
+        for job in jobs:
+            job['disk_gib'] = disk_gib
     return stage(jobs, out, client, commit, release=release, name=name, image=image)
 
 

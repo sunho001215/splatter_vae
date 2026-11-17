@@ -329,7 +329,8 @@ def test_phase_a_remote_refuses_before_every_remote_raw_copy_is_verified(spec, t
     proof.unlink()
     proof.write_text(json.dumps({r["sha256"]: r["sha256"] for r in rows}))
     P.phase_a_remote(spec, None, [])
-    assert called == [{"release": "pnpv2-20261117", "stem": "pnpv2-20261117-prepA", "name": "pnpv2-20261117-phaseA"}]
+    assert called == [{"release": "pnpv2-20261117", "stem": "pnpv2-20261117-prepA", "name": "pnpv2-20261117-phaseA",
+                       "disk_gib": 4}]
     # The attachment lives in the transfer root (repository runs/); the work root links to it.
     assert (tmp_path / "work/phaseA").readlink() == tmp_path / "runs/pnpv2-20261117-phaseA"
     with pytest.raises(ValueError, match="immutable"):
@@ -411,18 +412,20 @@ def test_phase_b_planner_code_binds_one_rig_for_every_episode(tmp_path, monkeypa
     def run(args, check):
         ran.append(args)
         out.mkdir()
-        (out / "jobs.json").write_text("[]")
+        (out / "jobs.json").write_text(json.dumps([{"id": "a", "disk_gib": 32}, {"id": "b", "disk_gib": 32}]))
 
     monkeypatch.setattr(subprocess, "run", run)
-    monkeypatch.setattr(sys, "argv", ["x", str(base), str(out), "/rig.json", "pnpv2-20261117-prepB", "/calib"])
+    monkeypatch.setattr(sys, "argv", ["x", str(base), str(out), "/rig.json", "pnpv2-20261117-prepB", "/calib", "4"])
     exec(P._PHASE_B_PLAN, {})
+    # The measured declaration replaces the compiler's 32 GiB default before any state exists.
+    assert [j["disk_gib"] for j in json.loads((out / "jobs.json").read_text())] == [4, 4]
     rigmap = tmp_path / "phaseB.rig-map.json"
     assert json.loads(rigmap.read_text()) == {"e1": "/rig.json", "e2": "/rig.json"}
     args = ran[0]
     assert args[1:5] == ["scripts/realworld_prep_register.py", "--phase", "B", "--id-stem"]
     assert "pnpv2-20261117-prepB" in args and args[args.index("--rig-map") + 1] == str(rigmap)
     assert all(args[args.index("--" + k) + 1] == f"/{k}" for k in keys)
-    monkeypatch.setattr(sys, "argv", ["x", str(base), str(out), "/other-rig.json", "pnpv2-20261117-prepB", "/c"])
+    monkeypatch.setattr(sys, "argv", ["x", str(base), str(out), "/other-rig.json", "pnpv2-20261117-prepB", "/c", "4"])
     with pytest.raises(AssertionError, match="rig map differs"):
         exec(P._PHASE_B_PLAN, {})
 
@@ -471,3 +474,29 @@ def test_upload_stages_copies_inside_the_transfer_root_and_writes_the_receipt(sp
     receipt = json.loads((local.parent / "rgb.UPLOADED.json").read_text())
     assert receipt["schema"] == "pick-and-place-v2-upload/1" and set(receipt["files"]) == set(uploads)
     assert len(uploads) == len(BUNDLE_FILES) and not list((tmp_path / "runs").iterdir())
+
+
+def test_measured_disk_declaration_for_pnpv2_prep_jobs(staging, tmp_path):
+    """pnp-v2 prep jobs declare the measured 4 GiB (user-approved 2026-11-18); dsreset bundles keep 32 GiB."""
+    from ops.jobs import pnpv2_geometry
+    from s4d.rwlearn.pnpv2_spec import PREP_DISK_GIB
+
+    assert PREP_DISK_GIB == 4
+    ep = "pick-and-place-v2-success-episode_000000"
+    plan = plan_file(staging.tmp, [ep])
+    out = staging.tmp / "pn"
+    R.prepare([plan], out, staging.client, release="pnpv2-20261117", stem="pnpv2-20261117-prepA",
+              name="pnpv2-20261117-phaseA", disk_gib=PREP_DISK_GIB)
+    assert [j["disk_gib"] for j in json.loads((out / "jobs.json").read_text())] == [4]
+    with pytest.raises(ValueError, match="declared disk"):
+        R.prepare([plan], staging.tmp / "pn2", staging.client, release="pnpv2-20261117",
+                  stem="pnpv2-20261117-prepA", name="pnpv2-20261117-phaseA", disk_gib=64)
+    ds = plan_file(staging.tmp / "d", ["drawer-open-v2-success-episode_000001"])
+    R.prepare([ds], staging.tmp / "dsreset-x", staging.client)
+    assert [j["disk_gib"] for j in json.loads((staging.tmp / "dsreset-x/jobs.json").read_text())] == [32]
+    bundle = tmp_path / "geo"
+    bundle.mkdir()
+    for name in ("manifest.json", "source-ingest.json", "path-provenance.json"):
+        (bundle / name).write_text("{}")
+    job = pnpv2_geometry.remote_job(None, bundle, "/a", "/b", {"/a": ["x"]}, {})
+    assert job["disk_gib"] == 4
