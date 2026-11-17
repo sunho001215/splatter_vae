@@ -61,7 +61,8 @@ def repo(tmp_path):
     for name, text in FILES.items():
         (root / name).parent.mkdir(parents=True, exist_ok=True)
         (root / name).write_text(text)
-    git(root, "init", "-q", "-b", "main")
+    git(root, "init", "-q")
+    git(root, "symbolic-ref", "HEAD", "refs/heads/main")  # (init -b needs git >= 2.28)
     git(root, "add", "-A")
     git(root, "commit", "-qm", "base")
     return root
@@ -265,6 +266,11 @@ def test_this_checkout_graph_attributes_known_dependencies():
         geometry.files
     assert not geometry.scope_guard and "s4d/rl/agent.py" not in geometry.files
     assert graph.closure("tests/test_memory_admission.py").scope_guard  # an execution-scope guard
+    assert graph.closure("tests/test_adoption_guards.py").scope_guard  # imports ops.jobs.closure_impact
+    assert graph.closure("tests/test_remote_refusal.py").live_data  # @pytest.mark.local_host_data
+    # names inside strings (this file's synthetic sources) neither mark live data nor make a scope guard
+    this = graph.closure("tests/test_change_impact.py")
+    assert not this.live_data and not this.scope_guard
     note = "docs/never-read-by-a-test.md"  # (an existing path named here would become this file's own input)
     plan = impact.select(graph, ["s4d/geometry.py", note])
     assert "tests/test_geometry.py" in plan["files"] and not plan["all"]

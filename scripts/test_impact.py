@@ -72,13 +72,18 @@ PROTECTED = ("ops/robot_pc/", "scripts/robot_pc/", "configs/robot_pc/", "ops/pol
 INVENTORY_TESTS = ("tests/test_run_tests_sharding.py",)
 WIDEN_ANY = ("tests/",)          # unattributed changes here (Python or not) widen to every test file
 WIDEN_DATA = ("configs/",)       # unattributed non-Python changes here widen to every test file
-EXECUTION_SCOPE_GUARD = re.compile(r"\b(?:execution_scope|placement_scope|dsreset_scope|closure_impact|import_closure)\b")
+# identifiers (names, attributes, imported names; never string contents) that make a test file a scope guard
+EXECUTION_SCOPE_GUARD = frozenset({"execution_scope", "placement_scope", "dsreset_scope", "closure_impact",
+                                   "import_closure"})
 EXECUTION_SCOPE_ROOTS = ("s4d/", "ops/", "scripts/", "configs/", "runs/setup/tools/", "mujoco_mig_setup.py")
-FINGERPRINT_GUARD = re.compile(r"\b(?:source_fingerprints|source_identity|commit_source_sha256)\b")
+FINGERPRINT_GUARD = frozenset({"source_fingerprints", "source_identity", "commit_source_sha256"})
 # _bootstrap.source_fingerprints also hashes tests/, but the guards compare a tree with itself or with a commit, so a
 # test file's content does not change their outcome
 FINGERPRINT_ROOTS = ("s4d/", "ops/", "scripts/", "configs/", "mujoco_mig_setup.py")
-LIVE_DATA_MARKERS = re.compile(r"\b(?:metaworld_data|local_host_data)\b")
+LIVE_DATA_MARKERS = frozenset({"metaworld_data", "local_host_data"})  # pytest.mark.<name> anywhere in the file
+# Untracked files here are run outputs and test evidence (scripts/run_tests.py writes docs/ or runs/test-evidence/),
+# never test inputs: they are left out of the tree, so they neither select tests nor change reuse keys.
+OUTPUT_ROOTS = ("runs/", "docs/", "experiments/")
 HEAD_READER = re.compile(r"""["']HEAD["']""")
 LIBRARY_DATA_DIRS = ("configs/",)
 LIBRARY_IGNORED = ("tests/", "docs/", "runs/", "experiments/")
@@ -108,8 +113,10 @@ class Tree:
 
     def __init__(self, root: Path = REPO):
         self.root = Path(root)
-        listing = _git(self.root, "ls-files", "-z", "--cached", "--others", "--exclude-standard")
-        self._index(p for p in listing.split("\0") if p and (self.root / p).is_file())
+        tracked = _git(self.root, "ls-files", "-z", "--cached").split("\0")
+        untracked = _git(self.root, "ls-files", "-z", "--others", "--exclude-standard").split("\0")
+        self._index(p for p in [*tracked, *(u for u in untracked if not u.startswith(OUTPUT_ROOTS))]
+                    if p and (self.root / p).is_file())
 
     def _index(self, files) -> None:
         self.files = sorted(set(files))
@@ -171,6 +178,7 @@ class Node:
     dirs: set[str] = field(default_factory=set)      # repository directories named by path ("a/b/")
     external: set[str] = field(default_factory=set)  # absolute paths outside the repository
     missing: set[str] = field(default_factory=set)   # module paths an unresolved import would have used
+    identifiers: set[str] = field(default_factory=set)  # names, attributes and imported names used in the module
 
 
 @dataclass
@@ -195,7 +203,15 @@ class _Scanner(ast.NodeVisitor):
         self.strings: list[str] = []
         self.paths: list[tuple[str, bool]] = []                    # ("a/b", repo-relative base)
         self.prefixes: list[str] = []                              # f-string constant prefixes
+        self.identifiers: set[str] = set()
         self._inner: set[int] = set()
+
+    def visit_Name(self, node):
+        self.identifiers.add(node.id)
+
+    def visit_Attribute(self, node):
+        self.identifiers.add(node.attr)
+        self.generic_visit(node)
 
     def _function(self, node):
         for decorator in getattr(node, "decorator_list", []):
@@ -218,9 +234,11 @@ class _Scanner(ast.NodeVisitor):
     def visit_Import(self, node):
         for alias in node.names:
             self.imports.append((alias.name, 0, [], self.depth == 0))
+            self.identifiers.update(alias.name.split("."))
 
     def visit_ImportFrom(self, node):
         self.imports.append((node.module or "", node.level, [a.name for a in node.names], self.depth == 0))
+        self.identifiers.update([*(a.name for a in node.names), *(node.module or "").split(".")])
 
     def visit_Constant(self, node):
         if isinstance(node.value, str):
@@ -354,6 +372,7 @@ class Graph:
             scanner.visit(ast.parse(data))
         except (SyntaxError, ValueError, RecursionError):
             return node
+        node.identifiers = scanner.identifiers
         package = PurePosixPath(relative).parent
         for module, level, names, eager in scanner.imports:
             if level:
@@ -421,10 +440,11 @@ class Graph:
         out.external |= shared.external
         out.missing |= shared.missing
         source = (self.tree.read(test_file) or b"").decode("utf-8", "replace")
-        roots = (EXECUTION_SCOPE_ROOTS if EXECUTION_SCOPE_GUARD.search(source) else ()) + \
-                (FINGERPRINT_ROOTS if FINGERPRINT_GUARD.search(source) else ())
+        names = self.node(test_file).identifiers
+        roots = (EXECUTION_SCOPE_ROOTS if names & EXECUTION_SCOPE_GUARD else ()) + \
+                (FINGERPRINT_ROOTS if names & FINGERPRINT_GUARD else ())
         out.scope_guard = bool(roots)
-        out.live_data = bool(LIVE_DATA_MARKERS.search(source))
+        out.live_data = bool(names & LIVE_DATA_MARKERS)
         out.reads_head = bool(HEAD_READER.search(source))
         for directory in out.dirs:
             out.files.update(self.tree.under(directory))
@@ -463,7 +483,8 @@ def changed_files(base: str, root: Path = REPO, head: str = "HEAD", worktree: bo
     out = set(_git(root, "diff", "--name-only", "--no-renames", "-z", f"{base}...{head}").split("\0"))
     if worktree:
         out |= set(_git(root, "diff", "--name-only", "--no-renames", "-z", "HEAD").split("\0"))
-        out |= set(_git(root, "ls-files", "-z", "--others", "--exclude-standard").split("\0"))
+        out |= {p for p in _git(root, "ls-files", "-z", "--others", "--exclude-standard").split("\0")
+                if not p.startswith(OUTPUT_ROOTS)}
     return sorted(p for p in out if p)
 
 
