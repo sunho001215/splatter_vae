@@ -27,12 +27,13 @@ recorded execution scope of placed rows and stay byte-identical. Offline consume
 process-local installation, exactly as ``rwlearn.native_depth_mapped`` and ``rwlearn.dsreset_runtime`` do:
 
     python -m s4d.realworld.calib.acceptance_override rwprep -- episode --pipeline P ...   (phase B worker step)
-    python -m s4d.realworld.calib.acceptance_override compile-phase-b <realworld_prep_register.py args, --phase B>
+    python scripts/realworld_prep_register_ao.py <realworld_prep_register.py args, --phase B --rig-map M>
     python -m s4d.realworld.calib.acceptance_override gate --rig RIG --task T             (offline route gate)
 """
 from __future__ import annotations
 
 import argparse
+import contextlib
 import copy
 import hashlib
 import json
@@ -301,9 +302,19 @@ def offline_acceptance(doc: dict) -> dict:
 
 # ------------------------------------------------------------------------------------------------------ publisher
 def write_once(path, doc) -> None:
-    """Create ``path`` with ``ops.jobs.rwprep_mig.atomic``'s exact serialization, or require identical existing bytes
-    (original decision / verdict records are never rewritten)."""
-    from ops.jobs.rwprep_mig import atomic
+    """Create ``path`` with the publisher's exact serialization (``ops.jobs.rwprep_mig.atomic``: indent=2, fsync,
+    atomic rename), or require identical existing bytes (original decision / verdict records are never rewritten).
+    Kept local: the research package imports ``ops`` only at documented points (tests/test_ops_layout.py)."""
+    import os
+
+    def atomic(target, value):
+        target.parent.mkdir(parents=True, exist_ok=True)
+        tmp = target.with_suffix('.tmp')
+        with tmp.open('w') as stream:
+            json.dump(value, stream, indent=2)
+            stream.flush()
+            os.fsync(stream.fileno())
+        tmp.replace(target)
 
     path = Path(path)
     if path.exists():
@@ -562,65 +573,35 @@ def phase_b_binding(document: dict, rig_path) -> dict | None:
             "effective_cameras": state["statuses"]}
 
 
-def compile_phase_b(argv: list) -> int:
-    """``scripts/realworld_prep_register.py --phase B`` (unchanged, execution-scoped) for an override rig: the
-    compiler's automatic-acceptance check is answered by ``offline_acceptance`` for this one process, then every
-    compiled job is bound to the override and its episode step runs through ``run_rwprep`` (same argv)."""
-    import importlib.util
-
-    from ops.jobs.rwprep_mig import atomic, validate
+@contextlib.contextmanager
+def compiler_admits_offline_acceptance():
+    """For ONE run of the established phase B compiler (``scripts/realworld_prep_register.py``, execution-scoped and
+    unchanged; its check admits only "validated"): in THIS process a camera whose offline effective status is in
+    ``OFFLINE_ACCEPTED`` passes that check; the original function is restored afterwards. The caller
+    (``scripts/realworld_prep_register_ao.py``) verifies every rig first and marks every compiled job."""
     from s4d.realworld.calib import rig
-    from s4d.realworld.calib.rig import load_rig
 
-    if argv[argv.index("--phase") + 1] != "B" or "--rig-map" not in argv:
-        raise SystemExit("compile-phase-b compiles phase B with a --rig-map only")
-    out = Path(argv[argv.index("--out") + 1]).resolve()
-    rigmap = json.loads(Path(argv[argv.index("--rig-map") + 1]).read_text())
-    bindings = {}
-    for path in sorted(set(rigmap.values())):
-        document, _, _ = load_rig(path)
-        bindings[str(Path(path).resolve())] = phase_b_binding(document, path)
     if _ORIGINAL:
         raise RuntimeError("acceptance override already installed in this process")
     original = _ORIGINAL["rig_camera_status"] = rig.rig_camera_status
 
     def compiler_status(doc, cam):
-        """The established compiler admits only "validated"; in THIS process an offline-accepted camera (verified
-        above, and again here) passes it, and every job compiled for that rig is then marked with the override."""
         status, why, exception = effective_status(doc, cam)
         return ("validated", [], exception) if status in OFFLINE_ACCEPTED else (status, why, exception)
 
-    script = Path(__file__).resolve().parents[3] / "scripts/realworld_prep_register.py"
-    spec = importlib.util.spec_from_file_location("realworld_prep_register_ao", script)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    saved = sys.argv
     rig.rig_camera_status = compiler_status
     try:
-        sys.argv = [str(script), *argv]
-        module.main()
+        yield
     finally:
-        sys.argv = saved
         rig.rig_camera_status = original
         _ORIGINAL.clear()
-    jobs = json.loads((out / "jobs.json").read_text())
-    for job in jobs:
-        rig_input = next(p for p in job["inputs"] if p.endswith(".json") and Path(p).with_suffix(
-            ".reference.npz").as_posix() in job["inputs"])
-        ref = bindings.get(rig_input)
-        if ref is None:
-            continue
-        step = job["steps"][0]
-        if step["kind"] != "rwprep" or step["argv"][0] != "episode":
-            raise ValueError(f"{job['id']}: unexpected phase B episode step")
-        job["steps"][0] = {"kind": "python",
-                           "argv": ["-m", "s4d.realworld.calib.acceptance_override", "rwprep", "--", *step["argv"]]}
-        job["acceptance_override"] = ref
-    config = json.loads((out / "dispatcher.json").read_text())
-    validate(config, jobs)
-    atomic(out / "jobs.json", jobs)
-    print(json.dumps({"acceptance_override_jobs": sum("acceptance_override" in j for j in jobs), "jobs": len(jobs)}))
-    return 0
+
+
+def phase_b_episode_step(step: dict) -> dict:
+    """The phase B episode step routed through ``run_rwprep`` (same rwprep argv; process-local override)."""
+    if step.get("kind") != "rwprep" or (step.get("argv") or [None])[0] != "episode":
+        raise ValueError(f"unexpected phase B episode step {step}")
+    return {"kind": "python", "argv": ["-m", "s4d.realworld.calib.acceptance_override", "rwprep", "--", *step["argv"]]}
 
 
 # ------------------------------------------------------------------------------------------------------------ CLI
@@ -635,8 +616,6 @@ def main(argv=None) -> int:
             rest = rest[1:]
         run_rwprep(rest, rwprep)
         return 0
-    if argv[:1] == ["compile-phase-b"]:
-        return compile_phase_b(argv[1:])
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
     g = sub.add_parser("gate", help="offline route gate of a published rig (exit 20 = held)")

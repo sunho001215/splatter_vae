@@ -106,6 +106,15 @@ def world(tmp_path, monkeypatch):
     return make
 
 
+def _script(name):
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(name, REPO / "scripts" / f"{name}.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def _published(world_state):
     return AO.apply_publisher_override(copy.deepcopy(world_state["doc"]), **world_state["kw"])
 
@@ -418,7 +427,8 @@ def test_compile_phase_b_marks_jobs_and_routes_the_episode_step_through_the_over
     argv = ["--phase", "B", "--plan", str(plan), "--out", str(out), "--processed", str(tmp_path / "processed"),
             "--host", "remote", "--image", "sha256:" + "a" * 64, "--code", str(REPO), "--weights", str(tmp_path),
             "--tools", str(tools), "--control-repo", str(tmp_path), "--rig-map", str(rmap)]
-    assert AO.compile_phase_b(argv) == 0
+    compiler = _script("realworld_prep_register_ao")
+    assert compiler.compile_phase_b(argv) == 0
     jobs = json.loads((out / "jobs.json").read_text())
     assert len(jobs) == 2
     for job in jobs:
@@ -438,7 +448,7 @@ def test_compile_phase_b_marks_jobs_and_routes_the_episode_step_through_the_over
     publish_rig(bad, held, {f"{c.replace('/', '__')}__{k}": np.zeros((2, 2)) for c in CAMS for k in ("grey", "dynamic")})
     rmap.write_text(json.dumps({ep: str(bad) for ep in rigmap}))
     with pytest.raises(ValueError, match="must be accepted"):
-        AO.compile_phase_b([*argv[:5], str(tmp_path / "queue2"), *argv[6:]])
+        compiler.compile_phase_b([*argv[:5], str(tmp_path / "queue2"), *argv[6:]])
 
 
 def test_runtime_wrapper_refuses_a_rig_not_accepted_for_offline_use(world, tmp_path, capsys):
