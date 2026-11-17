@@ -1910,7 +1910,10 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
                    or ("registry state changed" if current != state.get(job["id"]) else None)
                    or ("ownership changed" if fresh_ownership.get(job["id"]) != ownership.get(job["id"]) else None)
                    or ("pause evidence changed" if guard.pause_revision() != pause_revision else None)
-                   or ("queue held" if (authoritative_queue.parent / "HOLD").exists() else None))
+                   # Same scope as the planning check (queue_path.parent / "HOLD"): the 2026-10-31 HOLD holds
+                   # default-queue admissions only; scoped drivers' dispatch copies have their own admission
+                   # controls. 2026-11-18: checking the authoritative queue's HOLD here refused every scoped launch.
+                   or ("queue held" if (queue_path.parent / "HOLD").exists() else None))
         if changed:
             messages.append(f"{job['id']}: admission held at commit: {changed}")
             continue

@@ -204,6 +204,32 @@ def test_stale_dispatch_compares_the_authoritative_row(tmp_path, changed):
     assert jobs.load_queue(authoritative)["jobs"] == payload["jobs"]
 
 
+def test_authoritative_queue_hold_does_not_block_a_scoped_dispatch_copy(tmp_path):
+    """2026-11-18 regression: experiments/HOLD (2026-10-31) holds default-queue admissions only; a scoped driver's
+    dispatch copy elsewhere launches although the authoritative queue's directory carries a HOLD."""
+    queued = job(planned_commit=COMMIT)
+    home = tmp_path / "experiments"
+    home.mkdir()
+    authoritative = write_queue(home, [queued])
+    (home / "HOLD").write_text("default-queue admissions held\n")
+    scoped = tmp_path / "scoped"
+    scoped.mkdir()
+    dispatch = scoped / "dispatch.yaml"
+    dispatch.write_bytes(authoritative.read_bytes())
+    backend = FakeBackend(tmp_path / "runs")
+    messages = tick(tmp_path, dispatch, backend, authoritative_queue=authoritative)
+    assert len(backend.launches) == 1, messages
+    assert not any("queue held" in m for m in messages)
+
+
+def test_hold_next_to_the_dispatched_queue_still_holds(tmp_path):
+    queue = write_queue(tmp_path, [job(planned_commit=COMMIT)])
+    (tmp_path / "HOLD").write_text("held\n")
+    backend = FakeBackend(tmp_path / "runs")
+    tick(tmp_path, queue, backend)
+    assert not backend.launches
+
+
 @pytest.mark.parametrize("source", ["pause", "legacy-prep", "prep-directory"])
 @pytest.mark.parametrize("mutation", ["create", "replace", "rewrite", "invalid", "delete"])
 def test_pause_written_during_prepare_fences_remote_commit(tmp_path, monkeypatch, source, mutation):
