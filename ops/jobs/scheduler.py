@@ -1292,6 +1292,15 @@ class _TickChanged(Exception):
     """An unlocked observation overlapped another writer; leave committed events for the next tick."""
 
 
+class _TickAppended(_TickChanged):
+    """Only append-only registry growth and/or prep progress files changed during the unlocked observation.
+
+    2026-11-18 production finding: with 25+ running jobs and a 100-job prep dispatcher, nearly every unlocked remote
+    observation overlapped such a writer, so the release chain (and the daemon after re-exec) deferred every tick and
+    admitted nothing. These writers never change what a pass may decide without the commit-point checks noticing,
+    so the pass is redone once from re-read state while keeping registry.lock (the pre-2026-11-17 serial behaviour)."""
+
+
 class _TickLock:
     """Yield the registry lock for slow evidence reads, then validate the planning snapshot.
 
@@ -1302,6 +1311,7 @@ class _TickLock:
     def __init__(self, lock, queue_path, registry, authoritative_queue, reservation_path):
         from ops.jobs import admission_pause
         self.lock = lock
+        self.registry = registry
         self.paths = {queue_path, registry, authoritative_queue, queue_path.parent / "HOLD",
                       authoritative_queue.parent / "HOLD", host_roles.ROLES_PATH, host_roles.EXCEPTIONS_PATH,
                       host_roles.OWNERSHIP_DIR, admission_pause.FILE, admission_pause.PREP_PRIORITY,
@@ -1360,15 +1370,30 @@ class _TickLock:
                 tokens[path] = None
         return tokens
 
+    hold = False  # set for the serial retry after a benign overlap: never yield the lock again in this pass
+
+    def _benign(self, before, after):
+        changed = {path for path in before.keys() | after.keys() if before.get(path) != after.get(path)}
+        registry_ok = True
+        if self.registry in changed:
+            old, new = before.get(self.registry), after.get(self.registry)
+            # append-only growth of the same file (no rewrite/rotation): dev, inode equal and size grew
+            registry_ok = bool(old and new and old[:2] == new[:2] and new[2] >= old[2])
+        others = changed - {self.registry}
+        return registry_ok and all(path.name == "state.json" for path in others)
+
     def unlocked(self, fn, *args, **kwargs):
+        if self.hold:
+            return fn(*args, **kwargs)
         before = self.revision()
         fcntl.flock(self.lock, fcntl.LOCK_UN)
         try:
             return fn(*args, **kwargs)
         finally:
             fcntl.flock(self.lock, fcntl.LOCK_EX)
-            if before != self.revision():
-                raise _TickChanged
+            after = self.revision()
+            if before != after:
+                raise _TickAppended if self._benign(before, after) else _TickChanged
 
 
 def _dispatch_refusal(job, authoritative, context, gpu=None):
@@ -1406,8 +1431,15 @@ def tick(queue_path: Path = QUEUE, registry: Path = REGISTRY, runs: Path = RUNS,
         try:
             return _tick(queue_path, registry, runs, usage, available_gb, disk_bytes, remote_backend, scope,
                          reservation_path, authoritative_queue, guard, messages)
+        except _TickAppended:
+            messages.append("registry/prep progress appended during observation; redoing this pass under registry.lock")
         except _TickChanged:
             return [*messages, "scheduler inputs changed during observation; remaining decisions deferred to next tick"]
+        # Fresh pass from re-read state without yielding the lock; the aborted pass's committed events are already in
+        # the registry and are observed as such (no launch is replayed).
+        guard.hold = True
+        return [*messages, *_tick(queue_path, registry, runs, usage, available_gb, disk_bytes, remote_backend, scope,
+                                  reservation_path, authoritative_queue, guard, [])]
 
 
 def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, disk_bytes, remote_backend,

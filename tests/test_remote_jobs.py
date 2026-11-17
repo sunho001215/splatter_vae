@@ -287,6 +287,31 @@ def test_adoption_during_evidence_read_discards_the_plan(tmp_path, monkeypatch):
     assert "r" not in jobs.read_registry(tmp_path / "registry.jsonl")
 
 
+def test_registry_append_during_observation_redoes_the_pass_under_the_lock(tmp_path, monkeypatch):
+    """2026-11-18: append-only registry growth (other jobs' events) must not starve admission; the pass is redone
+    serially and still launches, exactly once."""
+    queue = write_queue(tmp_path, [job()])
+    (tmp_path / "registry.jsonl").write_text(json.dumps({"event": "heartbeat", "id": "other", "time": 0.0}) + "\n")
+    backend = FakeBackend(tmp_path / "runs")
+    real_ready, calls = backend.ready, []
+
+    def ready(host):
+        if not calls:  # first, unlocked observation: the lock is yielded and another writer appends an event
+            with (tmp_path / "registry.lock").open("a") as probe:
+                fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            with (tmp_path / "registry.jsonl").open("a") as registry:
+                registry.write(json.dumps({"event": "heartbeat", "id": "other", "time": 1.0}) + "\n")
+        calls.append(True)
+        return real_ready(host)
+
+    monkeypatch.setattr(backend, "ready", ready)
+    messages = tick(tmp_path, queue, backend)
+    assert len(calls) == 2, messages
+    assert [launch[0] if isinstance(launch, tuple) else launch for launch in backend.launches] and \
+        len(backend.launches) == 1, messages
+    assert any("redoing this pass under registry.lock" in m for m in messages)
+
+
 def test_remote_observation_and_cleanup_yield_the_registry_lock(tmp_path, monkeypatch):
     queue = write_queue(tmp_path, [job()])
     registry = tmp_path / "registry.jsonl"
