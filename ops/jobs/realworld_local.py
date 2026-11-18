@@ -401,6 +401,10 @@ def needed_inputs(job: dict, *, remote_prefix: str = REMOTE_PREFIX) -> dict:
         mirror.add(_rel(str(PurePosixPath(_mapped(known.rig, remote_prefix)).with_suffix(".reference.npz"))))
     if job["script"] == "scripts/export_encoder.py":
         dep = PurePosixPath(known.run).parts[1]
+        # --run is a handle for these two fixed files, not a directory inventory. The exporter loads only config.yaml
+        # and the named checkpoint (s4d.config.load_config does not follow includes); both remain ordinary verified
+        # dependency files. Never grant directory access to another resolver or trust an essential sync as a full copy.
+        dependencies.discard((dep, "."))
         dependencies.add((dep, "config.yaml"))
         dependencies.add((dep, str(PurePosixPath(known.checkpoint).relative_to(known.run))
                           if known.checkpoint else "checkpoints/latest.pt"))
@@ -949,6 +953,13 @@ def _inputs(job: dict, state: dict, mirror: Path, manifest: Path, runs: Path,
             raise LocalInputError(f"local 3D-MVP rows need a LOCAL native depth producer: {name}")
         if job.get("script") == FQL_DATASET:
             raise LocalInputError(f"local dataset construction needs a LOCAL encoder producer: {name}")
+        if job.get("script") == "scripts/export_encoder.py":
+            sync, verified = current.get("sync") or {}, current.get("remote_verified") or {}
+            if (sync.get("verified") is not True or sync.get("final") is not True
+                    or sync.get("run_id") != dep or sync.get("host") != "remote"
+                    or verified.get("attempt") != current.get("attempts") or not verified.get("attempt")
+                    or not verified.get("files")):
+                raise LocalInputError(f"remote export needs a final backup and current-attempt verification: {name}")
         if relative == ".":
             raise LocalInputError(f"remote dependency run directory cannot be consumed locally: {name}")
         _regular(path)

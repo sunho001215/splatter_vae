@@ -1068,7 +1068,7 @@ def test_stats_pretraining_and_export_local_resolvers(mirrored):
     effective, record = localize(f, export)
     assert effective == export['args']
     assert set(record['dependency_inputs']) == {'runs/pre/config.yaml', 'runs/pre/checkpoints/step_0200000.pt'}
-    assert rw.needed_inputs(export)['dependency_files'] == [('pre', '.'), ('pre', 'checkpoints/step_0200000.pt'),
+    assert rw.needed_inputs(export)['dependency_files'] == [('pre', 'checkpoints/step_0200000.pt'),
                                                           ('pre', 'config.yaml')]
 
 
@@ -1092,7 +1092,65 @@ def test_pretraining_remote_dependency_uses_verified_backup_checksums(mirrored):
         localize(f, pre)
     dependency(f, 'pre', 'config.yaml', 'remote')
     dependency(f, 'pre', 'checkpoints/step_0200000.pt', 'remote')
-    with pytest.raises(rw.LocalInputError, match='remote dependency run directory'):
+    with pytest.raises(rw.LocalInputError, match='final backup and current-attempt'):
+        localize(f, export)
+
+
+def remote_export(f):
+    _, _, export = pretraining_rows(f)
+    for name in ('config.yaml', 'checkpoints/step_0200000.pt'):
+        dependency(f, 'pre', name, 'remote')
+    producer = f.state['pre']
+    producer['attempts'] = 3
+    producer['sync'].update(verified=True, final=True, run_id='pre', host='remote')
+    producer['remote_verified']['attempt'] = 3
+    return export
+
+
+def test_remote_export_uses_verified_files_without_admitting_a_run_directory(mirrored):
+    f = mirrored
+    export = remote_export(f)
+    # Old local media may remain beside a partial essential sync. The exporter never reads/discovers them.
+    (f.runs / 'pre/unused-media').symlink_to(f.remote, target_is_directory=True)
+    assert rw.needed_inputs(export)['dependency_files'] == [
+        ('pre', 'checkpoints/step_0200000.pt'), ('pre', 'config.yaml')]
+    args, proof = localize(f, export)
+    assert args == export['args']
+    assert set(proof['dependency_inputs']) == {'runs/pre/config.yaml', 'runs/pre/checkpoints/step_0200000.pt'}
+    # The paired entrypoint resolves to exactly the same consumed files.
+    assert localize(f, {**export, 'script': 'scripts/dsreset_export_encoder.py'}) == (args, proof)
+
+
+@pytest.mark.parametrize('edit', ['unverified', 'not_final', 'wrong_run', 'wrong_host', 'stale_attempt',
+                                 'no_remote_record', 'config_not_remote_verified', 'config_not_synced',
+                                 'config_tampered', 'checkpoint_tampered', 'config_symlink', 'parent_symlink'])
+def test_remote_export_rejects_incomplete_or_changed_consumed_files(mirrored, edit):
+    f = mirrored
+    export = remote_export(f)
+    producer = f.state['pre']
+    if edit in ('unverified', 'not_final', 'wrong_run', 'wrong_host'):
+        key, value = {'unverified': ('verified', False), 'not_final': ('final', False),
+                      'wrong_run': ('run_id', 'other'), 'wrong_host': ('host', 'local')}[edit]
+        producer['sync'][key] = value
+    elif edit == 'stale_attempt':
+        producer['remote_verified']['attempt'] = 2
+    elif edit == 'no_remote_record':
+        producer.pop('remote_verified')
+    elif edit == 'config_not_remote_verified':
+        producer['remote_verified']['files'].pop('config.yaml')
+    elif edit == 'config_not_synced':
+        producer['sync']['files'].pop('config.yaml')
+    elif edit in ('config_tampered', 'checkpoint_tampered'):
+        (f.runs / 'pre' / ('config.yaml' if edit == 'config_tampered' else 'checkpoints/step_0200000.pt')).write_text('changed')
+    elif edit == 'config_symlink':
+        path = f.runs / 'pre/config.yaml'
+        path.rename(path.with_suffix('.saved'))
+        path.symlink_to(path.with_suffix('.saved'))
+    else:
+        path = f.runs / 'pre'
+        path.rename(f.runs / 'pre-saved')
+        path.symlink_to(f.runs / 'pre-saved', target_is_directory=True)
+    with pytest.raises(rw.LocalInputError):
         localize(f, export)
 
 
@@ -1278,7 +1336,7 @@ def test_needs_cli_inventories_each_resolvable_row(mirrored, monkeypatch, capsys
     inventory = json.loads(capsys.readouterr().out)
     assert inventory['stats']['mirror'] == sorted([STORE, SPLIT])
     assert inventory['pre']['dependency_files'] == [['stats', 'workspace_stats.json']]
-    assert inventory['export']['dependency_files'] == [['pre', '.'], ['pre', 'checkpoints/step_0200000.pt'],
+    assert inventory['export']['dependency_files'] == [['pre', 'checkpoints/step_0200000.pt'],
                                                       ['pre', 'config.yaml']]
 
 

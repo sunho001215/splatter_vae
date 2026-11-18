@@ -6,6 +6,9 @@ Data locality still applies: preprocessing and typed release verification stay r
 runs locally only with a verified resolver in `ops/jobs/realworld_local.py`. Resolvers cover FQL training,
 real-world workspace stats, our real-world pretraining, and exports from locally produced run directories.
 Remote dependency files require verified backup checksums; a remote run directory cannot be consumed locally.
+Encoder exports treat `--run` as a handle for the explicitly checked `config.yaml` and checkpoint files, preserving
+the row's arguments. Remote exports require a verified final backup and both files in current-attempt remote
+verification; an essential sync is never accepted as a complete run-directory mirror.
 `needs`, `fetch`, `verify`, `plan` and `place` inventory, mirror, check and explicitly place never-started rows.
 Started runs use `ops/jobs/migration.py`; begin permits either admitting destination, while switch-to-remote requires
 the separate remote release procedure. Meta-World keeps its pool/campaign release; other families keep their pins.
