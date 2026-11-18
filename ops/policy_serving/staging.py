@@ -40,12 +40,14 @@ if __package__ in (None, ""):  # ``python ops/policy_serving/staging.py``: make 
 from ops.policy_serving import criteria as C  # noqa: E402
 
 REPO = Path(__file__).resolve().parents[2]
+RETIRED_TASKS = {"drawer-open", "pick-and-place", "mug-hanging"}
 CONDITIONS = ("e2e_cnn", "mvp3d_single", "mvp3d_multiview", "dynamo", "reviwo", "sincro", "snerl", "ours")
 PRETRAIN_OF = {"mvp3d_single": "mvp3d", "mvp3d_multiview": "mvp3d"}  # FQL condition -> pretraining family
 _C = "|".join(CONDITIONS)
 # the pick-and-place-v2 Ours arm token and its S variant are parsed (pnpv2() below); earlier ids parse as before
 FQL_RE = re.compile(rf"^(?P<prefix>.+)-fql-(?P<condition>{_C})(?:_(?P<arm>orig|ch01))?-(?P<task>.+?)"
-                    r"(?:(?<=-pick-and-place-v2)-(?P<variant>S))?-s(?P<seed>\d+)$")
+                    r"(?:(?:(?<=-pick-and-place-v2)|(?<=-drawer-open-v2)|(?<=-covering))-(?P<variant>S))?"
+                    r"-s(?P<seed>\d+)$")
 DATA_RE = re.compile(rf"^(?P<prefix>.+)-fqldata-(?P<condition>{_C})-(?P<task>.+)$")
 PRE_RE = re.compile(r"^(?P<prefix>.+)-(?P<condition>dynamo|reviwo|sincro|snerl|mvp3d)-(?P<task>.+)-pre(?:-native)?$")
 # ours: the encoder export is its own row (scripts/export_encoder.py) after the scripts/train.py pretraining row
@@ -1057,6 +1059,10 @@ def write_host_catalog(host: Host, catalog: dict, *, execute: bool, log=print, r
 
     from ops.policy_serving.config import validate_catalog
 
+    retired = {pid: e.get("task") for pid, e in (catalog.get("policies") or {}).items()
+               if e.get("task") in RETIRED_TASKS}
+    if retired and not execute:
+        raise ValueError(f"RETIRED from serving (user 2026-11-18): refusing catalog additions {retired}")
     checked = validate_catalog(catalog)["policies"]
     demoted = sorted(pid for pid, e in (catalog.get("policies") or {}).items()
                      if e.get("execution_eligible") is True and checked[pid].get("execution_eligible") is not True)
@@ -1070,8 +1076,13 @@ def write_host_catalog(host: Host, catalog: dict, *, execute: bool, log=print, r
         log(f"[catalog] would write {len(catalog['policies'])} policies, {len(catalog['aliases'])} aliases (dry run)")
         return
     preflight("catalog publication", log)  # immediately before the write (every publisher passes here)
-    present = {pid for where in ("host", "container")
-               for pid in (_parse_catalog(_catalog_text(host, where), where).get("policies") or {})}
+    existing = [_parse_catalog(_catalog_text(host, where), where).get("policies") or {}
+                for where in ("host", "container")]
+    additions = {pid: task for pid, task in retired.items()
+                 if any(copy.get(pid) != catalog["policies"][pid] for copy in existing)}
+    if additions:
+        raise ValueError(f"RETIRED from serving (user 2026-11-18): refusing catalog additions {additions}")
+    present = {pid for copy in existing for pid in copy}
     dropped = sorted(present - set(catalog["policies"]) - set(removals))
     if dropped:
         raise CatalogDropRefused(f"the write would drop published policy ids {dropped} (not named as removals)")
@@ -1262,6 +1273,16 @@ def cmd_stage(a, *, hook: bool = False) -> int:
     published entry is another run / checkpoint is REFUSED unless ``--replace OLD_SHA256`` names that checkpoint."""
     import fcntl
 
+    queue_path = getattr(a, "queue", None)
+    if queue_path is None and getattr(a, "data_root", None) is not None:
+        queue_path = Path(a.data_root) / "experiments/queue.yaml"
+    if queue_path is not None and Path(queue_path).is_file():
+        registered = read_queue(Path(queue_path))
+        retired = {r: registered[r].get("realworld_target") for r in a.runs
+                   if r in registered and registered[r].get("realworld_target") in RETIRED_TASKS}
+        if retired:
+            print(json.dumps({"error": f"RETIRED from serving (user 2026-11-18): {retired}"}))
+            return 2
     comparison = [r for r in a.runs if fql_setting(r) in COMPARISON_SETTINGS]
     if comparison and not getattr(a, "allow_comparison", False):  # before any evaluation, host read or lock
         print(json.dumps({"error": f"comparison-baseline runs {comparison} are staged only with --allow-comparison "
@@ -1283,6 +1304,10 @@ def cmd_stage(a, *, hook: bool = False) -> int:
     missing = [r for r in a.runs if r not in rows]
     if missing:
         print(json.dumps({"error": f"unknown FQL runs {missing}"}))
+        return 2
+    retired = {r: rows[r].get("task") for r in a.runs if rows[r].get("task") in RETIRED_TASKS}
+    if retired:
+        print(json.dumps({"error": f"RETIRED from serving (user 2026-11-18): {retired}"}))
         return 2
     wrong = {r: rows[r].get("policy_id") for r in a.runs if rows[r].get("policy_id") != policy_id(
         rows[r]["condition"], rows[r]["task"], int(rows[r]["seed"]), fql_setting(r))}

@@ -1052,3 +1052,72 @@ def test_a_write_publishes_legacy_decision_only_e2e_entries_demoted_and_keeps_th
     assert out["e2e_cnn-t-s0"]["execution_eligible"] is False and out["e2e_cnn-t-s0"]["usage"] == "dry_run_replay_only"
     assert out["e2e_cnn-t-s0"]["usage_reasons"][0].startswith(EVIDENCE_DEMOTION)
     assert host.copies["host"] == host.copies["container"]
+
+# User retirement is exact-task only (2026-11-18); catalog removal remains possible.
+@pytest.mark.parametrize("task", ["drawer-open", "pick-and-place", "mug-hanging"])
+@pytest.mark.parametrize("hook", [False, True])
+def test_autopub_retired_stage_hook_refused_before_host(task, hook, monkeypatch, capsys):
+    from types import SimpleNamespace
+    run = f"r-fql-dynamo-{task}-s0"
+    monkeypatch.setattr(S, "_evaluated", lambda *a: {"fql": [{"run": run, "task": task}]})
+    monkeypatch.setattr(S, "Host", lambda **kw: pytest.fail("retired row reached host"))
+    assert S.cmd_stage(SimpleNamespace(runs=[run]), hook=hook) == 2
+    assert "RETIRED from serving" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("task", ["drawer-open", "pick-and-place", "mug-hanging"])
+def test_autopub_catalog_refuses_retired_additions_offline(task, monkeypatch):
+    monkeypatch.setattr(S, "preflight", lambda *a: pytest.fail("retired add reached preflight"))
+    with pytest.raises(ValueError, match="RETIRED from serving"):
+        S.write_host_catalog(None, {"policies": {"p": {"task": task}}}, execute=False)
+
+
+@pytest.mark.parametrize("task", ["drawer-open-v2", "pick-and-place-v2"])
+def test_autopub_v2_ids_parse_exactly_and_are_not_retired(task):
+    prefix = "pnpv2-20261117" if task == "pick-and-place-v2" else "rwv2-20261113"
+    m = S.FQL_RE.fullmatch(f"{prefix}-fql-dynamo-{task}-S-s0")
+    assert m["task"] == task and m["variant"] == "S"
+    assert task not in S.RETIRED_TASKS
+
+
+def test_autopub_retired_catalog_removal_allowed(monkeypatch):
+    empty = S.build_catalog({}, aliases={}, criteria_sha256=None)
+    old = {**empty, "policies": {"old": {"task": "drawer-open"}}}
+    written = []
+    host = type("OfflineHost", (), {"root": "/offline", "container": "offline", "ram_root": "/ram",
+                                   "run": lambda self, *a, **kw: written.append(kw["stdin"])})()
+    monkeypatch.setattr(S, "preflight", lambda *a: None)
+    monkeypatch.setattr(S, "_catalog_text", lambda *a: written[-1] if written else json.dumps(old))
+    S.write_host_catalog(host, empty, execute=True, removals=["old"], log=lambda m: None)
+    assert len(written) == 2 and all(json.loads(s)["policies"] == {} for s in written)
+
+
+@pytest.mark.parametrize("task", ["drawer-open", "pick-and-place", "mug-hanging"])
+def test_autopub_registered_retirement_precedes_v2_looking_id(task, tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    run = "rwv2-20261113-fql-dynamo-drawer-open-v2-S-s0"
+    queue = tmp_path / "experiments/queue.yaml"
+    queue.parent.mkdir()
+    queue.write_text(yaml.safe_dump({"jobs": [{"id": run, "realworld_target": task}]}))
+    monkeypatch.setattr(S, "_evaluated", lambda *a: pytest.fail("registered retired task reached evaluation"))
+    assert S.cmd_stage(SimpleNamespace(runs=[run], data_root=tmp_path)) == 2
+
+
+def test_autopub_partial_retired_removal_keeps_unchanged_entries(monkeypatch):
+    from ops.policy_serving import config
+    keep = {"task": "drawer-open"}
+    new = S.build_catalog({"keep": keep}, aliases={}, criteria_sha256=None)
+    old = {**new, "policies": {"keep": keep, "remove": {"task": "pick-and-place"}}}
+    written = []
+    host = type("OfflineHost", (), {"root": "/offline", "container": "offline", "ram_root": "/ram",
+                                   "run": lambda self, *a, **kw: written.append(kw["stdin"])})()
+    monkeypatch.setattr(config, "validate_catalog", lambda c: c)
+    monkeypatch.setattr(S, "preflight", lambda *a: None)
+    monkeypatch.setattr(S, "_catalog_text", lambda *a: written[-1] if written else json.dumps(old))
+    S.write_host_catalog(host, new, execute=True, removals=["remove"], log=lambda m: None)
+    assert len(written) == 2
+    written.clear()
+    new["policies"]["added"] = {"task": "mug-hanging"}
+    with pytest.raises(ValueError, match="RETIRED from serving"):
+        S.write_host_catalog(host, new, execute=True, removals=["remove"], log=lambda m: None)
+    assert not written
