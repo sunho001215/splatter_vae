@@ -417,7 +417,8 @@ def refusal(job: dict, host: str, roles: dict, ownership: dict | None = None, by
         allowed = True
     # pick-and-place-v2 readiness barriers (pnpv2 wave gates) are the same read-only audit on either host.
     if (not allowed and host == "local" and found.cls == "realworld_preprocess"
-            and job.get("script") == "scripts/pnpv2_realworld_dsreset_check.py"
+            and job.get("script") in ("scripts/pnpv2_realworld_dsreset_check.py",
+                                      "scripts/pnpv2_offline_check.py")  # geometry wave: offline-override wrapper
             and str(job.get("id", "")).startswith("pnpv2-20261117-gate-")):
         allowed = True
     if not allowed and retry_in_place(job["id"], host, current, exceptions):

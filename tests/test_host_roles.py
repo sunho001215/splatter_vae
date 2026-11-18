@@ -1011,3 +1011,16 @@ def test_remote_kind_preserves_metaworld_release_families_without_executing_driv
     assert "'realworld_pretrain'" in gate and "'verification'" in gate and "'metaworld'" not in gate
     assert "host_roles.role_host(row, ROLES, by_id) == 'remote'" in gate
     assert all(repr(k) in ast.unparse(kind) for k in ('pool_pretrain', 'pool_export', 'pool_rl', 'brl'))
+
+
+def test_pnpv2_wave_gates_are_admissible_on_both_hosts_including_the_offline_wrapper():
+    """The pick-and-place-v2 readiness gate is the same read-only audit on either host; the geometry wave runs it
+    through the offline-override wrapper (s4d/rwlearn/pnpv2_offline.ROW_WRAPPERS); other preprocessing stays remote."""
+    for script, wave in (("scripts/pnpv2_realworld_dsreset_check.py", "rgb"), ("scripts/pnpv2_offline_check.py", "geometry")):
+        row = {"id": f"pnpv2-20261117-gate-{wave}-pick-and-place-v2-S", "role": "realworld_preprocess", "script": script,
+               "args": [], "host": "remote"}
+        assert roles_mod.refusal(row, "local", ROLES, {}, {row["id"]: row}) is None
+        assert roles_mod.refusal(row, "remote", ROLES, {}, {row["id"]: row}) is None
+    other = {"id": "pnpv2-20261117-native-geometry-pick-and-place-v2-S", "role": "realworld_preprocess",
+             "script": "scripts/pnpv2_offline_native_depth.py", "args": [], "host": "remote"}
+    assert "is not a local role" in roles_mod.refusal(other, "local", ROLES, {}, {other["id"]: other})
