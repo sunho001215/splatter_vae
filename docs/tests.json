@@ -1,7 +1,7 @@
 {
-  "started_utc": "2026-11-18T03:51:23.126749+00:00",
+  "started_utc": "2026-11-18T04:03:05.513195+00:00",
   "checkout": "/home/ws/ws/splatter4d/.worktrees/pv2ov-1118",
-  "head": "af6718c8352c006c023f283ca449a08e311c3e98",
+  "head": "95c52a80e7ffce96a4e15a91be269543edbfa34d",
   "python": "3.10.19 (main, Feb 12 2026, 00:42:18) [Clang 21.1.4 ]",
   "torch": "2.10.0+cu129",
   "cuda_runtime": "12.9",
@@ -19,7 +19,6 @@
     [
       "tests/test_jobs.py",
       "tests/test_remote_access.py",
-      "tests/test_scheduler_daemon_reexec.py",
       "-q",
       "--tb=short",
       "--basetemp",
@@ -29,12 +28,15 @@
       "--junitxml=/home/ws/ws/splatter4d/.worktrees/pv2ov-1118/docs/shard-0/tests.junit.xml"
     ],
     [
-      "tests/test_rl_cli.py",
-      "tests/test_camera_suites.py",
-      "tests/test_rwlearn_ours.py",
-      "tests/test_rwlearn_snerl_eval.py",
-      "tests/test_snerl_sac.py",
-      "tests/test_cli.py",
+      "tests/test_remote_mig.py",
+      "tests/test_change_impact.py",
+      "tests/test_pnpv2_pipeline.py",
+      "tests/test_ops_layout.py",
+      "tests/test_remote_jobs.py",
+      "tests/test_dsreset_preparation.py",
+      "tests/test_native_depth_override_registration.py",
+      "tests/test_ours_matrix.py",
+      "tests/test_host_roles.py",
       "-q",
       "--tb=short",
       "--basetemp",
@@ -44,38 +46,18 @@
       "--junitxml=/home/ws/ws/splatter4d/.worktrees/pv2ov-1118/docs/shard-1/tests.junit.xml"
     ],
     [
-      "tests/test_remote_mig.py",
       "tests/test_release_gate.py",
-      "tests/test_run_tests_sharding.py",
-      "tests/test_memory_admission.py",
-      "tests/test_release_reservation.py",
-      "tests/test_release_repin_chain.py",
+      "tests/test_remote_offload.py",
       "tests/test_remote_refusal.py",
-      "tests/test_rwprep_mig.py",
       "tests/test_pnpv2_geometry_route.py",
-      "tests/test_suite_partition.py",
-      "tests/test_pick_and_place_v2.py",
+      "tests/test_local_devices.py",
       "tests/test_pnpv2_remote_route.py",
-      "tests/test_realworld_train_store.py",
       "tests/test_realworld_layout.py",
-      "tests/test_launch_hold.py",
-      "tests/test_remote_jobs.py",
-      "tests/test_release_prep_deadlock.py",
-      "tests/test_input_hashes.py",
+      "tests/test_dsreset_registration.py",
       "tests/test_adoption_guards.py",
-      "tests/test_rwlearn_dsreset.py",
-      "tests/test_realworld_calibration_release.py",
-      "tests/test_local_phase_a_hybrid.py",
-      "tests/test_remote_launch.py",
       "tests/test_dsreset_success_only.py",
-      "tests/test_host_roles.py",
-      "tests/test_rwlearn_gate.py",
+      "tests/test_drawer_rgb_inputs.py",
       "tests/test_run_identity.py",
-      "tests/test_realworld_contract_workers.py",
-      "tests/test_retired_algorithms.py",
-      "tests/test_fair_share.py",
-      "tests/test_export.py",
-      "tests/test_pool_pin.py",
       "-q",
       "--tb=short",
       "--basetemp",
@@ -83,66 +65,185 @@
       "-o",
       "cache_dir=/home/ws/ws/splatter4d/.worktrees/pv2ov-1118/docs/shard-2/pytest-cache",
       "--junitxml=/home/ws/ws/splatter4d/.worktrees/pv2ov-1118/docs/shard-2/tests.junit.xml"
-    ],
-    [
-      "tests/test_mig_validation.py",
-      "tests/test_isolation_reuse.py",
-      "tests/test_rwprep_admission_deferral.py",
-      "tests/test_calibration_acceptance_override.py",
-      "tests/test_rwlearn_native_depth.py",
-      "tests/test_ours_priority.py",
-      "tests/test_remote_offload.py",
-      "tests/test_change_impact.py",
-      "tests/test_prep_reservation.py",
-      "tests/test_pnpv2_acceptance_override.py",
-      "tests/test_local_devices.py",
-      "tests/test_pnpv2_pipeline.py",
-      "tests/test_droid_largescale.py",
-      "tests/test_ops_layout.py",
-      "tests/test_footprints.py",
-      "tests/test_realworld_calibration_criteria.py",
-      "tests/test_ours_length_eval.py",
-      "tests/test_dsreset_registration.py",
-      "tests/test_dsreset_preparation.py",
-      "tests/test_realworld_local.py",
-      "tests/test_release_repin_review.py",
-      "tests/test_native_depth_override_registration.py",
-      "tests/test_rwlearn_fql_pipeline.py",
-      "tests/test_ours_matrix.py",
-      "tests/test_drawer_rgb_inputs.py",
-      "tests/test_arm4_configs.py",
-      "tests/test_future_stride.py",
-      "tests/test_sync_wandb_canonical_guard.py",
-      "tests/test_rwlearn_store_baselines.py",
-      "tests/test_lifecycle_cleanup.py",
-      "tests/test_rwlearn_frame_mapping.py",
-      "tests/test_gpu_guard.py",
-      "tests/test_sync_media.py",
-      "-q",
-      "--tb=short",
-      "--basetemp",
-      "/home/ws/ws/splatter4d/.worktrees/pv2ov-1118/docs/tmp/shard-3",
-      "-o",
-      "cache_dir=/home/ws/ws/splatter4d/.worktrees/pv2ov-1118/docs/shard-3/pytest-cache",
-      "--junitxml=/home/ws/ws/splatter4d/.worktrees/pv2ov-1118/docs/shard-3/tests.junit.xml"
     ]
   ],
   "exit_code": 0,
-  "duration_seconds": 430.86585092707537,
+  "duration_seconds": 274.9261425740551,
   "counts": {
-    "passed": 2956,
+    "passed": 4688,
     "error": 0,
     "failed": 0,
     "skipped": 0
   },
-  "total": 2956,
+  "total": 1141,
   "collected_total": 3111,
-  "full_suite_passed": false,
+  "full_suite_passed": true,
   "full_suite_passed_with_reuse": false,
   "reuse": {
     "lookup": true,
     "cache": "/home/ws/ws/splatter4d/.cache/test-results",
     "reused_files": [
+      {
+        "file": "tests/test_arm4_configs.py",
+        "key": "546787171d7a37c3703bd7d5e7f3eec69e1343371eb71825015832ca7c05d5df",
+        "tests": 47,
+        "recorded_utc": "2026-11-18T03:58:33.963385+00:00",
+        "commit": "af6718c8352c006c023f283ca449a08e311c3e98"
+      },
+      {
+        "file": "tests/test_calibration_acceptance_override.py",
+        "key": "978c3113cfbcdd305041dd4c6cac2ba0dc25badd50919ffb34b07e5041587fda",
+        "tests": 41,
+        "recorded_utc": "2026-11-18T03:58:33.964157+00:00",
+        "commit": "af6718c8352c006c023f283ca449a08e311c3e98"
+      },
+      {
+        "file": "tests/test_camera_suites.py",
+        "key": "3d7ecf1ba0fc53a82bdae173784641e4c9abaa0bcdcad242976524448ce882c8",
+        "tests": 14,
+        "recorded_utc": "2026-11-18T03:58:33.965209+00:00",
+        "commit": "af6718c8352c006c023f283ca449a08e311c3e98"
+      },
+      {
+        "file": "tests/test_cli.py",
+        "key": "2a911a008e260d0bee7a87933d300853a554c31c6de5dba2f1d0857056d3e949",
+        "tests": 9,
+        "recorded_utc": "2026-11-18T03:58:33.966222+00:00",
+        "commit": "af6718c8352c006c023f283ca449a08e311c3e98"
+      },
+      {
+        "file": "tests/test_droid_largescale.py",
+        "key": "87bdee0e8bf9ef4b463bdd2afb5c7ebf0c475a0d8ef6e6b0f3c3f64865c4b8b3",
+        "tests": 64,
+        "recorded_utc": "2026-11-18T03:58:33.966668+00:00",
+        "commit": "af6718c8352c006c023f283ca449a08e311c3e98"
+      },
+      {
+        "file": "tests/test_export.py",
+        "key": "1789cbba1061295b6a5526bea22055a1a198febe21108dfe1a075df7b627fa0a",
+        "tests": 6,
+        "recorded_utc": "2026-11-18T03:58:33.967187+00:00",
+        "commit": "af6718c8352c006c023f283ca449a08e311c3e98"
+      },
+      {
+        "file": "tests/test_fair_share.py",
+        "key": "48f6786fc44889b0e28b48bec501cc1500d0109cbc810ed54b1fbc1035d9ced6",
+        "tests": 28,
+        "recorded_utc": "2026-11-18T03:58:33.967596+00:00",
+        "commit": "af6718c8352c006c023f283ca449a08e311c3e98"
+      },
+      {
+        "file": "tests/test_footprints.py",
+        "key": "4621a1177eb6e694a0bb76c1042d4e31ed8868a20365a5c31fb367b9c40d4d36",
+        "tests": 19,
+        "recorded_utc": "2026-11-18T03:58:33.968037+00:00",
+        "commit": "af6718c8352c006c023f283ca449a08e311c3e98"
+      },
+      {
+        "file": "tests/test_future_stride.py",
+        "key": "beea343e222c3cc6725e1198b315600e36181ed3ea4fd30718e64c2110996790",
+        "tests": 20,
+        "recorded_utc": "2026-11-18T03:58:33.968458+00:00",
+        "commit": "af6718c8352c006c023f283ca449a08e311c3e98"
+      },
+      {
+        "file": "tests/test_gpu_guard.py",
+        "key": "630ab0837bb422b0c5fc724fa3d001577284f1e5f155de3b4e3d92c04f9151be",
+        "tests": 35,
+        "recorded_utc": "2026-11-18T03:58:33.968880+00:00",
+        "commit": "af6718c8352c006c023f283ca449a08e311c3e98"
+      },
+      {
+        "file": "tests/test_input_hashes.py",
+        "key": "24fb3cddeff92159d7ed5f720cfb473e369cef5efbf7ee759905477f4d8706e2",
+        "tests": 16,
+        "recorded_utc": "2026-11-18T03:58:33.970012+00:00",
+        "commit": "af6718c8352c006c023f283ca449a08e311c3e98"
+      },
+      {
+        "file": "tests/test_isolation_reuse.py",
+        "key": "a1078be8137346f3ebf755754376ef0644a6eed5d7582e41d1a563faf3bd5c50",
+        "tests": 56,
+        "recorded_utc": "2026-11-18T03:58:33.970449+00:00",
+        "commit": "af6718c8352c006c023f283ca449a08e311c3e98"
+      },
+      {
+        "file": "tests/test_launch_hold.py",
+        "key": "b5a461342e76b7a1276c23256c3b1422573e46f3d7a334eaad332356b1aa4aac",
+        "tests": 19,
+        "recorded_utc": "2026-11-18T03:58:33.970923+00:00",
+        "commit": "af6718c8352c006c023f283ca449a08e311c3e98"
+      },
+      {
+        "file": "tests/test_lifecycle_cleanup.py",
+        "key": "cb4697d256eefa1ea184319e0ad2137a67faf16c5079f06844167076c280786a",
+        "tests": 57,
+        "recorded_utc": "2026-11-18T03:58:33.971470+00:00",
+        "commit": "af6718c8352c006c023f283ca449a08e311c3e98"
+      },
+      {
+        "file": "tests/test_local_phase_a_hybrid.py",
+        "key": "35a8418aa69b6bd3a12e8928dadc683b1f20f80eb90645310e2042d5a40d3a0c",
+        "tests": 11,
+        "recorded_utc": "2026-11-18T03:58:33.971958+00:00",
+        "commit": "af6718c8352c006c023f283ca449a08e311c3e98"
+      },
+      {
+        "file": "tests/test_memory_admission.py",
+        "key": "dc67296df2128cabf3b5885562c27659ac4e11f2e8b21735c24c6a5dbdea0833",
+        "tests": 39,
+        "recorded_utc": "2026-11-18T03:58:33.972356+00:00",
+        "commit": "af6718c8352c006c023f283ca449a08e311c3e98"
+      },
+      {
+        "file": "tests/test_mig_validation.py",
+        "key": "4b40ad6d3d7ddd938de86f85693e0b550cd8897f34225cab898f11d8bed0f4e7",
+        "tests": 74,
+        "recorded_utc": "2026-11-18T03:58:33.972809+00:00",
+        "commit": "af6718c8352c006c023f283ca449a08e311c3e98"
+      },
+      {
+        "file": "tests/test_ours_length_eval.py",
+        "key": "26aa010087abe207d17297c482c11d6d3813739eb40ee0c8543c0b98160718cf",
+        "tests": 18,
+        "recorded_utc": "2026-11-18T03:58:33.973286+00:00",
+        "commit": "af6718c8352c006c023f283ca449a08e311c3e98"
+      },
+      {
+        "file": "tests/test_ours_priority.py",
+        "key": "6cdf7827c4c98fd68cb2a77c2d2cc791690f8ac56b8e0601022be1f3e2e8933c",
+        "tests": 38,
+        "recorded_utc": "2026-11-18T03:58:33.974301+00:00",
+        "commit": "af6718c8352c006c023f283ca449a08e311c3e98"
+      },
+      {
+        "file": "tests/test_pick_and_place_v2.py",
+        "key": "55cfc86b8c56328d4fa010a14286f92eb350bdedf64380e266f3197963d9e372",
+        "tests": 23,
+        "recorded_utc": "2026-11-18T03:58:33.974764+00:00",
+        "commit": "af6718c8352c006c023f283ca449a08e311c3e98"
+      },
+      {
+        "file": "tests/test_pnpv2_acceptance_override.py",
+        "key": "62b4ae6aa9f962eb295da14d67f948e2b9536d9f3a20c78ccfca8bf11f510a2d",
+        "tests": 30,
+        "recorded_utc": "2026-11-18T03:58:33.975188+00:00",
+        "commit": "af6718c8352c006c023f283ca449a08e311c3e98"
+      },
+      {
+        "file": "tests/test_pool_pin.py",
+        "key": "bbd64b34aa9bbf3e632202ca091733e196ae164ec2c6a67bdbb22dfd405b84ce",
+        "tests": 2,
+        "recorded_utc": "2026-11-18T03:58:33.975992+00:00",
+        "commit": "af6718c8352c006c023f283ca449a08e311c3e98"
+      },
+      {
+        "file": "tests/test_prep_reservation.py",
+        "key": "00b4b6f6ae79fef820496eef62f337252560af6b01c0972ae5c06f7941e9b693",
+        "tests": 32,
+        "recorded_utc": "2026-11-18T03:58:33.976363+00:00",
+        "commit": "af6718c8352c006c023f283ca449a08e311c3e98"
+      },
       {
         "file": "tests/test_realworld_calibration.py",
         "key": "bd5bba378daeaa2210ca4b547476b13ec8ec7c2ab1fc5fbef9406d35a2662d86",
@@ -158,11 +259,39 @@
         "commit": "d86348cc7a487fe495aeb16f3c2125b41b234ac1"
       },
       {
+        "file": "tests/test_realworld_calibration_criteria.py",
+        "key": "0e76d563f9f66e85ec0290b8a7003541ed683255e1359b3de6b9ef47cc3d637d",
+        "tests": 19,
+        "recorded_utc": "2026-11-18T03:58:33.976755+00:00",
+        "commit": "af6718c8352c006c023f283ca449a08e311c3e98"
+      },
+      {
+        "file": "tests/test_realworld_calibration_release.py",
+        "key": "2556eb79f7a9e77ee0622526f29d23168ff76dbce957c4e51fb09245d8a07781",
+        "tests": 32,
+        "recorded_utc": "2026-11-18T03:58:33.977163+00:00",
+        "commit": "af6718c8352c006c023f283ca449a08e311c3e98"
+      },
+      {
         "file": "tests/test_realworld_calibration_rig.py",
         "key": "b8fa88ab759210c7ec45e8705e92c365a64a961cc7e5318d7889f745e70a7e63",
         "tests": 8,
         "recorded_utc": "2026-11-18T03:46:06.081105+00:00",
         "commit": "d86348cc7a487fe495aeb16f3c2125b41b234ac1"
+      },
+      {
+        "file": "tests/test_realworld_contract_workers.py",
+        "key": "3b528ce912f14cb7357f01ea06a593097414678c6dc5118993bfa2d0192d0960",
+        "tests": 16,
+        "recorded_utc": "2026-11-18T03:58:33.977655+00:00",
+        "commit": "af6718c8352c006c023f283ca449a08e311c3e98"
+      },
+      {
+        "file": "tests/test_realworld_local.py",
+        "key": "0013313b388f6afc38a31538e5c7f0f16e0144963720ff9cf04798e89a0f0cf8",
+        "tests": 204,
+        "recorded_utc": "2026-11-18T03:58:33.978656+00:00",
+        "commit": "af6718c8352c006c023f283ca449a08e311c3e98"
       },
       {
         "file": "tests/test_realworld_m5_consumers.py",
@@ -179,11 +308,74 @@
         "commit": "d86348cc7a487fe495aeb16f3c2125b41b234ac1"
       },
       {
+        "file": "tests/test_realworld_train_store.py",
+        "key": "0c90515d88f0b34c9980792dabeb7c69695e64b7e8416ee6a40f2412121f6cc1",
+        "tests": 32,
+        "recorded_utc": "2026-11-18T03:58:33.979345+00:00",
+        "commit": "af6718c8352c006c023f283ca449a08e311c3e98"
+      },
+      {
+        "file": "tests/test_release_prep_deadlock.py",
+        "key": "b13eb3fc7b7a9b1dfe9444f8a03a60a12ea4fe6c6912b4d3d940aeb98e2dcbcc",
+        "tests": 17,
+        "recorded_utc": "2026-11-18T03:58:33.980222+00:00",
+        "commit": "af6718c8352c006c023f283ca449a08e311c3e98"
+      },
+      {
+        "file": "tests/test_release_repin_chain.py",
+        "key": "ba744270399831a28cb43c3921bffccb21878da12ed245837231602eeb509302",
+        "tests": 36,
+        "recorded_utc": "2026-11-18T03:58:33.980611+00:00",
+        "commit": "af6718c8352c006c023f283ca449a08e311c3e98"
+      },
+      {
+        "file": "tests/test_release_repin_review.py",
+        "key": "2c12fa32617e84bf2424d47e9cc0514963737719a563eb029080e128a94db3ab",
+        "tests": 14,
+        "recorded_utc": "2026-11-18T03:58:33.981087+00:00",
+        "commit": "af6718c8352c006c023f283ca449a08e311c3e98"
+      },
+      {
+        "file": "tests/test_release_reservation.py",
+        "key": "eb71056e52b6a4127639ed2b8704a9e0eb66e8e98043ff0df635c2609e69e9d4",
+        "tests": 38,
+        "recorded_utc": "2026-11-18T03:58:33.981479+00:00",
+        "commit": "af6718c8352c006c023f283ca449a08e311c3e98"
+      },
+      {
+        "file": "tests/test_remote_launch.py",
+        "key": "d9da8d921fa16da798c8d2a5ee46c2348df153839ca8c590bd1dd797a09669f7",
+        "tests": 274,
+        "recorded_utc": "2026-11-18T03:58:33.983430+00:00",
+        "commit": "af6718c8352c006c023f283ca449a08e311c3e98"
+      },
+      {
         "file": "tests/test_remote_runtime.py",
         "key": "c99bdf2b1b012d307108edaba4c9bdc54ee8b97fbe76482cd0d631cf6bcdccba",
         "tests": 35,
         "recorded_utc": "2026-11-18T03:46:06.090244+00:00",
         "commit": "d86348cc7a487fe495aeb16f3c2125b41b234ac1"
+      },
+      {
+        "file": "tests/test_retired_algorithms.py",
+        "key": "cee43f9909671a9f85e958b7ee214eded3704971c4361c09605f7c82fa94809b",
+        "tests": 37,
+        "recorded_utc": "2026-11-18T03:58:33.984872+00:00",
+        "commit": "af6718c8352c006c023f283ca449a08e311c3e98"
+      },
+      {
+        "file": "tests/test_rl_cli.py",
+        "key": "8cdefca1682f0d113dea1ce62decfdfc96b37aa7e559cf6ac5377ce15b523fba",
+        "tests": 1,
+        "recorded_utc": "2026-11-18T03:58:33.985303+00:00",
+        "commit": "af6718c8352c006c023f283ca449a08e311c3e98"
+      },
+      {
+        "file": "tests/test_run_tests_sharding.py",
+        "key": "ebad9c856fab34026e3775dc8bd3eda277aad51de2e9a5cd63931b3b8b37dd4b",
+        "tests": 45,
+        "recorded_utc": "2026-11-18T03:58:33.986291+00:00",
+        "commit": "af6718c8352c006c023f283ca449a08e311c3e98"
       },
       {
         "file": "tests/test_rwlearn_actions.py",
@@ -207,11 +399,53 @@
         "commit": "d86348cc7a487fe495aeb16f3c2125b41b234ac1"
       },
       {
+        "file": "tests/test_rwlearn_dsreset.py",
+        "key": "b80d8364550b068472f340aa1dad186b4dd44ceef5102d1a36540a01fac99b26",
+        "tests": 13,
+        "recorded_utc": "2026-11-18T03:58:33.986720+00:00",
+        "commit": "af6718c8352c006c023f283ca449a08e311c3e98"
+      },
+      {
         "file": "tests/test_rwlearn_fql.py",
         "key": "723c4a35df992680ed52c23b0f33f2511ec0e5a65628acf2d9e0e0a4ea817692",
         "tests": 7,
         "recorded_utc": "2026-11-18T03:46:06.094227+00:00",
         "commit": "d86348cc7a487fe495aeb16f3c2125b41b234ac1"
+      },
+      {
+        "file": "tests/test_rwlearn_fql_pipeline.py",
+        "key": "ad8adfef6ce8574099912e9b4175087b4f549df5ba22ed00e4e36ef316cd64d6",
+        "tests": 17,
+        "recorded_utc": "2026-11-18T03:58:33.987124+00:00",
+        "commit": "af6718c8352c006c023f283ca449a08e311c3e98"
+      },
+      {
+        "file": "tests/test_rwlearn_frame_mapping.py",
+        "key": "dc11b3f335bbf9785b38bf5739638c71d6b69ac80ba9f024f23a42a5ebaf77ec",
+        "tests": 10,
+        "recorded_utc": "2026-11-18T03:58:33.987486+00:00",
+        "commit": "af6718c8352c006c023f283ca449a08e311c3e98"
+      },
+      {
+        "file": "tests/test_rwlearn_gate.py",
+        "key": "e013fdeb37e75dd8fb80bcf64666293ba8f0ff4536375a92fda1a5362bf933db",
+        "tests": 104,
+        "recorded_utc": "2026-11-18T03:58:33.987909+00:00",
+        "commit": "af6718c8352c006c023f283ca449a08e311c3e98"
+      },
+      {
+        "file": "tests/test_rwlearn_native_depth.py",
+        "key": "50597e9d5fce175dc9c395d48875d5dbdc476ca6f46b24d5e045d429b894f008",
+        "tests": 32,
+        "recorded_utc": "2026-11-18T03:58:33.988421+00:00",
+        "commit": "af6718c8352c006c023f283ca449a08e311c3e98"
+      },
+      {
+        "file": "tests/test_rwlearn_ours.py",
+        "key": "95bc8c8ef0e619dd9c3bd741bf3e29ea3c588461df7b8632f8e000c037f0bf65",
+        "tests": 18,
+        "recorded_utc": "2026-11-18T03:58:33.988816+00:00",
+        "commit": "af6718c8352c006c023f283ca449a08e311c3e98"
       },
       {
         "file": "tests/test_rwlearn_pixel.py",
@@ -221,15 +455,78 @@
         "commit": "d86348cc7a487fe495aeb16f3c2125b41b234ac1"
       },
       {
+        "file": "tests/test_rwlearn_snerl_eval.py",
+        "key": "93918f6716b3f0b72a59b7c66d95994a8882697d8f39877c94e2428976b0476c",
+        "tests": 2,
+        "recorded_utc": "2026-11-18T03:58:33.989179+00:00",
+        "commit": "af6718c8352c006c023f283ca449a08e311c3e98"
+      },
+      {
+        "file": "tests/test_rwlearn_store_baselines.py",
+        "key": "eea0b5ab69cede0ef37efaddd63e345725e924b3876476747a46cf448a57bda0",
+        "tests": 23,
+        "recorded_utc": "2026-11-18T03:58:33.989514+00:00",
+        "commit": "af6718c8352c006c023f283ca449a08e311c3e98"
+      },
+      {
         "file": "tests/test_rwlearn_trainers_gpu.py",
         "key": "08e55ec33b101034e300007199619238d0571dd24779086bb35c2ddea87b2679",
         "tests": 3,
         "recorded_utc": "2026-11-18T03:46:06.097768+00:00",
         "commit": "d86348cc7a487fe495aeb16f3c2125b41b234ac1"
+      },
+      {
+        "file": "tests/test_rwprep_admission_deferral.py",
+        "key": "7b49891a6daceecd877e7d70236147ea33ee5da947f6310f5b20ca0587ab7584",
+        "tests": 50,
+        "recorded_utc": "2026-11-18T03:58:33.989903+00:00",
+        "commit": "af6718c8352c006c023f283ca449a08e311c3e98"
+      },
+      {
+        "file": "tests/test_rwprep_mig.py",
+        "key": "1b72a4dc53ae1c2c8fef54f5cfa256d6effcb6cbcd87388fda0bcee1264c7ca7",
+        "tests": 32,
+        "recorded_utc": "2026-11-18T03:58:33.990317+00:00",
+        "commit": "af6718c8352c006c023f283ca449a08e311c3e98"
+      },
+      {
+        "file": "tests/test_scheduler_daemon_reexec.py",
+        "key": "7af222ef4c17e0e24845b66ffa03c9fc615836a64d69ce069fd917e51b5746bb",
+        "tests": 10,
+        "recorded_utc": "2026-11-18T03:58:33.990699+00:00",
+        "commit": "af6718c8352c006c023f283ca449a08e311c3e98"
+      },
+      {
+        "file": "tests/test_snerl_sac.py",
+        "key": "3888af94fbdd2ec38db0fca0336da8f368ed79b0f0e5f32a050819d3dfda4b78",
+        "tests": 7,
+        "recorded_utc": "2026-11-18T03:58:33.991077+00:00",
+        "commit": "af6718c8352c006c023f283ca449a08e311c3e98"
+      },
+      {
+        "file": "tests/test_suite_partition.py",
+        "key": "185be4ab6eb9c357c51a7fd89d251081f8f549898d5c7bd975df61eaafff9ec1",
+        "tests": 25,
+        "recorded_utc": "2026-11-18T03:58:33.991429+00:00",
+        "commit": "af6718c8352c006c023f283ca449a08e311c3e98"
+      },
+      {
+        "file": "tests/test_sync_media.py",
+        "key": "2fad66a5d1ec600ea0596bc6e8e0846a99644748ce21fb0a7bf9c637e6f1f29a",
+        "tests": 5,
+        "recorded_utc": "2026-11-18T03:58:33.991799+00:00",
+        "commit": "af6718c8352c006c023f283ca449a08e311c3e98"
+      },
+      {
+        "file": "tests/test_sync_wandb_canonical_guard.py",
+        "key": "5421b6408b0aa627c7f88f743b5f879eeb1c1e65c3e8a5a53470d333ef813b97",
+        "tests": 4,
+        "recorded_utc": "2026-11-18T03:58:33.992141+00:00",
+        "commit": "af6718c8352c006c023f283ca449a08e311c3e98"
       }
     ],
-    "reused_tests": 182,
-    "recorded_files": 61,
+    "reused_tests": 1997,
+    "recorded_files": 10,
     "ineligible": {
       "tests/test_drawer_rgb_inputs.py": "live-data markers",
       "tests/test_dsreset_preparation.py": "live-data markers",
@@ -340,11 +637,11 @@
     "total_files": 168,
     "changed": [
       "docs/tests.json",
-      "docs/tests.junit.xml",
       "docs/tests.log",
       "ops/jobs/pnpv2_geometry.py",
       "ops/jobs/pnpv2_registration.py",
       "ops/jobs/pnpv2_resolver.py",
+      "ops/jobs/prep_reservation.py",
       "s4d/realworld/calib/overrides/pick-and-place-v2-20261118.json",
       "s4d/realworld/calib/pnpv2_acceptance_override.py",
       "s4d/rwlearn/pnpv2_native_depth_override.py",
@@ -359,14 +656,14 @@
       "tests/fixtures/pnpv2-calibration-evidence.json",
       "tests/fixtures/pnpv2-calibration-held.json",
       "tests/fixtures/pnpv2-calibration.reference.npz",
-      "tests/test_pnpv2_acceptance_override.py"
+      "tests/test_pnpv2_acceptance_override.py",
+      "tests/test_prep_reservation.py"
     ],
     "global": [],
     "protected": [],
     "widened": [],
     "unattributed": [
       "docs/tests.json",
-      "docs/tests.junit.xml",
       "docs/tests.log"
     ],
     "guard_only": [],
@@ -376,43 +673,45 @@
         "closure:ops/jobs/pnpv2_geometry.py",
         "closure:ops/jobs/pnpv2_registration.py",
         "closure:ops/jobs/pnpv2_resolver.py",
+        "closure:ops/jobs/prep_reservation.py",
         "closure:s4d/realworld/calib/overrides/pick-and-place-v2-20261118.json",
         "closure:s4d/realworld/calib/pnpv2_acceptance_override.py",
         "closure:s4d/rwlearn/pnpv2_native_depth_override.py",
-        "closure:s4d/rwlearn/pnpv2_offline.py",
-        "closure:scripts/pick_and_place_v2.py"
+        "closure:s4d/rwlearn/pnpv2_offline.py"
       ],
       "tests/test_arm4_configs.py": [
         "closure:ops/jobs/pnpv2_resolver.py",
+        "closure:ops/jobs/prep_reservation.py",
         "closure:s4d/realworld/calib/pnpv2_acceptance_override.py",
         "closure:s4d/rwlearn/pnpv2_native_depth_override.py",
         "closure:s4d/rwlearn/pnpv2_offline.py"
       ],
       "tests/test_calibration_acceptance_override.py": [
         "closure:ops/jobs/pnpv2_resolver.py",
+        "closure:ops/jobs/prep_reservation.py",
         "closure:s4d/realworld/calib/pnpv2_acceptance_override.py",
         "closure:s4d/rwlearn/pnpv2_native_depth_override.py",
         "closure:s4d/rwlearn/pnpv2_offline.py",
         "closure:scripts/pick_and_place_v2.py",
         "closure:scripts/pnpv2.py",
-        "closure:scripts/pnpv2_offline_check.py",
-        "closure:scripts/pnpv2_offline_native_depth.py"
+        "closure:scripts/pnpv2_offline_check.py"
       ],
       "tests/test_camera_suites.py": [
         "closure:ops/jobs/pnpv2_resolver.py",
+        "closure:ops/jobs/prep_reservation.py",
         "closure:s4d/realworld/calib/pnpv2_acceptance_override.py",
         "closure:s4d/rwlearn/pnpv2_native_depth_override.py",
         "closure:s4d/rwlearn/pnpv2_offline.py"
       ],
       "tests/test_change_impact.py": [
         "closure:ops/jobs/pnpv2_resolver.py",
+        "closure:ops/jobs/prep_reservation.py",
         "closure:s4d/realworld/calib/pnpv2_acceptance_override.py",
         "closure:s4d/rwlearn/pnpv2_native_depth_override.py",
         "closure:s4d/rwlearn/pnpv2_offline.py",
         "closure:scripts/test_shards.py",
         "closure:tests/fixtures/pnpv2-calibration-evidence.json",
-        "closure:tests/fixtures/pnpv2-calibration-held.json",
-        "closure:tests/fixtures/pnpv2-calibration.reference.npz"
+        "closure:tests/fixtures/pnpv2-calibration-held.json"
       ],
       "tests/test_cli.py": [
         "closure:scripts/pick_and_place_v2.py",
@@ -425,6 +724,7 @@
       ],
       "tests/test_drawer_rgb_inputs.py": [
         "closure:ops/jobs/pnpv2_resolver.py",
+        "closure:ops/jobs/prep_reservation.py",
         "closure:s4d/realworld/calib/pnpv2_acceptance_override.py",
         "closure:s4d/rwlearn/pnpv2_native_depth_override.py",
         "closure:s4d/rwlearn/pnpv2_offline.py",
@@ -444,26 +744,27 @@
       ],
       "tests/test_dsreset_preparation.py": [
         "closure:ops/jobs/pnpv2_resolver.py",
+        "closure:ops/jobs/prep_reservation.py",
         "closure:s4d/realworld/calib/pnpv2_acceptance_override.py",
         "closure:s4d/rwlearn/pnpv2_native_depth_override.py",
         "closure:s4d/rwlearn/pnpv2_offline.py",
         "closure:scripts/pick_and_place_v2.py",
         "closure:scripts/pnpv2.py",
-        "closure:scripts/pnpv2_offline_check.py",
-        "closure:scripts/pnpv2_offline_native_depth.py"
+        "closure:scripts/pnpv2_offline_check.py"
       ],
       "tests/test_dsreset_registration.py": [
         "closure:ops/jobs/pnpv2_geometry.py",
         "closure:ops/jobs/pnpv2_registration.py",
         "closure:ops/jobs/pnpv2_resolver.py",
+        "closure:ops/jobs/prep_reservation.py",
         "closure:s4d/realworld/calib/overrides/pick-and-place-v2-20261118.json",
         "closure:s4d/realworld/calib/pnpv2_acceptance_override.py",
         "closure:s4d/rwlearn/pnpv2_native_depth_override.py",
-        "closure:s4d/rwlearn/pnpv2_offline.py",
-        "closure:scripts/pick_and_place_v2.py"
+        "closure:s4d/rwlearn/pnpv2_offline.py"
       ],
       "tests/test_dsreset_success_only.py": [
         "closure:ops/jobs/pnpv2_resolver.py",
+        "closure:ops/jobs/prep_reservation.py",
         "closure:s4d/realworld/calib/pnpv2_acceptance_override.py",
         "closure:s4d/rwlearn/pnpv2_native_depth_override.py",
         "closure:s4d/rwlearn/pnpv2_offline.py",
@@ -482,12 +783,14 @@
       ],
       "tests/test_fair_share.py": [
         "closure:ops/jobs/pnpv2_resolver.py",
+        "closure:ops/jobs/prep_reservation.py",
         "closure:s4d/realworld/calib/pnpv2_acceptance_override.py",
         "closure:s4d/rwlearn/pnpv2_native_depth_override.py",
         "closure:s4d/rwlearn/pnpv2_offline.py"
       ],
       "tests/test_footprints.py": [
         "closure:ops/jobs/pnpv2_resolver.py",
+        "closure:ops/jobs/prep_reservation.py",
         "closure:s4d/realworld/calib/pnpv2_acceptance_override.py",
         "closure:s4d/rwlearn/pnpv2_native_depth_override.py",
         "closure:s4d/rwlearn/pnpv2_offline.py"
@@ -505,60 +808,67 @@
         "closure:ops/jobs/pnpv2_geometry.py",
         "closure:ops/jobs/pnpv2_registration.py",
         "closure:ops/jobs/pnpv2_resolver.py",
+        "closure:ops/jobs/prep_reservation.py",
         "closure:s4d/realworld/calib/overrides/pick-and-place-v2-20261118.json",
         "closure:s4d/realworld/calib/pnpv2_acceptance_override.py",
         "closure:s4d/rwlearn/pnpv2_native_depth_override.py",
-        "closure:s4d/rwlearn/pnpv2_offline.py",
-        "closure:scripts/pick_and_place_v2.py"
+        "closure:s4d/rwlearn/pnpv2_offline.py"
       ],
       "tests/test_host_roles.py": [
         "closure:ops/jobs/pnpv2_geometry.py",
         "closure:ops/jobs/pnpv2_registration.py",
         "closure:ops/jobs/pnpv2_resolver.py",
+        "closure:ops/jobs/prep_reservation.py",
         "closure:s4d/realworld/calib/overrides/pick-and-place-v2-20261118.json",
         "closure:s4d/realworld/calib/pnpv2_acceptance_override.py",
         "closure:s4d/rwlearn/pnpv2_native_depth_override.py",
-        "closure:s4d/rwlearn/pnpv2_offline.py",
-        "closure:scripts/pick_and_place_v2.py"
+        "closure:s4d/rwlearn/pnpv2_offline.py"
       ],
       "tests/test_input_hashes.py": [
         "closure:ops/jobs/pnpv2_resolver.py",
+        "closure:ops/jobs/prep_reservation.py",
         "closure:s4d/realworld/calib/pnpv2_acceptance_override.py",
         "closure:s4d/rwlearn/pnpv2_native_depth_override.py",
         "closure:s4d/rwlearn/pnpv2_offline.py"
       ],
       "tests/test_isolation_reuse.py": [
         "closure:ops/jobs/pnpv2_resolver.py",
+        "closure:ops/jobs/prep_reservation.py",
         "closure:s4d/realworld/calib/pnpv2_acceptance_override.py",
         "closure:s4d/rwlearn/pnpv2_native_depth_override.py",
         "closure:s4d/rwlearn/pnpv2_offline.py"
       ],
       "tests/test_jobs.py": [
         "closure:ops/jobs/pnpv2_resolver.py",
+        "closure:ops/jobs/prep_reservation.py",
         "closure:s4d/realworld/calib/pnpv2_acceptance_override.py",
         "closure:s4d/rwlearn/pnpv2_native_depth_override.py",
         "closure:s4d/rwlearn/pnpv2_offline.py"
       ],
       "tests/test_launch_hold.py": [
         "closure:ops/jobs/pnpv2_resolver.py",
+        "closure:ops/jobs/prep_reservation.py",
         "closure:s4d/realworld/calib/pnpv2_acceptance_override.py",
         "closure:s4d/rwlearn/pnpv2_native_depth_override.py",
         "closure:s4d/rwlearn/pnpv2_offline.py"
       ],
       "tests/test_lifecycle_cleanup.py": [
         "closure:ops/jobs/pnpv2_resolver.py",
+        "closure:ops/jobs/prep_reservation.py",
         "closure:s4d/realworld/calib/pnpv2_acceptance_override.py",
         "closure:s4d/rwlearn/pnpv2_native_depth_override.py",
         "closure:s4d/rwlearn/pnpv2_offline.py"
       ],
       "tests/test_local_devices.py": [
         "closure:ops/jobs/pnpv2_resolver.py",
+        "closure:ops/jobs/prep_reservation.py",
         "closure:s4d/realworld/calib/pnpv2_acceptance_override.py",
         "closure:s4d/rwlearn/pnpv2_native_depth_override.py",
         "closure:s4d/rwlearn/pnpv2_offline.py"
       ],
       "tests/test_local_phase_a_hybrid.py": [
         "closure:ops/jobs/pnpv2_resolver.py",
+        "closure:ops/jobs/prep_reservation.py",
         "closure:s4d/realworld/calib/pnpv2_acceptance_override.py",
         "closure:s4d/rwlearn/pnpv2_native_depth_override.py",
         "closure:s4d/rwlearn/pnpv2_offline.py"
@@ -567,20 +877,22 @@
         "closure:ops/jobs/pnpv2_geometry.py",
         "closure:ops/jobs/pnpv2_registration.py",
         "closure:ops/jobs/pnpv2_resolver.py",
+        "closure:ops/jobs/prep_reservation.py",
         "closure:s4d/realworld/calib/overrides/pick-and-place-v2-20261118.json",
         "closure:s4d/realworld/calib/pnpv2_acceptance_override.py",
         "closure:s4d/rwlearn/pnpv2_native_depth_override.py",
-        "closure:s4d/rwlearn/pnpv2_offline.py",
-        "closure:scripts/pick_and_place_v2.py"
+        "closure:s4d/rwlearn/pnpv2_offline.py"
       ],
       "tests/test_mig_validation.py": [
         "closure:ops/jobs/pnpv2_resolver.py",
+        "closure:ops/jobs/prep_reservation.py",
         "closure:s4d/realworld/calib/pnpv2_acceptance_override.py",
         "closure:s4d/rwlearn/pnpv2_native_depth_override.py",
         "closure:s4d/rwlearn/pnpv2_offline.py"
       ],
       "tests/test_native_depth_override_registration.py": [
         "closure:ops/jobs/pnpv2_resolver.py",
+        "closure:ops/jobs/prep_reservation.py",
         "closure:s4d/realworld/calib/pnpv2_acceptance_override.py",
         "closure:s4d/rwlearn/pnpv2_native_depth_override.py",
         "closure:s4d/rwlearn/pnpv2_offline.py"
@@ -589,6 +901,7 @@
         "closure:ops/jobs/pnpv2_geometry.py",
         "closure:ops/jobs/pnpv2_registration.py",
         "closure:ops/jobs/pnpv2_resolver.py",
+        "closure:ops/jobs/prep_reservation.py",
         "closure:s4d/realworld/calib/overrides/pick-and-place-v2-20261118.json",
         "closure:s4d/realworld/calib/pnpv2_acceptance_override.py",
         "closure:s4d/rwlearn/pnpv2_native_depth_override.py",
@@ -596,22 +909,24 @@
       ],
       "tests/test_ours_length_eval.py": [
         "closure:ops/jobs/pnpv2_resolver.py",
+        "closure:ops/jobs/prep_reservation.py",
         "closure:s4d/realworld/calib/pnpv2_acceptance_override.py",
         "closure:s4d/rwlearn/pnpv2_native_depth_override.py",
         "closure:s4d/rwlearn/pnpv2_offline.py",
         "closure:scripts/pick_and_place_v2.py",
         "closure:scripts/pnpv2.py",
-        "closure:scripts/pnpv2_offline_check.py",
-        "closure:scripts/pnpv2_offline_native_depth.py"
+        "closure:scripts/pnpv2_offline_check.py"
       ],
       "tests/test_ours_matrix.py": [
         "closure:ops/jobs/pnpv2_resolver.py",
+        "closure:ops/jobs/prep_reservation.py",
         "closure:s4d/realworld/calib/pnpv2_acceptance_override.py",
         "closure:s4d/rwlearn/pnpv2_native_depth_override.py",
         "closure:s4d/rwlearn/pnpv2_offline.py"
       ],
       "tests/test_ours_priority.py": [
         "closure:ops/jobs/pnpv2_resolver.py",
+        "closure:ops/jobs/prep_reservation.py",
         "closure:s4d/realworld/calib/pnpv2_acceptance_override.py",
         "closure:s4d/rwlearn/pnpv2_native_depth_override.py",
         "closure:s4d/rwlearn/pnpv2_offline.py"
@@ -620,26 +935,27 @@
         "closure:ops/jobs/pnpv2_geometry.py",
         "closure:ops/jobs/pnpv2_registration.py",
         "closure:ops/jobs/pnpv2_resolver.py",
+        "closure:ops/jobs/prep_reservation.py",
         "closure:s4d/realworld/calib/overrides/pick-and-place-v2-20261118.json",
         "closure:s4d/realworld/calib/pnpv2_acceptance_override.py",
         "closure:s4d/rwlearn/pnpv2_native_depth_override.py",
-        "closure:s4d/rwlearn/pnpv2_offline.py",
-        "closure:scripts/pick_and_place_v2.py"
+        "closure:s4d/rwlearn/pnpv2_offline.py"
       ],
       "tests/test_pnpv2_acceptance_override.py": [
         "closure:ops/jobs/pnpv2_geometry.py",
         "closure:ops/jobs/pnpv2_registration.py",
         "closure:ops/jobs/pnpv2_resolver.py",
+        "closure:ops/jobs/prep_reservation.py",
         "closure:s4d/realworld/calib/pnpv2_acceptance_override.py",
         "closure:s4d/rwlearn/pnpv2_native_depth_override.py",
         "closure:s4d/rwlearn/pnpv2_offline.py",
-        "closure:scripts/pick_and_place_v2.py",
-        "closure:scripts/pnpv2.py"
+        "closure:scripts/pick_and_place_v2.py"
       ],
       "tests/test_pnpv2_geometry_route.py": [
         "closure:ops/jobs/pnpv2_geometry.py",
         "closure:ops/jobs/pnpv2_registration.py",
         "closure:ops/jobs/pnpv2_resolver.py",
+        "closure:ops/jobs/prep_reservation.py",
         "closure:s4d/realworld/calib/pnpv2_acceptance_override.py",
         "closure:s4d/rwlearn/pnpv2_native_depth_override.py",
         "closure:s4d/rwlearn/pnpv2_offline.py",
@@ -649,33 +965,36 @@
         "closure:ops/jobs/pnpv2_geometry.py",
         "closure:ops/jobs/pnpv2_registration.py",
         "closure:ops/jobs/pnpv2_resolver.py",
+        "closure:ops/jobs/prep_reservation.py",
         "closure:s4d/realworld/calib/pnpv2_acceptance_override.py",
         "closure:s4d/rwlearn/pnpv2_native_depth_override.py",
         "closure:s4d/rwlearn/pnpv2_offline.py",
-        "closure:scripts/pick_and_place_v2.py",
-        "closure:scripts/pnpv2.py"
+        "closure:scripts/pick_and_place_v2.py"
       ],
       "tests/test_pnpv2_remote_route.py": [
         "closure:ops/jobs/pnpv2_geometry.py",
         "closure:ops/jobs/pnpv2_registration.py",
         "closure:ops/jobs/pnpv2_resolver.py",
+        "closure:ops/jobs/prep_reservation.py",
         "closure:s4d/realworld/calib/pnpv2_acceptance_override.py",
         "closure:s4d/rwlearn/pnpv2_native_depth_override.py",
         "closure:s4d/rwlearn/pnpv2_offline.py",
-        "closure:scripts/pick_and_place_v2.py",
-        "closure:scripts/realworld_dsreset_calibration.py"
+        "closure:scripts/pick_and_place_v2.py"
       ],
       "tests/test_pool_pin.py": [
         "closure:ops/jobs/pnpv2_resolver.py",
+        "closure:ops/jobs/prep_reservation.py",
         "closure:s4d/realworld/calib/pnpv2_acceptance_override.py",
         "closure:s4d/rwlearn/pnpv2_native_depth_override.py",
         "closure:s4d/rwlearn/pnpv2_offline.py"
       ],
       "tests/test_prep_reservation.py": [
         "closure:ops/jobs/pnpv2_resolver.py",
+        "closure:ops/jobs/prep_reservation.py",
         "closure:s4d/realworld/calib/pnpv2_acceptance_override.py",
         "closure:s4d/rwlearn/pnpv2_native_depth_override.py",
-        "closure:s4d/rwlearn/pnpv2_offline.py"
+        "closure:s4d/rwlearn/pnpv2_offline.py",
+        "test:tests/test_prep_reservation.py"
       ],
       "tests/test_realworld_calibration.py": [
         "closure:tests/fixtures/pnpv2-calibration-evidence.json",
@@ -718,11 +1037,11 @@
         "closure:ops/jobs/pnpv2_geometry.py",
         "closure:ops/jobs/pnpv2_registration.py",
         "closure:ops/jobs/pnpv2_resolver.py",
+        "closure:ops/jobs/prep_reservation.py",
         "closure:s4d/realworld/calib/overrides/pick-and-place-v2-20261118.json",
         "closure:s4d/realworld/calib/pnpv2_acceptance_override.py",
         "closure:s4d/rwlearn/pnpv2_native_depth_override.py",
-        "closure:s4d/rwlearn/pnpv2_offline.py",
-        "closure:scripts/pick_and_place_v2.py"
+        "closure:s4d/rwlearn/pnpv2_offline.py"
       ],
       "tests/test_realworld_m5_consumers.py": [
         "closure:tests/fixtures/pnpv2-calibration-evidence.json",
@@ -736,28 +1055,32 @@
       ],
       "tests/test_realworld_train_store.py": [
         "closure:ops/jobs/pnpv2_resolver.py",
+        "closure:ops/jobs/prep_reservation.py",
         "closure:s4d/realworld/calib/pnpv2_acceptance_override.py",
         "closure:s4d/rwlearn/pnpv2_native_depth_override.py",
         "closure:s4d/rwlearn/pnpv2_offline.py"
       ],
       "tests/test_release_gate.py": [
         "closure:ops/jobs/pnpv2_resolver.py",
+        "closure:ops/jobs/prep_reservation.py",
         "closure:s4d/realworld/calib/pnpv2_acceptance_override.py",
         "closure:s4d/rwlearn/pnpv2_native_depth_override.py",
         "closure:s4d/rwlearn/pnpv2_offline.py",
         "closure:scripts/test_shards.py",
         "closure:tests/fixtures/pnpv2-calibration-evidence.json",
-        "closure:tests/fixtures/pnpv2-calibration-held.json",
-        "closure:tests/fixtures/pnpv2-calibration.reference.npz"
+        "closure:tests/fixtures/pnpv2-calibration-held.json"
       ],
       "tests/test_release_prep_deadlock.py": [
         "closure:ops/jobs/pnpv2_resolver.py",
+        "closure:ops/jobs/prep_reservation.py",
         "closure:s4d/realworld/calib/pnpv2_acceptance_override.py",
         "closure:s4d/rwlearn/pnpv2_native_depth_override.py",
-        "closure:s4d/rwlearn/pnpv2_offline.py"
+        "closure:s4d/rwlearn/pnpv2_offline.py",
+        "closure:tests/test_prep_reservation.py"
       ],
       "tests/test_release_repin_chain.py": [
         "closure:ops/jobs/pnpv2_resolver.py",
+        "closure:ops/jobs/prep_reservation.py",
         "closure:s4d/realworld/calib/pnpv2_acceptance_override.py",
         "closure:s4d/rwlearn/pnpv2_native_depth_override.py",
         "closure:s4d/rwlearn/pnpv2_offline.py",
@@ -765,18 +1088,21 @@
       ],
       "tests/test_release_repin_review.py": [
         "closure:ops/jobs/pnpv2_resolver.py",
+        "closure:ops/jobs/prep_reservation.py",
         "closure:s4d/realworld/calib/pnpv2_acceptance_override.py",
         "closure:s4d/rwlearn/pnpv2_native_depth_override.py",
         "closure:s4d/rwlearn/pnpv2_offline.py"
       ],
       "tests/test_release_reservation.py": [
         "closure:ops/jobs/pnpv2_resolver.py",
+        "closure:ops/jobs/prep_reservation.py",
         "closure:s4d/realworld/calib/pnpv2_acceptance_override.py",
         "closure:s4d/rwlearn/pnpv2_native_depth_override.py",
         "closure:s4d/rwlearn/pnpv2_offline.py"
       ],
       "tests/test_remote_access.py": [
         "closure:ops/jobs/pnpv2_resolver.py",
+        "closure:ops/jobs/prep_reservation.py",
         "closure:s4d/realworld/calib/pnpv2_acceptance_override.py",
         "closure:s4d/rwlearn/pnpv2_native_depth_override.py",
         "closure:s4d/rwlearn/pnpv2_offline.py"
@@ -785,14 +1111,15 @@
         "closure:ops/jobs/pnpv2_geometry.py",
         "closure:ops/jobs/pnpv2_registration.py",
         "closure:ops/jobs/pnpv2_resolver.py",
+        "closure:ops/jobs/prep_reservation.py",
         "closure:s4d/realworld/calib/overrides/pick-and-place-v2-20261118.json",
         "closure:s4d/realworld/calib/pnpv2_acceptance_override.py",
         "closure:s4d/rwlearn/pnpv2_native_depth_override.py",
-        "closure:s4d/rwlearn/pnpv2_offline.py",
-        "closure:scripts/pick_and_place_v2.py"
+        "closure:s4d/rwlearn/pnpv2_offline.py"
       ],
       "tests/test_remote_launch.py": [
         "closure:ops/jobs/pnpv2_resolver.py",
+        "closure:ops/jobs/prep_reservation.py",
         "closure:s4d/realworld/calib/pnpv2_acceptance_override.py",
         "closure:s4d/rwlearn/pnpv2_native_depth_override.py",
         "closure:s4d/rwlearn/pnpv2_offline.py",
@@ -800,18 +1127,21 @@
       ],
       "tests/test_remote_mig.py": [
         "closure:ops/jobs/pnpv2_resolver.py",
+        "closure:ops/jobs/prep_reservation.py",
         "closure:s4d/realworld/calib/pnpv2_acceptance_override.py",
         "closure:s4d/rwlearn/pnpv2_native_depth_override.py",
         "closure:s4d/rwlearn/pnpv2_offline.py"
       ],
       "tests/test_remote_offload.py": [
         "closure:ops/jobs/pnpv2_resolver.py",
+        "closure:ops/jobs/prep_reservation.py",
         "closure:s4d/realworld/calib/pnpv2_acceptance_override.py",
         "closure:s4d/rwlearn/pnpv2_native_depth_override.py",
         "closure:s4d/rwlearn/pnpv2_offline.py"
       ],
       "tests/test_remote_refusal.py": [
         "closure:ops/jobs/pnpv2_resolver.py",
+        "closure:ops/jobs/prep_reservation.py",
         "closure:s4d/realworld/calib/pnpv2_acceptance_override.py",
         "closure:s4d/rwlearn/pnpv2_native_depth_override.py",
         "closure:s4d/rwlearn/pnpv2_offline.py"
@@ -823,35 +1153,37 @@
       ],
       "tests/test_retired_algorithms.py": [
         "closure:ops/jobs/pnpv2_resolver.py",
+        "closure:ops/jobs/prep_reservation.py",
         "closure:s4d/realworld/calib/pnpv2_acceptance_override.py",
         "closure:s4d/rwlearn/pnpv2_native_depth_override.py",
         "closure:s4d/rwlearn/pnpv2_offline.py"
       ],
       "tests/test_rl_cli.py": [
         "closure:ops/jobs/pnpv2_resolver.py",
+        "closure:ops/jobs/prep_reservation.py",
         "closure:s4d/realworld/calib/pnpv2_acceptance_override.py",
         "closure:s4d/rwlearn/pnpv2_native_depth_override.py",
         "closure:s4d/rwlearn/pnpv2_offline.py"
       ],
       "tests/test_run_identity.py": [
         "closure:ops/jobs/pnpv2_resolver.py",
+        "closure:ops/jobs/prep_reservation.py",
         "closure:s4d/realworld/calib/pnpv2_acceptance_override.py",
         "closure:s4d/rwlearn/pnpv2_native_depth_override.py",
         "closure:s4d/rwlearn/pnpv2_offline.py",
         "closure:scripts/pick_and_place_v2.py",
         "closure:scripts/pnpv2.py",
-        "closure:scripts/pnpv2_offline_check.py",
-        "closure:scripts/pnpv2_offline_native_depth.py"
+        "closure:scripts/pnpv2_offline_check.py"
       ],
       "tests/test_run_tests_sharding.py": [
         "closure:ops/jobs/pnpv2_resolver.py",
+        "closure:ops/jobs/prep_reservation.py",
         "closure:s4d/realworld/calib/pnpv2_acceptance_override.py",
         "closure:s4d/rwlearn/pnpv2_native_depth_override.py",
         "closure:s4d/rwlearn/pnpv2_offline.py",
         "closure:scripts/test_shards.py",
         "closure:tests/fixtures/pnpv2-calibration-evidence.json",
-        "closure:tests/fixtures/pnpv2-calibration-held.json",
-        "closure:tests/fixtures/pnpv2-calibration.reference.npz"
+        "closure:tests/fixtures/pnpv2-calibration-held.json"
       ],
       "tests/test_rwlearn_actions.py": [
         "closure:tests/fixtures/pnpv2-calibration-evidence.json",
@@ -870,6 +1202,7 @@
       ],
       "tests/test_rwlearn_dsreset.py": [
         "closure:ops/jobs/pnpv2_resolver.py",
+        "closure:ops/jobs/prep_reservation.py",
         "closure:s4d/realworld/calib/pnpv2_acceptance_override.py",
         "closure:s4d/rwlearn/pnpv2_native_depth_override.py",
         "closure:s4d/rwlearn/pnpv2_offline.py",
@@ -884,6 +1217,7 @@
       ],
       "tests/test_rwlearn_fql_pipeline.py": [
         "closure:ops/jobs/pnpv2_resolver.py",
+        "closure:ops/jobs/prep_reservation.py",
         "closure:s4d/realworld/calib/pnpv2_acceptance_override.py",
         "closure:s4d/rwlearn/pnpv2_native_depth_override.py",
         "closure:s4d/rwlearn/pnpv2_offline.py",
@@ -893,6 +1227,7 @@
       ],
       "tests/test_rwlearn_frame_mapping.py": [
         "closure:ops/jobs/pnpv2_resolver.py",
+        "closure:ops/jobs/prep_reservation.py",
         "closure:s4d/realworld/calib/pnpv2_acceptance_override.py",
         "closure:s4d/rwlearn/pnpv2_native_depth_override.py",
         "closure:s4d/rwlearn/pnpv2_offline.py",
@@ -902,18 +1237,21 @@
       ],
       "tests/test_rwlearn_gate.py": [
         "closure:ops/jobs/pnpv2_resolver.py",
+        "closure:ops/jobs/prep_reservation.py",
         "closure:s4d/realworld/calib/pnpv2_acceptance_override.py",
         "closure:s4d/rwlearn/pnpv2_native_depth_override.py",
         "closure:s4d/rwlearn/pnpv2_offline.py"
       ],
       "tests/test_rwlearn_native_depth.py": [
         "closure:ops/jobs/pnpv2_resolver.py",
+        "closure:ops/jobs/prep_reservation.py",
         "closure:s4d/realworld/calib/pnpv2_acceptance_override.py",
         "closure:s4d/rwlearn/pnpv2_native_depth_override.py",
         "closure:s4d/rwlearn/pnpv2_offline.py"
       ],
       "tests/test_rwlearn_ours.py": [
         "closure:ops/jobs/pnpv2_resolver.py",
+        "closure:ops/jobs/prep_reservation.py",
         "closure:s4d/realworld/calib/pnpv2_acceptance_override.py",
         "closure:s4d/rwlearn/pnpv2_native_depth_override.py",
         "closure:s4d/rwlearn/pnpv2_offline.py"
@@ -925,12 +1263,14 @@
       ],
       "tests/test_rwlearn_snerl_eval.py": [
         "closure:ops/jobs/pnpv2_resolver.py",
+        "closure:ops/jobs/prep_reservation.py",
         "closure:s4d/realworld/calib/pnpv2_acceptance_override.py",
         "closure:s4d/rwlearn/pnpv2_native_depth_override.py",
         "closure:s4d/rwlearn/pnpv2_offline.py"
       ],
       "tests/test_rwlearn_store_baselines.py": [
         "closure:ops/jobs/pnpv2_resolver.py",
+        "closure:ops/jobs/prep_reservation.py",
         "closure:s4d/realworld/calib/pnpv2_acceptance_override.py",
         "closure:s4d/rwlearn/pnpv2_native_depth_override.py",
         "closure:s4d/rwlearn/pnpv2_offline.py"
@@ -942,30 +1282,35 @@
       ],
       "tests/test_rwprep_admission_deferral.py": [
         "closure:ops/jobs/pnpv2_resolver.py",
+        "closure:ops/jobs/prep_reservation.py",
         "closure:s4d/realworld/calib/pnpv2_acceptance_override.py",
         "closure:s4d/rwlearn/pnpv2_native_depth_override.py",
         "closure:s4d/rwlearn/pnpv2_offline.py"
       ],
       "tests/test_rwprep_mig.py": [
         "closure:ops/jobs/pnpv2_resolver.py",
+        "closure:ops/jobs/prep_reservation.py",
         "closure:s4d/realworld/calib/pnpv2_acceptance_override.py",
         "closure:s4d/rwlearn/pnpv2_native_depth_override.py",
         "closure:s4d/rwlearn/pnpv2_offline.py"
       ],
       "tests/test_scheduler_daemon_reexec.py": [
         "closure:ops/jobs/pnpv2_resolver.py",
+        "closure:ops/jobs/prep_reservation.py",
         "closure:s4d/realworld/calib/pnpv2_acceptance_override.py",
         "closure:s4d/rwlearn/pnpv2_native_depth_override.py",
         "closure:s4d/rwlearn/pnpv2_offline.py"
       ],
       "tests/test_snerl_sac.py": [
         "closure:ops/jobs/pnpv2_resolver.py",
+        "closure:ops/jobs/prep_reservation.py",
         "closure:s4d/realworld/calib/pnpv2_acceptance_override.py",
         "closure:s4d/rwlearn/pnpv2_native_depth_override.py",
         "closure:s4d/rwlearn/pnpv2_offline.py"
       ],
       "tests/test_suite_partition.py": [
         "closure:ops/jobs/pnpv2_resolver.py",
+        "closure:ops/jobs/prep_reservation.py",
         "closure:s4d/realworld/calib/pnpv2_acceptance_override.py",
         "closure:s4d/rwlearn/pnpv2_native_depth_override.py",
         "closure:s4d/rwlearn/pnpv2_offline.py",
@@ -973,18 +1318,20 @@
       ],
       "tests/test_sync_media.py": [
         "closure:ops/jobs/pnpv2_resolver.py",
+        "closure:ops/jobs/prep_reservation.py",
         "closure:s4d/realworld/calib/pnpv2_acceptance_override.py",
         "closure:s4d/rwlearn/pnpv2_native_depth_override.py",
         "closure:s4d/rwlearn/pnpv2_offline.py"
       ],
       "tests/test_sync_wandb_canonical_guard.py": [
         "closure:ops/jobs/pnpv2_resolver.py",
+        "closure:ops/jobs/prep_reservation.py",
         "closure:s4d/realworld/calib/pnpv2_acceptance_override.py",
         "closure:s4d/rwlearn/pnpv2_native_depth_override.py",
         "closure:s4d/rwlearn/pnpv2_offline.py"
       ]
     },
-    "base": "46d2330",
+    "base": "8b4ef71",
     "checkout": "/home/ws/ws/splatter4d/.worktrees/pv2ov-1118"
   },
   "source_sha256": {
@@ -2950,212 +3297,47 @@
       "DynaMoWindows",
       "official_slices"
     ],
-    "s4d/baselines/dynamo/model.py": [
-      "<dictcomp>",
-      "<module>",
-      "DynaMoModules",
-      "build_encoder",
-      "encoder_kwargs",
-      "load_export",
-      "save_export"
-    ],
-    "s4d/baselines/dynamo/official.py": [
-      "<module>",
-      "_package",
-      "module",
-      "resnet18",
-      "tree"
-    ],
-    "s4d/baselines/dynamo/rl.py": [
-      "<module>",
-      "DynaMoFrameEncoder",
-      "__init__",
-      "forward"
-    ],
-    "s4d/baselines/mvp3d/__init__.py": [
-      "<module>"
-    ],
-    "s4d/baselines/mvp3d/model.py": [
-      "<module>",
-      "MAEDecoder",
-      "MVP3D",
-      "MVP3DConfig",
-      "build_encoder",
-      "load_export",
-      "save_export"
-    ],
-    "s4d/baselines/mvp3d/renderer.py": [
-      "<listcomp>",
-      "<module>",
-      "_splat",
-      "pixel_of",
-      "place_in_cube",
-      "render_points",
-      "render_rgbd",
-      "rgbd_clouds",
-      "to_view",
-      "virtual_images"
-    ],
-    "s4d/baselines/mvp3d/rl.py": [
-      "<genexpr>",
-      "<module>",
-      "MVP3DFrameEncoder",
-      "__init__",
-      "forward",
-      "virtual_images"
-    ],
-    "s4d/baselines/mvp3d/rvt.py": [
-      "<module>",
-      "_load",
-      "attn",
-      "mvt_utils"
-    ],
-    "s4d/baselines/mvp3d/rvt_derived.py": [
-      "<lambda>",
-      "<listcomp>",
-      "<module>",
-      "MVTEncoder",
-      "__init__",
-      "assemble_virtual_images",
-      "bounds_mask",
-      "forward",
-      "global_feature",
-      "multiview_layers",
-      "normalize_depth",
-      "pixel_loc",
-      "rvt_layers"
-    ],
     "s4d/baselines/sincro/__init__.py": [
       "<module>"
     ],
-    "s4d/baselines/sincro/encoder.py": [
-      "<module>",
-      "build_encoder",
-      "load_export",
-      "save_export"
-    ],
     "s4d/baselines/sincro/mae_encoder.py": [
-      "<listcomp>",
       "<module>",
-      "MaskedViTEncoder",
-      "SinCro_image_encoder",
-      "SinCro_state_encoder",
-      "__init__",
-      "conv2d_size_out",
-      "create_model",
-      "get_1d_sincos_pos_embed_from_grid",
-      "get_2d_sincos_pos_embed",
-      "get_2d_sincos_pos_embed_from_grid",
-      "random_view_masking"
+      "MaskedViTEncoder"
     ],
     "s4d/baselines/sincro/nerf.py": [
-      "<dictcomp>",
-      "<lambda>",
-      "<listcomp>",
-      "<module>",
-      "batchify",
-      "batchify_rays",
-      "create_nerf",
-      "raw2outputs",
-      "render",
-      "render_rays",
-      "ret",
-      "run_network"
+      "<module>"
     ],
     "s4d/baselines/sincro/nerf_helpers.py": [
-      "<lambda>",
-      "<listcomp>",
       "<module>",
       "Embedder",
-      "NeRF",
-      "__init__",
-      "create_embedding_fn",
-      "embed",
-      "forward",
-      "get_embedder",
-      "get_rays",
-      "sample_pdf"
+      "NeRF"
     ],
     "s4d/baselines/sincro/training.py": [
-      "<genexpr>",
-      "<listcomp>",
       "<module>",
       "DatasetConfig",
       "ExperimentConfig",
       "SimpleArgs",
       "SinCroModelConfig",
-      "TrainConfig",
-      "__init__",
-      "distance",
-      "encode_sincro",
-      "forward_sincro_batch"
+      "TrainConfig"
     ],
     "s4d/baselines/sincro/vit_block.py": [
-      "<lambda>",
       "<module>",
       "Attention",
       "FeedForward",
       "PreNorm",
-      "Transformer",
-      "__init__",
-      "forward"
+      "Transformer"
     ],
     "s4d/baselines/snerl/__init__.py": [
       "<module>"
     ],
     "s4d/baselines/snerl/data.py": [
       "<module>",
-      "SNeRLScenes",
-      "normalise_c2w",
-      "official_K"
-    ],
-    "s4d/baselines/snerl/encoder.py": [
-      "<module>",
-      "SNeRLFrameEncoder",
-      "__init__",
-      "forward"
-    ],
-    "s4d/baselines/snerl/model.py": [
-      "<dictcomp>",
-      "<listcomp>",
-      "<module>",
-      "SNeRL",
-      "build_encoder",
-      "create",
-      "dino_target",
-      "encode_batch",
-      "load_export",
-      "official_args",
-      "render_camera",
-      "save_export",
-      "to_device_scene",
-      "train"
-    ],
-    "s4d/baselines/snerl/upstream.py": [
-      "<dictcomp>",
-      "<genexpr>",
-      "<lambda>",
-      "<module>",
-      "_plain_module_names",
-      "default_tensor_type",
-      "dino_extractor",
-      "dino_weights_path",
-      "load_dino_vits8",
-      "official",
-      "sha256_file"
-    ],
-    "s4d/baselines/snerl/viz.py": [
-      "<genexpr>",
-      "<module>",
-      "class_image",
-      "grid",
-      "tile"
+      "SNeRLScenes"
     ],
     "s4d/config.py": [
       "<module>",
       "apply_overrides",
       "deep_update",
-      "dump_config",
       "get",
       "load_config"
     ],
@@ -3166,323 +3348,45 @@
       "<module>"
     ],
     "s4d/data/contract.py": [
-      "<dictcomp>",
-      "<genexpr>",
-      "<listcomp>",
       "<module>",
-      "ContractError",
-      "_check",
-      "_check_cameras",
-      "_check_tensor",
-      "_check_tracks",
-      "collate",
-      "motion_targets",
-      "validate_batch"
+      "ContractError"
     ],
     "s4d/data/droid/__init__.py": [
       "<module>"
     ],
-    "s4d/data/droid/gripper.py": [
-      "<listcomp>",
-      "<module>",
-      "gripper_points"
-    ],
     "s4d/data/droid/largescale/__init__.py": [
       "<module>"
     ],
-    "s4d/data/droid/largescale/calibration.py": [
-      "<dictcomp>",
-      "<module>",
-      "<setcomp>",
-      "HandEye",
-      "JsonlIndex",
-      "__init__",
-      "_matrix",
-      "_mdh",
-      "droid3d_wrist_w2c",
-      "droid_wrist_hand_eye",
-      "franka_fk",
-      "get_all",
-      "identifies_robot",
-      "load_hand_eye",
-      "parse_droid3d_extrinsics",
-      "parse_droid3d_intrinsics"
-    ],
-    "s4d/data/droid/largescale/config.py": [
-      "<listcomp>",
-      "<module>",
-      "build_datasets",
-      "crop_kwargs",
-      "dataset_kwargs"
-    ],
     "s4d/data/droid/largescale/crop.py": [
-      "<listcomp>",
       "<module>",
       "CropBox",
       "CropSettings",
       "_cut",
       "_resize",
       "center_box",
-      "crop_depth",
-      "crop_intrinsics",
-      "crop_matrix",
       "crop_rgb",
-      "from_config",
-      "padding",
-      "pair_membership",
-      "scale"
-    ],
-    "s4d/data/droid/largescale/dataset.py": [
-      "<dictcomp>",
-      "<genexpr>",
-      "<listcomp>",
-      "<module>",
-      "DroidLargeScaleDataset",
-      "WindowTable",
-      "__getitem__",
-      "__getstate__",
-      "__init__",
-      "__len__",
-      "_ext_geometry",
-      "_row",
-      "_subsample",
-      "_wrist_fields",
-      "_wrist_w2c",
-      "corrected_ee_pose",
-      "episode_split",
-      "index",
-      "resize",
-      "stable_hash",
-      "worker_open_files"
-    ],
-    "s4d/data/droid/largescale/extract.py": [
-      "<module>",
-      "TruncatedMember",
-      "TruncatedStreamError",
-      "__init__",
-      "extract_members"
-    ],
-    "s4d/data/droid/largescale/geometry.py": [
-      "<module>",
-      "check_rigid",
-      "euler_xyz_to_matrix",
-      "hand_eye_from_pose",
-      "invert",
-      "pose6_to_matrix",
-      "pose7_to_matrix",
-      "project",
-      "quat_xyzw_to_matrix",
-      "rebase_static_camera_points",
-      "rotate180_camera",
-      "scale_intrinsics",
-      "to_continuous_centres",
-      "transform_points",
-      "w2c_direction_residual",
-      "wrist_camera_c2w"
-    ],
-    "s4d/data/droid/largescale/handles.py": [
-      "<module>",
-      "ByteLRU",
-      "HandlePool",
-      "__getstate__",
-      "__init__",
-      "__len__",
-      "__setstate__",
-      "_check_pid",
-      "clear",
-      "close",
-      "get"
-    ],
-    "s4d/data/droid/largescale/join.py": [
-      "<dictcomp>",
-      "<genexpr>",
-      "<lambda>",
-      "<listcomp>",
-      "<module>",
-      "<setcomp>",
-      "JoinError",
-      "_all_points_median",
-      "_dilate",
-      "_ext_camera",
-      "_min_filter",
-      "_unique_map",
-      "build_episode_entry",
-      "build_manifest",
-      "droid3d_record",
-      "explained",
-      "gripper_mask",
-      "index_rlds_rows",
-      "load_manifest",
-      "nearest_index",
-      "rotation_angle",
-      "scene_suffix",
-      "uuid_matches_suffix",
-      "validate_frames",
-      "wrist_depth_consistency",
-      "wrist_pose_w2c",
-      "wrist_qa"
-    ],
-    "s4d/data/droid/largescale/pointworld_source.py": [
-      "<genexpr>",
-      "<listcomp>",
-      "<module>",
-      "EpisodeSummary",
-      "PointWorldReader",
-      "__getstate__",
-      "__init__",
-      "_open",
-      "_open_depth",
-      "_open_flows",
-      "check_depth_metadata",
-      "clip_bounds",
-      "depth",
-      "depth_frames",
-      "depth_mm_to_m",
-      "flow",
-      "parse_depth_group",
-      "sorted_clips",
-      "summarize_episode"
-    ],
-    "s4d/data/droid/largescale/rlds_index.py": [
-      "<dictcomp>",
-      "<genexpr>",
-      "<listcomp>",
-      "<module>",
-      "<setcomp>",
-      "RldsStepReader",
-      "__init__",
-      "_npz_key",
-      "_open_shard",
-      "_shard_index",
-      "build_index",
-      "build_shard_index",
-      "close",
-      "decode_jpeg",
-      "finalize_index",
-      "load",
-      "load_episode_rows",
-      "load_shard_lengths",
-      "read"
-    ],
-    "s4d/data/droid/largescale/tfrecord.py": [
-      "<genexpr>",
-      "<listcomp>",
-      "<module>",
-      "FeatureSpan",
-      "TFRecordError",
-      "_encode_varint",
-      "_fields",
-      "_ld",
-      "_table",
-      "_varint",
-      "crc32c",
-      "decode_numeric",
-      "encode_example",
-      "feature_values",
-      "iter_record_spans",
-      "masked_crc",
-      "walk_example",
-      "write_records"
+      "padding"
     ],
     "s4d/data/droid/pointworld.py": [
-      "<listcomp>",
       "<module>",
       "depth_test",
       "nearest_timestamps",
       "nearest_z_winners",
       "project",
-      "splat_score",
       "track_targets"
     ],
     "s4d/data/metaworld/__init__.py": [
       "<module>"
     ],
     "s4d/data/metaworld/cameras.py": [
-      "<dictcomp>",
-      "<listcomp>",
-      "<module>",
-      "intrinsics_from_fovy",
-      "offsets_to_orbit",
-      "opengl_to_opencv_c2w",
-      "orbit_c2w_opengl",
-      "orbit_rig",
-      "perturbed_orbit",
-      "sample_offsets"
-    ],
-    "s4d/data/metaworld/dataset.py": [
-      "<dictcomp>",
-      "<genexpr>",
-      "<listcomp>",
-      "<module>",
-      "MetaworldWindowDataset",
-      "__getitem__",
-      "__init__",
-      "__len__",
-      "_h5",
-      "_window",
-      "disp"
-    ],
-    "s4d/data/metaworld/heldout.py": [
-      "<module>",
-      "HeldoutSets"
+      "<module>"
     ],
     "s4d/diag/__init__.py": [
-      "<module>"
-    ],
-    "s4d/diag/heldout.py": [
-      "<module>",
-      "fused_training_clouds",
-      "splat_batched"
-    ],
-    "s4d/diag/local_log.py": [
-      "<module>",
-      "RunLogger"
-    ],
-    "s4d/diag/ours_task_length_eval.py": [
-      "<dictcomp>",
-      "<listcomp>",
-      "<module>",
-      "Means",
-      "__init__",
-      "add",
-      "batch_anchors",
-      "collect_grasp_anchors",
-      "detail_region",
-      "detail_roi",
-      "grasp_anchor",
-      "handle_roi",
-      "probe_labels",
-      "result",
-      "score_probes",
-      "track_errors"
-    ],
-    "s4d/diag/panels.py": [
-      "<module>"
-    ],
-    "s4d/diag/pointclouds.py": [
-      "<module>"
-    ],
-    "s4d/diag/probes.py": [
-      "<module>",
-      "fit_and_score",
-      "r2_score",
-      "ridge_fit",
-      "ridge_predict"
-    ],
-    "s4d/diag/tracks.py": [
       "<module>"
     ],
     "s4d/diag/wandb_log.py": [
       "<module>",
       "init_wandb"
-    ],
-    "s4d/geometry.py": [
-      "<module>",
-      "lift_depth",
-      "pixel_centers",
-      "project",
-      "quat_wxyz_to_matrix",
-      "rigid_body_displacement"
     ],
     "s4d/gpu_guard.py": [
       "<module>"
@@ -3490,84 +3394,8 @@
     "s4d/lifecycle_cleanup.py": [
       "<module>"
     ],
-    "s4d/losses/__init__.py": [
-      "<module>"
-    ],
-    "s4d/losses/chamfer.py": [
-      "<module>",
-      "chamfer_loss",
-      "nearest_neighbours",
-      "target_clouds"
-    ],
-    "s4d/losses/depth.py": [
-      "<module>",
-      "_downsample",
-      "abs_rel",
-      "align_teacher",
-      "depth_gradient_loss",
-      "depth_l1"
-    ],
-    "s4d/losses/invariance.py": [
-      "<module>",
-      "multi_positive_info_nce",
-      "slot_consistency",
-      "state_statistics"
-    ],
-    "s4d/losses/motion.py": [
-      "<genexpr>",
-      "<module>",
-      "expected_displacement",
-      "motion_loss",
-      "region_mean"
-    ],
-    "s4d/losses/motion3d.py": [
-      "<dictcomp>",
-      "<lambda>",
-      "<listcomp>",
-      "<module>",
-      "_gaussian_motion_loss",
-      "candidates",
-      "motion3d_loss",
-      "motion3d_track_loss",
-      "sample_track_points",
-      "track_candidates"
-    ],
-    "s4d/losses/occlusion.py": [
-      "<module>",
-      "sample_depth",
-      "usage_diagnostics"
-    ],
-    "s4d/losses/regularizers.py": [
-      "<module>",
-      "visibility_loss"
-    ],
-    "s4d/losses/rgb.py": [
-      "<module>",
-      "coverage_loss",
-      "masked_psnr",
-      "masked_ssim",
-      "pixel_weights",
-      "rgb_loss"
-    ],
     "s4d/model/__init__.py": [
       "<module>"
-    ],
-    "s4d/model/decoder.py": [
-      "<dictcomp>",
-      "<genexpr>",
-      "<listcomp>",
-      "<module>",
-      "ActionPrefixEncoder",
-      "AdaLNZeroBlock",
-      "DecoderBlock",
-      "DecoderConfig",
-      "GaussianDecoder",
-      "GroupConfig",
-      "GroupHeads",
-      "PairTemporalBranch",
-      "__init__",
-      "forward",
-      "prefix"
     ],
     "s4d/model/encoder.py": [
       "<genexpr>",
@@ -3580,35 +3408,8 @@
       "Mlp",
       "PatchCNNStem",
       "__init__",
-      "_drop",
-      "_encode",
-      "forward",
-      "forward_visible",
       "grid",
-      "load_encoder",
-      "num_patches",
-      "patch_scores",
-      "policy_state",
-      "sample_tube_mask",
-      "visible_count"
-    ],
-    "s4d/model/gaussians.py": [
-      "<listcomp>",
-      "<module>",
-      "GaussianSet",
-      "detach_geometry",
-      "xyz_at",
-      "xyz_sequence"
-    ],
-    "s4d/model/render.py": [
-      "<genexpr>",
-      "<module>",
-      "_expand_attr",
-      "_expand_cams",
-      "render_blending_weights",
-      "render_features",
-      "render_hard_depth",
-      "render_rgbd"
+      "num_patches"
     ],
     "s4d/realworld/__init__.py": [
       "<module>"
@@ -3623,14 +3424,12 @@
       "<module>",
       "EpisodeAdapter",
       "__init__",
-      "get_adapter",
       "register_adapter",
       "source_files"
     ],
     "s4d/realworld/adapters/panda_teleop.py": [
       "<dictcomp>",
       "<genexpr>",
-      "<listcomp>",
       "<module>",
       "PandaTeleopH5Adapter",
       "__init__",
@@ -3669,40 +3468,9 @@
       "<module>"
     ],
     "s4d/realworld/calib/acceptance_override.py": [
-      "<dictcomp>",
-      "<genexpr>",
-      "<listcomp>",
       "<module>",
-      "<setcomp>",
-      "_base_status",
-      "_close",
-      "_exception_problems",
-      "_pipeline_rig",
-      "_sha_bytes",
-      "_status_with_override",
-      "_validate_with_override",
-      "apply_publisher_override",
-      "atomic",
-      "camera_problems",
-      "compiler_admits_offline_acceptance",
-      "compiler_status",
-      "effective_status",
-      "install_rig_override",
       "load_rig_session_offline",
-      "long_offset_cohort",
-      "main",
-      "offline_acceptance",
-      "offline_gate",
-      "override_problem",
-      "phase_b_binding",
-      "phase_b_episode_step",
-      "record_for",
-      "record_problem",
-      "restore",
-      "run_rwprep",
-      "sha256_file",
-      "summary",
-      "write_once"
+      "offline_gate"
     ],
     "s4d/realworld/calib/board.py": [
       "<module>",
@@ -3716,15 +3484,12 @@
       "CalibrationConfig",
       "CalibrationFrame",
       "CalibrationResult",
-      "_depth_evidence_frames",
-      "_depth_evidence_masks",
       "_frame_stats",
       "_residuals",
       "_visual_init",
       "bad",
       "bilinear_depth",
       "calibrate_camera",
-      "explained_fraction",
       "fun",
       "kabsch",
       "kabsch_ransac",
@@ -3741,44 +3506,6 @@
       "to_json",
       "usable_cpus"
     ],
-    "s4d/realworld/calib/criteria.py": [
-      "<dictcomp>",
-      "<genexpr>",
-      "<lambda>",
-      "<listcomp>",
-      "<module>",
-      "<setcomp>",
-      "_check_rows",
-      "_dt_rows",
-      "_episode_stamps",
-      "_finite",
-      "_per_episode",
-      "_ref",
-      "_ref_ok",
-      "_sha256",
-      "_violates",
-      "check_reproduction",
-      "check_static_eval",
-      "dt_extension",
-      "epipolar_v2",
-      "fixreg_series",
-      "g1_radius",
-      "g4",
-      "g5a_materiality",
-      "g5b_v2",
-      "keff",
-      "match_inputs",
-      "pair_name",
-      "pose_effect",
-      "probe_points",
-      "recompute_static_eval",
-      "rehash_static_eval_inputs",
-      "release_verdict_v2",
-      "required_pairs",
-      "static_eval",
-      "val",
-      "worst"
-    ],
     "s4d/realworld/calib/dw/__init__.py": [
       "<module>"
     ],
@@ -3786,26 +3513,16 @@
       "<module>"
     ],
     "s4d/realworld/calib/dw/common.py": [
-      "<module>",
-      "heldout_extext",
-      "lift",
-      "matchset"
+      "<module>"
     ],
     "s4d/realworld/calib/dw/data.py": [
       "<module>",
       "EvidenceConfig"
     ],
     "s4d/realworld/calib/dw/extext.py": [
-      "<listcomp>",
       "<module>",
       "MatchSet",
-      "ParamIndex",
-      "__len__",
-      "__post_init__",
-      "_chunks",
-      "_rays",
-      "_valid_depth",
-      "reduced_residual_stats"
+      "ParamIndex"
     ],
     "s4d/realworld/calib/dw/fixedness.py": [
       "<module>"
@@ -3817,20 +3534,13 @@
     ],
     "s4d/realworld/calib/dw/geom.py": [
       "<module>",
-      "_coefficients",
       "camera_centre",
       "pose_distance",
-      "project",
-      "skew",
-      "so3_exp",
       "so3_log"
     ],
     "s4d/realworld/calib/dw/matches.py": [
-      "<dictcomp>",
       "<module>",
-      "MatchConfig",
-      "_stratified",
-      "load_matches"
+      "MatchConfig"
     ],
     "s4d/realworld/calib/dw/publish.py": [
       "<dictcomp>",
@@ -3853,15 +3563,13 @@
       "RobotTermConfig"
     ],
     "s4d/realworld/calib/dw/run.py": [
-      "<module>",
-      "per_episode_extext"
+      "<module>"
     ],
     "s4d/realworld/calib/dw/solve.py": [
       "<module>",
       "RigProblem",
       "SolveConfig",
-      "State",
-      "__post_init__"
+      "State"
     ],
     "s4d/realworld/calib/loma/__init__.py": [
       "<module>"
@@ -3884,33 +3592,19 @@
       "<listcomp>",
       "<module>",
       "<setcomp>",
-      "_ref",
-      "build_document",
       "check_against_frozen",
-      "depth_scales",
-      "fill_exception",
-      "fixedness_evidence",
       "g6_samfree",
       "load_results",
-      "main",
-      "period_steps",
-      "publish",
-      "release_verdict",
-      "rotation_from_rigid",
-      "sha256_file",
-      "split_periods"
+      "release_verdict"
     ],
     "s4d/realworld/calib/loma/render.py": [
       "<module>",
       "Raster",
       "RenderConfig",
-      "RobotMesh",
-      "build_robot_mesh"
+      "RobotMesh"
     ],
     "s4d/realworld/calib/loma/run.py": [
-      "<dictcomp>",
-      "<module>",
-      "state_from_json"
+      "<module>"
     ],
     "s4d/realworld/calib/loma/solve.py": [
       "<module>",
@@ -3920,72 +3614,24 @@
     ],
     "s4d/realworld/calib/pnpv2_acceptance_override.py": [
       "<dictcomp>",
-      "<genexpr>",
-      "<listcomp>",
       "<module>",
-      "<setcomp>",
-      "_camera_problems",
-      "_effective_status",
-      "_exception_problems",
-      "_fixedness_with_override",
-      "_install_rig_override",
-      "_override_problem",
-      "_publisher",
-      "_record_problem",
-      "_write_once",
-      "apply_publisher_override",
-      "camera_problems",
-      "document_evidence_sha256",
-      "document_problems",
-      "install_rig_override",
       "installed",
-      "load_rig_session_offline",
-      "offline_acceptance",
-      "offline_gate",
-      "phase_b_episode_step",
-      "record_for",
-      "record_problem",
-      "undo"
+      "offline_gate"
     ],
     "s4d/realworld/calib/release.py": [
-      "<dictcomp>",
-      "<genexpr>",
-      "<listcomp>",
       "<module>",
-      "<setcomp>",
       "_code_commit",
       "_load_set_stage",
-      "_mapped",
-      "_sha",
-      "_valid_entries",
-      "apply",
-      "check_episode",
-      "manifest_episode_id",
-      "period_problems",
-      "plan"
+      "apply"
     ],
     "s4d/realworld/calib/rig.py": [
-      "<dictcomp>",
-      "<genexpr>",
-      "<listcomp>",
       "<module>",
-      "<setcomp>",
       "FixednessConfig",
       "RigConfig",
       "_sha256_bytes",
-      "block_shift",
-      "episode_motion",
-      "fixedness_exception_problem",
-      "image_motion",
       "load_rig",
       "publish_rig",
-      "registration_class",
-      "release_fixedness",
-      "rig_camera_status",
-      "static_image",
-      "static_images",
-      "sub",
-      "validate_episode"
+      "rig_camera_status"
     ],
     "s4d/realworld/calibration.py": [
       "<module>"
@@ -4001,10 +3647,6 @@
     ],
     "s4d/realworld/calibration_stage.py": [
       "<module>"
-    ],
-    "s4d/realworld/cli.py": [
-      "<module>",
-      "AnnotationLandmarkSource"
     ],
     "s4d/realworld/contract.py": [
       "<dictcomp>",
@@ -4034,7 +3676,6 @@
       "intr",
       "meta_from_json",
       "meta_to_json",
-      "ok",
       "raise_if_errors",
       "rig_rgbd",
       "stream",
@@ -4042,12 +3683,8 @@
       "views"
     ],
     "s4d/realworld/dataset.py": [
-      "<dictcomp>",
-      "<listcomp>",
       "<module>",
-      "RealworldCacheDataset",
-      "__getitem__",
-      "__init__"
+      "RealworldCacheDataset"
     ],
     "s4d/realworld/depth_stages.py": [
       "<module>"
@@ -4173,7 +3810,6 @@
       "load_meta",
       "q",
       "read_frames",
-      "robot_model",
       "robot_state_at",
       "to_model_rgb",
       "view_depth",
@@ -4252,11 +3888,7 @@
       "<module>"
     ],
     "s4d/realworld/robotics/collada.py": [
-      "<listcomp>",
-      "<module>",
-      "_children",
-      "_mesh_positions",
-      "_tag"
+      "<module>"
     ],
     "s4d/realworld/robotics/model.py": [
       "<dictcomp>",
@@ -4271,9 +3903,7 @@
       "URDFModel",
       "_floats",
       "_number",
-      "_sample_triangles",
       "build",
-      "build_visual",
       "compose_urdf",
       "fk",
       "from_file",
@@ -4282,7 +3912,6 @@
       "joint_dict",
       "joint_value",
       "landmarks",
-      "load_mesh",
       "origin_T",
       "points",
       "sample_geometry"
@@ -4295,20 +3924,9 @@
       "StackElement"
     ],
     "s4d/realworld/robotics/visual.py": [
-      "<genexpr>",
-      "<listcomp>",
       "<module>",
       "MissingVisualMeshError",
-      "VisualSurface",
-      "_node_matrix",
-      "_resolve",
-      "_sha256",
-      "build",
-      "load_collada",
-      "require_visual_meshes",
-      "triangle_samples",
-      "visual_mesh_for",
-      "walk"
+      "VisualSurface"
     ],
     "s4d/realworld/runners.py": [
       "<module>",
@@ -4327,7 +3945,6 @@
       "<genexpr>",
       "<listcomp>",
       "<module>",
-      "_validate_with_rig",
       "build",
       "calibrate",
       "camera_arrays",
@@ -4335,14 +3952,12 @@
       "lap"
     ],
     "s4d/realworld/stages/depth.py": [
-      "<dictcomp>",
       "<genexpr>",
       "<listcomp>",
       "<module>",
       "_record_build_id",
       "build",
       "depth_file",
-      "frame_sets",
       "load_view_depth",
       "sensor_depth",
       "view_K"
@@ -4428,7 +4043,6 @@
       "<setcomp>",
       "CompactStore",
       "EpisodeFile",
-      "__getstate__",
       "__init__",
       "_cam",
       "_camera_tracks",
@@ -4437,21 +4051,17 @@
       "_frames",
       "_small",
       "_touch",
-      "attrs",
       "box_affine",
       "build",
       "cameras",
       "clear_cache",
       "close",
       "component_sizes",
-      "depth",
       "episode",
       "episodes",
       "file",
       "geometry_problems",
       "intrinsics",
-      "intrinsics_native",
-      "manifest_fields",
       "mutual_sync",
       "raw_recording",
       "raw_sha256",
@@ -4460,52 +4070,24 @@
       "rgb",
       "robot",
       "segments",
-      "semantic",
       "set_surface_motion",
       "square_box",
       "sync",
       "sync_counts",
       "sync_sets",
-      "task",
       "timestamps",
-      "track_index",
-      "tracks",
-      "upstream",
-      "valid",
-      "verify_snerl_teacher",
       "visit",
       "w2c",
       "write_episode"
     ],
     "s4d/realworld/train_windows.py": [
-      "<dictcomp>",
-      "<genexpr>",
-      "<listcomp>",
       "<module>",
-      "RealworldWindowDataset",
-      "__getitem__",
-      "__init__",
-      "__len__",
-      "_select",
-      "camera_targets",
-      "chunk_for",
-      "enumerate_windows",
-      "inside_image",
-      "stable_hash",
-      "window"
+      "RealworldWindowDataset"
     ],
     "s4d/realworld/viewer_data.py": [
       "<module>",
       "CameraTracks",
       "ViewerEpisode"
-    ],
-    "s4d/realworld/vis_store.py": [
-      "<listcomp>",
-      "<module>",
-      "build",
-      "native_depth",
-      "quantize_depth",
-      "write_native_geometry"
     ],
     "s4d/realworld/workers/__init__.py": [
       "<dictcomp>",
@@ -4523,22 +4105,6 @@
     "s4d/realworld/workers/_protocol.py": [
       "<module>",
       "git_commit"
-    ],
-    "s4d/realworld/workers/dino_snerl_worker.py": [
-      "<module>",
-      "handle"
-    ],
-    "s4d/realworld/workers/romav2_match_worker.py": [
-      "<dictcomp>",
-      "<listcomp>",
-      "<module>",
-      "<setcomp>",
-      "_nearest",
-      "median_period_ns",
-      "pair_seed",
-      "plan_pairs",
-      "sample_times",
-      "supplement_plan"
     ],
     "s4d/realworld/workers/trackeverything_worker.py": [
       "<module>",
@@ -4562,131 +4128,6 @@
     "s4d/replay_cleanup_host.py": [
       "<module>"
     ],
-    "s4d/rl/__init__.py": [
-      "<module>"
-    ],
-    "s4d/rl/camera_suites.py": [
-      "<genexpr>",
-      "<listcomp>",
-      "<module>",
-      "<setcomp>",
-      "_rotation_angle_deg",
-      "angular_separation_deg",
-      "heldout_v2_cameras",
-      "min_separation_deg",
-      "path_kinematics",
-      "reevaluation_steps",
-      "stats",
-      "view_direction"
-    ],
-    "s4d/rl/encoders.py": [
-      "<dictcomp>",
-      "<lambda>",
-      "<module>",
-      "ConvNet",
-      "FrameMLPStackHead",
-      "ReViWoFrameEncoder",
-      "SinCroStateEncoder",
-      "SmallPostEncoderMLPHead",
-      "Splatter4DStateEncoder",
-      "VisionEncoderAdapter",
-      "__init__",
-      "_apply",
-      "_example_observation",
-      "_feature_shape",
-      "forward",
-      "splatter4d_frame_mode",
-      "weight_init"
-    ],
-    "s4d/rl/env.py": [
-      "<dictcomp>",
-      "<listcomp>",
-      "<module>",
-      "FreeCamera",
-      "MetaWorldCameraEnv",
-      "TrainCameraSampler",
-      "_camera_at",
-      "_forward",
-      "camera_c2w",
-      "check_pretraining_spacing",
-      "heldout_v2_paths",
-      "lateral_offsets",
-      "orbit_camera",
-      "trajectory_path"
-    ],
-    "s4d/rl/evaluate.py": [
-      "<dictcomp>",
-      "<genexpr>",
-      "<lambda>",
-      "<listcomp>",
-      "<module>",
-      "_training_triple",
-      "episode_seeds",
-      "evaluation_groups",
-      "evaluation_groups_v2",
-      "multiview_groups",
-      "nearest_training_camera",
-      "v2_episode_seeds"
-    ],
-    "s4d/rl/protocol.py": [
-      "<module>",
-      "resolve_config",
-      "task_settings"
-    ],
-    "s4d/rl/replay.py": [
-      "<module>",
-      "NotEnoughData",
-      "Replay",
-      "_DiskPrefetcher",
-      "_RamReader",
-      "__init__",
-      "_stack",
-      "_valid",
-      "_write_state",
-      "add",
-      "add_initial",
-      "advise_random",
-      "sample",
-      "sample_indices",
-      "sample_windows",
-      "stack_ids"
-    ],
-    "s4d/rl/snerl_sac.py": [
-      "<dictcomp>",
-      "<genexpr>",
-      "<listcomp>",
-      "<module>",
-      "<setcomp>",
-      "FrozenFeatureEncoder",
-      "FrozenFeatures",
-      "Logger",
-      "Packed",
-      "PixelEncoder128",
-      "SNeRLMeanEncoder",
-      "SNeRLSAC",
-      "SNeRLViews",
-      "_UpstreamBatches",
-      "__init__",
-      "__len__",
-      "_modules",
-      "_next",
-      "_register",
-      "_stub",
-      "act",
-      "family",
-      "forward",
-      "load_policy",
-      "load_state_dict",
-      "load_upstream",
-      "log",
-      "log_histogram",
-      "log_param",
-      "packed",
-      "policy_state",
-      "sample_cpc",
-      "state_dict",
-      "update"
-    ],
     "s4d/run_identity.py": [
       "<module>"
     ],
@@ -4699,33 +4140,9 @@
       "ActionContract",
       "RawEpisode",
       "StepTable",
-      "apply_delta",
-      "camera_frame_indices",
-      "check_contract_preconditions",
-      "closure_from_register",
-      "contract_for",
-      "denormalise",
-      "from_json",
-      "from_teleop",
-      "latest_at_or_before",
-      "limit_lead",
       "load_raw",
-      "matrix_to_pose7",
-      "measured_proprio",
-      "nominal_period_s",
-      "normalise",
       "ns",
-      "pose7_to_matrix",
-      "pose_delta",
-      "raw_from_arrays",
-      "raw_to_arrays",
-      "read_raw_episode",
-      "register_from_closure",
-      "rotation_6d",
-      "serials",
-      "step_table",
-      "to_json",
-      "to_robot_command"
+      "read_raw_episode"
     ],
     "s4d/rwlearn/baseline_data.py": [
       "<dictcomp>",
@@ -4740,33 +4157,19 @@
       "RealworldSinCroWindows",
       "_SyncedEpisodes",
       "__getitem__",
-      "__getstate__",
       "__init__",
-      "__len__",
       "_derive_per_sample_forward",
       "_episodes",
       "_release",
       "_store",
-      "camera",
       "check_gate",
-      "close",
-      "draw",
-      "realworld_classes",
       "rgb_step",
-      "scene",
       "window_frames"
     ],
     "s4d/rwlearn/configs.py": [
-      "<dictcomp>",
       "<listcomp>",
       "<module>",
-      "_geometry",
-      "_set",
-      "derive",
-      "derive_all",
-      "overrides",
       "pending_scene_parameters",
-      "render",
       "run_inputs_dir"
     ],
     "s4d/rwlearn/deploy/__init__.py": [
@@ -4774,19 +4177,8 @@
       "__getattr__"
     ],
     "s4d/rwlearn/deploy/contracts.py": [
-      "<genexpr>",
-      "<listcomp>",
       "<module>",
-      "<setcomp>",
       "InputSpec",
-      "_differences",
-      "_json",
-      "bind",
-      "from_meta",
-      "history_spacing_s",
-      "read_training_contract",
-      "training_contract",
-      "validate_calibration",
       "validate_native_correction"
     ],
     "s4d/rwlearn/deploy/errors.py": [
@@ -4800,27 +4192,14 @@
       "Unsynchronized"
     ],
     "s4d/rwlearn/deploy/fixtures.py": [
-      "<dictcomp>",
       "<module>",
-      "FixtureSequence",
-      "session_choices",
-      "synthetic_frames"
+      "FixtureSequence"
     ],
     "s4d/rwlearn/deploy/history.py": [
-      "<dictcomp>",
-      "<genexpr>",
-      "<listcomp>",
       "<module>",
       "Frame",
       "HistoryWindow",
-      "ObservationWindow",
-      "__init__",
-      "assemble",
-      "observation",
-      "push",
-      "reset",
-      "validate",
-      "validate_frame"
+      "ObservationWindow"
     ],
     "s4d/rwlearn/deploy/m5_live.py": [
       "<module>",
@@ -4832,8 +4211,7 @@
     ],
     "s4d/rwlearn/deploy/policy.py": [
       "<module>",
-      "DeployPolicy",
-      "__init__"
+      "DeployPolicy"
     ],
     "s4d/rwlearn/deploy/preprocessing.py": [
       "<module>",
@@ -4849,7 +4227,6 @@
       "depth_z_to_color_z",
       "emulate_rs_align",
       "load_rig_session",
-      "native_correction",
       "to_color"
     ],
     "s4d/rwlearn/deploy/replay.py": [
@@ -4861,7 +4238,6 @@
       "cameras",
       "frame",
       "native",
-      "native_hw",
       "timestamps_ns"
     ],
     "s4d/rwlearn/dsreset.py": [
@@ -4871,8 +4247,6 @@
       "<listcomp>",
       "<module>",
       "<setcomp>",
-      "available_preprocessing",
-      "inspect_raw",
       "learning_inputs",
       "manifest",
       "manifest_gate",
@@ -4881,7 +4255,6 @@
       "selected_variants",
       "sha256",
       "validate_manifest",
-      "verified_success_from_ingest",
       "write_bundle"
     ],
     "s4d/rwlearn/dsreset_configs.py": [
@@ -4931,65 +4304,21 @@
       "<module>"
     ],
     "s4d/rwlearn/fql.py": [
-      "<dictcomp>",
-      "<genexpr>",
-      "<listcomp>",
       "<module>",
       "ActorVectorField",
       "FQLAgent",
       "MLP",
       "Noise",
-      "Value",
-      "__init__",
-      "_frozen",
-      "_official_slots",
-      "actor_loss",
-      "compute_flow_actions",
-      "create",
-      "critic_loss",
-      "draw",
-      "draw_noise",
-      "encode",
-      "forward",
-      "gelu",
-      "grad_stats",
-      "load_state_dict",
-      "modules",
-      "normal",
-      "official_config",
-      "online_parameters",
-      "sample_actions",
-      "state_dict",
-      "total_loss",
-      "train_mode",
-      "update"
+      "Value"
     ],
     "s4d/rwlearn/fql_data.py": [
-      "<dictcomp>",
-      "<lambda>",
-      "<listcomp>",
       "<module>",
       "ObsEncoder",
-      "OfflineTransitions",
-      "__init__",
-      "_obs",
-      "batch",
-      "build_fql_dataset",
-      "encode_timeline",
-      "encoder_adapter",
-      "encoder_factory",
-      "feature_stats_sha256",
-      "fit_feature_standardization",
-      "forward",
-      "rgb_digest",
-      "sample",
-      "sha256_file",
-      "stats_sha256"
+      "OfflineTransitions"
     ],
     "s4d/rwlearn/gate.py": [
       "<dictcomp>",
       "<genexpr>",
-      "<lambda>",
       "<listcomp>",
       "<module>",
       "<setcomp>",
@@ -4997,16 +4326,13 @@
       "_decision",
       "_report_family",
       "aggregate_status",
-      "amendment_mismatch",
       "amendment_problem",
       "bind_store_episodes",
       "calibration_record_problem",
-      "check_dataset_gate",
       "check_store_calibration",
       "consumer_families",
       "consumer_info",
       "evaluate",
-      "evaluate_file",
       "load_amendments",
       "qa_families",
       "short_run_allowed",
@@ -5022,18 +4348,8 @@
       "store_identities"
     ],
     "s4d/rwlearn/inference.py": [
-      "<genexpr>",
-      "<lambda>",
       "<module>",
-      "OfflinePolicy",
-      "__init__",
-      "act",
-      "act_from_features",
-      "act_from_pixels",
-      "checkpoint_payload",
-      "features",
-      "replay",
-      "sample"
+      "OfflinePolicy"
     ],
     "s4d/rwlearn/launch.py": [
       "<module>"
@@ -5044,9 +4360,7 @@
       "<listcomp>",
       "<module>",
       "NativeDepthStore",
-      "__getstate__",
       "__init__",
-      "_build_episode",
       "_overlay",
       "_overlay_identity",
       "_verify",
@@ -5055,82 +4369,17 @@
       "depth",
       "depth_provenance"
     ],
-    "s4d/rwlearn/native_depth_mapped.py": [
-      "<genexpr>",
-      "<module>",
-      "_MappedCompactStore",
-      "_build_episode_mapped",
-      "build_native_depth_mapped",
-      "mapped_raw",
-      "parse_mapping",
-      "raw_recording"
-    ],
-    "s4d/rwlearn/native_depth_override.py": [
-      "<module>",
-      "build_native_depth_override"
-    ],
     "s4d/rwlearn/observation.py": [
       "<module>",
-      "Condition",
-      "inputs",
-      "multiview"
+      "Condition"
     ],
     "s4d/rwlearn/ours.py": [
-      "<dictcomp>",
-      "<genexpr>",
-      "<listcomp>",
-      "<module>",
-      "<setcomp>",
-      "OursRealworldWindows",
-      "__getitem__",
-      "__init__",
-      "_dt_seconds",
-      "_set",
-      "_windows_class",
-      "build_realworld",
-      "check_data",
-      "config_path",
-      "derive",
-      "load_split",
-      "open_compact_store",
-      "overrides",
-      "render",
-      "run_inputs_dir",
-      "sim_original",
-      "window_kwargs"
+      "<module>"
     ],
     "s4d/rwlearn/outcomes.py": [
       "<dictcomp>",
-      "<listcomp>",
       "<module>",
-      "<setcomp>",
-      "_sha",
-      "load_outcomes",
-      "outcome_labels"
-    ],
-    "s4d/rwlearn/pixel.py": [
-      "<dictcomp>",
-      "<genexpr>",
-      "<lambda>",
-      "<listcomp>",
-      "<module>",
-      "ImpalaEncoder",
-      "OfflinePixelTransitions",
-      "ResnetStack",
-      "__init__",
-      "_obs",
-      "augment",
-      "batch",
-      "convs",
-      "encoder_factory",
-      "encoder_from_config",
-      "forward",
-      "max_pool_same",
-      "official_slots",
-      "random_crop",
-      "same_out",
-      "sample",
-      "stack_frames"
+      "load_outcomes"
     ],
     "s4d/rwlearn/pnpv2_arrival.py": [
       "<dictcomp>",
@@ -5151,16 +4400,10 @@
       "v1_collisions",
       "v1_unpaused"
     ],
-    "s4d/rwlearn/pnpv2_native_depth_override.py": [
-      "<module>",
-      "_build_episode_override"
-    ],
     "s4d/rwlearn/pnpv2_offline.py": [
       "<genexpr>",
-      "<listcomp>",
       "<module>",
       "build_geometry",
-      "check_reference",
       "learning_inputs",
       "no_override",
       "phase_b_compiler",
@@ -5188,7 +4431,6 @@
       "<listcomp>",
       "<module>",
       "_absolute",
-      "apply_arrival",
       "config",
       "dispatcher_stem",
       "leftover_tokens",
@@ -5210,61 +4452,28 @@
       "local_report",
       "verify"
     ],
-    "s4d/rwlearn/snerl_eval.py": [
-      "<dictcomp>",
-      "<lambda>",
-      "<listcomp>",
-      "<module>",
-      "protocol_views",
-      "realworld_validate"
-    ],
     "s4d/rwlearn/store.py": [
       "<dictcomp>",
-      "<genexpr>",
       "<listcomp>",
       "<module>",
       "FrameStore",
       "MemoryStore",
       "ProcessedEpisodeStore",
       "SyncIndex",
-      "__init__",
-      "_c",
       "_open_compact",
       "camera_runs",
-      "cameras",
-      "depth",
-      "episodes",
-      "history",
-      "intrinsics",
       "open_store",
-      "raw_recording",
-      "raw_sha256",
       "register_store",
-      "rgb",
       "runs_from",
-      "segments",
-      "semantic",
-      "split_episodes",
-      "sync_index",
-      "sync_sets",
-      "task",
-      "timestamps",
-      "upstream",
-      "w2c"
+      "sync_index"
     ],
     "s4d/rwlearn/tasks.py": [
       "<dictcomp>",
       "<module>"
     ],
     "s4d/rwlearn/transitions.py": [
-      "<genexpr>",
-      "<listcomp>",
       "<module>",
-      "Timeline",
-      "episode_transitions",
-      "history_indices",
-      "mapped",
-      "timelines"
+      "Timeline"
     ],
     "s4d/third_party.py": [
       "<module>"
@@ -5272,68 +4481,12 @@
     "s4d/train/__init__.py": [
       "<module>"
     ],
-    "s4d/train/augment.py": [
-      "<listcomp>",
-      "<module>",
-      "_rotation_between",
-      "coverage_visible",
-      "jitter_cameras",
-      "jitter_training_cameras",
-      "synth_camera_rig",
-      "synthesize_views"
-    ],
-    "s4d/train/checkpoint.py": [
-      "<module>",
-      "_unwrap",
-      "capture_rng_state",
-      "save_checkpoint"
-    ],
     "s4d/train/continuation.py": [
       "<dictcomp>",
-      "<lambda>",
       "<listcomp>",
       "<module>",
       "canonical",
-      "file_sha",
       "science_config"
-    ],
-    "s4d/train/ddp.py": [
-      "<module>",
-      "DistContext",
-      "_AllGatherWithGrad",
-      "all_gather_with_grad",
-      "backward",
-      "forward",
-      "is_distributed",
-      "rank",
-      "world_size"
-    ],
-    "s4d/train/evaluate.py": [
-      "<module>",
-      "Evaluator",
-      "encoder_images"
-    ],
-    "s4d/train/loop.py": [
-      "<dictcomp>",
-      "<listcomp>",
-      "<module>",
-      "Model",
-      "ResumableDistributedSampler",
-      "__init__",
-      "__iter__",
-      "_float_set",
-      "_nanmean",
-      "_per_t",
-      "_rows",
-      "build_model",
-      "forward",
-      "forward_losses",
-      "infinite",
-      "make_train_loader",
-      "seed_everything",
-      "synthetic_cameras",
-      "synthetic_settings",
-      "temporal_ramp"
     ],
     "s4d/train/schedule.py": [
       "<genexpr>",
@@ -5341,19 +4494,11 @@
       "lr_function",
       "multiplier"
     ],
-    "s4d/train/workers.py": [
-      "<module>",
-      "fork_safe_iter"
-    ],
     "scripts/_bootstrap.py": [
       "<dictcomp>",
-      "<genexpr>",
       "<listcomp>",
       "<module>",
-      "guard_gpus",
-      "require_passed_tests",
-      "source_fingerprints",
-      "test_evidence_directory"
+      "source_fingerprints"
     ],
     "scripts/_nvidia_query.py": [
       "<module>"
@@ -5366,50 +4511,6 @@
     ],
     "scripts/cleanup_replay.py": [
       "<module>"
-    ],
-    "scripts/compute_workspace_stats.py": [
-      "<dictcomp>",
-      "<genexpr>",
-      "<listcomp>",
-      "<module>",
-      "Moments",
-      "__init__",
-      "add",
-      "compute_statistics",
-      "dataset_for",
-      "result"
-    ],
-    "scripts/droid_ls_build_manifest.py": [
-      "<dictcomp>",
-      "<genexpr>",
-      "<module>",
-      "episodes_from",
-      "main"
-    ],
-    "scripts/droid_ls_build_rlds_index.py": [
-      "<module>",
-      "main"
-    ],
-    "scripts/droid_ls_extract_pointworld.py": [
-      "<module>",
-      "main"
-    ],
-    "scripts/evaluate.py": [
-      "<module>",
-      "main"
-    ],
-    "scripts/evaluate_ours_task_length.py": [
-      "<dictcomp>",
-      "<listcomp>",
-      "<module>",
-      "finite",
-      "main"
-    ],
-    "scripts/export_encoder.py": [
-      "<module>",
-      "export",
-      "input_contract",
-      "main"
     ],
     "scripts/heartbeat.py": [
       "<module>"
@@ -5467,69 +4568,33 @@
       "stages"
     ],
     "scripts/realworld_prep_register.py": [
-      "<dictcomp>",
-      "<genexpr>",
       "<module>",
-      "compile_plans",
-      "main"
-    ],
-    "scripts/realworld_prep_register_ao.py": [
-      "<genexpr>",
-      "<module>",
-      "_compile_phase_b",
-      "compile_phase_b"
+      "compile_plans"
     ],
     "scripts/remote/entry.py": [
       "<dictcomp>",
       "<module>",
-      "forward",
       "run_child"
     ],
     "scripts/run_tests.py": [
-      "<dictcomp>",
       "<genexpr>",
-      "<listcomp>",
       "<module>",
-      "<setcomp>",
       "Collection",
       "Evidence",
       "ImpactState",
       "__init__",
-      "_wait_bounded",
       "foreign_checkout",
       "full_suite_passed",
       "gate",
-      "merge_junit",
       "plan",
-      "problem",
       "pytest_collectreport",
       "pytest_runtest_logfinish",
       "pytest_runtest_logreport",
       "pytest_runtest_logstart",
-      "read_result",
       "record",
       "reused_tests",
-      "run_process",
-      "seed_cache",
-      "select_partition",
-      "shard_cache_root",
       "suite_acceptance",
-      "summary",
-      "terminate_workers",
-      "thread_budget",
-      "threads_per_shard",
-      "validate_completeness"
-    ],
-    "scripts/summarize_run.py": [
-      "<genexpr>",
-      "<lambda>",
-      "<listcomp>",
-      "<module>",
-      "<setcomp>",
-      "latest_eval",
-      "load_metrics",
-      "main",
-      "trend"
+      "summary"
     ],
     "scripts/sync_media.py": [
       "<module>"
@@ -5620,20 +4685,7 @@
       "visit_Name"
     ],
     "scripts/test_shards.py": [
-      "<genexpr>",
-      "<lambda>",
-      "<listcomp>",
-      "<module>",
-      "classify",
-      "partition"
-    ],
-    "scripts/train.py": [
-      "<listcomp>",
-      "<module>",
-      "build_data",
-      "check_objective",
-      "loader",
-      "main"
+      "<module>"
     ],
     "scripts/watch_events.py": [
       "<module>"
@@ -5646,113 +4698,52 @@
       "class": "serial",
       "files": [
         "tests/test_jobs.py",
-        "tests/test_remote_access.py",
-        "tests/test_scheduler_daemon_reexec.py"
+        "tests/test_remote_access.py"
       ],
-      "tests": 119,
-      "estimated_seconds": 13.658,
-      "seconds": 21.86644684500061,
+      "tests": 109,
+      "estimated_seconds": 13.588,
+      "seconds": 23.065310748061165,
       "exit_code": 0
     },
     {
       "index": 1,
-      "class": "gpu",
+      "class": "cpu",
       "files": [
-        "tests/test_rl_cli.py",
-        "tests/test_camera_suites.py",
-        "tests/test_rwlearn_ours.py",
-        "tests/test_rwlearn_snerl_eval.py",
-        "tests/test_snerl_sac.py",
-        "tests/test_cli.py"
+        "tests/test_remote_mig.py",
+        "tests/test_change_impact.py",
+        "tests/test_pnpv2_pipeline.py",
+        "tests/test_ops_layout.py",
+        "tests/test_remote_jobs.py",
+        "tests/test_dsreset_preparation.py",
+        "tests/test_native_depth_override_registration.py",
+        "tests/test_ours_matrix.py",
+        "tests/test_host_roles.py"
       ],
-      "tests": 51,
-      "estimated_seconds": 150.487,
-      "seconds": 143.9839014990721,
+      "tests": 684,
+      "estimated_seconds": 259.16499999999996,
+      "seconds": 211.4985362458974,
       "exit_code": 0
     },
     {
       "index": 2,
       "class": "cpu",
       "files": [
-        "tests/test_remote_mig.py",
         "tests/test_release_gate.py",
-        "tests/test_run_tests_sharding.py",
-        "tests/test_memory_admission.py",
-        "tests/test_release_reservation.py",
-        "tests/test_release_repin_chain.py",
-        "tests/test_remote_refusal.py",
-        "tests/test_rwprep_mig.py",
-        "tests/test_pnpv2_geometry_route.py",
-        "tests/test_suite_partition.py",
-        "tests/test_pick_and_place_v2.py",
-        "tests/test_pnpv2_remote_route.py",
-        "tests/test_realworld_train_store.py",
-        "tests/test_realworld_layout.py",
-        "tests/test_launch_hold.py",
-        "tests/test_remote_jobs.py",
-        "tests/test_release_prep_deadlock.py",
-        "tests/test_input_hashes.py",
-        "tests/test_adoption_guards.py",
-        "tests/test_rwlearn_dsreset.py",
-        "tests/test_realworld_calibration_release.py",
-        "tests/test_local_phase_a_hybrid.py",
-        "tests/test_remote_launch.py",
-        "tests/test_dsreset_success_only.py",
-        "tests/test_host_roles.py",
-        "tests/test_rwlearn_gate.py",
-        "tests/test_run_identity.py",
-        "tests/test_realworld_contract_workers.py",
-        "tests/test_retired_algorithms.py",
-        "tests/test_fair_share.py",
-        "tests/test_export.py",
-        "tests/test_pool_pin.py"
-      ],
-      "tests": 1607,
-      "estimated_seconds": 690.0869999999999,
-      "seconds": 314.82911733700894,
-      "exit_code": 0
-    },
-    {
-      "index": 3,
-      "class": "cpu",
-      "files": [
-        "tests/test_mig_validation.py",
-        "tests/test_isolation_reuse.py",
-        "tests/test_rwprep_admission_deferral.py",
-        "tests/test_calibration_acceptance_override.py",
-        "tests/test_rwlearn_native_depth.py",
-        "tests/test_ours_priority.py",
         "tests/test_remote_offload.py",
-        "tests/test_change_impact.py",
-        "tests/test_prep_reservation.py",
-        "tests/test_pnpv2_acceptance_override.py",
+        "tests/test_remote_refusal.py",
+        "tests/test_pnpv2_geometry_route.py",
         "tests/test_local_devices.py",
-        "tests/test_pnpv2_pipeline.py",
-        "tests/test_droid_largescale.py",
-        "tests/test_ops_layout.py",
-        "tests/test_footprints.py",
-        "tests/test_realworld_calibration_criteria.py",
-        "tests/test_ours_length_eval.py",
+        "tests/test_pnpv2_remote_route.py",
+        "tests/test_realworld_layout.py",
         "tests/test_dsreset_registration.py",
-        "tests/test_dsreset_preparation.py",
-        "tests/test_realworld_local.py",
-        "tests/test_release_repin_review.py",
-        "tests/test_native_depth_override_registration.py",
-        "tests/test_rwlearn_fql_pipeline.py",
-        "tests/test_ours_matrix.py",
+        "tests/test_adoption_guards.py",
+        "tests/test_dsreset_success_only.py",
         "tests/test_drawer_rgb_inputs.py",
-        "tests/test_arm4_configs.py",
-        "tests/test_future_stride.py",
-        "tests/test_sync_wandb_canonical_guard.py",
-        "tests/test_rwlearn_store_baselines.py",
-        "tests/test_lifecycle_cleanup.py",
-        "tests/test_rwlearn_frame_mapping.py",
-        "tests/test_gpu_guard.py",
-        "tests/test_sync_media.py"
+        "tests/test_run_identity.py"
       ],
-      "tests": 1152,
-      "estimated_seconds": 690.1259999999999,
-      "seconds": 365.3145114830695,
+      "tests": 321,
+      "estimated_seconds": 261.554,
+      "seconds": 100.92582929204218,
       "exit_code": 0
     }
   ],
@@ -5762,29 +4753,37 @@
     "serial_shards": 1,
     "serial_exclusive": true,
     "serial_threads": 384,
-    "concurrent_shards": 3,
+    "concurrent_shards": 2,
     "cpu_threads": 384,
-    "threads_per_shard": 128,
+    "threads_per_shard": 192,
     "timeout_seconds": 6540.0
   },
   "problems": [],
   "limitations": "Function evidence unions shard processes; nested test subprocesses are not profiled. Gloo child results are asserted by tests/test_ddp.py. Synthetic renders are not CUDA acceptance.",
   "complete_suite_executed": false,
+  "run_counts": {
+    "passed": 1141,
+    "error": 0,
+    "failed": 0,
+    "skipped": 0
+  },
   "release_gate": {
     "version": 1,
-    "accepted": false,
-    "mode": null,
-    "baseline": null,
+    "accepted": true,
+    "mode": "selective",
+    "baseline": {
+      "commit": "8b4ef714dd7d4f40c0c2b61ee62899c0872a2572",
+      "source_digest": "a68014767931ca0a64471a8ddd08c2bce516003afc3b990e8155f2cbd19e25ae",
+      "evidence": "/home/ws/ws/splatter4d/.worktrees/b5-1118/docs"
+    },
     "candidate": {
-      "head": "af6718c8352c006c023f283ca449a08e311c3e98",
+      "head": "95c52a80e7ffce96a4e15a91be269543edbfa34d",
       "source_digest": "b675b931156c8a60d5b7179715f1047b7dff65b461f1932c5eb3efbb218dc838"
     },
-    "reasons": [
-      "no accepted full-suite baseline record for 46d233062ca8b2c89166da18d519ceb95b867168"
-    ],
-    "executed_tests": 2929,
-    "reused_tests": 182,
-    "carried_tests": 0,
+    "reasons": [],
+    "executed_tests": 1114,
+    "reused_tests": 1997,
+    "carried_tests": 1577,
     "selected_files": 86,
     "total_files": 168
   }
