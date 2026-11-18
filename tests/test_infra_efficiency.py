@@ -185,3 +185,100 @@ def test_selective_adopter_reverifies_the_tested_head_of_evidence_only_candidate
     monkeypatch.setattr(test_gate, "adoption_check", lambda *a: ["candidate gate refuses"])
     with pytest.raises(ValueError, match="candidate gate refuses"):
         adopter.verify(repo, candidate)
+
+
+@pytest.fixture
+def pauser(tmp_path, monkeypatch):
+    from ops.jobs import pause_at_checkpoint as pause
+    from ops.jobs import scheduler
+
+    root = tmp_path / "local"
+    checkpoint = root / "runs/job/checkpoints/latest.pt"
+    checkpoint.parent.mkdir(parents=True)
+    checkpoint.write_bytes(b"initial")
+    registry = root / "experiments/registry.jsonl"
+    registry.parent.mkdir()
+    registry.write_text("")
+    state = dict(status="running", host="local", pid=100, attempt=2, gpu="MIG-owned", script="scripts/train.py")
+    processes = {pid: dict(pid=pid, group=100, session=100, start_ticks=pid * 10,
+                           command=[b"python", b"--name", b"job"]) for pid in (100, 101)}
+    monkeypatch.setattr(scheduler, "read_registry", lambda path: {"job": state})
+    monkeypatch.setattr(pause, "members", lambda pid: processes)
+    signals = []
+    monkeypatch.setattr(pause.os, "killpg", lambda *args: signals.append(args))
+    monkeypatch.setattr(pause, "checkpoint_info", lambda path: (42, "checkpoint-digest"))
+    from types import SimpleNamespace
+    return SimpleNamespace(module=pause, root=root, checkpoint=checkpoint, registry=registry,
+                           state=state, processes=processes, signals=signals)
+
+
+def test_pause_dry_run_never_waits_writes_or_signals(pauser, monkeypatch):
+    p = pauser
+    monkeypatch.setattr(p.module.time, "sleep", lambda _: pytest.fail("dry-run waited"))
+    assert p.module.pause("job", "maintenance", root=p.root)["execute"] is False
+    assert p.registry.read_bytes() == b""
+    assert not p.registry.with_suffix(".lock").exists()
+    assert p.signals == []
+
+
+@pytest.mark.parametrize("mutation", ["remote", "stopped", "foreign", "not_session_leader", "single_process"])
+def test_pause_refuses_unowned_process_groups(pauser, mutation):
+    p = pauser
+    if mutation == "remote":
+        p.state["host"] = "remote"
+    elif mutation == "stopped":
+        p.state["status"] = "crashed"
+    elif mutation == "foreign":
+        p.processes[101]["command"][-1] = b"other-job"
+    elif mutation == "not_session_leader":
+        p.processes[100]["session"] = 99
+    else:
+        del p.processes[101]
+    with pytest.raises(p.module.PauseError):
+        p.module.pause("job", "maintenance", root=p.root, execute=True)
+    assert p.signals == [] and p.registry.read_bytes() == b""
+
+
+def test_pause_waits_for_fresh_checkpoint_and_records_before_signal(pauser, monkeypatch):
+    p = pauser
+    sleeps = []
+    def sleep(seconds):
+        sleeps.append(seconds)
+        if seconds == 5:
+            p.checkpoint.write_bytes(b"fresh checkpoint")
+    monkeypatch.setattr(p.module.time, "sleep", sleep)
+    def signal(pid, sig):
+        assert json.loads(p.registry.read_text())["checkpoint_step"] == 42
+        p.signals.append((pid, sig))
+    monkeypatch.setattr(p.module.os, "killpg", signal)
+    result = p.module.pause("job", "drain", root=p.root, execute=True)
+    assert sleeps == [5, 20]
+    assert result["reason"] == "drain" and result["attempt"] == 2
+    assert p.signals == [(100, p.module.signal.SIGTERM)]
+
+
+@pytest.mark.parametrize("change", ["attempt", "pid_reuse", "foreign", "checkpoint"])
+def test_pause_rechecks_identity_and_checkpoint_immediately_before_signal(pauser, monkeypatch, change):
+    p = pauser
+    monkeypatch.setattr(p.module.time, "sleep", lambda seconds: p.checkpoint.write_bytes(b"fresh") if seconds == 5 else None)
+    def info(path):
+        if change == "attempt":
+            p.state["attempt"] += 1
+        elif change == "pid_reuse":
+            p.processes[100]["start_ticks"] += 1
+        elif change == "foreign":
+            p.processes[101]["command"][-1] = b"foreign"
+        else:
+            p.checkpoint.write_bytes(b"newer checkpoint")
+        return 42, "digest"
+    monkeypatch.setattr(p.module, "checkpoint_info", info)
+    with pytest.raises(p.module.PauseError, match="changed|foreign"):
+        p.module.pause("job", "drain", root=p.root, execute=True)
+    assert p.signals == [] and p.registry.read_bytes() == b""
+
+
+def test_pause_timeout_sends_no_signal_and_writes_no_event(pauser):
+    p = pauser
+    with pytest.raises(TimeoutError):
+        p.module.pause("job", "drain", root=p.root, execute=True, timeout=0)
+    assert p.signals == [] and p.registry.read_bytes() == b""
