@@ -265,6 +265,13 @@ OFFLOAD_PINS = {j['id']: proof for j in queue['jobs']
                 if (proof := remote_offload.admitted_pin(j, OWNERSHIP)) is not None}
 for _pin, _manifest in OFFLOAD_PINS.values():
     RELEASES[_pin] = _manifest
+# Started local-release rows migrated here from a checkpoint pause (user 2026-11-18 ~13:15) keep the accepted role release
+# recorded by their migration (ops/jobs/remote_migration.py: ownership switched to the remote, migrated event, scope equal
+# to the launch commit); every other local-release row still needs an offload pin.
+from ops.jobs import remote_migration
+MIGRATED_PINS, MIGRATION_REFUSED = remote_migration.admitted_pins(queue['jobs'], OWNERSHIP, state, REPO)
+for _pin, _manifest in MIGRATED_PINS.values():
+    RELEASES.setdefault(_pin, _manifest)
 remote = [j for j in queue['jobs'] if j.get('host') == 'remote' and kind(j['id'])]
 freeze_path = REPO / 'runs/setup/method-frozen-v1.json'
 freeze = json.loads(freeze_path.read_text()) if freeze_path.exists() else None
@@ -277,7 +284,7 @@ if freeze:
             if kind(job['id']) == 'final_pretrain':
                 assert job['args'][job['args'].index('--set') + 1:] == freeze['overrides']
 client = RemoteClient()
-messages = []
+messages = [f'{i}: migrated row not offered: {why}' for i, why in sorted(MIGRATION_REFUSED.items())]
 from ops.jobs.admission_pause import paused  # noqa: E402  (intentional pauses, user 2026-10-28)
 
 if ROLE_ERROR:
@@ -669,7 +676,8 @@ sys.path.insert(0, str(REPO / 'runs/setup/tools'))
 candidates = [j for j in candidates if not paused(j['id'])]
 # Rows pinned to a LOCAL release (registrars' --release-source local) run only on local after explicit placement:
 # the remote would run them on runs/setup/role-release.json, which is not their release.
-candidates = [j for j in candidates if j.get('release_source') != 'local' or j['id'] in OFFLOAD_PINS]
+candidates = [j for j in candidates
+              if j.get('release_source') != 'local' or j['id'] in OFFLOAD_PINS or j['id'] in MIGRATED_PINS]
 if (REPO / 'runs/setup/remote-hold-admissions').exists():
     messages.append('ADMISSIONS_HELD ' + (REPO / 'runs/setup/remote-hold-admissions').read_text().strip())
     candidates = []

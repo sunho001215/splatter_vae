@@ -31,6 +31,7 @@ FILE_CLASSES = {
     "tests/test_adoption_guards.py": "cpu",
     "tests/test_isolation_reuse.py": "cpu",
     "tests/test_remote_offload.py": "cpu",
+    "tests/test_remote_migration_admission.py": "cpu",
     "tests/test_ours_priority.py": "cpu",
     "tests/test_ours_continuation.py": "cpu",
     "tests/test_ours_length_eval.py": "cpu",
