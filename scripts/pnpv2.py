@@ -66,7 +66,8 @@ def status(a):
     rows = build_rows(spec, PLACEHOLDER_RELEASE, scene=PLACEHOLDER_SCENE)
     registered = _registered(a.repo)
     out = dict(schema="pick-and-place-v2-status/1", arrived=state["state"] == "complete", arrival=state,
-               stages={k: {"status": v["status"], "detail": v["detail"]} for k, v in ev.items()},
+               stages={k: {"status": v["status"], "detail": v["detail"], **({"acceptance_override": v["acceptance_override"]}
+                       if v.get("acceptance_override") else {})} for k, v in ev.items()},
                waves={w: dict(rows=sum(r["pnpv2_wave"] == w for r in rows),
                               ready_after_check_data=w in ready_waves(assumed),
                               registered=sum(r["id"] in registered for r in rows if r["pnpv2_wave"] == w))

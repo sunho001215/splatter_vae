@@ -15,10 +15,12 @@ from pathlib import Path
 import tempfile
 
 import yaml
+from s4d.realworld.calib.pnpv2_acceptance_override import installed
 
 from ops.jobs.pnpv2_rgb import REMOTE_RW, remote_raw, require
 from ops.jobs.rwprep_mig import digest
-from s4d.rwlearn.pnpv2_publication import manifest_check, no_override, readiness
+from s4d.rwlearn.pnpv2_publication import manifest_check
+from s4d.rwlearn.pnpv2_offline import no_override, readiness, rig_gate, build_geometry
 from s4d.rwlearn.pnpv2_spec import BUNDLE_FILES, PREP_DISK_GIB, SPEC, STEM, TASK, load_spec, values
 
 BUNDLE = f'{STEM}-geometry'
@@ -146,7 +148,14 @@ def check_scene(path, manifest, rig):
 def closure_paths(spec):
     root, inputs = locations(spec)
     rig = Path(values(spec)['rig'])
-    return [*[root / n for n in EXTRAS], *[inputs / n for n in DOCS], rig, rig.with_suffix('.reference.npz')]
+    decisions = [rig.parent / n for n in ('automatic-decision.json', 'override-decision.json')]
+    # Include decisions whenever this publication used the committed override.
+    mirror_rig = rig if rig.is_file() else Path(values(spec)['rig_local'])
+    if mirror_rig.is_file():
+        decisions = decisions if load(mirror_rig).get('acceptance_override') else []
+    else:
+        decisions = []
+    return [*decisions, *[root / n for n in EXTRAS], *[inputs / n for n in DOCS], rig, rig.with_suffix('.reference.npz')]
 
 
 def verify_complete(spec, marker, *, source=lambda p: p):
@@ -156,13 +165,13 @@ def verify_complete(spec, marker, *, source=lambda p: p):
         require(digest(source(Path(path))) == sha, f'publication closure hash mismatch: {path}')
 
 
+@installed()
 def remote_build(source, phase_a, phase_b, *, spec=None):
     """Snapshot -> calibration release -> immutable geometry bundle -> train-only native measurement."""
     from s4d.rwlearn.pnpv2_runtime import install
     install()
     from s4d.realworld.calib import release
-    from s4d.realworld.calib.rig import load_rig, rig_camera_status
-    from s4d.rwlearn.pnpv2_publication import build_geometry
+    from s4d.realworld.calib.rig import load_rig
     from s4d.rwlearn.dsreset_measure import SampledNativeStore, measure
     from s4d.rwlearn.store import open_store
     import scripts.pick_and_place_v2 as producer
@@ -174,15 +183,16 @@ def remote_build(source, phase_a, phase_b, *, spec=None):
     m = manifest_check(load(source / 'manifest.json'), spec)
     rig = Path(p['rig'])
     doc, _, _ = load_rig(rig)
-    no_override(doc)
-    require(doc.get('task') == TASK and set(doc['episodes']) == {r['id'] for r in m['episodes']}
-            and all(rig_camera_status(doc, cam)[0] == 'validated' for cam in doc['cameras']),
-            'rig must be automatically accepted for the complete task')
+    gate = rig_gate(rig)
+    require(doc.get('task') == TASK and set(doc['episodes']) == {r['id'] for r in m['episodes']},
+            'rig must be accepted offline for the complete task')
     for phase, bundle in (('A', phase_a), ('B', phase_b)):
         completed_phase(bundle, m, phase, Path(p['remote_processed']))
     stable = [source / n for n in ('manifest.json', 'source-ingest.json', 'path-provenance.json')]
     stable += [bundle / n for bundle in (phase_a, phase_b) for n in ('dispatcher.json', 'jobs.json')]
     stable += [rig, rig.with_suffix('.reference.npz')]
+    if gate['acceptance_override'] is not None:
+        stable += [rig.parent / n for n in ('automatic-decision.json', 'override-decision.json')]
     binding = {str(f): digest(f) for f in stable}
     require(not any(p.is_symlink() for p in (root, *root.parents)), f'symlink artifact: {root}')
     root.mkdir(parents=True, exist_ok=True)
@@ -293,6 +303,9 @@ def fetch(spec, client=None):
     copies[Path(p['scene_report'])] = mirrored(root / 'measurement/scene.json')
     copies[Path(p['rig_local'])] = mirrored(Path(p['rig']))
     copies[Path(p['rig_local']).with_suffix('.reference.npz')] = mirrored(Path(p['rig']).with_suffix('.reference.npz'))
+    if load(copies[Path(p['rig_local'])]).get('acceptance_override'):
+        for name in ('automatic-decision.json', 'override-decision.json'):
+            copies[Path(p['rig_local']).parent / name] = mirrored(Path(p['rig']).parent / name)
     for target, source in copies.items():
         once(target, source.read_bytes())
     receipt = Path(p['geometry_dir_local']).parent / 'geometry.FETCHED.json'

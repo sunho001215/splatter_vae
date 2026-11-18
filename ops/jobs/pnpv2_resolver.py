@@ -5,6 +5,7 @@ established argv, so input resolution, placement and closeout treat it as that s
 before realworld_local / remote_offload bind ``legacy_row``; the worker entrypoint table stays unchanged.
 """
 from s4d.rwlearn.pnpv2_spec import WRAPPERS
+from s4d.rwlearn.pnpv2_offline import OFFLINE_WRAPPERS
 
 
 def install_resolver_alias():
@@ -15,7 +16,7 @@ def install_resolver_alias():
         return
 
     def legacy_row(row):
-        script = WRAPPERS.get(row.get("script"))
+        script = (WRAPPERS | OFFLINE_WRAPPERS).get(row.get("script"))
         return previous({**row, "script": script}) if script else previous(row)
 
     legacy_row.pnpv2_alias = True

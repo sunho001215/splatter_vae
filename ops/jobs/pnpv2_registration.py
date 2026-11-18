@@ -159,22 +159,25 @@ def rig_evidence(spec):
     if not rig.is_file() or not reference.is_file():
         return _stage("pending", "accepted task rig not published")
     try:
-        from s4d.realworld.calib.rig import load_rig, rig_camera_status
+        from s4d.rwlearn.pnpv2_offline import rig_gate
 
-        document, _, _ = load_rig(rig)
-        held = [c for c in document["cameras"] if rig_camera_status(document, c)[0] != "validated"]
+        gate = rig_gate(rig)
     except (ValueError, KeyError, OSError) as exc:
-        return _stage("blocked", f"rig unreadable: {exc}")
-    if held or document.get("task") not in (None, TASK) or (document.get("acceptance_override") or None):
-        return _stage("blocked", f"rig not automatically accepted for every camera: {held}")
-    return _stage("done", f"{len(document['cameras'])} cameras validated",
-                  inputs={str(rig): file_sha(rig), str(reference): file_sha(reference)})
+        return _stage("blocked", f"rig unreadable or not accepted: {exc}")
+    inputs = {str(rig): file_sha(rig), str(reference): file_sha(reference)}
+    if gate['acceptance_override'] is not None:
+        for name in ('automatic-decision.json', 'override-decision.json'):
+            path = rig.parent / name
+            inputs[str(path)] = file_sha(path)
+    return _stage("done", f"rig accepted offline ({gate['mode']})", inputs=inputs,
+                  acceptance_override=gate['acceptance_override'])
 
 
 def bundle_evidence(spec, view, manifest):
     """The locally staged five-file bundle plus its verified upload receipt; report-level gate per consumer."""
     from s4d.rwlearn import gate
-    from s4d.rwlearn.pnpv2_publication import manifest_check, no_override
+    from s4d.rwlearn.pnpv2_publication import manifest_check
+    from s4d.rwlearn.pnpv2_offline import no_override
 
     p = values(spec)
     d = Path(p[f"{view}_dir_local"])
@@ -243,9 +246,11 @@ def scene_evidence(spec, manifest, rig_stage):
     if not path.is_file():
         return _stage("pending", "train-only native scene measurement missing")
     from s4d.rwlearn.dsreset_measure import validate_report
+    from s4d.rwlearn.pnpv2_offline import no_override
 
     report = json.loads(path.read_text())
     try:
+        no_override(report)
         scene = validate_report(report, manifest)
     except ValueError as exc:
         return _stage("blocked", str(exc))
@@ -320,7 +325,9 @@ def check_rows(rows, current_ids, known, repo):
         rid = row["id"]
         if not rid.startswith(STEM + "-") or f"-{TASK}-S" not in rid or "-SF" in rid:
             problems.append(f"{rid}: not a pnpv2 S identity")
-        if row["script"] not in WRAPPERS or not (ROOT / row["script"]).is_file():
+        from s4d.rwlearn.pnpv2_offline import OFFLINE_WRAPPERS
+
+        if row["script"] not in (WRAPPERS | OFFLINE_WRAPPERS) or not (ROOT / row["script"]).is_file():
             problems.append(f"{rid}: unknown entrypoint {row['script']}")
         for dep in row["deps"]:
             if not dep.startswith(STEM + "-") or (dep not in ids and dep not in current_ids):
@@ -393,6 +400,12 @@ def prepare(repo, spec, data_report, release, *, waves=None):
     require(selected, "nothing to register: no ready, unregistered wave")
     scene = ev["scene"].get("scene") if "geometry" in selected else None
     rows = build_rows(spec, release, scene=scene, waves=tuple(selected))
+    if ev['rig'].get('acceptance_override') and "geometry" in selected:
+        from s4d.rwlearn.pnpv2_offline import ROW_WRAPPERS
+        for row in rows:
+            if row['pnpv2_wave'] == 'geometry':
+                row['script'] = ROW_WRAPPERS.get(row['script'], row['script'])
+
     from ops.jobs import host_roles
 
     known = set(current) | R.registry_ids(registry) | set(host_roles.read_ownership(repo / "runs/setup/ownership"))
@@ -412,7 +425,8 @@ def prepare(repo, spec, data_report, release, *, waves=None):
                 task=TASK, variant="S", waves=selected, already_registered=registered, release=release,
                 repo=str(repo.resolve()), rows=rows, rows_sha256=json_sha(rows), counts=counts(rows),
                 data_manifest_sha256=data_report["manifest_sha256"], evidence={k: {"status": v["status"],
-                                                                                    "detail": v["detail"]}
+                                                                                    "detail": v["detail"],
+                      **({"acceptance_override": v["acceptance_override"]} if v.get("acceptance_override") else {})}
                                                                                 for k, v in ev.items()},
                 input_sha256=hashes, tool_sha256=file_sha(Path(__file__)), queue_sha256_before=sha(before),
                 queue_sha256_after=sha(candidate), registry_sha256=sha(registry), pause=PAUSE,
@@ -532,7 +546,7 @@ def next_steps(spec, ev):
                             f"(local-host route instead: {producer} publish-rgb -- --execute; then upload)"],
         "rig": [f"{producer} calib-remote   # remote planner; the view job waits on the Phase-A state mirror",
                 f"{PY} -m ops.jobs.rwprep_remote tick --config {p['calib']}/dispatcher.json --apply --loop "
-                "(detached, from main; automatic G1-G6 acceptance, no override)",
+                "(detached, from main; exact committed offline override when applicable)",
                 f"{producer} rig-fetch   # mirror the accepted rig + reference once the publish job is done"],
         "phaseB": [f"{producer} phase-b-remote",
                    f"{PY} -m ops.jobs.rwprep_remote tick --config {p['phase_b']}/dispatcher.json --apply --loop "

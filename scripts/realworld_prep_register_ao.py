@@ -25,7 +25,7 @@ from s4d.realworld.calib.rig import load_rig  # noqa: E402
 COMPILER = Path(__file__).resolve().parent / "realworld_prep_register.py"
 
 
-def compile_phase_b(argv: list) -> int:
+def _compile_phase_b(argv: list) -> int:
     if "--phase" not in argv or argv[argv.index("--phase") + 1] != "B" or "--rig-map" not in argv:
         raise SystemExit("realworld_prep_register_ao compiles phase B with a --rig-map only")
     out = Path(argv[argv.index("--out") + 1]).resolve()
@@ -51,13 +51,28 @@ def compile_phase_b(argv: list) -> int:
         ref = bindings.get(rig_input)
         if ref is None:
             continue
-        job["steps"][0] = phase_b_episode_step(job["steps"][0])
+        step = phase_b_episode_step
+        if ref.get('task') == 'pick-and-place-v2':
+            from s4d.realworld.calib.pnpv2_acceptance_override import phase_b_episode_step as step
+        job["steps"][0] = step(job["steps"][0])
         job["acceptance_override"] = ref
     config = json.loads((out / "dispatcher.json").read_text())
     validate(config, jobs)
     atomic(out / "jobs.json", jobs)
     print(json.dumps({"acceptance_override_jobs": sum("acceptance_override" in j for j in jobs), "jobs": len(jobs)}))
     return 0
+
+
+def compile_phase_b(argv: list) -> int:
+    if "--phase" in argv and argv[argv.index("--phase") + 1] == "B" and "--rig-map" in argv:
+        rigmap = json.loads(Path(argv[argv.index("--rig-map") + 1]).read_text())
+        if any((doc := load_rig(path)[0]).get('task') == 'pick-and-place-v2'
+               and doc.get('acceptance_override') is not None for path in sorted(set(rigmap.values()))):
+            from s4d.realworld.calib.pnpv2_acceptance_override import installed
+
+            with installed():
+                return _compile_phase_b(argv)
+    return _compile_phase_b(argv)
 
 
 if __name__ == "__main__":

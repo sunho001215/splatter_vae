@@ -163,8 +163,8 @@ def snapshot(spec, a, argv):
 
 
 def publish(spec, a, argv):
-    """Geometry bundle: the established learning_inputs view of the NEW snapshot; refuses acceptance overrides."""
-    from s4d.rwlearn.pnpv2_publication import build_geometry
+    """Geometry bundle from the NEW snapshot, accepting only the committed offline override."""
+    from s4d.rwlearn.pnpv2_offline import build_geometry
 
     sub = argparse.ArgumentParser(prog="publish")
     sub.add_argument("--ingest-manifest", type=Path, required=True)
@@ -371,7 +371,10 @@ if rigmap.exists():
 else:
     atomic(rigmap, doc)
 if not out.exists():
-    args = [sys.executable, 'scripts/realworld_prep_register.py', '--phase', 'B', '--id-stem', stem,
+    override = len(sys.argv) > 7 and sys.argv[7] == 'acceptance_override'
+    from s4d.rwlearn.pnpv2_offline import phase_b_compiler
+    compiler = phase_b_compiler(rig, override)
+    args = [sys.executable, compiler, '--phase', 'B', '--id-stem', stem,
             '--plan', str(base / 'prep-plan.json'), '--out', str(out), '--host', 'remote',
             '--code', '/opt/src/splatter4d', '--rig-map', str(rigmap), '--extra-readonly', extra]
     for k in ('processed', 'raw', 'weights', 'image', 'tools', 'assets'):
@@ -424,6 +427,10 @@ def rig_fetch(spec, a, argv):
     if local.exists() or local.with_suffix(".reference.npz").exists():
         raise ValueError(f"{local} exists; the rig mirror is immutable")
     client = rwprep_remote.RemoteClient()
+    for name in ("automatic-decision.json", "override-decision.json"):
+        remote = str(Path(p["rig"]).parent / name)
+        if client._remote_checksum(remote, allow_missing=True) is not None:
+            client.rsync_download(remote, local.parent / name)
     for remote, target in ((p["rig"], local), (str(Path(p["rig"]).with_suffix(".reference.npz")),
                                                local.with_suffix(".reference.npz"))):
         client.rsync_download(remote, target)
@@ -433,7 +440,7 @@ def rig_fetch(spec, a, argv):
 
 
 def phase_b_remote(spec, a, argv):
-    """Phase B compiled on the remote against the automatically accepted task rig (compiler checks every camera)."""
+    """Phase B compiled on the remote against the offline-accepted task rig (compiler checks every camera)."""
     from ops.jobs import rwprep_remote
     from ops.jobs.pnpv2_registration import STAGE_IDS, rig_evidence
 
@@ -441,13 +448,15 @@ def phase_b_remote(spec, a, argv):
     stage = rig_evidence(spec)
     if stage["status"] != "done":
         raise ValueError(f"task rig not accepted: {stage['detail']}")
-    base = _phase_a_config(spec)
+    base = {**_phase_a_config(spec), **{k: v for k, v in json.loads(
+        (Path(p["calib"]) / "dispatcher.json").read_text()).items() if k in ("code", "commit")}}
     out, link = _attachment(p["phase_b"], PHASE_B_BUNDLE)
     remote = f"{REMOTE_RW}/configs/{PHASE_B_BUNDLE}"
     client = rwprep_remote.RemoteClient()
     print(rwprep_remote.planner(client, base, [
         "-c", _PHASE_B_PLAN, base["remote"], remote, p["rig"], STAGE_IDS["phaseB"],
-        f"{p['remote_processed']}/calibration/{TASK}", str(PREP_DISK_GIB)]))
+        f"{p['remote_processed']}/calibration/{TASK}", str(PREP_DISK_GIB),
+        "acceptance_override" if stage.get("acceptance_override") else "automatic"]))
     print(json.dumps(rwprep_remote.attach(remote, out, client, base)))
     _link(out, link)
 
@@ -456,7 +465,8 @@ def geometry_remote(spec, a, argv):
     """Stage the remote geometry publisher; no tick, launch, registry or controller changes."""
     from ops.jobs import pnpv2_geometry as geometry, rwprep_remote
     from ops.jobs.pnpv2_registration import STAGE_IDS, dispatcher_evidence, rig_evidence
-    from s4d.rwlearn.pnpv2_publication import manifest_check, no_override
+    from s4d.rwlearn.pnpv2_publication import manifest_check
+    from s4d.rwlearn.pnpv2_offline import no_override
 
     sub = argparse.ArgumentParser(prog="geometry-remote")
     sub.add_argument("--source", type=Path, default=Path("/home/ws/ws/realworld-ops/ingest/manifest.json"))

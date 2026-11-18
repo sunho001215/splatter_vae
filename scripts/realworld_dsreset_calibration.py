@@ -148,7 +148,7 @@ def freeze_release1(verdict):
                        for c,v in verdict.items()}}
 
 
-def publish(spec,specpath):
+def _publish(spec,specpath):
     import numpy as np
     from s4d.realworld.calib import criteria as C
     from s4d.realworld.calib.loma.publish import load_results,release_verdict,build_document
@@ -189,6 +189,16 @@ def publish(spec,specpath):
             aliases=spec['aliases'],automatic=automatic,commit=spec['commit'])
     out=w/f"rig-{spec['task']}-accepted.json"
     if not out.exists():publish_rig(out,doc,{k:ref[k] for k in ref.files})
+
+
+def publish(spec, specpath):
+    # The shared AO reader is inside a placed drawer row's scope. Install the PNP record/checks for this call only.
+    if spec['task'] != 'pick-and-place-v2':
+        return _publish(spec, specpath)
+    from s4d.realworld.calib.pnpv2_acceptance_override import installed
+
+    with installed():
+        return _publish(spec, specpath)
 
 
 def main():

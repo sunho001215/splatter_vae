@@ -1,0 +1,707 @@
+{
+ "format": "s4d-calib-acceptance-override/1",
+ "id": "acceptance-override-pick-and-place-v2-20261118",
+ "task": "pick-and-place-v2",
+ "variant": "S",
+ "decision": "accepted",
+ "status": "validated_by_override",
+ "document_name_suffix": "-ao20261118",
+ "scope": {
+  "offline_uses": [
+   "phase_b_preprocessing",
+   "dataset_publication",
+   "pretraining",
+   "fql",
+   "evaluation"
+  ],
+  "robot_execution_authorized": false
+ },
+ "automatic_acceptance": {
+  "passed": false,
+  "criteria": "rig_loma-release/2",
+  "criteria_commit": "599d85f4909de92ad694247e0cea9403542e346b",
+  "decision_file": "automatic-decision.json",
+  "decision_sha256": "7a41766dca8866dfd33384280c0b9769c19d1b2faf0d03687654f53b9b9fcf48",
+  "decision": {
+   "cameras": {
+    "135122070988/color": "validated",
+    "135122073201/color": "held",
+    "135122076054/color": "held"
+   },
+   "accepted": false
+  },
+  "verdict_release1_file": "verdict-release1.json",
+  "verdict_release1_sha256": "881f20744185d744bc2db70bf16179236b99bf592f11aa916fdaeb8a3a2e3068",
+  "thresholds_changed": false,
+  "thresholds": {
+   "g1_spread_rot_deg": 0.35,
+   "g1_spread_centre_m": 0.008,
+   "g5a_moved_episodes": 0
+  }
+ },
+ "value_tolerance": {
+  "relative": 1e-09,
+  "integers": "exact",
+  "strings": "exact"
+ },
+ "cameras": {
+  "135122070988/color": {
+   "gates": []
+  },
+  "135122073201/color": {
+   "gates": [
+    "G1",
+    "G5a"
+   ]
+  },
+  "135122076054/color": {
+   "gates": [
+    "G5a"
+   ]
+  }
+ },
+ "exceptions": [
+  {
+   "id": "g1_rotation_spread-135122073201",
+   "gate": "G1",
+   "check": "g1_rotation_spread",
+   "cameras": [
+    "135122073201/color"
+   ],
+   "metric": "max_pair_rot_deg",
+   "measured": 0.3594761331966316,
+   "threshold": 0.35,
+   "reason": "G1: rotation spread 0.359 deg > 0.35",
+   "note": "Release/1 maximum pairwise diameter, not release/2 radius about all; release/2 G1 passed and remains unchanged."
+  },
+  {
+   "id": "g1_centre_spread-135122073201",
+   "gate": "G1",
+   "check": "g1_centre_spread",
+   "cameras": [
+    "135122073201/color"
+   ],
+   "metric": "max_pair_centre_m",
+   "measured": 0.009473656243675717,
+   "threshold": 0.008,
+   "reason": "G1: centre spread 9.5 mm > 8",
+   "note": "Release/1 maximum pairwise diameter, not release/2 radius about all; release/2 G1 passed and remains unchanged."
+  },
+  {
+   "id": "G5a-registration-motion-135122073201",
+   "gate": "G5a",
+   "check": "g5a_registration_motion",
+   "cameras": [
+    "135122073201/color"
+   ],
+   "metric": "moved_episode_count",
+   "measured": 12,
+   "threshold": 0,
+   "thresholds": {
+    "max_shift_px": 0.25,
+    "max_rot_deg": 0.03,
+    "max_scale_ppm": 1000.0,
+    "min_inlier_patches": 6,
+    "min_inlier_fraction": 0.6
+   },
+   "registration": {
+    "episodes": 100,
+    "moved": [
+     "pick-and-place-v2-000056",
+     "pick-and-place-v2-000058",
+     "pick-and-place-v2-000063",
+     "pick-and-place-v2-000066",
+     "pick-and-place-v2-000067",
+     "pick-and-place-v2-000068",
+     "pick-and-place-v2-000071",
+     "pick-and-place-v2-000073",
+     "pick-and-place-v2-000075",
+     "pick-and-place-v2-000077",
+     "pick-and-place-v2-000081",
+     "pick-and-place-v2-000086"
+    ],
+    "not_verifiable": [
+     "pick-and-place-v2-000062"
+    ],
+    "reference_self_registration_ok": true
+   },
+   "motions": {
+    "pick-and-place-v2-000056": {
+     "fixed": false,
+     "segments": [
+      {
+       "patches": 61,
+       "patches_out_of_search": 0,
+       "shift_px": 0.15242495915211324,
+       "shift_xy_px": [
+        0.09389457646167904,
+        0.12007154818526034
+       ],
+       "rot_deg": -0.031522393421779364,
+       "scale_ppm": 475.89161400428344,
+       "inlier_patches": 38,
+       "residual_median_px": 0.15814523708421896,
+       "fixed": false,
+       "reason": "in-plane rotation -0.0315 deg > 0.03"
+      }
+     ],
+     "max_shift_px": 0.15242495915211324,
+     "reason": "segment 0: in-plane rotation -0.0315 deg > 0.03"
+    },
+    "pick-and-place-v2-000058": {
+     "fixed": false,
+     "segments": [
+      {
+       "patches": 61,
+       "patches_out_of_search": 0,
+       "shift_px": 0.1741044891472269,
+       "shift_xy_px": [
+        0.10577108802751961,
+        0.13829262481669638
+       ],
+       "rot_deg": -0.03573518706519922,
+       "scale_ppm": 450.1799553813992,
+       "inlier_patches": 37,
+       "residual_median_px": 0.1580596001014354,
+       "fixed": false,
+       "reason": "in-plane rotation -0.0357 deg > 0.03"
+      }
+     ],
+     "max_shift_px": 0.1741044891472269,
+     "reason": "segment 0: in-plane rotation -0.0357 deg > 0.03"
+    },
+    "pick-and-place-v2-000063": {
+     "fixed": false,
+     "segments": [
+      {
+       "patches": 63,
+       "patches_out_of_search": 0,
+       "shift_px": 0.13522721726143971,
+       "shift_xy_px": [
+        0.06789116250423938,
+        0.11694952048681337
+       ],
+       "rot_deg": -0.03017359281078408,
+       "scale_ppm": 627.6055356144271,
+       "inlier_patches": 39,
+       "residual_median_px": 0.19914795900668208,
+       "fixed": false,
+       "reason": "in-plane rotation -0.0302 deg > 0.03"
+      }
+     ],
+     "max_shift_px": 0.13522721726143971,
+     "reason": "segment 0: in-plane rotation -0.0302 deg > 0.03"
+    },
+    "pick-and-place-v2-000066": {
+     "fixed": false,
+     "segments": [
+      {
+       "patches": 55,
+       "patches_out_of_search": 0,
+       "shift_px": 0.22104849339830673,
+       "shift_xy_px": [
+        0.14928960405175154,
+        0.16301855893036385
+       ],
+       "rot_deg": -0.03781064617609897,
+       "scale_ppm": 279.1100697974345,
+       "inlier_patches": 37,
+       "residual_median_px": 0.1051268973340749,
+       "fixed": false,
+       "reason": "in-plane rotation -0.0378 deg > 0.03"
+      }
+     ],
+     "max_shift_px": 0.22104849339830673,
+     "reason": "segment 0: in-plane rotation -0.0378 deg > 0.03"
+    },
+    "pick-and-place-v2-000067": {
+     "fixed": false,
+     "segments": [
+      {
+       "patches": 61,
+       "patches_out_of_search": 0,
+       "shift_px": 0.15383620075837756,
+       "shift_xy_px": [
+        0.09021605458628623,
+        0.12460593949991335
+       ],
+       "rot_deg": -0.03143492471750751,
+       "scale_ppm": 520.8081917822589,
+       "inlier_patches": 37,
+       "residual_median_px": 0.16833869058897954,
+       "fixed": false,
+       "reason": "in-plane rotation -0.0314 deg > 0.03"
+      }
+     ],
+     "max_shift_px": 0.15383620075837756,
+     "reason": "segment 0: in-plane rotation -0.0314 deg > 0.03"
+    },
+    "pick-and-place-v2-000068": {
+     "fixed": false,
+     "segments": [
+      {
+       "patches": 63,
+       "patches_out_of_search": 0,
+       "shift_px": 0.1355409702179823,
+       "shift_xy_px": [
+        0.07717354163442423,
+        0.11142530717584652
+       ],
+       "rot_deg": -0.030757766841261087,
+       "scale_ppm": 622.4273028365639,
+       "inlier_patches": 38,
+       "residual_median_px": 0.19005982408330546,
+       "fixed": false,
+       "reason": "in-plane rotation -0.0308 deg > 0.03"
+      }
+     ],
+     "max_shift_px": 0.1355409702179823,
+     "reason": "segment 0: in-plane rotation -0.0308 deg > 0.03"
+    },
+    "pick-and-place-v2-000071": {
+     "fixed": false,
+     "segments": [
+      {
+       "patches": 63,
+       "patches_out_of_search": 0,
+       "shift_px": 0.12333573464374262,
+       "shift_xy_px": [
+        0.07614516660210996,
+        0.0970237962731237
+       ],
+       "rot_deg": -0.030215039555632057,
+       "scale_ppm": 647.5639379774212,
+       "inlier_patches": 40,
+       "residual_median_px": 0.17034837236614506,
+       "fixed": false,
+       "reason": "in-plane rotation -0.0302 deg > 0.03"
+      }
+     ],
+     "max_shift_px": 0.12333573464374262,
+     "reason": "segment 0: in-plane rotation -0.0302 deg > 0.03"
+    },
+    "pick-and-place-v2-000073": {
+     "fixed": false,
+     "segments": [
+      {
+       "patches": 56,
+       "patches_out_of_search": 0,
+       "shift_px": 0.1677491698044813,
+       "shift_xy_px": [
+        0.10268618016365486,
+        0.13264739866838743
+       ],
+       "rot_deg": -0.032001405295977586,
+       "scale_ppm": 328.1307796539643,
+       "inlier_patches": 38,
+       "residual_median_px": 0.1219137184989925,
+       "fixed": false,
+       "reason": "in-plane rotation -0.0320 deg > 0.03"
+      }
+     ],
+     "max_shift_px": 0.1677491698044813,
+     "reason": "segment 0: in-plane rotation -0.0320 deg > 0.03"
+    },
+    "pick-and-place-v2-000075": {
+     "fixed": false,
+     "segments": [
+      {
+       "patches": 60,
+       "patches_out_of_search": 0,
+       "shift_px": 0.15132968337510125,
+       "shift_xy_px": [
+        0.10073047454338835,
+        0.11293380613736609
+       ],
+       "rot_deg": -0.030012435189121632,
+       "scale_ppm": 488.7996300226359,
+       "inlier_patches": 38,
+       "residual_median_px": 0.13818639156338072,
+       "fixed": false,
+       "reason": "in-plane rotation -0.0300 deg > 0.03"
+      }
+     ],
+     "max_shift_px": 0.15132968337510125,
+     "reason": "segment 0: in-plane rotation -0.0300 deg > 0.03"
+    },
+    "pick-and-place-v2-000077": {
+     "fixed": false,
+     "segments": [
+      {
+       "patches": 60,
+       "patches_out_of_search": 0,
+       "shift_px": 0.15470682461693444,
+       "shift_xy_px": [
+        0.10713038576849505,
+        0.11161219480033686
+       ],
+       "rot_deg": -0.030734832308736252,
+       "scale_ppm": 500.7554595969323,
+       "inlier_patches": 38,
+       "residual_median_px": 0.13601067956273794,
+       "fixed": false,
+       "reason": "in-plane rotation -0.0307 deg > 0.03"
+      }
+     ],
+     "max_shift_px": 0.15470682461693444,
+     "reason": "segment 0: in-plane rotation -0.0307 deg > 0.03"
+    },
+    "pick-and-place-v2-000081": {
+     "fixed": false,
+     "segments": [
+      {
+       "patches": 63,
+       "patches_out_of_search": 0,
+       "shift_px": 0.12576093338146865,
+       "shift_xy_px": [
+        0.07374769400952019,
+        0.10186800279408827
+       ],
+       "rot_deg": -0.030113511674143285,
+       "scale_ppm": 627.6125160673417,
+       "inlier_patches": 39,
+       "residual_median_px": 0.1786086254661759,
+       "fixed": false,
+       "reason": "in-plane rotation -0.0301 deg > 0.03"
+      }
+     ],
+     "max_shift_px": 0.12576093338146865,
+     "reason": "segment 0: in-plane rotation -0.0301 deg > 0.03"
+    },
+    "pick-and-place-v2-000086": {
+     "fixed": false,
+     "segments": [
+      {
+       "patches": 58,
+       "patches_out_of_search": 0,
+       "shift_px": 0.17189240871007563,
+       "shift_xy_px": [
+        0.11276916376033536,
+        0.12973093646831643
+       ],
+       "rot_deg": -0.032060599683718466,
+       "scale_ppm": 403.00533388907314,
+       "inlier_patches": 38,
+       "residual_median_px": 0.12741928772501016,
+       "fixed": false,
+       "reason": "in-plane rotation -0.0321 deg > 0.03"
+      }
+     ],
+     "max_shift_px": 0.17189240871007563,
+     "reason": "segment 0: in-plane rotation -0.0321 deg > 0.03"
+    }
+   },
+   "reason": "G5a: registration detects motion in 12 episodes ['pick-and-place-v2-000056', 'pick-and-place-v2-000058', 'pick-and-place-v2-000063', 'pick-and-place-v2-000066', 'pick-and-place-v2-000067', 'pick-and-place-v2-000068']"
+  },
+  {
+   "id": "G5a-registration-motion-135122076054",
+   "gate": "G5a",
+   "check": "g5a_registration_motion",
+   "cameras": [
+    "135122076054/color"
+   ],
+   "metric": "moved_episode_count",
+   "measured": 1,
+   "threshold": 0,
+   "thresholds": {
+    "max_shift_px": 0.25,
+    "max_rot_deg": 0.03,
+    "max_scale_ppm": 1000.0,
+    "min_inlier_patches": 6,
+    "min_inlier_fraction": 0.6
+   },
+   "registration": {
+    "episodes": 100,
+    "moved": [
+     "pick-and-place-v2-000003"
+    ],
+    "not_verifiable": [
+     "pick-and-place-v2-000004",
+     "pick-and-place-v2-000005",
+     "pick-and-place-v2-000006",
+     "pick-and-place-v2-000007",
+     "pick-and-place-v2-000008",
+     "pick-and-place-v2-000009",
+     "pick-and-place-v2-000010",
+     "pick-and-place-v2-000011",
+     "pick-and-place-v2-000012",
+     "pick-and-place-v2-000013",
+     "pick-and-place-v2-000014",
+     "pick-and-place-v2-000015",
+     "pick-and-place-v2-000016",
+     "pick-and-place-v2-000017",
+     "pick-and-place-v2-000018",
+     "pick-and-place-v2-000019",
+     "pick-and-place-v2-000020",
+     "pick-and-place-v2-000021",
+     "pick-and-place-v2-000022",
+     "pick-and-place-v2-000023",
+     "pick-and-place-v2-000024",
+     "pick-and-place-v2-000025",
+     "pick-and-place-v2-000026",
+     "pick-and-place-v2-000027",
+     "pick-and-place-v2-000028",
+     "pick-and-place-v2-000029",
+     "pick-and-place-v2-000030",
+     "pick-and-place-v2-000031",
+     "pick-and-place-v2-000032",
+     "pick-and-place-v2-000033",
+     "pick-and-place-v2-000034",
+     "pick-and-place-v2-000035",
+     "pick-and-place-v2-000036",
+     "pick-and-place-v2-000037",
+     "pick-and-place-v2-000038",
+     "pick-and-place-v2-000039",
+     "pick-and-place-v2-000040",
+     "pick-and-place-v2-000041",
+     "pick-and-place-v2-000042",
+     "pick-and-place-v2-000043",
+     "pick-and-place-v2-000044",
+     "pick-and-place-v2-000045",
+     "pick-and-place-v2-000046",
+     "pick-and-place-v2-000047",
+     "pick-and-place-v2-000048",
+     "pick-and-place-v2-000049",
+     "pick-and-place-v2-000050",
+     "pick-and-place-v2-000051",
+     "pick-and-place-v2-000052",
+     "pick-and-place-v2-000053",
+     "pick-and-place-v2-000054",
+     "pick-and-place-v2-000055",
+     "pick-and-place-v2-000056",
+     "pick-and-place-v2-000057",
+     "pick-and-place-v2-000058",
+     "pick-and-place-v2-000059",
+     "pick-and-place-v2-000060",
+     "pick-and-place-v2-000061",
+     "pick-and-place-v2-000062",
+     "pick-and-place-v2-000063",
+     "pick-and-place-v2-000064",
+     "pick-and-place-v2-000065",
+     "pick-and-place-v2-000066",
+     "pick-and-place-v2-000067",
+     "pick-and-place-v2-000068",
+     "pick-and-place-v2-000069",
+     "pick-and-place-v2-000070",
+     "pick-and-place-v2-000071",
+     "pick-and-place-v2-000072",
+     "pick-and-place-v2-000073",
+     "pick-and-place-v2-000074",
+     "pick-and-place-v2-000075",
+     "pick-and-place-v2-000076",
+     "pick-and-place-v2-000077",
+     "pick-and-place-v2-000078",
+     "pick-and-place-v2-000079",
+     "pick-and-place-v2-000080",
+     "pick-and-place-v2-000081",
+     "pick-and-place-v2-000082",
+     "pick-and-place-v2-000083",
+     "pick-and-place-v2-000084",
+     "pick-and-place-v2-000085",
+     "pick-and-place-v2-000086",
+     "pick-and-place-v2-000087",
+     "pick-and-place-v2-000088",
+     "pick-and-place-v2-000089",
+     "pick-and-place-v2-000090",
+     "pick-and-place-v2-000091",
+     "pick-and-place-v2-000092",
+     "pick-and-place-v2-000093",
+     "pick-and-place-v2-000094",
+     "pick-and-place-v2-000095",
+     "pick-and-place-v2-000096",
+     "pick-and-place-v2-000097",
+     "pick-and-place-v2-000098",
+     "pick-and-place-v2-000099"
+    ],
+    "reference_self_registration_ok": true
+   },
+   "motions": {
+    "pick-and-place-v2-000003": {
+     "fixed": false,
+     "segments": [
+      {
+       "patches": 17,
+       "patches_out_of_search": 0,
+       "shift_px": 0.2644595796641472,
+       "shift_xy_px": [
+        -0.24962514828885068,
+        -0.08732785705550498
+       ],
+       "rot_deg": 0.009811203845954275,
+       "scale_ppm": -379.79195457880934,
+       "inlier_patches": 15,
+       "residual_median_px": 0.06183351199871476,
+       "fixed": false,
+       "reason": "image shift 0.264 px > 0.25"
+      }
+     ],
+     "max_shift_px": 0.2644595796641472,
+     "reason": "segment 0: image shift 0.264 px > 0.25"
+    }
+   },
+   "reason": "G5a: registration detects motion in 1 episodes ['pick-and-place-v2-000003']"
+  }
+ ],
+ "retained": {
+  "episodes": 100,
+  "cameras": 3,
+  "excluded_episodes": [],
+  "excluded_cameras": []
+ },
+ "provenance": {
+  "criteria_commit": "599d85f4909de92ad694247e0cea9403542e346b",
+  "queue_sha256": "b19e31af181c779c167bf6ac9fe95c68995e627ddb40fcf7c4b752783149cec1",
+  "spec_sha256": "f8656b9adcd397e8ddb03f4485a005595202b8223a6f872669a5e63c9293f9ab",
+  "freeze_sha256": "85e9227e6ca7906f08030f279ab27a6935e4d1a6220d649963bcd0e66b1516c5",
+  "static_eval_sha256": "e252ee9bb2eb6cf8f8666e8673b4f696ce6fc33dd61ac98c6839de1d3aa2202a",
+  "fixedness_sha256": "b20184081fd797e691e47a9fc43f46bad11fba4fa78a96f55ca881f5f5e4e12a",
+  "dispatcher": "pnpv2-20261117-calib",
+  "publish_job": "pnpv2-20261117-calib-pick-and-place-v2-publish",
+  "evidence_root": "/home/compu/kaist/sunho/realworld/processed/pnpv2-20261117/calibration/pick-and-place-v2"
+ },
+ "document_evidence_sha256": "cdbad363f6ce5fb1c914a5da7a0504751e5eb3e0ef47d3d6550cc2852f85ea24",
+ "episode_aliases": {
+  "pick-and-place-v2-success-episode_000000": "pick-and-place-v2-000000",
+  "pick-and-place-v2-success-episode_000003": "pick-and-place-v2-000001",
+  "pick-and-place-v2-success-episode_000004": "pick-and-place-v2-000002",
+  "pick-and-place-v2-success-episode_000005": "pick-and-place-v2-000003",
+  "pick-and-place-v2-success-episode_000006": "pick-and-place-v2-000004",
+  "pick-and-place-v2-success-episode_000007": "pick-and-place-v2-000005",
+  "pick-and-place-v2-success-episode_000008": "pick-and-place-v2-000006",
+  "pick-and-place-v2-success-episode_000009": "pick-and-place-v2-000007",
+  "pick-and-place-v2-success-episode_000010": "pick-and-place-v2-000008",
+  "pick-and-place-v2-success-episode_000011": "pick-and-place-v2-000009",
+  "pick-and-place-v2-success-episode_000012": "pick-and-place-v2-000010",
+  "pick-and-place-v2-success-episode_000013": "pick-and-place-v2-000011",
+  "pick-and-place-v2-success-episode_000014": "pick-and-place-v2-000012",
+  "pick-and-place-v2-success-episode_000015": "pick-and-place-v2-000013",
+  "pick-and-place-v2-success-episode_000016": "pick-and-place-v2-000014",
+  "pick-and-place-v2-success-episode_000017": "pick-and-place-v2-000015",
+  "pick-and-place-v2-success-episode_000018": "pick-and-place-v2-000016",
+  "pick-and-place-v2-success-episode_000019": "pick-and-place-v2-000017",
+  "pick-and-place-v2-success-episode_000020": "pick-and-place-v2-000018",
+  "pick-and-place-v2-success-episode_000021": "pick-and-place-v2-000019",
+  "pick-and-place-v2-success-episode_000022": "pick-and-place-v2-000020",
+  "pick-and-place-v2-success-episode_000024": "pick-and-place-v2-000021",
+  "pick-and-place-v2-success-episode_000025": "pick-and-place-v2-000022",
+  "pick-and-place-v2-success-episode_000026": "pick-and-place-v2-000023",
+  "pick-and-place-v2-success-episode_000027": "pick-and-place-v2-000024",
+  "pick-and-place-v2-success-episode_000028": "pick-and-place-v2-000025",
+  "pick-and-place-v2-success-episode_000029": "pick-and-place-v2-000026",
+  "pick-and-place-v2-success-episode_000030": "pick-and-place-v2-000027",
+  "pick-and-place-v2-success-episode_000031": "pick-and-place-v2-000028",
+  "pick-and-place-v2-success-episode_000032": "pick-and-place-v2-000029",
+  "pick-and-place-v2-success-episode_000033": "pick-and-place-v2-000030",
+  "pick-and-place-v2-success-episode_000034": "pick-and-place-v2-000031",
+  "pick-and-place-v2-success-episode_000035": "pick-and-place-v2-000032",
+  "pick-and-place-v2-success-episode_000036": "pick-and-place-v2-000033",
+  "pick-and-place-v2-success-episode_000037": "pick-and-place-v2-000034",
+  "pick-and-place-v2-success-episode_000038": "pick-and-place-v2-000035",
+  "pick-and-place-v2-success-episode_000039": "pick-and-place-v2-000036",
+  "pick-and-place-v2-success-episode_000040": "pick-and-place-v2-000037",
+  "pick-and-place-v2-success-episode_000041": "pick-and-place-v2-000038",
+  "pick-and-place-v2-success-episode_000042": "pick-and-place-v2-000039",
+  "pick-and-place-v2-success-episode_000043": "pick-and-place-v2-000040",
+  "pick-and-place-v2-success-episode_000045": "pick-and-place-v2-000041",
+  "pick-and-place-v2-success-episode_000046": "pick-and-place-v2-000042",
+  "pick-and-place-v2-success-episode_000047": "pick-and-place-v2-000043",
+  "pick-and-place-v2-success-episode_000048": "pick-and-place-v2-000044",
+  "pick-and-place-v2-success-episode_000049": "pick-and-place-v2-000045",
+  "pick-and-place-v2-success-episode_000050": "pick-and-place-v2-000046",
+  "pick-and-place-v2-success-episode_000051": "pick-and-place-v2-000047",
+  "pick-and-place-v2-success-episode_000052": "pick-and-place-v2-000048",
+  "pick-and-place-v2-success-episode_000053": "pick-and-place-v2-000049",
+  "pick-and-place-v2-success-episode_000054": "pick-and-place-v2-000050",
+  "pick-and-place-v2-success-episode_000055": "pick-and-place-v2-000051",
+  "pick-and-place-v2-success-episode_000056": "pick-and-place-v2-000052",
+  "pick-and-place-v2-success-episode_000057": "pick-and-place-v2-000053",
+  "pick-and-place-v2-success-episode_000058": "pick-and-place-v2-000054",
+  "pick-and-place-v2-success-episode_000060": "pick-and-place-v2-000055",
+  "pick-and-place-v2-success-episode_000061": "pick-and-place-v2-000056",
+  "pick-and-place-v2-success-episode_000062": "pick-and-place-v2-000057",
+  "pick-and-place-v2-success-episode_000063": "pick-and-place-v2-000058",
+  "pick-and-place-v2-success-episode_000064": "pick-and-place-v2-000059",
+  "pick-and-place-v2-success-episode_000065": "pick-and-place-v2-000060",
+  "pick-and-place-v2-success-episode_000066": "pick-and-place-v2-000061",
+  "pick-and-place-v2-success-episode_000067": "pick-and-place-v2-000062",
+  "pick-and-place-v2-success-episode_000068": "pick-and-place-v2-000063",
+  "pick-and-place-v2-success-episode_000069": "pick-and-place-v2-000064",
+  "pick-and-place-v2-success-episode_000070": "pick-and-place-v2-000065",
+  "pick-and-place-v2-success-episode_000071": "pick-and-place-v2-000066",
+  "pick-and-place-v2-success-episode_000072": "pick-and-place-v2-000067",
+  "pick-and-place-v2-success-episode_000073": "pick-and-place-v2-000068",
+  "pick-and-place-v2-success-episode_000074": "pick-and-place-v2-000069",
+  "pick-and-place-v2-success-episode_000075": "pick-and-place-v2-000070",
+  "pick-and-place-v2-success-episode_000076": "pick-and-place-v2-000071",
+  "pick-and-place-v2-success-episode_000077": "pick-and-place-v2-000072",
+  "pick-and-place-v2-success-episode_000078": "pick-and-place-v2-000073",
+  "pick-and-place-v2-success-episode_000079": "pick-and-place-v2-000074",
+  "pick-and-place-v2-success-episode_000080": "pick-and-place-v2-000075",
+  "pick-and-place-v2-success-episode_000081": "pick-and-place-v2-000076",
+  "pick-and-place-v2-success-episode_000082": "pick-and-place-v2-000077",
+  "pick-and-place-v2-success-episode_000083": "pick-and-place-v2-000078",
+  "pick-and-place-v2-success-episode_000084": "pick-and-place-v2-000079",
+  "pick-and-place-v2-success-episode_000085": "pick-and-place-v2-000080",
+  "pick-and-place-v2-success-episode_000086": "pick-and-place-v2-000081",
+  "pick-and-place-v2-success-episode_000087": "pick-and-place-v2-000082",
+  "pick-and-place-v2-success-episode_000088": "pick-and-place-v2-000083",
+  "pick-and-place-v2-success-episode_000089": "pick-and-place-v2-000084",
+  "pick-and-place-v2-success-episode_000090": "pick-and-place-v2-000085",
+  "pick-and-place-v2-success-episode_000091": "pick-and-place-v2-000086",
+  "pick-and-place-v2-success-episode_000092": "pick-and-place-v2-000087",
+  "pick-and-place-v2-success-episode_000093": "pick-and-place-v2-000088",
+  "pick-and-place-v2-success-episode_000096": "pick-and-place-v2-000089",
+  "pick-and-place-v2-success-episode_000097": "pick-and-place-v2-000090",
+  "pick-and-place-v2-success-episode_000098": "pick-and-place-v2-000091",
+  "pick-and-place-v2-success-episode_000099": "pick-and-place-v2-000092",
+  "pick-and-place-v2-success-episode_000100": "pick-and-place-v2-000093",
+  "pick-and-place-v2-success-episode_000101": "pick-and-place-v2-000094",
+  "pick-and-place-v2-success-episode_000102": "pick-and-place-v2-000095",
+  "pick-and-place-v2-success-episode_000103": "pick-and-place-v2-000096",
+  "pick-and-place-v2-success-episode_000104": "pick-and-place-v2-000097",
+  "pick-and-place-v2-success-episode_000105": "pick-and-place-v2-000098",
+  "pick-and-place-v2-success-episode_000107": "pick-and-place-v2-000099"
+ },
+ "fixedness_config": {
+  "frames": 40,
+  "segments": 1,
+  "dynamic_dilate_px": 8,
+  "patch": 48,
+  "stride": 24,
+  "search_px": 6,
+  "max_dynamic_fraction": 0.1,
+  "min_gradient": 2.0,
+  "max_shift_px": 0.25,
+  "max_rot_deg": 0.03,
+  "max_scale_ppm": 1000.0,
+  "min_inlier_patches": 6,
+  "min_inlier_fraction": 0.6
+ },
+ "user_decisions": [
+  {
+   "date": "2026-11-18 ~11:55 KST",
+   "kind": "Explicit Option A after sensitivity evidence",
+   "text": "A",
+   "intent": "Accept the held pick-and-place-v2 rig calibration for OFFLINE use via a narrow task-specific override, same form as drawer-open-v2 Option 2. Keep all 100 episodes and 3 cameras; preserve failed automatic verdicts, records, thresholds and hashes. No global threshold weakening; validated_by_override, never automatic acceptance. Robot execution not authorized. Then Phase B -> geometry wave."
+  }
+ ],
+ "sensitivity_check": {
+  "result": "Original hold and drawer-style >2x sensitivity stop marker remain; G5a physical motion unresolved and 076054 96% unverifiable.",
+  "accepted_by_user": true,
+  "artifacts": [
+   {
+    "path": "/home/ws/ws/realworld-ops/pnpv2-20261117/calib-sensitivity-20261118/RESULT.md",
+    "sha256": "894482864533fa182fce93aa36ace550308a1bdc9259c7f8b8c1f219a397ad34"
+   },
+   {
+    "path": "/home/ws/ws/realworld-ops/pnpv2-20261117/calib-sensitivity-20261118/sensitivity.json",
+    "sha256": "72208e9d7640c455a59fc0d7393c4c6393444e9b2dcb4adfb3d86c9552214115"
+   },
+   {
+    "path": "/home/ws/ws/realworld-ops/pnpv2-20261117/calib-sensitivity-20261118/evidence-manifest.json",
+    "sha256": "9685e5895112339f8ca99688b92cdc23d288c0607ee7b54b162a53408b4b710f"
+   }
+  ]
+ },
+ "reference_sha256": "7ea4f3a6440a7a8ddb789f51e6a23af04efecd36f4c3b75c04090013ec76ee2a"
+}
