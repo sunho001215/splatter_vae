@@ -1,8 +1,6 @@
-"""Read-only capacity priority for the existing remote prep hold writer.
+"""Read-only prep priority for pinned intents and ready rows that fit current MIG capacity.
 
-No persisted campaign reservations: prep's own admission remains unaffected.
-Read durable intents again at planning/replay/dispatch; live containers are
-already charged as co-tenants. Unreadable or ambiguous evidence fails closed.
+Reserve full host demand through the first budget overflow, then defer later unpinned rows.
 """
 import json
 import math
@@ -10,6 +8,7 @@ import shlex
 from pathlib import Path
 
 from ops.jobs import admission_pause
+from ops.jobs.priority import HOST_RESOURCES
 from ops.jobs.rwprep_mig import digest, validate
 
 GATES = '''
@@ -96,23 +95,37 @@ def ready_rows(snapshot, client=None):
 
 
 def reserve(policy, snapshot, client=None):
-    """Reserve distinct MIGs plus full host demand before any campaign or pool row.
+    """Reserve pinned demand and place ready prep against current device occupancy.
 
-    Prefer empty devices. If there are more ready jobs than available devices,
-    keep all remaining devices and the full host demand reserved. No live job
-    is stopped or moved. These reservations outrank every campaign priority.
+    Keep full host demand through the first budget overflow, skipping later unpinned rows.
     """
     rows = ready_rows(snapshot, client)
     policy.reservations = {k: v for k, v in policy.reservations.items() if not k.startswith('prep:')}
-    used, slots = set(), policy.slots()
+    live = policy.slots()
+    slots = {g: dict(jobs=live.get(g, {}).get('jobs', 0),
+                     mem_gb=live.get(g, {}).get('mem_gb', 0)) for g in policy.limits}
+    free, held = policy.remaining(), dict.fromkeys(HOST_RESOURCES, 0.0)
+    host_full = False
     for row in rows:
         devices = policy.devices(row)
         if not devices:
             raise ValueError('ready prep has no compatible remote MIG')
-        available = [g for g in devices if g not in used]
-        gpu = min(available, key=lambda g: (slots.get(g, {}).get('jobs', 0) != 0,
-                  slots.get(g, {}).get('mem_gb', 0), list(policy.limits).index(g))) if available else None
-        used.add(gpu)
-        policy.reservations['prep:' + row['id']] = dict(
-            gpu=gpu, priority=float('-inf'), need={k: row[k] for k in ('ram_gb', 'cpu_threads', 'disk_gb')})
+        if row['gpu'] != 'any':
+            gpu = row['gpu']
+        else:
+            if host_full:
+                continue
+            available = [g for g in devices if slots[g]['jobs'] < int(policy.limits[g]['max_jobs'])
+                         and slots[g]['mem_gb'] + float(row['mem_gb']) <= float(policy.limits[g]['max_mem_gb'])]
+            if not available:
+                continue
+            gpu = min(available, key=lambda g: (slots[g]['jobs'] != 0, slots[g]['mem_gb'],
+                                              list(policy.limits).index(g)))
+        need = {k: row[k] for k in HOST_RESOURCES}
+        policy.reservations['prep:' + row['id']] = dict(gpu=gpu, priority=float('-inf'), need=need)
+        slots[gpu]['jobs'] += 1
+        slots[gpu]['mem_gb'] += float(row['mem_gb'])
+        for k in HOST_RESOURCES:
+            held[k] += float(need[k])
+        host_full = any(held[k] > free.get(k, 0) for k in HOST_RESOURCES)
     return policy

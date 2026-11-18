@@ -19,12 +19,14 @@ def bundle(tmp_path, name='batch', statuses=('pending',), **overrides):
     root.mkdir()
     jobs = [dict(id=f'rwv2-20261113-prep-{name}-{i}', gpu_profile='1g.24gb', gpu_gib=16,
                  ram_gib=48, cpus=4, disk_gib=32, inputs={'/raw': 'a'*64},
-                 steps=[{'kind': 'rwprep', 'argv': []}], **overrides) for i in range(len(statuses))]
+                 steps=[{'kind': 'rwprep', 'argv': []}]) for i in range(len(statuses))]
+    for job in jobs:
+        job.update(overrides)
     config = dict(host='remote', image='sha256:'+'b'*64, commit='c'*40,
                   jobs=str(root/'jobs.json'), state_dir=str(root/'state'))
     atomic(config['jobs'], jobs)
     atomic(root/'dispatcher.json', config)
-    states = {j['id']: dict(status=s, gpu=GPUS[i], container=f'prep-{name}-{i}')
+    states = {j['id']: dict(status=s, gpu=GPUS[i % len(GPUS)], container=f'prep-{name}-{i}')
               for i, (j, s) in enumerate(zip(jobs, statuses))}
     atomic(root/'state/state.json', dict(queue_sha256=digest(config['jobs']), jobs=states))
     atomic(pauses.PREP_PRIORITY_DIR/(name+'.json'), dict(active=True, host='remote', state_dir=config['state_dir']))
@@ -222,12 +224,93 @@ def test_changed_queue_or_missing_state_fails_closed(tmp_path):
         prep.reserve(policy(), snapshot())
 
 
-def test_more_ready_than_migs_reserves_all_capacity_and_full_host_demand(tmp_path):
+def test_more_ready_than_migs_reserves_only_device_placed_host_demand(tmp_path):
     bundle(tmp_path, statuses=('pending',)*3)
     p = prep.reserve(policy(gpus=GPUS[:2]), snapshot())
-    assert len(p.reservations) == 3
-    assert not any(p.allows(campaign(g),g) for g in GPUS[:2])
-    assert sum(r['need']['ram_gb'] for r in p.reservations.values()) == 144
+    assert len(p.reservations) == 2
+    assert {r['gpu'] for r in p.reservations.values()} == set(GPUS[:2])
+    assert not any(p.allows(campaign(g), g) for g in GPUS[:2])
+    assert sum(r['need']['ram_gb'] for r in p.reservations.values()) == 96
+
+
+def test_large_prep_backlog_leaves_campaign_device_and_host_capacity(tmp_path):
+    bundle(tmp_path, statuses=('pending',)*31)
+    slots = {GPUS[-1]: dict(jobs=1, mem_gb=8)}
+    free = dict(ram_gb=703, cpu_threads=320, disk_gb=1000)
+    p = prep.reserve(policy(gpus=[*GPUS[:2], GPUS[-1]], slots=slots, free=free), snapshot())
+    assert list(p.reservations.values()) == [
+        dict(gpu=g, priority=float('-inf'), need=dict(ram_gb=48, cpu_threads=4, disk_gb=32))
+        for g in GPUS[:2]]
+    small = {**campaign(), 'ram_gb': 8, 'mem_gb': 2}
+    assert p.allows(small, GPUS[-1])
+    assert not any(p.allows(small, g) for g in GPUS[:2])
+
+
+@pytest.mark.parametrize('resource,demand', [('ram_gb', 48), ('cpu_threads', 4), ('disk_gb', 32)])
+@pytest.mark.parametrize('fitting', [0, 1])
+def test_host_shortfall_reserves_first_overflow_and_stops_later_rows(tmp_path, resource, demand, fitting):
+    _, jobs, _ = bundle(tmp_path, statuses=('pending',)*4)
+    free = dict(ram_gb=1000, cpu_threads=320, disk_gb=1000)
+    free[resource] = (fitting + .5) * demand
+    p = prep.reserve(policy(gpus=GPUS[:4], free=free), snapshot())
+    held = list(p.reservations.values())
+    assert len(held) == fitting + 1
+    assert all(key.endswith(job['id']) for key, job in zip(p.reservations, jobs))
+    assert sum(r['need'][resource] for r in held) == (fitting + 1) * demand
+    assert not p.allows(campaign(GPUS[-1]), GPUS[-1])
+
+
+@pytest.mark.parametrize('mem_gb,max_jobs,max_mem_gb,per_device', [(7, 4, 21, 3), (5, 2, 21.5, 2)])
+def test_small_prep_rows_pack_until_device_memory_or_job_limit(tmp_path, mem_gb, max_jobs, max_mem_gb, per_device):
+    bundle(tmp_path, statuses=('pending',)*7, gpu_gib=mem_gb, ram_gib=8, cpus=1)
+    p = policy(gpus=GPUS[:2])
+    for limit in p.limits.values():
+        limit.update(max_jobs=max_jobs, max_mem_gb=max_mem_gb)
+    prep.reserve(p, snapshot())
+    held = list(p.reservations.values())
+    assert [r['gpu'] for r in held] == GPUS[:2] * per_device
+    assert sum(r['need']['ram_gb'] for r in held) == 8 * 2 * per_device
+
+
+def test_live_device_memory_and_job_occupancy_are_respected(tmp_path):
+    bundle(tmp_path, statuses=('pending',)*2)
+    slots = {GPUS[0]: dict(jobs=1, mem_gb=8), GPUS[1]: dict(jobs=4, mem_gb=1),
+             GPUS[2]: dict(jobs=1, mem_gb=1)}
+    p = prep.reserve(policy(gpus=GPUS[:3], slots=slots), snapshot())
+    assert [r['gpu'] for r in p.reservations.values()] == [GPUS[2]]
+    assert slots == {GPUS[0]: dict(jobs=1, mem_gb=8), GPUS[1]: dict(jobs=4, mem_gb=1),
+                     GPUS[2]: dict(jobs=1, mem_gb=1)}
+
+
+def test_pinned_launching_rows_always_reserve_full_demand(tmp_path):
+    root, _, states = bundle(tmp_path, statuses=('pending', 'launching', 'launching'))
+    for state in states.values():
+        state['gpu'] = GPUS[0]
+    atomic(root/'state/state.json', dict(queue_sha256=digest(root/'jobs.json'), jobs=states))
+    slots = {GPUS[0]: dict(jobs=4, mem_gb=21.5)}
+    free = dict(ram_gb=24, cpu_threads=320, disk_gb=1000)
+    p = prep.reserve(policy(gpus=GPUS[:2], slots=slots, free=free), snapshot())
+    assert list(p.reservations.values()) == [
+        dict(gpu=GPUS[0], priority=float('-inf'), need=dict(ram_gb=48, cpu_threads=4, disk_gb=32))] * 2
+
+
+def test_pinned_host_demand_counts_toward_first_unpinned_overflow(tmp_path):
+    _, jobs, _ = bundle(tmp_path, statuses=('pending', 'pending', 'launching', 'pending'))
+    free = dict(ram_gb=72, cpu_threads=320, disk_gb=1000)
+    p = prep.reserve(policy(gpus=GPUS[:4], free=free), snapshot())
+    assert [key.rsplit(':', 1)[-1] for key in p.reservations] == [jobs[2]['id'], jobs[0]['id']]
+    assert [r['gpu'] for r in p.reservations.values()] == [GPUS[2], GPUS[0]]
+
+
+def test_incompatible_ready_row_still_raises_after_host_overflow(tmp_path):
+    bundle(tmp_path, name='first')
+    bundle(tmp_path, name='second', gpu_gib=21)
+    free = dict(ram_gb=24, cpu_threads=320, disk_gb=1000)
+    p = policy(free=free)
+    for limit in p.limits.values():
+        limit['max_mem_gb'] = 20
+    with pytest.raises(ValueError, match='^ready prep has no compatible remote MIG$'):
+        prep.reserve(p, snapshot())
 
 
 def test_inactive_batch_can_become_ready_before_next_prep_writer_tick(tmp_path):
