@@ -373,6 +373,7 @@ def adoption_tool(tmp_path, monkeypatch):
     return SimpleNamespace(verify=verify, report=report)
 
 
+@pytest.mark.local_host_data  # loads runs/setup/tools from the local checkout (masked by the runs/ mount remotely)
 def test_adoption_tool_keeps_every_complete_run_check(adoption_tool):
     assert adoption_tool.verify()["counts"]["passed"] == 2
     assert adoption_tool.verify(release_gate={"accepted": True, "mode": "full"})["counts"]["passed"] == 2
@@ -384,6 +385,7 @@ def test_adoption_tool_keeps_every_complete_run_check(adoption_tool):
         adoption_tool.verify(full_suite_passed=False)
 
 
+@pytest.mark.local_host_data  # loads runs/setup/tools from the local checkout (masked by the runs/ mount remotely)
 def test_adoption_tool_adopts_selective_evidence_only_after_its_re_verification(adoption_tool, monkeypatch):
     import test_gate as tool_gate  # the module object the tool imports from scripts/
 

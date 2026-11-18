@@ -90,6 +90,7 @@ def evidence_files(repo, adopter):
     return commit(repo, "original evidence")
 
 
+@pytest.mark.local_host_data  # loads runs/setup/tools from the local checkout (masked by the runs/ mount remotely)
 def test_evidence_only_candidate_binds_original_head_without_rewriting(repo, adopter):
     produced = evidence_files(repo, adopter)
     evidence = dict(head=produced, source_sha256=baseline.test_gate.commit_sources(repo, produced))
@@ -104,6 +105,7 @@ def test_evidence_only_candidate_binds_original_head_without_rewriting(repo, ado
         adopter.evidence_commit(repo, commit(repo, "code change"), evidence)
 
 
+@pytest.mark.local_host_data  # loads runs/setup/tools from the local checkout (masked by the runs/ mount remotely)
 @pytest.mark.parametrize("change", ["other_doc", "rename", "delete", "symlink"])
 def test_evidence_candidate_rejects_other_paths_and_nonregular_files(repo, adopter, change):
     produced = evidence_files(repo, adopter)
@@ -122,6 +124,7 @@ def test_evidence_candidate_rejects_other_paths_and_nonregular_files(repo, adopt
         adopter.evidence_commit(repo, commit(repo), evidence)
 
 
+@pytest.mark.local_host_data  # loads runs/setup/tools from the local checkout (masked by the runs/ mount remotely)
 def test_main_dirty_evidence_is_backed_up_and_restored_on_failure(repo, adopter):
     evidence_files(repo, adopter)
     paths = [repo / name for name in adopter.EVIDENCE_FILES]
@@ -140,6 +143,7 @@ def test_main_dirty_evidence_is_backed_up_and_restored_on_failure(repo, adopter)
     assert git(repo, "write-tree") == index
 
 
+@pytest.mark.local_host_data  # loads runs/setup/tools from the local checkout (masked by the runs/ mount remotely)
 def test_dirty_evidence_no_longer_blocks_ff_merge_and_backup_survives(repo, adopter):
     evidence_files(repo, adopter)
     git(repo, "checkout", "-qb", "candidate")
@@ -155,6 +159,7 @@ def test_dirty_evidence_no_longer_blocks_ff_merge_and_backup_survives(repo, adop
     assert git(repo, "rev-parse", "HEAD") == candidate
 
 
+@pytest.mark.local_host_data  # loads runs/setup/tools from the local checkout (masked by the runs/ mount remotely)
 def test_staged_main_evidence_is_refused_without_changing_index(repo, adopter):
     evidence_files(repo, adopter)
     (repo / "docs/tests.json").write_text("staged report\n")
@@ -167,6 +172,7 @@ def test_staged_main_evidence_is_refused_without_changing_index(repo, adopter):
     assert (repo / "docs/tests.json").read_text() == "staged report\n"
 
 
+@pytest.mark.local_host_data  # loads runs/setup/tools from the local checkout (masked by the runs/ mount remotely)
 def test_selective_adopter_reverifies_the_tested_head_of_evidence_only_candidate(repo, adopter, monkeypatch):
     import test_gate
 
