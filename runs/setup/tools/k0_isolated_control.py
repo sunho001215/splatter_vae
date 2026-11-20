@@ -31,6 +31,35 @@ def pause_document(raw, active):
     return (json.dumps(doc, indent=2) + '\n').encode()
 
 
+def check_history(events, grant, snapshot):
+    """First publication stays never-launched; a retry binds reviewed failed history.
+
+    No reset, exemption or re-pin: normal scheduler failure accounting and resume
+    arguments still govern the next attempt. Any new target event requires review.
+    """
+    expected = grant.get('retry_history', {})
+    if not set(expected) <= {i for i in release.IDS if '-pre-ours-' in i}:
+        raise ValueError('retry history must name only exact pre rows')
+    if set(events) != set(expected):
+        raise ValueError('activation registry history differs from reviewed grant')
+    for identity, history in events.items():
+        if release.digest(release.canonical(history)) != expected[identity]:
+            raise ValueError('activation registry history changed')
+        if (len(history) != 2 or [e['event'] for e in history] != ['launched', 'exited']
+                or any(e.get('host') != 'local' or e.get('attempt') != 1 for e in history)
+                or type(history[1].get('code')) is not int or history[1]['code'] == 0
+                or history[0].get('commit') != release.COMMIT
+                or history[0].get('isolated_source_root') != snapshot['code_root']
+                or history[0].get('acceptance_kind') != grant['kind']):
+            raise ValueError('retry requires one confirmed failed isolated local attempt')
+        row = grant['rows'][identity]['row']
+        argv = row.get('args', [])
+        if (int(row.get('max_restarts', 1)) < 1 or '--resume' not in argv
+                or argv.index('--resume') + 1 >= len(argv)
+                or argv[argv.index('--resume') + 1] != 'auto'):
+            raise ValueError('retry requires normal remaining restart budget and resume auto')
+
+
 def plan(mode, candidate, root=release.MAIN):
     import yaml
     target = root / 'runs/setup/k0-isolated-release.json'
@@ -49,17 +78,22 @@ def plan(mode, candidate, root=release.MAIN):
         release.check_row(rows[identity], grant)
     pauses = root / 'runs/setup/admission-pauses.json'
     raw = pauses.read_bytes()
+    if mode == 'activate' and grant.get('retry_history'):
+        held = [p for p in json.loads(raw)['pauses'] if p.get('name') == 'k0-20261120-held']
+        if len(held) != 1 or held[0].get('active') is not True:
+            raise ValueError('reactivation requires the original exact-nine hold active')
     after = pause_document(raw, mode == 'rollback')
     registry = root / 'experiments/registry.jsonl'
     token = revision(registry)
     if mode == 'activate':
-        # All parsing precedes all shared locks. First publication only: retries
-        # thereafter use this same grant; an activation never re-pins started rows.
+        # All parsing precedes shared locks; history and queue stay read-only.
+        events = {}
         for line in registry.open('rb'):
             if b'rwk0-20261120-' in line:
                 event = json.loads(line)
                 if event.get('id') in release.IDS:
-                    raise ValueError('activation requires never-launched exact-nine rows')
+                    events.setdefault(event['id'], []).append(event)
+        check_history(events, grant, snapshot)
     if revision(registry) != token:
         raise ValueError('registry changed during preparation; retry later')
     if target.exists() and target.read_bytes() != Path(candidate).read_bytes():
