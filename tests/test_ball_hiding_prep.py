@@ -152,3 +152,125 @@ print(json.dumps(staged))''')
     assert phase['jobs'][0]['external_states']=={
         '/home/compu/kaist/sunho/realworld/configs/bh-20261120-normalize/state/state.json':[norm['jobs'][0]['id']]}
     assert norm['jobs'][0]['steps'][0]['argv'][-1]=='ingest'
+
+
+def test_bh_geometry_snapshot_release_measure_and_verified_upload(tmp_path):
+    # Execute established geometry integration fixtures AFTER selecting BH, in a separate CPU process.
+    result=isolated(f'''from s4d.rwlearn.ball_hiding import bootstrap;bootstrap()
+import contextlib,io,json,pytest
+from pathlib import Path
+from tests import test_pnpv2_geometry_route as T
+root=Path({str(tmp_path)!r})
+with contextlib.redirect_stdout(io.StringIO()):
+    with pytest.MonkeyPatch.context() as mp:
+        c=T.campaign.__wrapped__(root/'worker',mp)
+        T.test_remote_worker_runs_snapshot_release_publish_measure_and_resumes(c,mp)
+    with pytest.MonkeyPatch.context() as mp:
+        c=T.campaign.__wrapped__(root/'mirror',mp)
+        publication=T.publication.__wrapped__(c,mp)
+        T.test_fetch_verifies_full_compact_closure_and_mirrors_canonical_row_paths(publication,mp)
+print(json.dumps({{'snapshot_release_measure':True,'verified_geometry_upload':True,'task':T.TASK}}))''')
+    assert result == dict(snapshot_release_measure=True,verified_geometry_upload=True,task='ball-hiding')
+
+
+@pytest.mark.parametrize('decision',['held','override'])
+def test_bh_held_or_override_rig_refused_before_publication(tmp_path,decision):
+    result=isolated(f'''from s4d.rwlearn.ball_hiding import bootstrap;bootstrap()
+import contextlib,io,json,pytest
+from pathlib import Path
+from tests import test_pnpv2_geometry_route as T
+with contextlib.redirect_stdout(io.StringIO()):
+    with pytest.MonkeyPatch.context() as mp:
+        c=T.campaign.__wrapped__(Path({str(tmp_path)!r}),mp)
+        T.test_worker_refuses_rig_holds_and_acceptance_overrides_before_publication(c,mp,{decision!r})
+print('true')''')
+    assert result is True
+
+
+def test_calibration_plan_changes_only_task_namespace(tmp_path):
+    from scripts.realworld_dsreset_calibration import plan
+    import yaml
+    jobs_by_task={}
+    for task,release in [('pick-and-place-v2','pnpv2-20261117'),('ball-hiding','bh-20261120')]:
+        root=tmp_path/task;root.mkdir()
+        source=[]
+        for i in range(100):
+            ep=f'{task}-success-episode_{i:06d}'
+            cfg=root/f'{i}.yaml';cfg.write_text(yaml.safe_dump({'output_root':f'/processed/{release}/{ep}'}))
+            source.append({'id':f'{release}-prepA-{ep}','episode':ep,'inputs':{str(cfg):'a'*64}})
+        (root/'jobs.json').write_text(json.dumps(source))
+        (root/'dispatcher.json').write_text(json.dumps({'jobs':str(root/'jobs.json'),'commit':'a'*40,
+            'state_dir':str(root/'phase-state'),'priority_file':str(root/'priority/bundle.json')}))
+        out,work=root/'calib',root/'calib-work'
+        plan(root/'dispatcher.json',task,out,work,root/'upstream',stem=f'{release}-calib')
+        freeze=json.loads((out/'FREEZE.json').read_text())
+        assert freeze['protocol']=='rig_loma-release/2'
+        assert 'no task exceptions' in freeze['selection']
+        rows=json.loads((out/'jobs.json').read_text())
+        # Compare scientific commands/dependency topology, excluding intentionally task-bound file hashes.
+        projected=[{k:v for k,v in row.items() if k!='inputs'} for row in rows]
+        text=json.dumps(projected,sort_keys=True).replace(str(root),'<task-root>').replace(task,'<task>').replace(release,'<release>')
+        jobs_by_task[task]=text
+    assert jobs_by_task['ball-hiding']==jobs_by_task['pick-and-place-v2']
+
+
+def test_raw_upload_rehashes_existing_files_and_never_overwrites_conflicts(tmp_path, monkeypatch):
+    from tools.ball_hiding import upload_raw as U
+    root=tmp_path/'success';root.mkdir()
+    names=[f'episode_{i:06d}.h5' for i in range(102) if i not in (25,54)]
+    sums={}
+    for name in names:
+        path=root/name;path.write_bytes(name.encode());sums[name]=U.digest(path)
+    text=''.join(f'{s}  {n}\n' for n,s in sums.items())
+    root.with_name('success.VERIFIED').write_text('verified')
+    for suffix in ('.local.sha256','.robotpc.sha256'):Path(str(root)+suffix).write_text(text)
+    class Client:
+        def remote_path(self,p):return '/remote/data/real_world'
+        def checked_ssh(self,*a,**kw):pass
+        def _remote_checksum(self,path,allow_missing=False):return sums[Path(path).name]
+    monkeypatch.setattr(U.subprocess,'run',lambda *a,**kw:pytest.fail('existing canonical files must not be transferred'))
+    out=tmp_path/'upload'
+    U.upload(root,out,Client())
+    assert json.loads((out/'ball-hiding__success.REMOTE_VERIFIED').read_text())['verified']==100
+    class Conflict(Client):
+        def _remote_checksum(self,*a,**kw):return '0'*64
+    conflict=tmp_path/'conflict'
+    with pytest.raises(AssertionError,match='canonical file differs'):
+        U.upload(root,conflict,Conflict())
+    assert not (conflict/'ball-hiding__success.REMOTE_VERIFIED').exists()
+
+
+def test_raw_upload_uncapped_partial_resume_and_postpublish_hash(tmp_path, monkeypatch):
+    from tools.ball_hiding import upload_raw as U
+    from types import SimpleNamespace
+    root=tmp_path/'success';root.mkdir();remote=tmp_path/'remote';remote.mkdir()
+    sums={}
+    for i in range(102):
+        if i in (25,54):continue
+        name=f'episode_{i:06d}.h5';(root/name).write_bytes(name.encode());sums[name]=U.digest(root/name)
+    text=''.join(f'{sha}  {name}\n' for name,sha in sums.items())
+    for suffix in ('.local.sha256','.robotpc.sha256'):Path(str(root)+suffix).write_text(text)
+    root.with_name('success.VERIFIED').write_text('verified')
+    missing=next(iter(sums));canonical={n:s for n,s in sums.items() if n!=missing};parts={};calls=[]
+    class Client:
+        target='fake-host'
+        def remote_path(self,p):return '/remote/data/real_world'
+        def ssh_args(self):return ['ssh','fake-host']
+        def _environment(self):return {}
+        def _redact(self,s):return s
+        def _remote_checksum(self,p,allow_missing=False):
+            return parts.get(Path(p).name) if p.endswith('.part') else canonical.get(Path(p).name)
+        def checked_ssh(self,cmd,**kw):
+            if cmd.startswith('mv -n'):
+                canonical[missing]=parts[missing+'.part']
+    def transfer(args,**kw):
+        calls.append(args)
+        assert '--partial' in args and '--append-verify' in args
+        assert not any(x.startswith('--bwlimit') for x in args)
+        parts[missing+'.part']=sums[missing]
+        return SimpleNamespace(returncode=0,stderr='')
+    monkeypatch.setattr(U.subprocess,'run',transfer)
+    out=tmp_path/'upload';U.upload(root,out,Client())
+    assert len(calls)==1 and canonical==sums
+    assert json.loads((out/'remote-sha256.json').read_text())==sums
+    assert (out/'ball-hiding__success.REMOTE_VERIFIED').is_file()

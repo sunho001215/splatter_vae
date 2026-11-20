@@ -54,7 +54,7 @@ def wait(bundle,*upstreams):
 def rgb():
     tick('normalize')
     if not (WORK/'rgb-remote/dispatcher.json').exists():entry('rgb-remote')
-    tick('normalize');tick('rgb-remote');wait('rgb-remote','normalize')
+    tick('rgb-remote');wait('rgb-remote','normalize')
     if not (WORK/'publication/S/rgb/store.yaml').exists():entry('rgb-fetch')
     if not (WORK/'publication/S/rgb.UPLOADED.json').exists():entry('upload','--','--view','rgb')
     run([MAIN/'scripts/ball_hiding.py','status'])
