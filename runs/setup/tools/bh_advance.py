@@ -22,6 +22,7 @@ def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--snapshot", type=Path, required=True)
     p.add_argument("--binding", type=Path, required=True)
+    p.add_argument("--route", choices=("hybrid", "all-local"), default="hybrid")
     p.add_argument("--image", required=True)
     p.add_argument("--out", type=Path, required=True)
     p.add_argument("--accepted-by", required=True)
@@ -47,13 +48,17 @@ def main():
         for wave in ("rgb", "geometry"):
             proof = MAIN / "runs/setup" / f"bh-20261120-{wave}.registration.json"
             if not proof.exists():
-                if not run("bh_register.py", ["--wave", wave, "--image", a.image, "--apply"], f"{wave}-register.log"):
+                if not run(
+                    "bh_register.py",
+                    ["--wave", wave, "--image", a.image, "--route", a.route, "--apply"],
+                    f"{wave}-register.log",
+                ):
                     print(f"{wave}: registration pending/refused; see log", flush=True)
                     continue
             record = json.loads(proof.read_bytes())
-            if record["release"]["commit"] != commit:
-                raise SystemExit("registered pin differs from snapshot; no re-pin allowed")
-            for host in ("local", "remote"):
+            if record["release"]["commit"] != commit or record.get("route", "hybrid") != a.route:
+                raise SystemExit("registered pin/route differs from request; no re-pin allowed")
+            for host in sorted({row["host"] for row in record["rows"]}):
                 target = (
                     MAIN
                     / "runs/setup"
@@ -87,7 +92,11 @@ def main():
             break
         if all(
             (MAIN / "runs/setup" / directory / f"{host}-{wave}.json").exists()
-            for directory, host in [("bh-isolated-release.d", "local"), ("bh-remote-pins.d", "remote")]
+            for directory, host in (
+                [("bh-isolated-release.d", "local")]
+                if a.route == "all-local"
+                else [("bh-isolated-release.d", "local"), ("bh-remote-pins.d", "remote")]
+            )
             for wave in ("rgb", "geometry")
         ):
             break

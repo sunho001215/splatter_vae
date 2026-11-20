@@ -92,7 +92,7 @@ def publication(spec, wave):
     return report, ev
 
 
-def prepare(repo, spec, release, wave):
+def prepare(repo, spec, release, wave, *, route="hybrid"):
     import yaml
 
     from ops.jobs import pnpv2_registration as reg
@@ -108,7 +108,7 @@ def prepare(repo, spec, release, wave):
         scene = ev["scene"]["scene"]
         for stage in ev.values():
             inputs.update(stage.get("inputs", {}))
-    rows = bh_training.rows(spec, release, waves=(wave,), scene=scene, current=current)
+    rows = bh_training.rows(spec, release, waves=(wave,), scene=scene, current=current, route=route)
     ids = {r["id"] for r in rows}
     known = {r["id"] for r in current}
     require(not ids & known, "wave already registered")
@@ -142,6 +142,7 @@ def prepare(repo, spec, release, wave):
     return dict(
         schema="bh-registration/1",
         wave=wave,
+        route=route,
         rows=rows,
         release=release,
         queue_sha256=sha(before),
@@ -183,6 +184,7 @@ def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--repo", type=Path, default=MAIN)
     p.add_argument("--wave", choices=("rgb", "geometry"), required=True)
+    p.add_argument("--route", choices=("hybrid", "all-local"), default="hybrid")
     p.add_argument("--image", required=True)
     p.add_argument("--apply", action="store_true")
     a = p.parse_args()
@@ -197,7 +199,9 @@ def main():
             ),
             "candidate tracked source must be clean",
         )
-        record = prepare(a.repo, load_spec(ROOT / SPEC), dict(commit=commit, image=a.image, source="local"), a.wave)
+        record = prepare(
+            a.repo, load_spec(ROOT / SPEC), dict(commit=commit, image=a.image, source="local"), a.wave, route=a.route
+        )
         if a.apply:
             require(a.repo.resolve() == MAIN, "apply only to canonical main queue")
             record = apply(a.repo, record)
