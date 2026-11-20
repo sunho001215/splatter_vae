@@ -8,6 +8,9 @@ if _repo not in sys.path:
     sys.path.insert(0, _repo)
 
 if __name__ == "__main__":  # the CLI runs the implementation as __main__ (sys.argv[0] keeps this path)
+    from runs.setup.tools.bh_prep_validate import install as install_bh_prep
+
+    install_bh_prep()  # bh-20261120 prep ids validated with the original checks (aliased stem only)
     from runs.setup.tools.bh_remote_pin import install
 
     install()  # optional exact-ID native pins; absent -> unchanged
