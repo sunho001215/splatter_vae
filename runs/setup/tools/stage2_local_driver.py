@@ -11,6 +11,9 @@ if __name__ == "__main__":  # the CLI runs the implementation as __main__ (sys.a
     from runs.setup.tools.k0_isolated_release import install
 
     install()  # validate before the implementation takes its admission lock
+    from runs.setup.tools.bh_isolated_release import install_all as install_bh
+
+    install_bh()  # absent/invalid grant delegates unchanged
     import runpy
 
     from ops.jobs.scheduler import input_verification_pass  # per-pass SHA reuse (2026-11-16)
