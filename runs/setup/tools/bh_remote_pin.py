@@ -131,8 +131,23 @@ def install(directory=DIRECTORY):
     remote_offload.admitted_pin = admitted_pin
 
     from ops.jobs.remote_backend import RemoteBackend
+    from ops.jobs import scheduler
     import copy
 
+    previous_guarded = scheduler.check_guarded
+    script_proofs = {item["script"]: (path, grant, digest)
+                     for path, grant, digest, item in proofs.values()}
+
+    def guarded(script):
+        if script not in script_proofs:
+            return previous_guarded(script)
+        path, grant, digest = script_proofs[script]
+        fence(path, digest)
+        # Preserve the ORIGINAL containment/file/GPU-call predicate. The seal is
+        # inside main's .worktrees/, so an absolute sealed path satisfies it.
+        return previous_guarded(str(source_root(grant) / script))
+
+    scheduler.check_guarded = guarded
     previous_prepare = RemoteBackend.prepare
 
     def prepare(backend, job, gpu, attempt, host, evidence):

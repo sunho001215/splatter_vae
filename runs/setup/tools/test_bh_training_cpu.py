@@ -271,6 +271,9 @@ def test_remote_pin_delegates_foreign_and_refuses_changed_row(monkeypatch, tmp_p
 
     monkeypatch.setattr(remote_isolated, "install_aliases", aliases)
     monkeypatch.setattr(remote_offload, "legacy_row", lambda job: job)
+    from ops.jobs import remote_backend, scheduler
+    monkeypatch.setattr(remote_backend.RemoteBackend, "prepare", remote_backend.RemoteBackend.prepare)
+    monkeypatch.setattr(scheduler, "check_guarded", scheduler.check_guarded)
     assert remote.install(tmp_path)
     assert alias_calls == [True]
     assert remote_offload.legacy_row(row)["script"] == row["script"].replace("scripts/bh_", "scripts/")

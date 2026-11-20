@@ -98,14 +98,14 @@ def test_established_reconciler_checks_dataset_directory_twice(tmp_path,monkeypa
 
 
 def test_remote_prepare_uses_seal_and_preserves_original_backend(tmp_path,monkeypatch):
-    from ops.jobs import remote_backend,remote_offload
+    from ops.jobs import remote_backend,remote_offload,scheduler
     from ops.jobs import realworld_local
     from s4d.rwlearn import dsreset_entrypoints
     from ops.resources.gpu_guard import APPROVED_HOST_GPUS
     from ops.remote.access import REMOTE_ROOT
     identity=reg.BH7_REFUSED_ID;commit='a'*40;image='sha256:'+'b'*64
-    code=tmp_path/'source';(code/'scripts').mkdir(parents=True)
-    script='scripts/bh_realworld_fql_dataset.py';path=code/script;path.write_text('# guard_gpus\n')
+    code=tmp_path/'accepted-main/seal';(code/'scripts').mkdir(parents=True)
+    script='scripts/bh_realworld_fql_dataset.py';path=code/script;path.write_text('guard_gpus()\n')
     path.chmod(0o444);code.chmod(0o555)
     snapshot=tmp_path/'snapshot.json'
     snapshot.write_text(json.dumps(dict(commit=commit,code_root=str(code),source_files={script:dict(sha256=hashlib.sha256(path.read_bytes()).hexdigest())})))
@@ -119,13 +119,16 @@ def test_remote_prepare_uses_seal_and_preserves_original_backend(tmp_path,monkey
     # The hook uses the fully qualified module in the live wrapper.
     from runs.setup.tools import bh_isolated_release as qualified
     monkeypatch.setattr(qualified,'install_aliases',lambda:None)
-    old_prepare=remote_backend.RemoteBackend.prepare;old_pin=remote_offload.admitted_pin
+    old_prepare=remote_backend.RemoteBackend.prepare;old_pin=remote_offload.admitted_pin;old_guard=scheduler.check_guarded
+    monkeypatch.setattr(scheduler,'REPO',tmp_path/'accepted-main')
     modules=(realworld_local,remote_offload,dsreset_entrypoints);aliases=[m.legacy_row for m in modules]
     gpu=APPROVED_HOST_GPUS['remote'][0]
     host=dict(commit=commit,image_digest=image,limits={gpu:dict(max_jobs=4,max_mem_gb=21.5)},host_ram_reserve_gb=120)
     backend=remote_backend.RemoteBackend(tmp_path/'accepted-main',tmp_path/'runs',client=type('Client',(),dict(root=REMOTE_ROOT))())
     try:
         assert remote.install(directory)
+        assert scheduler.check_guarded(script)==path
+        with pytest.raises(ValueError,match='not a file'):scheduler.check_guarded('scripts/foreign.py')
         specpath,spec=backend.prepare({**row,'gpu':gpu},gpu,2,host,{})
         assert specpath==tmp_path/'runs/remote/jobs'/f'{identity}-a2.json'
         assert spec['script']==script and backend.repo==tmp_path/'accepted-main'
@@ -136,7 +139,7 @@ def test_remote_prepare_uses_seal_and_preserves_original_backend(tmp_path,monkey
         foreign={**row,'id':'foreign'}
         with pytest.raises(ValueError,match='repository-relative'):backend.prepare(foreign,gpu,1,host,{})
     finally:
-        remote_backend.RemoteBackend.prepare=old_prepare;remote_offload.admitted_pin=old_pin
+        remote_backend.RemoteBackend.prepare=old_prepare;remote_offload.admitted_pin=old_pin;scheduler.check_guarded=old_guard
         for module,fn in zip(modules,aliases):module.legacy_row=fn
         code.chmod(0o755);path.chmod(0o644)
 
