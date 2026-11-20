@@ -123,7 +123,7 @@ def contact(files,out):
 
 def main():
     p=argparse.ArgumentParser();p.add_argument('--root',type=Path,default=Path('/home/ws/data/real_world/ball-hiding/success'))
-    p.add_argument('--out',type=Path,default=Path('evidence'));a=p.parse_args();a.out.mkdir(parents=True,exist_ok=True)
+    p.add_argument('--out',type=Path,default=Path('runs/bh-data-evidence'));a=p.parse_args();a.out.mkdir(parents=True,exist_ok=True)
     refs=sorted(Path('/home/ws/data/real_world/pick-and-place-v2/success').glob('episode_*.h5'))
     with h5py.File(refs[0],'r') as f: reference=schema(f)
     (a.out/'pnp-reference-schema.json').write_text(json.dumps(reference,indent=2))

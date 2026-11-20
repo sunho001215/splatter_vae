@@ -19,7 +19,7 @@ import ops.resources.gpu_guard as guard
 # Required by coordinator's hard no-GPU rule; test selection contains CPU files only.
 guard.enforce_allowed_gpus=lambda verbose=True: []
 if __name__=='__main__':
-    out=Path(os.environ.get('BH_TEST_OUT',str(ROOT/'evidence/tests')));out.mkdir(parents=True,exist_ok=True)
+    out=Path(os.environ.get('BH_TEST_OUT',str(ROOT/'runs/evidence-bh5/tests')));out.mkdir(parents=True,exist_ok=True)
     files=sys.argv[1:]
     from scripts.test_shards import FILE_CLASSES
     assert files and all(FILE_CLASSES.get(f)=='cpu' for f in files), 'CPU-file selection only'

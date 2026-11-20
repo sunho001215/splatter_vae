@@ -1,4 +1,6 @@
-"""CPU-only BH2 contracts. Run via run_tests.execute_pytest with --noconftest.
+"""CPU-only BH tools contracts, outside the shipped release suite.
+
+Run via run_tests.execute_pytest with --noconftest from this checkout.
 
 Fresh subprocesses isolate the one-task-per-process runtime from pnp default tests.
 No GPU guard, dataset, remote host, queue or live admission file is accessed.
@@ -13,9 +15,9 @@ from pathlib import Path
 
 import pytest
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[3]
 TOOLS = ROOT / "runs/setup/tools"
-sys.path.insert(0, str(TOOLS))
+sys.path[:0] = [str(ROOT), str(TOOLS)]
 import bh_isolated_release as isolated  # noqa: E402
 import bh_register as registration  # noqa: E402
 import bh_release_control as control  # noqa: E402
