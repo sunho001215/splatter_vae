@@ -28,7 +28,23 @@ def git(root, *args):
 
 def seal(out):
     commit = git(ROOT, "rev-parse", "HEAD").decode().strip()
-    registration.require(not git(ROOT, "status", "--porcelain", "--untracked-files=all"), "clean committed source required")
+    registration.require(not git(ROOT, "status", "--porcelain", "--untracked-files=no"), "clean committed source required")
+    registration.require(
+        not git(
+            ROOT,
+            "ls-files",
+            "--others",
+            "--exclude-standard",
+            "--",
+            "s4d",
+            "ops",
+            "scripts",
+            "configs",
+            "tests",
+            "runs/setup/tools",
+        ),
+        "untracked source must be committed before sealing",
+    )
     out.mkdir(parents=True, exist_ok=False)
     code = out / "code"
     subprocess.run(["git", "clone", "--shared", "--no-checkout", str(ROOT), str(code)], check=True)
