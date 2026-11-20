@@ -54,6 +54,14 @@ def audit(path, reference):
                 'nonpositive':int((d<=0).sum()),'duration_s':float((a[-1]-a[0])*unit) if len(a)>1 else 0,
                 'median_rate_hz':1/med if med else None,'max_gap_s':float(d.max()) if len(d) else None,
                 'gaps_over_1_5x_median':int((d>1.5*med).sum()) if med else None}
+            group=f[n.rsplit('/',1)[0]]
+            segment=group.get('segment')
+            if segment is None and n.startswith('robot/'):
+                segment=f.get('action/segment')
+            if segment is not None and len(segment)==len(a):
+                same=np.diff(segment[:])==0
+                out['within_segment_max_gap_s']=float(d[same].max()) if same.any() else None
+                out['between_segment_gaps']=int((~same).sum())
             rec['timestamps'][n]=out
             if not out['finite'] or out['nonpositive']: rec['anomalies'].append(n+': invalid/nonmonotonic')
             if med and (d>1.5*med).any(): rec['anomalies'].append(n+': timing gaps')
@@ -64,6 +72,7 @@ def audit(path, reference):
             for bcam in cams[i+1:]:
                 b=f['cameras'][bcam]['t'][:]; idx=np.searchsorted(b,a); l=np.clip(idx-1,0,len(b)-1); r=np.clip(idx,0,len(b)-1)
                 diff=np.minimum(abs(a-b[l]),abs(a-b[r]))*1000
+                if (diff>20).any():rec['anomalies'].append(c+'__'+bcam+': nearest-camera offset >20 ms; advisory, M5 motion gate applies')
                 rec['sync'][c+'__'+bcam]={'nearest_ms_p50':float(np.median(diff)),'nearest_ms_p95':float(np.quantile(diff,.95)),
                     'nearest_ms_max':float(diff.max()),'over_20ms':int((diff>20).sum())}
         rec['sample_images']={}
@@ -129,7 +138,7 @@ def main():
     files=sorted(a.root.glob('episode_*.h5')); results=[]
     for file in files:
         dest=a.out/(file.stem+'.json')
-        if dest.exists() and 'canonical_validation' in json.loads(dest.read_text()) and json.loads(dest.read_text()).get('mtime_ns')==file.stat().st_mtime_ns: rec=json.loads(dest.read_text())
+        if dest.exists() and 'within_segment_max_gap_s' in json.loads(dest.read_text()).get('timestamps',{}).get('robot/t',{}) and 'canonical_validation' in json.loads(dest.read_text()) and json.loads(dest.read_text()).get('mtime_ns')==file.stat().st_mtime_ns: rec=json.loads(dest.read_text())
         else:
             try:rec=audit(file,reference)
             except (OSError,ValueError,KeyError) as e:rec={'file':str(file),'anomalies':[str(e)],'stable_during_read':False}

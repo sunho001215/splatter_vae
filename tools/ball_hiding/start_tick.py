@@ -34,6 +34,10 @@ def main():
         os.environ[key] = '1' 
     config = bundle / "dispatcher.json"
     assert config.is_file(), f"no dispatcher.json in {bundle}"
+    # RGB and geometry may both request normalization's controller concurrently.
+    import fcntl
+    start_lock = (bundle / "controller-start.lock").open("a")
+    fcntl.flock(start_lock, fcntl.LOCK_EX)
     existing = [int(p.name) for p in Path("/proc").iterdir() if p.name.isdigit() and alive(int(p.name), config)]
     assert len(existing) <= 1, "HELD: multiple controllers for one bundle; inspect, never kill blindly"
     if existing:

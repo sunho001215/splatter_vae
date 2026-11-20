@@ -26,4 +26,16 @@ if __name__=='__main__':
     spec=out/'worker.json'
     spec.write_text(json.dumps({'pytest_args':files+['-k','not test_producers_refuse_without_data_before_trainer_imports','-q','--tb=short','--basetemp',str(out/'tmp'),'-o',f'cache_dir={out}/pytest-cache','--junitxml',str(out/'junit.xml')], 'json':str(out/'results.json')}))
     sys.argv=[str(ROOT/'scripts/run_tests.py'),'--worker',str(spec)]
-    runpy.run_path(str(ROOT/'scripts/run_tests.py'),run_name='__main__')
+    try:
+        runpy.run_path(str(ROOT/'scripts/run_tests.py'),run_name='__main__')
+    finally:
+        import resource
+        import torch
+        usage=resource.getrusage(resource.RUSAGE_SELF)
+        resources={'max_rss_kib':usage.ru_maxrss,'user_seconds':usage.ru_utime,'system_seconds':usage.ru_stime,
+                   'cuda_initialized':torch.cuda.is_initialized(),'threads':torch.get_num_threads(),
+                   'full_suite_passed':False,'selection':files,'gpu_guard_startup_replaced_for_cpu_tests':True,
+                   'deselected_gpu_child_test':'test_producers_refuse_without_data_before_trainer_imports'}
+        (out/'resources.json').write_text(json.dumps(resources,indent=2))
+        assert resources['cuda_initialized'] is False
+        assert resources['max_rss_kib'] < 8*1024*1024
