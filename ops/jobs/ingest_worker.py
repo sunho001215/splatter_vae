@@ -44,7 +44,7 @@ os.environ.setdefault("HDF5_USE_FILE_LOCKING", "FALSE")
 for _var in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS"):
     os.environ.setdefault(_var, "1")
 
-from ops.datasets import episode_validator as V  # noqa: E402
+from ops.jobs import episode_validator as V  # noqa: E402
 
 REPO = Path("/home/ws/ws/splatter4d")
 STATE_DIR = Path("/home/ws/ws/realworld-ops/ingest")

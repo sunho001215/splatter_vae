@@ -16,7 +16,7 @@ from ops.resources.gpu_guard import HOST_NAME
 
 REPO = Path(__file__).resolve().parents[1]
 ALIASES = {
-    "scripts.episode_validator": "ops.datasets.episode_validator",
+    "scripts.episode_validator": "ops.jobs.episode_validator",
     "s4d.rwlearn.launch": "ops.jobs.realworld_plan",
     "s4d.third_party": "ops.provenance.upstreams",
     "s4d.remote_access": "ops.remote.access",
@@ -39,7 +39,7 @@ ALIASES = {
 # Documented research-side imports of ops: output authorization, host tags and release-route contracts.
 S4D_IMPORTS_OF_OPS = {
     # Calibration snapshot writes use the same ingest writer when a release hides runs/setup/tools.
-    ("s4d/realworld/calib/release.py", "ops.datasets.ingest_worker"),
+    ("s4d/realworld/calib/release.py", "ops.jobs.ingest_worker"),
     # BH reuses the pnp-v2 plan and prep dispatcher contracts after selecting its task namespace.
     ("s4d/rwlearn/ball_hiding.py", "ops.jobs"),
     ("s4d/rwlearn/bh_training.py", "ops.jobs.pnpv2_plan"),

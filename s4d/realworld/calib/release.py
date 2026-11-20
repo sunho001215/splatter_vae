@@ -304,7 +304,7 @@ def plan(manifest: dict, rigs: dict, *, path_map=(), code_commit: str | None = N
 def _load_set_stage():
     if not INGEST_WORKER.is_file():
         # Native release containers hide runs/; use the same writer shipped with their source tree.
-        from ops.datasets.ingest_worker import set_stage
+        from ops.jobs.ingest_worker import set_stage
 
         return set_stage
     spec = importlib.util.spec_from_file_location("rw_ingest_worker", INGEST_WORKER)
