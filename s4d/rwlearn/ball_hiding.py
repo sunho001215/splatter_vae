@@ -22,7 +22,7 @@ def split_jobs(jobs, remote_normalize):
     """Identical configs/settings; ingest once, then original Phase A reuses its validated ingest cache.
 
     Per-episode external dependencies permit geometry prep to stream as normalized episodes complete.
-    RGB publication waits only for the complete 100-episode normalized collection.
+    RGB publication waits only for the complete eligible normalized collection.
     """
     import copy
     normalize, phase_a = copy.deepcopy(jobs), copy.deepcopy(jobs)

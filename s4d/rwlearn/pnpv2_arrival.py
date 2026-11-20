@@ -179,22 +179,38 @@ def check_data(spec, *, raw_root=None, inspect=None, settle_seconds=None, now=No
     failures = Path(state["root"]).parent / "failure"
     if failures.exists():
         report["notes"] = ["failure recordings present; S-only: never read, never in membership"]
+    bh_amendment = None
+    if TASK == 'ball-hiding':
+        from s4d.rwlearn.ball_hiding_membership import amendment, verify_rejection
+        bh_amendment = amendment()
+        try:
+            for name in bh_amendment['excluded']:
+                verify_rejection(root / Path(name).name)
+        except (ValueError, OSError, KeyError) as exc:
+            report['problems'].append(f'exclusion evidence: {exc}')
+            return report
     try:
         with task_known() as dsreset:
             manifests = dsreset.paired_manifests(
                 TASK, {"success": root}, seed=c["split_seed"], validation_fraction=c["validation_fraction"],
                 expected={"success": c["expected_success"]}, require_verified=state["basis"] == "marker",
-                inspect=inspect or inspect_raw, variants=("S",))
+                inspect=inspect or inspect_raw, variants=("S",), amendment=bh_amendment)
     except (ValueError, OSError, KeyError) as exc:
         report["problems"].append(f"episode validation: {exc}")
         return report
     m = manifests["S"]
-    if {r["filename"]: r["sha256"] for r in m["episodes"]} != hashes:
+    if {r["filename"]: r["sha256"] for r in m["episodes"] + m.get("excluded", [])} != hashes:
         report["problems"].append("recordings changed between hashing and validation")
-    if any(r["label"] != "success" for r in m["episodes"]) or m.get("excluded") or m.get("amendment"):
+    if TASK == 'ball-hiding':
+        from s4d.rwlearn.ball_hiding_membership import validate_membership
+        try:
+            validate_membership(m)
+        except ValueError as exc:
+            report['problems'].append(str(exc))
+    elif any(r["label"] != "success" for r in m["episodes"]) or m.get("excluded") or m.get("amendment"):
         report["problems"].append("S membership must be the 100 success recordings, no exclusions/amendment")
-    if (len(m["split"]["train"]), len(m["split"]["validation"])) != (90, 10):
-        report["problems"].append("expected the seed-0 90/10 episode split")
+    if (len(m["split"]["train"]), len(m["split"]["validation"])) != ((89, 10) if TASK == "ball-hiding" else (90, 10)):
+        report["problems"].append("expected the canonical seed-0 episode split (BH 89/10; PNP 90/10)")
     report.update(episodes=len(m["episodes"]), manifest=m, split={k: len(v) for k, v in m["split"].items()},
                   manifest_sha256=hashlib.sha256(json.dumps(m, sort_keys=True).encode()).hexdigest())
     report["passed"] = not report["problems"]

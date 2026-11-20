@@ -91,11 +91,29 @@ def campaign(tmp_path, monkeypatch):
                          raw=str(tmp_path / 'data/real_world'))
     raw = Path(values(spec)['raw_success'])
     raw.mkdir(parents=True)
-    for i in range(100):
+    numbers = [i for i in range(102) if i not in (25, 54)] if TASK == 'ball-hiding' else range(100)
+    for i in numbers:
         (raw / f'episode_{i:06d}.h5').write_text(f'synthetic raw {i}')
+    amendment = None
+    if TASK == 'ball-hiding':
+        from s4d.rwlearn import ball_hiding_membership as membership
+        import numpy as np
+        amendment = membership.amendment()
+        amendment['episodes'] = {'ball-hiding/'+p.name: G.digest(p) for p in sorted(raw.glob('*.h5'))
+                                 if p.name != 'episode_000008.h5'}
+        amendment['excluded']['ball-hiding/episode_000008.h5']['raw_sha256'] = G.digest(raw / 'episode_000008.h5')
+        ap = write(tmp_path / 'amendment.json', amendment)
+        eps = ['ball-hiding-success-' + Path(n).stem for n in amendment['episodes']]
+        order = np.random.default_rng([0, int(hashlib.sha256(TASK.encode()).hexdigest()[:8],16)]).permutation(99)
+        val = {eps[int(i)] for i in order[:10]}
+        sp = write(tmp_path / 'split.json', dict(amendment_sha256=G.digest(ap),
+                   train=[e for e in eps if e not in val], validation=[e for e in eps if e in val]))
+        monkeypatch.setattr(membership, 'AMENDMENT', ap)
+        monkeypatch.setattr(membership, 'SPLIT', sp)
+        monkeypatch.setattr(membership, 'verify_rejection', lambda p: {'status': 'invalid', 'reasons': ['synthetic recorder rejection']})
     with task_known() as D:
         m = D.paired_manifests(TASK, {'success': raw}, variants=('S',), require_verified=False,
-                               inspect=lambda p: {}, expected={'success': 100})['S']
+                               inspect=lambda p: {}, expected={'success': 100}, amendment=amendment)['S']
     p = values(spec)
     write(p['manifest'], m)
     write(Path(p['work']) / 'remote-raw-hashes.json', {r['sha256']: r['sha256'] for r in m['episodes']})
@@ -271,6 +289,9 @@ def ingest_for(m, *, validated):
         rec['source']['path'] = row['path']
         rec['preprocessing']['stages']['train_data']['outputs'] = '/processed/train_data/' + row['id']
         entries[row['id']] = rec
+    for row in m.get('excluded', []):
+        entries[row['id']] = dict(task=TASK, filename=row['filename'], sha256=row['sha256'],
+                                 source={'path': row['path']}, validation={'status': 'invalid'})
     return {'schema': 'rw-ingest-manifest', 'schema_version': 2, 'episodes': entries}
 
 
@@ -496,7 +517,8 @@ def test_remote_worker_runs_snapshot_release_publish_measure_and_resumes(campaig
         calls.append('records')
         assert rigs == {TASK: rig}
         assert len(ingest['episodes']) == 100
-        records = {k: calibration_record(v['sha256']) for k, v in ingest['episodes'].items()}
+        records = {k: calibration_record(v['sha256']) for k, v in ingest['episodes'].items()
+                   if v['validation']['status'] == 'valid'}
         return {'tasks': {TASK: dict(refused=False, problem_count=0, problems=[], records=records,
                                     rig={'sha256': G.digest(rig)})}}
     monkeypatch.setattr(release, 'plan', plan)
@@ -516,7 +538,7 @@ def test_remote_worker_runs_snapshot_release_publish_measure_and_resumes(campaig
     monkeypatch.setattr(measurement, 'SampledNativeStore', native)
     def measure(m, store, split):
         calls.append('measure')
-        assert split == m['split'] and len(split['train']) == 90 and len(split['validation']) == 10
+        assert split == m['split'] and len(split['train']) == len(c.m['episodes']) - 10 and len(split['validation']) == 10
         return dict(schema='dsreset-scene-measurement/1', accepted=True, task=TASK, variant='S',
                     depth_source='native_realsense', manifest_sha256=hashlib.sha256(json.dumps(m, sort_keys=True).encode()).hexdigest(),
                     episodes=split['train'], bounds=[0, 0, 0, 1, 1, 1], lookat=[.5, .5, .5], pose_scale=1.,
@@ -526,12 +548,12 @@ def test_remote_worker_runs_snapshot_release_publish_measure_and_resumes(campaig
     original_reader = snapshot_module.read_manifest
     with task_known():
         result = G.remote_build(source, a, b, spec=c.spec)
-    assert result['episodes'] == 100 and result['reused'] is False
+    assert result['episodes'] == len(c.m['episodes']) and result['reused'] is False
     assert snapshot_module.read_manifest is original_reader
     assert calls == ['records', 'preview', 'apply', 'publish', 'measure']
     assert G.load(source / 'source-ingest.json')['episodes'] == {}  # live/source catalog never rewritten
     saved = G.load(output / 'snapshot/manifest.json')
-    assert all(v['preprocessing']['stages']['calibration_validated']['status'] == 'done' for v in saved['episodes'].values())
+    assert all(v['preprocessing']['stages']['calibration_validated']['status'] == 'done' for v in saved['episodes'].values() if v['validation']['status'] == 'valid')
     before = {str(p): p.read_bytes() for p in output.rglob('*') if p.is_file()}
     assert G.remote_build(source, a, b, spec=c.spec)['reused'] is True
     assert before == {str(p): p.read_bytes() for p in output.rglob('*') if p.is_file()}

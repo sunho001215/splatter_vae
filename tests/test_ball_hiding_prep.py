@@ -194,7 +194,9 @@ def test_calibration_plan_changes_only_task_namespace(tmp_path):
     for task,release in [('pick-and-place-v2','pnpv2-20261117'),('ball-hiding','bh-20261120')]:
         root=tmp_path/task;root.mkdir()
         source=[]
-        for i in range(100):
+        from s4d.rwlearn.ball_hiding_membership import amendment
+        for name in amendment()['episodes']:
+            i=int(Path(name).name[8:14])
             ep=f'{task}-success-episode_{i:06d}'
             cfg=root/f'{i}.yaml';cfg.write_text(yaml.safe_dump({'output_root':f'/processed/{release}/{ep}'}))
             source.append({'id':f'{release}-prepA-{ep}','episode':ep,'inputs':{str(cfg):'a'*64}})

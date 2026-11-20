@@ -41,7 +41,11 @@ def sources(spec, manifest, phase_a):
     stage = dispatcher_evidence(phase_a, {r["id"] for r in manifest["episodes"]}, stem)
     require(stage["status"] == "done", f"Phase A not complete: {stage['detail']}")
     roots = {}
-    for job in json.loads((Path(phase_a) / "jobs.json").read_text()):
+    jobs = json.loads((Path(phase_a) / "jobs.json").read_text())
+    if TASK == 'ball-hiding':
+        from s4d.rwlearn.ball_hiding_membership import eligible_jobs
+        jobs = eligible_jobs(jobs)
+    for job in jobs:
         cfg = yaml.safe_load(Path(next(p for p in job["inputs"] if p.endswith(".yaml"))).read_text())
         root = Path(cfg["output_root"])
         require((root / "episodes" / job["episode"] / STAGE_COMPLETE).is_file(),
@@ -159,7 +163,7 @@ def publish_rgb(spec, manifest_path, phase_a, *, execute=False, inspect=None):
 # so the same export runs as a one-job remote bundle inside the prep image; only the small bundle documents come back.
 REMOTE_RW = "/home/compu/kaist/sunho/realworld"
 REMOTE_RAW = "/home/compu/kaist/sunho/data/real_world"
-RGB_BUNDLE = f"{STEM}-rgb"
+RGB_BUNDLE = f"{STEM}-rgb2" if TASK == "ball-hiding" else f"{STEM}-rgb"
 RGB_JOB = f"{STEM}-rgbpub-{TASK}-S"
 SOURCE_STEM = f"{STEM}-prepN-" if TASK == "ball-hiding" else f"{STEM}-prepA-"
 DOCS = ("store.yaml", "manifest.json", "split_seed0.json", "gate_report.json", "outcomes.json", "contracts.json")
@@ -180,6 +184,9 @@ def phase_a_roots(bundle, episodes):
     bundle = Path(bundle)
     jobs = json.loads((bundle / "jobs.json").read_text())
     state = json.loads((bundle / "state" / "state.json").read_text())["jobs"]
+    if TASK == 'ball-hiding':
+        from s4d.rwlearn.ball_hiding_membership import eligible_jobs
+        jobs = eligible_jobs(jobs)
     require({j["episode"] for j in jobs} == set(episodes), "Phase-A bundle episodes differ from the manifest")
     require(all(j["id"].startswith(SOURCE_STEM) for j in jobs), "Phase-A jobs must use the v2 stem")
     require(all((state.get(j["id"]) or {}).get("status") == "done" for j in jobs), "Phase A not complete")

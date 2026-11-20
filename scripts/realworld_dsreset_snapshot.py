@@ -101,7 +101,11 @@ def main():
             before=Path(r['path']).stat()
             if digest(r['path'])!=r['sha256']:raise ValueError('raw changed since immutable manifest')
             if not excluded and proofs.get(r['sha256'])!=r['sha256']:raise ValueError('missing exact remote raw verification proof')
-            v=V.validate(r['path'],grace_s=0,task_names=[manifest['task']])
+            if excluded and manifest['task'] == 'ball-hiding':
+                from s4d.rwlearn.ball_hiding_membership import verify_rejection
+                v = verify_rejection(r['path'])
+            else:
+                v=V.validate(r['path'],grace_s=0,task_names=[manifest['task']])
             if not excluded and v['status']!='valid':raise ValueError(f"raw rejected: {r['id']}: {v}")
             if excluded and (v['status'] not in ('failed','invalid') or not v.get('reasons')):
                 raise ValueError('amended exclusion needs a conclusive raw rejection')

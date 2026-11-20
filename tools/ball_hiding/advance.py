@@ -13,6 +13,9 @@ import time
 
 MAIN=Path('/home/ws/ws/splatter4d')
 WORK=Path('/home/ws/ws/realworld-ops/ballhiding-20261120')
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from s4d.rwlearn.ball_hiding_membership import excluded_ids, amendment
+
 PY=MAIN/'.venv/bin/python'
 TOOLS=MAIN/'tools'/'ball_hiding'
 
@@ -40,7 +43,18 @@ def done(bundle):
     if (WORK/bundle/'state/STOP').exists():raise RuntimeError(f'HELD: {bundle}/state/STOP')
     path=WORK/bundle/'state/state.json'
     if not path.exists():return False
-    states=json.loads(path.read_text())['jobs']; statuses=[s['status'] for s in states.values()]
+    states=json.loads(path.read_text())['jobs']
+    if bundle in ('normalize', 'phaseA'):
+        stage = 'prepN' if bundle == 'normalize' else 'prepA'
+        ignored = {f'bh-20261120-{stage}-{ep}' for ep in excluded_ids()}
+        required = {f'bh-20261120-{stage}-ball-hiding-success-' + Path(n).stem
+                    for n in amendment()['episodes']}
+        unexpected = set(states) - required - ignored
+        if unexpected:
+            raise RuntimeError(f'HELD: {bundle} unexpected jobs: {sorted(unexpected)}')
+        statuses = [(states.get(i) or {}).get('status', 'pending') for i in required]
+    else:
+        statuses=[s['status'] for s in states.values()]
     if any(x in ('failed','unknown') for x in statuses):raise RuntimeError(f'HELD: {bundle} failed/unknown')
     return bool(statuses) and all(s=='done' for s in statuses)
 
@@ -52,9 +66,8 @@ def wait(bundle,*upstreams):
 
 
 def rgb():
-    tick('normalize')
-    if not (WORK/'rgb-remote/dispatcher.json').exists():entry('rgb-remote')
-    tick('rgb-remote');wait('rgb-remote','normalize')
+    if not (WORK/'rgb2-remote/dispatcher.json').exists():entry('rgb-remote')
+    tick('rgb2-remote');wait('rgb2-remote','normalize')
     if not (WORK/'publication/S/rgb/store.yaml').exists():entry('rgb-fetch')
     if not (WORK/'publication/S/rgb.UPLOADED.json').exists():entry('upload','--','--view','rgb')
     run([MAIN/'scripts/ball_hiding.py','status'])
@@ -62,15 +75,13 @@ def rgb():
 
 
 def geometry():
-    tick('normalize')
-    tick('phaseA')
-    if not (WORK/'calib/dispatcher.json').exists():entry('calib-remote')
-    tick('calib');wait('calib','normalize','phaseA')
+    if not (WORK/'calib2/dispatcher.json').exists():entry('calib-remote')
+    tick('calib2');wait('calib2','normalize','phaseA')
     if not (Path('/home/ws/data/realworld-processed/bh-20261120/calibration/ball-hiding')/'rig-ball-hiding-accepted.json').exists():
         entry('rig-fetch')
     # phase-b-remote independently checks automatic acceptance; a held rig never proceeds.
     if not (WORK/'phaseB/dispatcher.json').exists():entry('phase-b-remote')
-    tick('phaseB');wait('phaseB','phaseA','calib')
+    tick('phaseB');wait('phaseB','phaseA','calib2')
     if not (WORK/'geometry-remote/dispatcher.json').exists():entry('geometry-remote')
     tick('geometry-remote');wait('geometry-remote','phaseB')
     if not (WORK/'publication/S/geometry.FETCHED.json').exists():entry('geometry-fetch')

@@ -68,7 +68,7 @@ def json_once(path, doc):
 
 def portable_manifest(manifest):
     portable = copy.deepcopy(manifest)
-    for row in portable['episodes']:
+    for row in portable['episodes'] + portable.get('excluded', []):
         row['path'] = remote_raw(row)
     return portable
 
@@ -82,18 +82,22 @@ def completed_phase(bundle, manifest, phase, processed):
     require(not (bundle / 'state/STOP').exists(), f'Phase {phase} STOP retained')
     require(cfg['processed'] == str(processed) and cfg.get('release', STEM) == STEM,
             'phase processed release differs')
+    original_jobs = jobs
+    if TASK == 'ball-hiding':
+        from s4d.rwlearn.ball_hiding_membership import eligible_jobs
+        jobs = eligible_jobs(jobs)
     require(len(jobs) == len(episodes) and {j['episode'] for j in jobs} == set(episodes),
             'phase episodes differ from the manifest')
     require(all(j['phase'] == phase and j['id'] == f"{STEM}-prep{phase}-{j['episode']}" for j in jobs),
             'phase jobs must use the v2 stem')
     # attach() normalizes priority and writes indent=2/no newline. A remote compiler may have another byte layout.
-    attached = copy.deepcopy(jobs)
+    attached = copy.deepcopy(original_jobs)
     for job in attached:
         job['priority'] = -4
     attached_sha = hashlib.sha256(json.dumps(attached, indent=2).encode()).hexdigest()
     require(state['queue_sha256'] in (digest(bundle / 'jobs.json'), attached_sha), 'phase queue/state hash mismatch')
-    require(set(state['jobs']) == {j['id'] for j in jobs}
-            and all(s['status'] == 'done' for s in state['jobs'].values()), f'Phase {phase} not complete')
+    require(set(state['jobs']) == {j['id'] for j in original_jobs}
+            and all(state['jobs'][j['id']]['status'] == 'done' for j in jobs), f'Phase {phase} not complete')
     for job in jobs:
         paths = [p for p in job['inputs'] if p.endswith('.yaml')]
         require(len(paths) == 1 and digest(paths[0]) == job['inputs'][paths[0]], 'phase config input drift')
@@ -227,9 +231,9 @@ def remote_build(source, phase_a, phase_b, *, spec=None):
             require(prov == dict(source={str(source / 'source-ingest.json'): digest(source / 'source-ingest.json')},
                     manifests={str(root / 'portable-manifest.json'): digest(root / 'portable-manifest.json')},
                     remote_hashes_sha256=digest(root / 'remote-raw-hashes.json'), selection='S'), 'snapshot provenance differs')
-            require(len(ingest['episodes']) == len(m['episodes']) and
+            require(len(ingest['episodes']) == len(m['episodes']) + len(m.get('excluded', [])) and
                     {e['episode_id']: e['sha256'] for e in ingest['episodes'].values()}
-                    == {r['id']: r['sha256'] for r in m['episodes']}, 'snapshot membership differs')
+                    == {r['id']: r['sha256'] for r in m['episodes'] + m.get('excluded', [])}, 'snapshot membership differs')
 
         _directory(snapshot, lambda target: producer.snapshot(spec, None, [
             '--success-only', '--source', str(source / 'source-ingest.json'), '--manifest', str(root / 'portable-manifest.json'),
