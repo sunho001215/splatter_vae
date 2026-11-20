@@ -1,0 +1,16 @@
+"""Compatibility alias: unchanged ingestion validator in ops.datasets.episode_validator."""
+import sys
+from pathlib import Path
+
+_repo = str(Path(__file__).resolve().parents[1])
+if _repo not in sys.path:
+    sys.path.insert(0, _repo)
+
+if __name__ == "__main__":
+    import runpy
+
+    runpy.run_module("ops.datasets.episode_validator", run_name="__main__")
+else:
+    from ops.datasets import episode_validator as _impl
+
+    sys.modules[__name__] = _impl

@@ -16,6 +16,7 @@ from ops.resources.gpu_guard import HOST_NAME
 
 REPO = Path(__file__).resolve().parents[1]
 ALIASES = {
+    "scripts.episode_validator": "ops.datasets.episode_validator",
     "s4d.rwlearn.launch": "ops.jobs.realworld_plan",
     "s4d.third_party": "ops.provenance.upstreams",
     "s4d.remote_access": "ops.remote.access",
