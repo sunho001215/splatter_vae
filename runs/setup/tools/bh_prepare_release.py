@@ -154,6 +154,7 @@ def prepare_local(record, snapshot_path, binding_path, accepted_by, out):
     return dict(
         kind="bh-isolated-targeted-v1",
         active=True,
+        local_gpus=list(local.LOCAL_GPUS),
         commit=commit,
         rows=rows,
         accepted_by=accepted_by,
