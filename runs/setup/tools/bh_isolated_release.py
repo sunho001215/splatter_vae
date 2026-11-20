@@ -32,6 +32,19 @@ METHODS = (
 )
 PRE = ("ours_orig", "ours_ch01", "dynamo", "reviwo", "sincro", "snerl", "mvp3d_multiview")
 
+# Confirmed parent mapping in the existing guard: first four = GPU4, next four = GPU5.
+# The inherited guard also allows GPUs6/7; this grant deliberately does not.
+LOCAL_GPUS = (
+    "MIG-8da55219-bd6b-5260-8be1-3b2a76ac733c",
+    "MIG-c4ec2a95-30cc-5398-82bf-d9b11787fc70",
+    "MIG-423203d9-5801-5892-a489-30f16a5a2d4a",
+    "MIG-02b55a66-ed41-53c2-9004-c3f5619d6369",
+    "MIG-05a151e7-c6bd-5344-91cb-8bfb3a342631",
+    "MIG-b50e85c3-8498-5ef0-906e-5eda9db34b90",
+    "MIG-2ebd9e11-f2e0-5e22-870a-7779d44ec10a",
+    "MIG-c3511b41-5f78-52f1-9b93-9c6794cdbbdd",
+)
+
 
 def row_id(kind, method, seed=None):
     return f"{STEM}-{kind}-{method}-ball-hiding-S" + (f"-s{seed}" if seed is not None else "")
@@ -80,6 +93,7 @@ def load_authorization(path=AUTHORIZATION):
         or not ids
         or not ids <= IDS
         or not grant.get("accepted_by")
+        or grant.get("local_gpus") != list(LOCAL_GPUS)
         or grant.get("full_suite_claimed") is not False
         or grant.get("adapter_sha256") != digest(regular(Path(__file__).resolve()))
         or grant.get("worker_sha256") != digest(regular(Path(__file__).resolve().with_name("bh_isolated_worker.py")))
@@ -294,6 +308,19 @@ def install(path=AUTHORIZATION):
     execution = {"source_commit": grant["commit"], "files": source, "source_root": str(root)}
 
     install_aliases()
+    # Both fair-share planning and the scheduler's final selection retain their
+    # original device policy; exact BH IDs additionally stay on GPUs4/5 only.
+    from ops.jobs import fair_share, local_devices
+
+    for module in (local_devices, fair_share):
+        previous_allows = module.allows
+
+        def allows(job, gpu, *args, previous=previous_allows, **kwargs):
+            if job.get("id") in active_ids and gpu not in LOCAL_GPUS:
+                return False
+            return previous(job, gpu, *args, **kwargs)
+
+        module.allows = allows
 
     def localize(job, state, **kwargs):
         if job["id"] not in active_ids:
@@ -324,6 +351,8 @@ def install(path=AUTHORIZATION):
             return original_launch(job, gpu, attempt, *args, **kwargs)
         check_row(job, grant)
         fence(path, authorization_sha)
+        if gpu not in LOCAL_GPUS:
+            raise ValueError("BH launch requires one of the eight GPU4/5 MIG instances")
         effective = kwargs.pop("args", job.get("args", []))
         wrapped = {**job, "script": "runs/setup/tools/bh_isolated_worker.py"}
         return original_launch(wrapped, gpu, attempt, *args, args=[str(path), job["id"], *map(str, effective)], **kwargs)
@@ -378,6 +407,8 @@ def prepare_worker(path, identity, arguments):
 
     if REMOTE_REALWORLD_ROOT != prefix or list(arguments) != expected:
         raise ValueError("worker arguments differ from exact registered/localized argv")
+    if os.environ.get("CUDA_VISIBLE_DEVICES") not in LOCAL_GPUS:
+        raise ValueError("BH worker requires one of the eight GPU4/5 MIG instances")
     original_validate = gpu_guard.validate_runtime_path
     own_output = MAIN / "runs" / identity
     own_cache = MAIN / ".cache/bh-isolated" / identity
