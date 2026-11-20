@@ -11,12 +11,12 @@ import subprocess
 import sys
 import time
 
-MAIN=Path('/home/ws/ws/splatter4d')
+MAIN=Path(__file__).resolve().parents[2]  # code root = this checkout (isolated bh worktree; main keeps accepted source)
 WORK=Path('/home/ws/ws/realworld-ops/ballhiding-20261120')
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from s4d.rwlearn.ball_hiding_membership import excluded_ids, amendment
 
-PY=MAIN/'.venv/bin/python'
+PY=Path('/home/ws/ws/splatter4d/.venv/bin/python')  # shared venv; code root stays MAIN
 TOOLS=MAIN/'tools'/'ball_hiding'
 
 
