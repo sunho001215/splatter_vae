@@ -136,6 +136,9 @@ def dispatcher_evidence(bundle, episodes, stem):
     if not jobs_path.is_file():
         return _stage("pending", f"dispatcher bundle {bundle.name} not compiled")
     jobs = json.loads(jobs_path.read_text())
+    if TASK == 'ball-hiding':
+        from s4d.rwlearn.ball_hiding_membership import eligible_jobs
+        jobs = eligible_jobs(jobs)
     ids = [j["id"] for j in jobs]
     if any(not i.startswith(stem + "-") for i in ids):
         return _stage("blocked", f"dispatcher job ids must use the {stem} stem (never a v1 prefix)")
@@ -211,15 +214,15 @@ def bundle_evidence(spec, view, manifest):
     split, outcomes = json.loads(blobs["split_seed0.json"]), json.loads(blobs["outcomes.json"])
     want = {s: sorted(ep for ep, r in ids.items() if by_sha.get(r["raw_sha256"], {}).get("split") == s)
             for s in ("train", "validation")}
-    if (len(ids) != 100 or set(ids) != set(saved["store_episodes"]) or {r["raw_sha256"] for r in ids.values()}
+    if (len(ids) != len(m["episodes"]) or set(ids) != set(saved["store_episodes"]) or {r["raw_sha256"] for r in ids.values()}
             != set(by_sha) or any(sorted(split.get(s, [])) != want[s] for s in want)
             or set(outcomes) != set(ids) or any(v is not True for v in outcomes.values())):
         return _stage("blocked", f"{view} split/outcomes/identities differ from the manifest")
     store = yaml.safe_load(blobs["store.yaml"])
     roots = (p["remote_processed"] + "/", p[f"{view}_dir"] + "/")
-    if (store.get("kind") != "compact" or len(store.get("paths", [])) != 100
+    if (store.get("kind") != "compact" or len(store.get("paths", [])) != len(m["episodes"])
             or not all(isinstance(x, str) and x.startswith(roots) for x in store["paths"])):
-        return _stage("blocked", f"{view} store.yaml must list 100 published compact episodes")
+        return _stage("blocked", f"{view} store.yaml must list exactly the manifest episodes")
     receipt = d.parent / f"{view}.UPLOADED.json"
     local = {str(d / n): sha(b) for n, b in blobs.items()}
     if not receipt.is_file():
@@ -567,11 +570,12 @@ def next_steps(spec, ev):
     if TASK == "ball-hiding":
         producer = f"{PY} scripts/ball_hiding.py --entry"
         commands = {key: [x.replace("scripts/pick_and_place_v2.py", "scripts/ball_hiding.py")
-                           .replace("scripts/pnpv2.py", "scripts/ball_hiding.py") for x in rows]
+                           .replace("scripts/pnpv2.py", "scripts/ball_hiding.py")
+                           .replace("/rgb-remote/", "/rgb2-remote/") for x in rows]
                     for key, rows in commands.items()}
-        commands["normalized"] = [f"{producer} phase-a-remote   # stage normalize + Phase A; launch nothing",
-            f"{PY} -m ops.jobs.rwprep_remote tick --config {w}/normalize/dispatcher.json --apply --loop",
-            f"{producer} rgb-remote   # depends only on normalized jobs"]
+        commands["phaseA"] = ["Wait for the 99 eligible jobs in the existing Phase-A controller; preserve its immutable 100-job queue"]
+        commands["normalized"] = ["Wait for the 99 eligible jobs in the existing normalization controller; preserve its immutable 100-job queue",
+            f"{producer} rgb-remote   # new rgb2 bundle depends only on the eligible normalized jobs"]
     out = {}
     for stage, (kind, needs) in STAGES.items():
         if kind != "external" or ev[stage]["status"] == "done":

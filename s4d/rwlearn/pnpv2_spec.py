@@ -210,6 +210,9 @@ def values(spec):
     }
     if TASK == "ball-hiding":
         out["rgb_source"] = f"{w}/normalize"
+        # Original 100-job running bundles and old ingest remain immutable.
+        out.update(ingest=f"{w}/bh3/ingest99", manifest=f"{w}/bh3/ingest99/S/manifest.json",
+                   prep_plan=f"{w}/bh3/ingest99/prep-plan.json", calib=f"{w}/calib2")
     for view in VIEWS:
         out[f"{view}_dir"] = f"{r['publication']}/{TASK}/S/{view}"
         out[f"{view}_dir_local"] = f"{w}/publication/S/{view}"

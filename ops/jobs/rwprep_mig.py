@@ -59,9 +59,9 @@ def validate(config, jobs):
     if len({j['id'] for j in jobs}) != len(jobs):
         raise ValueError('duplicate queue identity')
     for job in jobs:
-        # pick-and-place-v2 jobs use their own stem: rwv2-20261113-*-pick-and-place-v2-* would match the
+        # pick-and-place-v2 (and ball-hiding, bh-20261120) jobs use their own stem: rwv2-20261113-*-pick-and-place-v2-* would match the
         # pick-and-place v1 discontinuation prefixes (pick-and-place-v1-discontinued-20261117).
-        if (not re.fullmatch(r'(?:rwv2-20261113|pnpv2-20261117)-[A-Za-z0-9_.-]+', job['id']) or len(job['id']) > 180
+        if (not re.fullmatch(r'(?:rwv2-20261113|pnpv2-20261117|bh-20261120)-[A-Za-z0-9_.-]+', job['id']) or len(job['id']) > 180
                 or not 0 < job['gpu_gib'] <= 21.5 or not 0 < job['ram_gib'] <= 96
                 or not 0 < job['cpus'] <= 16 or job.get('gpu_profile') != '1g.24gb'
                 or not job['steps'] or not job.get('inputs')):

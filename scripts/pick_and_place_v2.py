@@ -230,6 +230,14 @@ def _remote_raw_verified(spec):
     if not proof.is_file():
         raise ValueError("run --entry raw-proof first: every remote raw copy must be verified before Phase A")
     proofs = json.loads(proof.read_text())
+    if TASK == 'ball-hiding':
+        from s4d.rwlearn.ball_hiding_membership import amendment
+        # The original all-100 raw proof remains immutable and must bind exactly those 100 hashes.
+        a = amendment()
+        expected = set(a['episodes'].values()) | {r['raw_sha256'] for r in a['excluded'].values()}
+        if proofs != {h: h for h in expected}:
+            raise ValueError('BH original remote raw proof differs from the exact 100-recording inventory')
+        return m
     if any(proofs.get(r["sha256"]) != r["sha256"] for r in m["episodes"]) or len(proofs) != len(m["episodes"]):
         raise ValueError("remote raw proof differs from the canonical manifest")
     return m
@@ -292,11 +300,14 @@ def rgb_remote(spec, a, argv):
     _check_data(spec, a)
     config = json.loads((Path(p.get("rgb_source", p["phase_a"])) / "dispatcher.json").read_text())
     jobs = json.loads(Path(config["jobs"]).read_text())
-    out, link = _attachment(Path(p["work"]) / "rgb-remote", pnpv2_rgb.RGB_BUNDLE)
+    out, link = _attachment(Path(p["work"]) / ("rgb2-remote" if TASK == "ball-hiding" else "rgb-remote"), pnpv2_rgb.RGB_BUNDLE)
     out.mkdir(parents=True)
     shutil.copyfile(p["manifest"], out / "manifest.json")
+    if TASK == 'ball-hiding':
+        from s4d.rwlearn.ball_hiding_membership import eligible_jobs
+        jobs = eligible_jobs(jobs)
     job = pnpv2_rgb.remote_job(spec, out, config["remote"], [j["id"] for j in jobs])
-    result = rwprep_remote.stage([job], out, rwprep_remote.RemoteClient(), commit=config["commit"],
+    result = rwprep_remote.stage([job], out, rwprep_remote.RemoteClient(), commit=None if TASK == "ball-hiding" else config["commit"],
                                  release=rwprep_remote_release(spec), name=pnpv2_rgb.RGB_BUNDLE,
                                  image=config["image"], files=("manifest.json",))
     _link(out, link)
@@ -312,7 +323,7 @@ def rgb_fetch(spec, a, argv):
     from s4d.rwlearn.pnpv2_publication import manifest_check
 
     p = values(spec)
-    state = json.loads((Path(p["work"]) / "rgb-remote/state/state.json").read_text())["jobs"]
+    state = json.loads((Path(p["work"]) / ("rgb2-remote/state/state.json" if TASK == "ball-hiding" else "rgb-remote/state/state.json")).read_text())["jobs"]
     if (state.get(pnpv2_rgb.RGB_JOB) or {}).get("status") != "done":
         raise ValueError("remote RGB publication job is not done")
     local = Path(p["rgb_dir_local"])
@@ -327,9 +338,9 @@ def rgb_fetch(spec, a, argv):
     if m != json.loads(Path(p["manifest"]).read_text()):
         raise ValueError("remote RGB publication manifest differs from the ingest manifest")
     store = yaml.safe_load(docs["store.yaml"])
-    if store.get("kind") != "compact" or len(store.get("paths", [])) != 100 or not all(
+    if store.get("kind") != "compact" or len(store.get("paths", [])) != len(m["episodes"]) or not all(
             x.startswith(remote + "/episodes/") for x in store["paths"]):
-        raise ValueError("remote RGB store.yaml must name the 100 remote published episodes")
+        raise ValueError("remote RGB store.yaml must name exactly the eligible remote published episodes")
     local.mkdir(parents=True)
     for name, text in docs.items():
         (local / name).write_text(text)
@@ -337,7 +348,7 @@ def rgb_fetch(spec, a, argv):
 
 
 REMOTE_RW = "/home/compu/kaist/sunho/realworld"
-CALIB_BUNDLE = f"{STEM}-calib"
+CALIB_BUNDLE = f"{STEM}-calib2" if TASK == "ball-hiding" else f"{STEM}-calib"
 PHASE_B_BUNDLE = f"{STEM}-phaseB"
 # The established LoMa/romav2 upstream staged for the dsreset calibrations (read-only; torch-home links into
 # calib-loma / calib-dw, which the jobs therefore also mount read-only, as the drawer-open-v2 calibration does).
@@ -352,6 +363,11 @@ out = pathlib.Path(out)
 if not out.exists():
     plan(phase, task, out, work, upstream, stem=stem)
 c = json.loads((out / 'dispatcher.json').read_text())
+if task == 'ball-hiding':
+    assert len(sys.argv) == 10, 'BH calibration needs the fresh source pin'
+    assert not (out / 'state/state.json').exists(), 'HELD: calibration queue already used'
+    c.update(commit=sys.argv[8], code=sys.argv[9])
+    atomic(out / 'dispatcher.json', c)
 want = list(dict.fromkeys([*c.get('extra_readonly', []), *json.loads(extra)]))
 if c.get('extra_readonly') != want:
     assert not (out / 'state/state.json').exists(), 'HELD: calibration queue already used'
@@ -366,6 +382,17 @@ base, out, rig, stem, extra, disk = sys.argv[1:7]
 base, out = pathlib.Path(base), pathlib.Path(out)
 c = json.loads((base / 'dispatcher.json').read_text())
 rows = json.loads((base / 'prep-plan.json').read_text())
+if stem.startswith('bh-20261120-'):
+    from s4d.rwlearn.ball_hiding_membership import eligible_jobs, amendment
+    rows = eligible_jobs(rows)
+    assert len(rows) == amendment()['target'], 'BH Phase B requires 99 eligible episodes'
+plan_path = base / 'prep-plan.json'
+if stem.startswith('bh-20261120-'):
+    plan_path = out.parent / (out.name + '.eligible-plan.json')
+    if plan_path.exists():
+        assert json.loads(plan_path.read_text()) == rows, 'HELD: eligible Phase-B plan differs'
+    else:
+        atomic(plan_path, rows)
 rigmap, doc = out.parent / (out.name + '.rig-map.json'), {r['episode']: rig for r in rows}
 if rigmap.exists():
     assert json.loads(rigmap.read_text()) == doc, 'HELD: rig map differs'
@@ -376,7 +403,7 @@ if not out.exists():
     from s4d.rwlearn.pnpv2_offline import phase_b_compiler
     compiler = phase_b_compiler(rig, override)
     args = [sys.executable, compiler, '--phase', 'B', '--id-stem', stem,
-            '--plan', str(base / 'prep-plan.json'), '--out', str(out), '--host', 'remote',
+            '--plan', str(plan_path), '--out', str(out), '--host', 'remote',
             '--code', '/opt/src/splatter4d', '--rig-map', str(rigmap), '--extra-readonly', extra]
     for k in ('processed', 'raw', 'weights', 'image', 'tools', 'assets'):
         args += ['--' + k, c[k]]
@@ -402,13 +429,16 @@ def calib_remote(spec, a, argv):
 
     p = values(spec)
     base = _phase_a_config(spec)
+    if TASK == 'ball-hiding':
+        fresh = json.loads((Path(p['work']) / 'rgb2-remote/dispatcher.json').read_text())
+        base.update({k: fresh[k] for k in ('code', 'commit')})
     out, link = _attachment(p["calib"], CALIB_BUNDLE)
     remote = f"{REMOTE_RW}/configs/{CALIB_BUNDLE}"
     client = rwprep_remote.RemoteClient()
     print(rwprep_remote.planner(client, base, [
         "-c", _CALIB_PLAN, f"{base['remote']}/dispatcher.json", TASK, remote,
         f"{p['remote_processed']}/calibration/{TASK}", CALIB_UPSTREAM, STAGE_IDS["rig"],
-        json.dumps([*CALIB_READONLY])]))
+        json.dumps([*CALIB_READONLY]), *([base["commit"], base["code"]] if TASK == "ball-hiding" else [])]))
     print(json.dumps(rwprep_remote.attach(remote, out, client, base)))
     _link(out, link)
 
@@ -503,6 +533,9 @@ def geometry_remote(spec, a, argv):
         if remote != f"{REMOTE_RW}/configs/{expected}":
             raise ValueError("geometry requires the canonical pnpv2 Phase-A/B bundles")
         jobs = json.loads((Path(p[key]) / "jobs.json").read_text())
+        if TASK == 'ball-hiding':
+            from s4d.rwlearn.ball_hiding_membership import eligible_jobs
+            jobs = eligible_jobs(jobs)
         phase_ids[remote] = [j["id"] for j in jobs]
         for name in ("dispatcher.json", "jobs.json"):
             path = f"{remote}/{name}"

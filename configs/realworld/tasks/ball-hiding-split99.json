@@ -1,0 +1,171 @@
+{
+  "schema": "ball-hiding-split/1",
+  "task": "ball-hiding",
+  "seed": 0,
+  "validation_fraction": 0.1,
+  "train": [
+    "ball-hiding-success-episode_000000",
+    "ball-hiding-success-episode_000001",
+    "ball-hiding-success-episode_000002",
+    "ball-hiding-success-episode_000003",
+    "ball-hiding-success-episode_000004",
+    "ball-hiding-success-episode_000006",
+    "ball-hiding-success-episode_000007",
+    "ball-hiding-success-episode_000009",
+    "ball-hiding-success-episode_000010",
+    "ball-hiding-success-episode_000011",
+    "ball-hiding-success-episode_000012",
+    "ball-hiding-success-episode_000013",
+    "ball-hiding-success-episode_000014",
+    "ball-hiding-success-episode_000015",
+    "ball-hiding-success-episode_000016",
+    "ball-hiding-success-episode_000017",
+    "ball-hiding-success-episode_000018",
+    "ball-hiding-success-episode_000019",
+    "ball-hiding-success-episode_000020",
+    "ball-hiding-success-episode_000021",
+    "ball-hiding-success-episode_000022",
+    "ball-hiding-success-episode_000023",
+    "ball-hiding-success-episode_000024",
+    "ball-hiding-success-episode_000026",
+    "ball-hiding-success-episode_000027",
+    "ball-hiding-success-episode_000028",
+    "ball-hiding-success-episode_000029",
+    "ball-hiding-success-episode_000030",
+    "ball-hiding-success-episode_000031",
+    "ball-hiding-success-episode_000032",
+    "ball-hiding-success-episode_000033",
+    "ball-hiding-success-episode_000034",
+    "ball-hiding-success-episode_000035",
+    "ball-hiding-success-episode_000036",
+    "ball-hiding-success-episode_000037",
+    "ball-hiding-success-episode_000039",
+    "ball-hiding-success-episode_000040",
+    "ball-hiding-success-episode_000041",
+    "ball-hiding-success-episode_000042",
+    "ball-hiding-success-episode_000044",
+    "ball-hiding-success-episode_000045",
+    "ball-hiding-success-episode_000046",
+    "ball-hiding-success-episode_000047",
+    "ball-hiding-success-episode_000049",
+    "ball-hiding-success-episode_000050",
+    "ball-hiding-success-episode_000051",
+    "ball-hiding-success-episode_000052",
+    "ball-hiding-success-episode_000053",
+    "ball-hiding-success-episode_000055",
+    "ball-hiding-success-episode_000056",
+    "ball-hiding-success-episode_000058",
+    "ball-hiding-success-episode_000059",
+    "ball-hiding-success-episode_000060",
+    "ball-hiding-success-episode_000061",
+    "ball-hiding-success-episode_000062",
+    "ball-hiding-success-episode_000063",
+    "ball-hiding-success-episode_000064",
+    "ball-hiding-success-episode_000065",
+    "ball-hiding-success-episode_000066",
+    "ball-hiding-success-episode_000067",
+    "ball-hiding-success-episode_000068",
+    "ball-hiding-success-episode_000069",
+    "ball-hiding-success-episode_000070",
+    "ball-hiding-success-episode_000072",
+    "ball-hiding-success-episode_000073",
+    "ball-hiding-success-episode_000075",
+    "ball-hiding-success-episode_000076",
+    "ball-hiding-success-episode_000077",
+    "ball-hiding-success-episode_000078",
+    "ball-hiding-success-episode_000079",
+    "ball-hiding-success-episode_000081",
+    "ball-hiding-success-episode_000082",
+    "ball-hiding-success-episode_000083",
+    "ball-hiding-success-episode_000084",
+    "ball-hiding-success-episode_000085",
+    "ball-hiding-success-episode_000087",
+    "ball-hiding-success-episode_000088",
+    "ball-hiding-success-episode_000089",
+    "ball-hiding-success-episode_000090",
+    "ball-hiding-success-episode_000091",
+    "ball-hiding-success-episode_000092",
+    "ball-hiding-success-episode_000093",
+    "ball-hiding-success-episode_000094",
+    "ball-hiding-success-episode_000095",
+    "ball-hiding-success-episode_000096",
+    "ball-hiding-success-episode_000098",
+    "ball-hiding-success-episode_000099",
+    "ball-hiding-success-episode_000100",
+    "ball-hiding-success-episode_000101"
+  ],
+  "validation": [
+    "ball-hiding-success-episode_000005",
+    "ball-hiding-success-episode_000038",
+    "ball-hiding-success-episode_000043",
+    "ball-hiding-success-episode_000048",
+    "ball-hiding-success-episode_000057",
+    "ball-hiding-success-episode_000071",
+    "ball-hiding-success-episode_000074",
+    "ball-hiding-success-episode_000080",
+    "ball-hiding-success-episode_000086",
+    "ball-hiding-success-episode_000097"
+  ],
+  "amendment_sha256": "5b758bb87ad488acfb952b1b14a3b126581588be6d7aed68457cc6c2403d153c",
+  "removed": [
+    "ball-hiding-success-episode_000008"
+  ],
+  "changes_from_100": {
+    "ball-hiding-success-episode_000037": {
+      "before": "validation",
+      "after": "train"
+    },
+    "ball-hiding-success-episode_000042": {
+      "before": "validation",
+      "after": "train"
+    },
+    "ball-hiding-success-episode_000047": {
+      "before": "validation",
+      "after": "train"
+    },
+    "ball-hiding-success-episode_000056": {
+      "before": "validation",
+      "after": "train"
+    },
+    "ball-hiding-success-episode_000070": {
+      "before": "validation",
+      "after": "train"
+    },
+    "ball-hiding-success-episode_000073": {
+      "before": "validation",
+      "after": "train"
+    },
+    "ball-hiding-success-episode_000079": {
+      "before": "validation",
+      "after": "train"
+    },
+    "ball-hiding-success-episode_000038": {
+      "before": "train",
+      "after": "validation"
+    },
+    "ball-hiding-success-episode_000043": {
+      "before": "train",
+      "after": "validation"
+    },
+    "ball-hiding-success-episode_000048": {
+      "before": "train",
+      "after": "validation"
+    },
+    "ball-hiding-success-episode_000057": {
+      "before": "train",
+      "after": "validation"
+    },
+    "ball-hiding-success-episode_000071": {
+      "before": "train",
+      "after": "validation"
+    },
+    "ball-hiding-success-episode_000074": {
+      "before": "train",
+      "after": "validation"
+    },
+    "ball-hiding-success-episode_000080": {
+      "before": "train",
+      "after": "validation"
+    }
+  }
+}

@@ -21,6 +21,12 @@ def plan(phase_config,task,out,work,upstream,stem=None):
     import yaml
     cfg=json.loads(Path(phase_config).read_text());source=json.loads(Path(cfg['jobs']).read_text())
     selected=[j for j in source if j['episode'].startswith(task+'-')]
+    if task == 'ball-hiding':
+        from s4d.rwlearn.ball_hiding_membership import eligible_jobs, amendment
+        selected = eligible_jobs(selected)
+        wanted = {'ball-hiding-success-' + Path(n).stem for n in amendment()['episodes']}
+        if {j['episode'] for j in selected} != wanted or len(selected) != len(wanted):
+            raise ValueError('BH calibration requires exactly the eligible 99 Phase-A jobs')
     if not selected:raise ValueError('no phase-A task jobs')
     out=Path(out).resolve();out.mkdir(parents=True,exist_ok=False)
     work=Path(work).resolve();work.mkdir(parents=True,exist_ok=True)
@@ -31,6 +37,8 @@ def plan(phase_config,task,out,work,upstream,stem=None):
         roots[alias]={'episode':ep,'root':yaml.safe_load(Path(path).read_text())['output_root']}
         aliases[alias]=ep
     spec={'task':task,'roots':roots,'aliases':aliases,'work':str(work),'commit':cfg['commit']}
+    if task == 'ball-hiding':
+        spec['membership_amendment'] = amendment()
     atomic(out/'spec.json',spec)
     freeze=out/'FREEZE.json'
     atomic(freeze,{'protocol':'rig_loma-release/2','source_commit':cfg['commit'],

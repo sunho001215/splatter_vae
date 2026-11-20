@@ -26,6 +26,12 @@ def manifest_check(manifest, spec):
 
     with task_known() as dsreset:
         dsreset.validate_manifest(manifest)
+    if TASK == 'ball-hiding':
+        from s4d.rwlearn.ball_hiding_membership import validate_membership
+        if (manifest['task'] != TASK or manifest['variant'] != 'S'
+                or manifest.get('seed') != 0 or manifest.get('validation_fraction') != .1):
+            raise ValueError('BH requires S seed-0 membership')
+        return validate_membership(manifest)
     if (
         manifest["task"] != TASK
         or manifest["variant"] != "S"

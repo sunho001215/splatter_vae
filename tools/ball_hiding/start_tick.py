@@ -13,8 +13,8 @@ import sys
 import time
 from pathlib import Path
 
-MAIN = Path("/home/ws/ws/splatter4d")
-PY = str(MAIN / ".venv/bin/python")
+MAIN = Path(__file__).resolve().parents[2]  # code root = this checkout (isolated bh worktree)
+PY = "/home/ws/ws/splatter4d/.venv/bin/python"  # shared venv; code root stays MAIN
 
 
 def alive(pid, config):
