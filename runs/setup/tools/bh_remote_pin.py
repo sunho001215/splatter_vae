@@ -64,8 +64,17 @@ def install(directory=DIRECTORY):
         except (OSError, ValueError, KeyError, TypeError) as exc:
             print(f"BH_REMOTE unavailable: {type(exc).__name__}", file=sys.stderr)
             return False
+    if not proofs:
+        return False
+    from runs.setup.tools.bh_isolated_release import fence, install_aliases
+
+    install_aliases()  # remote input/role consumers need the same exact-ID wrapper aliases
     from ops.jobs import remote_offload
-    from runs.setup.tools.bh_isolated_release import fence
+    from s4d.rwlearn import dsreset_entrypoints
+
+    # remote_offload may already have bound legacy_row before this optional hook.
+    # The shared alias delegates unchanged for every non-BH identity.
+    remote_offload.legacy_row = dsreset_entrypoints.legacy_row
 
     previous = remote_offload.admitted_pin
 
