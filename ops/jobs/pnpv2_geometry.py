@@ -114,7 +114,8 @@ def remote_job(spec, bundle, phase_a, phase_b, phase_ids, remote_inputs):
     return dict(id=JOB, priority=-4, gpu_profile='1g.24gb', gpu_gib=1, ram_gib=32, cpus=4, disk_gib=PREP_DISK_GIB,
                 inputs={**{str(Path(bundle) / n): digest(Path(bundle) / n) for n in files}, **remote_inputs},
                 deps=[], external_states={f'{p}/state/state.json': list(ids) for p, ids in phase_ids.items()},
-                steps=[dict(kind='python', argv=['-m', 'ops.jobs.pnpv2_geometry', 'remote',
+                steps=[dict(kind='python', argv=(["-m", "ops.jobs.ball_hiding_worker", "geometry"] if TASK == "ball-hiding" else
+                      ['-m', 'ops.jobs.pnpv2_geometry', 'remote']) + [
                       '--source', remote, '--phase-a', phase_a, '--phase-b', phase_b])])
 
 
