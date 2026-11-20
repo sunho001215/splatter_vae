@@ -73,6 +73,25 @@ WRAPPERS = {
 }
 
 
+def select_task(task):
+    """Select a supported prep task BEFORE importing consumers, in a dedicated CLI process.
+
+    Defaults remain the established pnp-v2 identities. Reconfiguration of an imported pipeline is refused;
+    this is not a task switch inside a worker or a shared Python service.
+    """
+    import sys
+
+    global TASK, SPEC, STEM, PAUSE
+    if task != "ball-hiding":
+        raise ValueError("unsupported prep task")
+    consumers = [name for name in sys.modules if name.startswith(("ops.jobs.pnpv2_", "s4d.rwlearn.pnpv2_"))
+                 and name != __name__]
+    if consumers:
+        raise ValueError("select task before importing pipeline consumers: " + ", ".join(consumers))
+    TASK, SPEC, STEM, PAUSE = ("ball-hiding", "configs/realworld/tasks/ball-hiding.yaml",
+                              "bh-20261120", "bh-await-placement-20261120")
+
+
 def row_id(stage, method, seed=None):
     return f"{STEM}-{stage}-{method}-{TASK}-S" + (f"-s{seed}" if seed is not None else "")
 
@@ -189,6 +208,8 @@ def values(spec):
         "robot_urdf": f"{r['robot_assets']}/{spec['robot_urdf']}",
         "workspace_stats": f"runs/{row_id('stats', 'ours')}/workspace_stats.json",
     }
+    if TASK == "ball-hiding":
+        out["rgb_source"] = f"{w}/normalize"
     for view in VIEWS:
         out[f"{view}_dir"] = f"{r['publication']}/{TASK}/S/{view}"
         out[f"{view}_dir_local"] = f"{w}/publication/S/{view}"
