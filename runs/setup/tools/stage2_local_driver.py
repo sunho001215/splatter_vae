@@ -10,7 +10,10 @@ if _repo not in sys.path:
 if __name__ == "__main__":  # the CLI runs the implementation as __main__ (sys.argv[0] keeps this path)
     import runpy
 
-    runpy.run_module("ops.campaign.stage2_local_driver", run_name="__main__")
+    from ops.jobs.scheduler import input_verification_pass  # per-pass SHA reuse (2026-11-16)
+
+    with input_verification_pass():
+        runpy.run_module("ops.campaign.stage2_local_driver", run_name="__main__")
 else:
     from ops.campaign import stage2_local_driver as _impl
 
