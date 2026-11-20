@@ -16,7 +16,9 @@ PAUSE = "bh-await-placement-20261120"
 LOCAL_METHODS = {"ours", "ours_orig", "ours_ch01", "reviwo", "snerl", "e2e_cnn"}
 
 
-def rows(spec, release, *, waves=("rgb",), scene=None, current=()):
+def rows(spec, release, *, waves=("rgb",), scene=None, current=(), route="hybrid"):
+    if route not in {"hybrid", "all-local"}:
+        raise ValueError("BH route must be hybrid or all-local")
     result = copy.deepcopy(pnp_rows(spec, release, waves=waves, scene=scene))
     priority = max([5, *(float(r.get("priority", 5)) for r in current)]) + 1
     for row in result:
@@ -26,6 +28,6 @@ def rows(spec, release, *, waves=("rgb",), scene=None, current=()):
         row["evidence_manifest"] = "exact-ID bh-isolated grant (local) / native acceptance (remote)"
         row["priority"] = priority
         method = row["realworld_method"]
-        host = "local" if "-gate-" in row["id"] or method in LOCAL_METHODS else "remote"
+        host = "local" if route == "all-local" or "-gate-" in row["id"] or method in LOCAL_METHODS else "remote"
         row["host"] = row["pin_host"] = host
     return result

@@ -411,6 +411,8 @@ def test_worker_rejects_extra_or_scientific_argument_changes_before_writes(monke
     row = next(iter(grant["rows"].values()))["row"]
     monkeypatch.setattr(isolated, "MAIN", tmp_path)
     monkeypatch.chdir(ROOT)
+    monkeypatch.setenv("S4D_HOST_CONFIG", str(ROOT / "configs/hosts/local.yaml"))
+    monkeypatch.setenv("S4D_CACHE_ROOT", str(tmp_path / "cache"))
     with pytest.raises(ValueError, match="arguments differ"):
         isolated.prepare_worker(path, row["id"], ["--batch-size", "1"])
     assert not (tmp_path / "runs").exists()
@@ -430,7 +432,8 @@ def test_control_cas_refuses_changed_queue_without_unholding(tmp_path):
     assert pause.read_bytes() == b"original hold"
 
 
-def test_advancer_releases_local_while_remote_native_is_pending(monkeypatch, tmp_path):
+@pytest.mark.parametrize("route", ["hybrid", "all-local"])
+def test_advancer_releases_local_while_remote_native_is_pending(monkeypatch, tmp_path, route):
     from types import SimpleNamespace
 
     import bh_advance as advance
@@ -443,7 +446,15 @@ def test_advancer_releases_local_while_remote_native_is_pending(monkeypatch, tmp
     snapshot = tmp_path / "snapshot.json"
     snapshot.write_text(json.dumps(dict(commit=commit)))
     proof = main / "runs/setup/bh-20261120-rgb.registration.json"
-    proof.write_text(json.dumps(dict(release=dict(commit=commit))))
+    proof.write_text(
+        json.dumps(
+            dict(
+                release=dict(commit=commit),
+                route=route,
+                rows=[dict(host="local")] + ([dict(host="remote")] if route == "hybrid" else []),
+            )
+        )
+    )
     monkeypatch.setattr(advance, "MAIN", main)
     calls = []
 
@@ -468,6 +479,8 @@ def test_advancer_releases_local_while_remote_native_is_pending(monkeypatch, tmp
         "argv",
         [
             "bh_advance",
+            "--route",
+            route,
             "--snapshot",
             str(snapshot),
             "--binding",
@@ -484,7 +497,7 @@ def test_advancer_releases_local_while_remote_native_is_pending(monkeypatch, tmp
     )
     assert advance.main() == 0
     assert (main / "runs/setup/bh-isolated-release.d/local-rgb.json").exists()
-    assert any(s == "bh_prepare_release.py" and args[0] == "remote" for s, args in calls)
+    assert any(s == "bh_prepare_release.py" and args[0] == "remote" for s, args in calls) == (route == "hybrid")
     assert any(s == "bh_fetch_inputs.py" for s, args in calls)
     assert any(s == "bh_register.py" and "geometry" in args for s, args in calls)
 
@@ -515,3 +528,64 @@ def test_fetch_from_candidate_targets_canonical_main_mirror(monkeypatch, tmp_pat
     assert received[0]["mirror"] == main / "runs/realworld-inputs"
     assert received[0]["client"] == ("client", main)
     assert received[0]["priority"] == "dependency" and received[0]["dry_run"] is False
+
+
+def test_99_membership_and_published_view_paths(tmp_path):
+    result = child("""
+import copy,json
+from pathlib import Path
+from s4d.rwlearn.ball_hiding import bootstrap
+bootstrap()
+from s4d.rwlearn.pnpv2_spec import SPEC,load_spec,values
+from s4d.rwlearn.pnpv2_publication import manifest_check
+from s4d.rwlearn.ball_hiding_membership import amendment,SPLIT
+from tests import test_pnpv2_geometry_route as T
+import pytest,tempfile
+a=amendment(); split=json.loads(SPLIT.read_text())
+with tempfile.TemporaryDirectory() as tmp, pytest.MonkeyPatch.context() as mp:
+    m=T.campaign.__wrapped__(Path(tmp),mp).m
+    spec=load_spec(SPEC); manifest_check(m,spec)
+    assert m['split']=={k:split[k] for k in ('train','validation')}
+    assert list(map(len,(split['train'],split['validation'])))==[89,10]
+    assert not any('episode_000008' in e for k in ('train','validation') for e in split[k])
+    for change in ('excluded','split','episodes'):
+        bad=copy.deepcopy(m)
+        if change=='split':bad['split']['train'].append(bad['split']['validation'].pop())
+        elif change=='excluded':bad['excluded']=[]
+        else:bad['episodes']=bad['episodes'][:-1]
+        try:manifest_check(bad,spec)
+        except ValueError:pass
+        else:raise AssertionError(change)
+    p=values(spec)
+    assert '/bh3/ingest99/' in p['manifest']
+    for wave in ('rgb','geometry'):
+        assert p[wave+'_manifest'].endswith('/'+wave+'/manifest.json')
+        assert p[wave+'_split'].endswith('/'+wave+'/split_seed0.json')
+print(json.dumps(dict(episodes=99,train=89,validation=10)))
+""")
+    assert result == dict(episodes=99, train=89, validation=10)
+
+
+def test_all_local_route_preserves_science_and_original_roles():
+    assert child("""
+import json
+from s4d.rwlearn.ball_hiding import bootstrap
+bootstrap()
+from s4d.rwlearn.pnpv2_spec import SPEC,load_spec
+from s4d.rwlearn.bh_training import rows
+from runs.setup.tools.bh_isolated_release import install_aliases
+from ops.jobs import host_roles,realworld_local
+from pathlib import Path
+spec=load_spec(SPEC); release=dict(commit='a'*40,image='sha256:'+'b'*64,source='local')
+kw=dict(waves=('rgb','geometry'),scene=dict(lookat=[.4,0,.1],pose_scale=2.5,bounds=[-.5,-.6,-.05,.9,.6,.7]))
+hybrid=rows(spec,release,**kw); local=rows(spec,release,route='all-local',**kw)
+assert len(local)==90 and {r['host'] for r in local}=={'local'}
+install_aliases(); roles=host_roles.load_roles(Path('configs/hosts/roles.yaml'))
+by_id={r['id']:r for r in local}
+for before,after in zip(hybrid,local):
+    fields=lambda r:{k:v for k,v in r.items() if k not in ('host','pin_host')}
+    assert fields(before)==fields(after)
+    realworld_local.needed_inputs(after)
+    assert host_roles.refusal(after,'local',roles,{},by_id) is None,after['id']
+print(json.dumps(True))
+""")
