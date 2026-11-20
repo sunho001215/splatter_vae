@@ -140,7 +140,11 @@ def install(directory=DIRECTORY):
             return previous_prepare(backend, job, gpu, attempt, host, evidence)
         path, grant, digest, expected = proofs[job["id"]]
         fence(path, digest)
-        if job != expected or (host["commit"], host["image_digest"]) != (grant["commit"], grant["image"]):
+        normalized = dict(job)
+        if expected.get("gpu") == "any":
+            normalized["gpu"] = "any"
+        if (job.get("gpu", "any") not in ("any", gpu) or normalized != expected
+                or (host["commit"], host["image_digest"]) != (grant["commit"], grant["image"])):
             raise ValueError("remote BH prepare pin/row differs")
         # Only prepare's source-file lookup uses the seal. The same backend/client,
         # canonical runs directory, original launcher and acceptance gates remain.

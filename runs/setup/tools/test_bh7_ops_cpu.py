@@ -109,7 +109,7 @@ def test_remote_prepare_uses_seal_and_preserves_original_backend(tmp_path,monkey
     path.chmod(0o444);code.chmod(0o555)
     snapshot=tmp_path/'snapshot.json'
     snapshot.write_text(json.dumps(dict(commit=commit,code_root=str(code),source_files={script:dict(sha256=hashlib.sha256(path.read_bytes()).hexdigest())})))
-    row=dict(id=identity,script=script,args=['build','--out',f'runs/{identity}/dataset.h5'],host='remote',
+    row=dict(id=identity,script=script,gpu='any',args=['build','--out',f'runs/{identity}/dataset.h5'],host='remote',
              required_results=['dataset.h5'],role='realworld_fql',ram_gb=8,mem_gb=1,disk_gb=2)
     grant=dict(commit=commit,image=image,rows={identity:dict(row=row)},snapshot=str(snapshot),snapshot_sha256=hashlib.sha256(snapshot.read_bytes()).hexdigest())
     directory=tmp_path/'grants';directory.mkdir();proof=directory/'remote-rgb.json';proof.write_text('{}')
@@ -126,9 +126,11 @@ def test_remote_prepare_uses_seal_and_preserves_original_backend(tmp_path,monkey
     backend=remote_backend.RemoteBackend(tmp_path/'accepted-main',tmp_path/'runs',client=type('Client',(),dict(root=REMOTE_ROOT))())
     try:
         assert remote.install(directory)
-        specpath,spec=backend.prepare(row,gpu,2,host,{})
+        specpath,spec=backend.prepare({**row,'gpu':gpu},gpu,2,host,{})
         assert specpath==tmp_path/'runs/remote/jobs'/f'{identity}-a2.json'
         assert spec['script']==script and backend.repo==tmp_path/'accepted-main'
+        with pytest.raises(ValueError,match='pin/row differs'):
+            backend.prepare({**row,'gpu':'other'},gpu,3,host,{})
         with pytest.raises(ValueError,match='pin/row differs'):
             backend.prepare({**row,'args':['drift']},gpu,3,host,{})
         foreign={**row,'id':'foreign'}
