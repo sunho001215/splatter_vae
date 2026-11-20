@@ -466,3 +466,31 @@ def test_advancer_releases_local_while_remote_native_is_pending(monkeypatch, tmp
     assert any(s == "bh_prepare_release.py" and args[0] == "remote" for s, args in calls)
     assert any(s == "bh_fetch_inputs.py" for s, args in calls)
     assert any(s == "bh_register.py" and "geometry" in args for s, args in calls)
+
+
+def test_fetch_from_candidate_targets_canonical_main_mirror(monkeypatch, tmp_path, graphs):
+    import bh_fetch_inputs as fetcher
+
+    from ops.jobs import realworld_local
+    from ops.remote import access
+
+    row = graphs[1][0]
+    proof = tmp_path / "registration.json"
+    proof.write_text(json.dumps(dict(rows=[row])))
+    main = tmp_path / "main"
+    (main / "experiments").mkdir(parents=True)
+    (main / "experiments/queue.yaml").write_text(json.dumps(dict(jobs=[row])))
+    monkeypatch.setattr(fetcher, "MAIN", main)
+    monkeypatch.setattr(access, "RemoteClient", lambda **kwargs: ("client", kwargs["repo"]))
+    received = []
+
+    def fetch(*args, **kwargs):
+        received.append(kwargs)
+        return {"verified": True}
+
+    monkeypatch.setattr(realworld_local, "fetch", fetch)
+    monkeypatch.setattr(sys, "argv", ["fetch", "--registration", str(proof), "--apply"])
+    assert fetcher.main() == 0
+    assert received[0]["mirror"] == main / "runs/realworld-inputs"
+    assert received[0]["client"] == ("client", main)
+    assert received[0]["priority"] == "dependency" and received[0]["dry_run"] is False
