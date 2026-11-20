@@ -39,6 +39,28 @@ def pause_bytes(raw, ids, hold):
     return (json.dumps(doc, indent=2) + "\n").encode()
 
 
+def main_acceptance(repo):
+    """The existing drivers' own pre-launch predicate, checked before unholding BH."""
+    from ops.jobs import scheduler
+
+    previous = scheduler.REPO
+    try:
+        scheduler.REPO = repo
+        identity = scheduler.source_identity()
+    finally:
+        scheduler.REPO = previous
+    report_path = repo / "docs/tests.json"
+    report = json.loads(report_path.read_bytes())
+    registration.require(
+        report.get("full_suite_passed") is True and report.get("source_sha256") == identity["source_sha256"],
+        "main driver source/test evidence is stale; BH scoped acceptance cannot replace it",
+    )
+    return {
+        str(report_path): revision(report_path),
+        **{str(repo / name): revision(repo / name) for name in identity["source_sha256"] if "@" not in name},
+    }
+
+
 def plan(mode, path, repo=registration.MAIN):
     import yaml
 
@@ -64,11 +86,12 @@ def plan(mode, path, repo=registration.MAIN):
     for identity in ids:
         registration.require(queue.get(identity) == grant["rows"][identity]["row"], "registered row changed: " + identity)
     registry_token = revision(registry_path)
-    inputs = {}
+    inputs, source_tokens = {}, {}
     if mode == "release":
         registration.setup()  # select task before any remote admission consumer imports
         if is_local:
             local.load_authorization(path)
+            source_tokens = main_acceptance(repo)
         else:
             remote.load(path, repo)
         # Refuse a grant that cannot be consumed by the installed fresh wrappers.
@@ -118,7 +141,7 @@ def plan(mode, path, repo=registration.MAIN):
     after = pause_bytes(pause_raw, ids, mode == "rollback")
     registration.require(not target.exists() or target.read_bytes() == raw, "different installed grant; refuse replacement")
     # Tokens fence evidence without hashing or network work inside admission locks.
-    tokens = {str(p): revision(Path(p)) for p in inputs}
+    tokens = {**source_tokens, **{str(p): revision(Path(p)) for p in inputs}}
     tokens[str(path)] = revision(path)
     return dict(
         mode=mode,
