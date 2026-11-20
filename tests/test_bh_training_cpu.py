@@ -242,6 +242,7 @@ def test_remote_pin_delegates_foreign_and_refuses_changed_row(monkeypatch, tmp_p
     import bh_remote_pin as remote
 
     from ops.jobs import remote_offload
+    from runs.setup.tools import bh_isolated_release as remote_isolated
 
     row = next(r for r in graphs[1] if r["host"] == "remote")
     path = tmp_path / "grant.json"
@@ -255,7 +256,19 @@ def test_remote_pin_delegates_foreign_and_refuses_changed_row(monkeypatch, tmp_p
     )
     monkeypatch.setattr(remote, "load", lambda path: (grant, digest))
     monkeypatch.setattr(remote_offload, "admitted_pin", lambda job, ownership: ("delegated", job["id"]))
+    alias_calls = []
+    original_aliases = remote_isolated.install_aliases
+
+    def aliases():
+        alias_calls.append(True)
+        original_aliases()
+
+    monkeypatch.setattr(remote_isolated, "install_aliases", aliases)
+    monkeypatch.setattr(remote_offload, "legacy_row", lambda job: job)
     assert remote.install(tmp_path)
+    assert alias_calls == [True]
+    assert remote_offload.legacy_row(row)["script"] == row["script"].replace("runs/setup/tools/bh_", "scripts/")
+    assert remote_offload.legacy_row({"id": "old", "script": "old.py"}) == {"id": "old", "script": "old.py"}
     assert remote_offload.admitted_pin({"id": "old"}, {}) == ("delegated", "old")
     assert remote_offload.admitted_pin(row, {}) == ((row["planned_commit"], row["planned_image"]), "native.json")
     assert remote_offload.admitted_pin({**row, "priority": 0}, {}) is None
