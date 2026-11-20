@@ -38,6 +38,8 @@ ALIASES = {
 }
 # Documented research-side imports of ops: output authorization, host tags and release-route contracts.
 S4D_IMPORTS_OF_OPS = {
+    # Calibration snapshot writes use the same ingest writer when a release hides runs/setup/tools.
+    ("s4d/realworld/calib/release.py", "ops.datasets.ingest_worker"),
     # BH reuses the pnp-v2 plan and prep dispatcher contracts after selecting its task namespace.
     ("s4d/rwlearn/ball_hiding.py", "ops.jobs"),
     ("s4d/rwlearn/bh_training.py", "ops.jobs.pnpv2_plan"),
