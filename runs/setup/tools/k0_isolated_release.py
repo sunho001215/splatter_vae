@@ -11,6 +11,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import stat
 import sys
 
 MAIN = Path('/home/ws/ws/splatter4d')
@@ -103,6 +104,50 @@ def fence(path, expected):
     """Cheap revocation/identity fence before localization and launch, no source walk."""
     if digest(regular(path)) != expected:
         raise ValueError('isolated authorization changed or revoked')
+
+
+def configure_worker_temp(identity):
+    """After _bootstrap: short AF_UNIX paths, private to this complete row ID.
+
+    The bootstrap deliberately replaces TMPDIR with its long cache path. Override
+    only socket-bearing temp locations after that import; keep all caches intact.
+    The full-ID marker rejects truncated-hash collisions and pre-created paths.
+    """
+    import multiprocessing
+    import tempfile
+    if identity not in IDS:
+        raise ValueError('temp directory requires an exact authorized ID')
+    directory = Path('/tmp') / ('k0i-' + digest(identity.encode())[:10])
+    try:
+        directory.mkdir(mode=0o700)
+        created = True
+    except FileExistsError:
+        created = False
+    fd = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        info = os.fstat(fd)
+        if info.st_uid != os.geteuid() or stat.S_IMODE(info.st_mode) != 0o700:
+            raise ValueError('unsafe isolated temp directory owner or mode')
+        flags = os.O_NOFOLLOW | (os.O_WRONLY | os.O_CREAT | os.O_EXCL if created else os.O_RDONLY)
+        marker = os.open('row-id', flags, 0o600, dir_fd=fd)
+        with os.fdopen(marker, 'wb' if created else 'rb') as stream:
+            info = os.fstat(stream.fileno())
+            if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid()
+                    or stat.S_IMODE(info.st_mode) != 0o600 or info.st_nlink != 1):
+                raise ValueError('unsafe isolated temp identity marker')
+            expected = (identity + '\n').encode()
+            if created:
+                stream.write(expected)
+            elif stream.read(len(expected) + 1) != expected:
+                raise ValueError('isolated temp directory belongs to another row')
+    finally:
+        os.close(fd)
+    # tempfile can have cached the bootstrap's path during earlier imports.
+    for name in ('TMPDIR', 'TEMP', 'TMP', 'XDG_RUNTIME_DIR'):
+        os.environ[name] = str(directory)
+    tempfile.tempdir = str(directory)
+    multiprocessing.current_process()._config.pop('tempdir', None)
+    return directory
 
 
 def install(path=AUTHORIZATION):
