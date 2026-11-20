@@ -35,8 +35,11 @@ ALIASES = {
     "scripts.sync_media": "ops.remote.sync_media",
     "scripts.cleanup_replay": "ops.jobs.cleanup_replay",
 }
-# The only research-side imports of ops (lazy, inside functions): output-path authorization and the W&B host tag.
+# Documented research-side imports of ops: output authorization, host tags and release-route contracts.
 S4D_IMPORTS_OF_OPS = {
+    # BH reuses the pnp-v2 plan and prep dispatcher contracts after selecting its task namespace.
+    ("s4d/rwlearn/ball_hiding.py", "ops.jobs"),
+    ("s4d/rwlearn/bh_training.py", "ops.jobs.pnpv2_plan"),
     ("s4d/data/__init__.py", "ops.resources.gpu_guard"),
     ("s4d/diag/wandb_log.py", "ops.resources.gpu_guard"),
     # RGB-only drawer route (nosam 07b0894): verifies phase-A hybrid outputs and local closeouts it consumes.

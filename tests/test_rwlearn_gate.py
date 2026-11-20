@@ -761,8 +761,11 @@ def test_amendment_records_never_duplicate_content_or_tasks(tmp_path):
         gate.load_amendments(tmp_path)
 
 
-# the versioned amendment records (user decisions 2026-11-10): target, excluded indices, document, index range and
+# Versioned authorized amendments: target, excluded indices, document, index range and record hash.
+# BH3: coordinator exclusion under the user's 2026-11-20 data-quality/isolate-blockers directive.
 RECORDS = {
+    "ball-hiding": (99, (8,), "AMEND-BH3-99.md", (0, 101),
+                    "5b758bb87ad488acfb952b1b14a3b126581588be6d7aed68457cc6c2403d153c"),
     # the sha256 of the record file (immutable: changing an approved key or checksum needs a new dated decision)
     "covering": (98, (57, 61), "AMEND-covering-98.md", (0, 106),
                  "685fdd216aad8f029a7c584fb9ceb68fc470b32efb93ed29a816af58de980566"),
@@ -774,7 +777,7 @@ RECORDS = {
 
 
 def test_the_versioned_amendment_records_are_exactly_the_user_decisions():
-    """Exactly the dated, hash-bound decisions, including the binding drawer-v2 raw rejection amendment."""
+    """Exactly the dated, hash-bound decisions, including coordinator decisions under delegated data-quality authority."""
     assert set(gate.load_amendments()) == set(RECORDS)
 
 
@@ -786,9 +789,19 @@ def test_the_versioned_amendment_record(task):
     rec = loaded["record"]
     assert rec["target"] == len(rec["episodes"]) == target and rec["base_target"] == gate.TARGET
     assert sorted(rec["excluded"]) == [f"{task}/episode_{i:06d}.h5" for i in excluded]
-    validator = "dsreset inspect_raw/1" if task == "drawer-open-v2" else "rw-ingest-validator/1"
-    assert all((v.get("validation_reasons") or v.get("reason")) and v["validator"] == validator
-               and len(v["raw_sha256"]) == 64 for v in rec["excluded"].values())
+    if task == "ball-hiding":
+        # BH3 records the recorder flag rejected by the strict Panda adapter, rather than an ingest validator run.
+        assert rec["decided_by"] == "coordinator: Codex BH3 directive, 2026-11-21"
+        assert rec["excluded"]["ball-hiding/episode_000008.h5"] == {
+            "raw_sha256": "364c3eff063cd9ab495a2455a9bd7392dba8a8a3583de199e74b29858833c322",
+            "reason": "cam_135122073201 stereo/depth_ok=False at zero-based frame 121",
+            "camera": "cam_135122073201", "frame_index": 121, "frame_index_base": 0,
+            "flag": "stereo/depth_ok", "value": False, "frames": 150,
+        }
+    else:
+        validator = "dsreset inspect_raw/1" if task == "drawer-open-v2" else "rw-ingest-validator/1"
+        assert all((v.get("validation_reasons") or v.get("reason")) and v["validator"] == validator
+                   and len(v["raw_sha256"]) == 64 for v in rec["excluded"].values())
     assert rec["document"]["path"].endswith(doc)
     indices = sorted(int(k[-9:-3]) for k in rec["episodes"])
     assert indices[0] == first and indices[-1] == last and len(set(indices)) == target

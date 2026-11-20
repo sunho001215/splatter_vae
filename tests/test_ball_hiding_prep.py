@@ -13,7 +13,8 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def isolated(source):
     env = {**os.environ, 'CUDA_VISIBLE_DEVICES': '', 'OPENBLAS_NUM_THREADS': '1', 'OMP_NUM_THREADS': '1'}
-    p = subprocess.run([sys.executable, '-I', '-c', f'import sys;sys.path.insert(0,{str(ROOT)!r});'+source],
+    # -I discards pytest's import paths, including the legacy episode_validator directory.
+    p = subprocess.run([sys.executable, '-I', '-c', f'import sys;sys.path[:] = {sys.path!r};'+source],
                        text=True, capture_output=True, cwd=ROOT, env=env)
     assert p.returncode == 0, p.stderr
     return json.loads(p.stdout)
