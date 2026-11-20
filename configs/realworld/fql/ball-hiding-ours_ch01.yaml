@@ -1,0 +1,49 @@
+# Offline FQL: alpha 10 and normalize_q_loss=true (explicit new-task directive); seeds supplied by plan.
+# Template: resolve ${pnpv2.*} only through the ball-hiding task spec.
+condition: ours
+agent:
+  lr: 0.0003
+  batch_size: 256
+  actor_hidden_dims:
+  - 512
+  - 512
+  - 512
+  - 512
+  value_hidden_dims:
+  - 512
+  - 512
+  - 512
+  - 512
+  layer_norm: true
+  actor_layer_norm: false
+  discount: 0.99
+  tau: 0.005
+  q_agg: mean
+  alpha: 10.0
+  flow_steps: 10
+  normalize_q_loss: true
+encoder:
+  proj_dim: 256
+  feature_norm: none
+pixel:
+  encoder: impala_small
+  p_aug: 0.5
+train:
+  offline_steps: 1000000
+  log_interval: 5000
+  eval_interval: 100000
+  save_interval: 50000
+  seed: 0
+  device: cuda
+  val_batches: 8
+  deterministic: false
+data:
+  dataset: runs/bh-20261120-fqldata-ours_ch01-ball-hiding-S/dataset.h5
+  split_manifest: ${pnpv2.geometry_split}
+  gate_report: ${pnpv2.geometry_gate}
+  store: null
+  frames_device: null
+  action_clip_eps: 1.0e-05
+  smoke_without_calibration: false
+wandb:
+  project: splatter4d-realworld-fql
