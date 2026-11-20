@@ -8,6 +8,9 @@ if _repo not in sys.path:
     sys.path.insert(0, _repo)
 
 if __name__ == "__main__":  # the CLI runs the implementation as __main__ (sys.argv[0] keeps this path)
+    from runs.setup.tools.k0_isolated_release import install
+
+    install()  # validate before the implementation takes its admission lock
     import runpy
 
     runpy.run_module("ops.campaign.stage2_local_driver", run_name="__main__")
