@@ -14,6 +14,7 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(ROOT))
 MAIN = Path("/home/ws/ws/splatter4d")
 TOOLS = ROOT / "runs/setup/tools"
 
@@ -22,6 +23,8 @@ def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--snapshot", type=Path, required=True)
     p.add_argument("--binding", type=Path, required=True)
+    p.add_argument("--rgb-local-snapshot", type=Path, help="preserve the already running local RGB pin")
+    p.add_argument("--rgb-local-binding", type=Path)
     p.add_argument("--route", choices=("hybrid", "all-local"), default="hybrid")
     p.add_argument("--image", required=True)
     p.add_argument("--out", type=Path, required=True)
@@ -30,6 +33,8 @@ def main():
     p.add_argument("--once", action="store_true")
     p.add_argument("--apply", action="store_true", required=True)
     a = p.parse_args()
+    if bool(a.rgb_local_snapshot) != bool(a.rgb_local_binding):
+        p.error("RGB local snapshot and binding must be supplied together")
     a.out.mkdir(parents=True, exist_ok=True)
     commit = json.loads(a.snapshot.read_bytes())["commit"]
     manifest = a.evidence_manifest or f"runs/remote/acceptance/{commit[:7]}-cc/manifest.json"
@@ -56,9 +61,18 @@ def main():
                     print(f"{wave}: registration pending/refused; see log", flush=True)
                     continue
             record = json.loads(proof.read_bytes())
-            if record["release"]["commit"] != commit or record.get("route", "hybrid") != a.route:
-                raise SystemExit("registered pin/route differs from request; no re-pin allowed")
+            from runs.setup.tools.bh_register import host_release
+
+            if record.get("route", "hybrid") != a.route:
+                raise SystemExit("registered route differs from request")
             for host in sorted({row["host"] for row in record["rows"]}):
+                snapshot, binding = a.snapshot, a.binding
+                if wave == "rgb" and host == "local" and a.rgb_local_snapshot:
+                    snapshot, binding = a.rgb_local_snapshot, a.rgb_local_binding
+                expected = json.loads(snapshot.read_bytes())["commit"] if host == "local" else commit
+                pin = host_release(record, host)
+                if pin["commit"] != expected or pin["image"] != a.image:
+                    raise SystemExit("registered host pin differs from request; no implicit re-pin allowed")
                 target = (
                     MAIN
                     / "runs/setup"
@@ -71,9 +85,9 @@ def main():
                 if not grant.exists():
                     args = [host, "--registration", proof, "--out", grant]
                     args += (
-                        ["--snapshot", a.snapshot, "--binding", a.binding, "--accepted-by", a.accepted_by]
+                        ["--snapshot", snapshot, "--binding", binding, "--accepted-by", a.accepted_by]
                         if host == "local"
-                        else ["--evidence-manifest", manifest]
+                        else ["--evidence-manifest", manifest, "--snapshot", a.snapshot]
                     )
                     if not run("bh_prepare_release.py", args, f"{wave}-{host}-prepare.log"):
                         print(f"{wave}/{host}: release evidence pending/refused", flush=True)

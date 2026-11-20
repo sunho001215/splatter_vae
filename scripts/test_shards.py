@@ -11,6 +11,7 @@ from collections import Counter
 from pathlib import Path
 
 FILE_CLASSES = {
+    "tests/test_bh_remote_scripts.py": "cpu",
     "tests/test_infra_efficiency.py": "cpu",
     "tests/test_pnpv2_acceptance_override.py": "cpu",
     "tests/test_pnpv2_geometry_route.py": "cpu",  # remote geometry publication and verified compact closure, 2026-11-18

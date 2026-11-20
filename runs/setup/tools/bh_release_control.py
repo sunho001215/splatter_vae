@@ -125,16 +125,16 @@ def plan(mode, path, repo=registration.MAIN):
             )
         for item in grant["rows"].values():
             script = item["row"]["script"]
+            source = repo if is_local else remote.source_root(grant)
             registration.require(
-                registration.sha((repo / script).read_bytes()) == registration.sha((ROOT / script).read_bytes()),
-                "adopt guarded task wrapper: " + script,
+                registration.sha((source / script).read_bytes()) == registration.sha((ROOT / script).read_bytes()),
+                "guarded task wrapper differs: " + script,
             )
         # Snapshot history only after slow source/publication verification.
         registry_token = revision(registry_path)
         # Never unlock an already launched row with an unreviewed new grant.
-        for line in registry_path.open("rb"):
-            if b"bh-20261120-" in line:
-                registration.require(json.loads(line).get("id") not in ids, "target already has registry history")
+        history = [json.loads(line) for line in registry_path.open("rb") if b"bh-20261120-" in line]
+        registration.require_unlaunched(history, ids)
     registration.require(revision(registry_path) == registry_token, "registry changed; retry preview")
     pause_path = repo / "runs/setup/admission-pauses.json"
     pause_raw = pause_path.read_bytes()

@@ -177,6 +177,50 @@ def apply(repo, record):
     return {**record, "applied": True}
 
 
+BH7_REFUSED_ID = "bh-20261120-fqldata-e2e_cnn_noaug-ball-hiding-S"
+BH6_COMMIT = "5b0c05fbe25550020f098ce59093fdd90d751509"
+
+
+def require_unlaunched(history, ids):
+    """Allow only the one BH7 schema refusal after established absence reconciliation.
+
+    No executed attempt, arbitrary reset, or unreconciled unknown can be re-pinned/released.
+    The scheduler independently validates the reset and clears only never-executed pins.
+    """
+    for identity in ids:
+        events = [e for e in history if e.get("id") == identity]
+        if not events:
+            continue
+        require(identity == BH7_REFUSED_ID and len(events) >= 3, "target registry history: " + identity)
+        launch, *unknowns, reset = events
+        require(launch.get("event") == "launching" and launch.get("attempt") == 1
+                and launch.get("host") == "remote" and launch.get("commit") == BH6_COMMIT
+                and launch.get("script") == "runs/setup/tools/bh_realworld_fql_dataset.py"
+                and launch.get("container") == "s4d-" + identity + "-a1", "not the BH7 schema refusal")
+        require(unknowns and all(e.get("event") == "unknown" and e.get("reason") in {
+            "launch outcome requires reconciliation", "container missing from confirmed snapshot"
+        } for e in unknowns), "executed or unexpected attempt history")
+        proof = reset.get("reconciliation", {})
+        checks = proof.get("checks", [])
+        require(reset.get("event") == "reset" and proof.get("job_id") == identity
+                and proof.get("attempt") == 1 and proof.get("container") == launch["container"]
+                and proof.get("gpu") == launch["gpu"] and proof.get("launch_attempt_age_seconds", 0) >= 600
+                and proof.get("conclusion") == "launch refused before docker run; deterministic container never existed"
+                and len(checks) == 2 and all(c.get("containers_with_name") == 0
+                    and c.get("remote_output") == "absent" and c.get("accepted_release_dir") == "exists"
+                    for c in checks), "BH7 refused attempt needs established absence reconciliation")
+
+
+def host_release(record, host):
+    release = record.get("release_by_host", {}).get(host, record["release"])
+    selected = [r for r in record["rows"] if r["host"] == host]
+    require(selected and all(
+        (r["planned_commit"], r["planned_image"]) == (release["commit"], release["image"])
+        for r in selected
+    ), "host rows differ from release pin: " + host)
+    return release
+
+
 def main():
     setup()
     from s4d.rwlearn.pnpv2_spec import SPEC, load_spec

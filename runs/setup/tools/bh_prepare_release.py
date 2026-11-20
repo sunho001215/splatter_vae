@@ -122,7 +122,7 @@ def grant_rows(record, host):
 def prepare_local(record, snapshot_path, binding_path, accepted_by, out):
     snapshot = json.loads(snapshot_path.read_bytes())
     binding = json.loads(binding_path.read_bytes())
-    commit = record["release"]["commit"]
+    commit = registration.host_release(record, "local")["commit"]
     rows = grant_rows(record, "local")
     registration.require(snapshot["commit"] == binding["commit"] == commit, "test/source/row commit mismatch")
     registration.require(
@@ -168,15 +168,20 @@ def prepare_local(record, snapshot_path, binding_path, accepted_by, out):
     )
 
 
-def prepare_remote(record, manifest):
+def prepare_remote(record, manifest, snapshot_path):
     from ops.jobs.remote_backend import acceptance_manifest
     from runs.setup.tools import bh_remote_pin
 
-    release = record["release"]
+    release = registration.host_release(record, "remote")
     evidence = acceptance_manifest(
         dict(commit=release["commit"], image_digest=release["image"], evidence_manifest=manifest), registration.MAIN
     )
-    return dict(
+    snapshot_raw = snapshot_path.read_bytes()
+    snapshot = json.loads(snapshot_raw)
+    registration.require(snapshot["commit"] == release["commit"], "remote seal/accepted pin mismatch")
+    result = dict(
+        snapshot=str(snapshot_path.resolve()),
+        snapshot_sha256=registration.sha(snapshot_raw),
         kind="bh-remote-native-pin/1",
         active=True,
         commit=release["commit"],
@@ -186,6 +191,12 @@ def prepare_remote(record, manifest):
         acceptance_sha256=evidence["manifest_sha256"],
         adapter_sha256=registration.sha(Path(bh_remote_pin.__file__).read_bytes()),
     )
+    root = bh_remote_pin.source_root(result)
+    for item in result["rows"].values():
+        script = item["row"]["script"]
+        registration.require((root / script).read_bytes() == git(ROOT, "show", release["commit"] + ":" + script),
+                             "sealed remote wrapper differs from accepted commit")
+    return result
 
 
 def main():
@@ -202,6 +213,7 @@ def main():
             a.add_argument("--binding", type=Path, required=True)
             a.add_argument("--accepted-by", required=True)
         else:
+            a.add_argument("--snapshot", type=Path, required=True)
             a.add_argument("--evidence-manifest", required=True)
     a = p.parse_args()
     try:
@@ -213,7 +225,7 @@ def main():
             result = (
                 prepare_local(record, a.snapshot.resolve(), a.binding.resolve(), a.accepted_by, a.out.resolve())
                 if a.mode == "local"
-                else prepare_remote(record, a.evidence_manifest)
+                else prepare_remote(record, a.evidence_manifest, a.snapshot)
             )
             a.out.write_text(json.dumps(result, indent=2) + "\n")
             if a.mode == "local":

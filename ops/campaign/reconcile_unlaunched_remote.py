@@ -53,6 +53,15 @@ with open(jobs.REGISTRY.with_suffix('.lock'), 'a') as lock:
         remote_dir = client.remote_path(args[args.index('--output-dir') + 1])
         control_dir = client.remote_path(args[args.index('--run-dir') + 1])
         control_kind = 'trainer_run_dir'
+    elif (job_id == 'bh-20261120-fqldata-e2e_cnn_noaug-ball-hiding-S'
+          and current.get('script') == 'runs/setup/tools/bh_realworld_fql_dataset.py'):
+        # BH7: schema validation refused this dataset builder before any remote launch.
+        assert current['attempt'] == 1 and args[0] == 'build', current
+        assert args.count('--out') == 1
+        assert args[args.index('--out') + 1] == f'runs/{job_id}/dataset.h5', args
+        remote_dir = client.remote_path(f'runs/{job_id}')
+        control_dir = client.remote_path(f"releases/{current['commit']}/code")
+        control_kind = 'accepted_release_dir'
     elif current.get('script') == 'scripts/train_rl.py':
         # A DrM trainer writes only into its --run-dir; its companion evaluator may already exist and is not touched.
         assert args[args.index('--run-dir') + 1] == f'runs/{job_id}', args

@@ -9,7 +9,7 @@ import copy
 from ops.jobs.pnpv2_plan import build_rows as pnp_rows
 from s4d.rwlearn.pnpv2_spec import WRAPPERS
 
-WRAPPER_ALIASES = {k.replace("scripts/pnpv2_", "runs/setup/tools/bh_"): v for k, v in WRAPPERS.items()}
+WRAPPER_ALIASES = {k.replace("scripts/pnpv2_", "scripts/bh_"): v for k, v in WRAPPERS.items()}
 TOOL = "runs/setup/tools/bh_register.py"
 PAUSE = "bh-await-placement-20261120"
 # Keep artifact-bearing chains on one host. Only audited readiness crosses hosts.
@@ -30,4 +30,6 @@ def rows(spec, release, *, waves=("rgb",), scene=None, current=(), route="hybrid
         method = row["realworld_method"]
         host = "local" if route == "all-local" or "-gate-" in row["id"] or method in LOCAL_METHODS else "remote"
         row["host"] = row["pin_host"] = host
+        if host == "remote":
+            row["script"] = row["script"].replace("runs/setup/tools/bh_", "scripts/bh_")
     return result

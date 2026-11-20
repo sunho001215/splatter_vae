@@ -85,6 +85,8 @@ def test_exact_graph_science_dependencies_and_seeds(graphs):
 
     for before, after in zip(pnp, bh):
         expected = substitute({k: v for k, v in before.items() if k not in scheduling})
+        if after["host"] == "remote":
+            expected["script"] = expected["script"].replace("runs/setup/tools/bh_", "scripts/bh_")
         assert expected == {k: v for k, v in after.items() if k not in scheduling}
         assert after["priority"] == 1338
         assert after["host"] == after["pin_host"]
@@ -157,6 +159,8 @@ def test_every_row_input_resolver_and_role(graphs):
     from ops.jobs import host_roles, realworld_local
 
     isolated.install_aliases()
+    from bh_remote_pin import install_remote_aliases
+    install_remote_aliases(r["id"] for r in bh if r["host"] == "remote")
     roles = host_roles.load_roles(ROOT / "configs/hosts/roles.yaml")
     by_id = {r["id"]: r for r in bh}
     for row in bh:
@@ -269,7 +273,7 @@ def test_remote_pin_delegates_foreign_and_refuses_changed_row(monkeypatch, tmp_p
     monkeypatch.setattr(remote_offload, "legacy_row", lambda job: job)
     assert remote.install(tmp_path)
     assert alias_calls == [True]
-    assert remote_offload.legacy_row(row)["script"] == row["script"].replace("runs/setup/tools/bh_", "scripts/")
+    assert remote_offload.legacy_row(row)["script"] == row["script"].replace("scripts/bh_", "scripts/")
     assert remote_offload.legacy_row({"id": "old", "script": "old.py"}) == {"id": "old", "script": "old.py"}
     assert remote_offload.admitted_pin({"id": "old"}, {}) == ("delegated", "old")
     assert remote_offload.admitted_pin(row, {}) == ((row["planned_commit"], row["planned_image"]), "native.json")
@@ -445,15 +449,17 @@ def test_advancer_releases_local_while_remote_native_is_pending(monkeypatch, tmp
     output = tmp_path / "ops"
     output.mkdir()
     commit = "a" * 40
+    image = "sha256:" + "b" * 64
     snapshot = tmp_path / "snapshot.json"
     snapshot.write_text(json.dumps(dict(commit=commit)))
     proof = main / "runs/setup/bh-20261120-rgb.registration.json"
     proof.write_text(
         json.dumps(
             dict(
-                release=dict(commit=commit),
+                release=dict(commit=commit, image=image),
                 route=route,
-                rows=[dict(host="local")] + ([dict(host="remote")] if route == "hybrid" else []),
+                rows=[dict(host="local", planned_commit=commit, planned_image=image)]
+                + ([dict(host="remote", planned_commit=commit, planned_image=image)] if route == "hybrid" else []),
             )
         )
     )
@@ -585,7 +591,7 @@ assert len(local)==90 and {r['host'] for r in local}=={'local'}
 install_aliases(); roles=host_roles.load_roles(Path('configs/hosts/roles.yaml'))
 by_id={r['id']:r for r in local}
 for before,after in zip(hybrid,local):
-    fields=lambda r:{k:v for k,v in r.items() if k not in ('host','pin_host')}
+    fields=lambda r:{k:(v.replace('scripts/bh_', 'runs/setup/tools/bh_') if k=='script' else v) for k,v in r.items() if k not in ('host','pin_host')}
     assert fields(before)==fields(after)
     realworld_local.needed_inputs(after)
     assert host_roles.refusal(after,'local',roles,{},by_id) is None,after['id']

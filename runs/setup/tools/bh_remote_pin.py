@@ -16,6 +16,44 @@ MAIN = Path("/home/ws/ws/splatter4d")
 DIRECTORY = MAIN / "runs/setup/bh-remote-pins.d"
 
 
+def source_root(grant):
+    """A sealed candidate supplies script existence without dirtying accepted main."""
+    from runs.setup.tools.bh_isolated_release import regular
+
+    snapshot_raw = regular(Path(grant["snapshot"]))
+    if hashlib.sha256(snapshot_raw).hexdigest() != grant["snapshot_sha256"]:
+        raise ValueError("remote source seal changed")
+    snapshot = json.loads(snapshot_raw)
+    root = Path(snapshot["code_root"])
+    if snapshot["commit"] != grant["commit"] or root.resolve() != root or root.stat().st_mode & 0o222:
+        raise ValueError("remote source root is not sealed at the accepted commit")
+    for item in grant["rows"].values():
+        script = item["row"]["script"]
+        if not script.startswith("scripts/bh_") or ".." in Path(script).parts:
+            raise ValueError("remote BH requires shipped task scripts")
+        path = root / script
+        if path.stat().st_mode & 0o222 or hashlib.sha256(regular(path)).hexdigest() != snapshot["source_files"][script]["sha256"]:
+            raise ValueError("remote task script differs from seal")
+    return root
+
+
+def install_remote_aliases(ids):
+    from ops.jobs import realworld_local, remote_offload
+    from s4d.rwlearn import dsreset_entrypoints
+    from s4d.rwlearn.pnpv2_spec import WRAPPERS
+
+    aliases = {k.replace("scripts/pnpv2_", "scripts/bh_"): v for k, v in WRAPPERS.items()}
+    ids = frozenset(ids)
+    for module in (dsreset_entrypoints, realworld_local, remote_offload):
+        previous = module.legacy_row
+
+        def translated(row, previous=previous):
+            script = aliases.get(row.get("script")) if row.get("id") in ids else None
+            return previous({**row, "script": script}) if script else previous(row)
+
+        module.legacy_row = translated
+
+
 def load(path, repo=MAIN):
     from ops.jobs.remote_backend import acceptance_manifest
     from runs.setup.tools.bh_isolated_release import IDS, canonical, regular
@@ -47,6 +85,7 @@ def load(path, repo=MAIN):
             or hashlib.sha256(canonical(row)).hexdigest() != item["row_sha256"]
         ):
             raise ValueError("remote exact row identity differs")
+    source_root(grant)
     return grant, hashlib.sha256(raw).hexdigest()
 
 
@@ -69,12 +108,8 @@ def install(directory=DIRECTORY):
     from runs.setup.tools.bh_isolated_release import fence, install_aliases
 
     install_aliases()  # remote input/role consumers need the same exact-ID wrapper aliases
+    install_remote_aliases(proofs)
     from ops.jobs import remote_offload
-    from s4d.rwlearn import dsreset_entrypoints
-
-    # remote_offload may already have bound legacy_row before this optional hook.
-    # The shared alias delegates unchanged for every non-BH identity.
-    remote_offload.legacy_row = dsreset_entrypoints.legacy_row
 
     previous = remote_offload.admitted_pin
 
@@ -94,4 +129,24 @@ def install(directory=DIRECTORY):
             return None
 
     remote_offload.admitted_pin = admitted_pin
+
+    from ops.jobs.remote_backend import RemoteBackend
+    import copy
+
+    previous_prepare = RemoteBackend.prepare
+
+    def prepare(backend, job, gpu, attempt, host, evidence):
+        if job.get("id") not in proofs:
+            return previous_prepare(backend, job, gpu, attempt, host, evidence)
+        path, grant, digest, expected = proofs[job["id"]]
+        fence(path, digest)
+        if job != expected or (host["commit"], host["image_digest"]) != (grant["commit"], grant["image"]):
+            raise ValueError("remote BH prepare pin/row differs")
+        # Only prepare's source-file lookup uses the seal. The same backend/client,
+        # canonical runs directory, original launcher and acceptance gates remain.
+        scoped = copy.copy(backend)
+        scoped.repo = source_root(grant)
+        return previous_prepare(scoped, job, gpu, attempt, host, evidence)
+
+    RemoteBackend.prepare = prepare
     return True
