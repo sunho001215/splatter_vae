@@ -1,8 +1,6 @@
 """Compatibility entry point: the implementation lives in ops/campaign/stage2_local_driver.py (same module object)."""
-
 import sys
 from pathlib import Path
-
 _repo = str(Path(__file__).resolve().parents[3])  # repo on sys.path when imported
 if _repo not in sys.path:
     sys.path.insert(0, _repo)
