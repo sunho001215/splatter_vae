@@ -34,7 +34,15 @@ def main():
         for row in rows:
             require(actual.get(row["id"]) == row, "live row differs from registration proof")
         rels = sorted({name for row in rows for name in realworld_local.needed_inputs(row)["mirror"]})
-        result = realworld_local.fetch(rels, priority="dependency", dry_run=not a.apply)
+        from ops.remote.access import RemoteClient
+
+        result = realworld_local.fetch(
+            rels,
+            client=RemoteClient(repo=MAIN),
+            priority="dependency",
+            dry_run=not a.apply,
+            mirror=MAIN / "runs/realworld-inputs",
+        )
         print(json.dumps(result, indent=2))
     except (OSError, ValueError, KeyError) as exc:
         print("REFUSED: " + str(exc), file=sys.stderr)
