@@ -99,6 +99,13 @@ def load_authorization(path=AUTHORIZATION):
         source = root / relative
         if source.stat().st_mode & 0o222 or digest(regular(source)) != spec["sha256"]:
             raise ValueError(f"isolated source changed: {name}")
+    for name in snapshot.get("unmaterialized_gitlinks", {}):
+        relative = Path(name)
+        if relative.is_absolute() or ".." in relative.parts:
+            raise ValueError("nested gitlink escapes snapshot")
+        nested = root / relative
+        if nested.is_symlink() or (nested.exists() and any(nested.iterdir())):
+            raise ValueError("unmaterialized nested gitlink acquired source files")
     evidence_raw = regular(Path(grant["targeted_evidence"]))
     if digest(evidence_raw) != grant["targeted_evidence_sha256"]:
         raise ValueError("targeted evidence changed")

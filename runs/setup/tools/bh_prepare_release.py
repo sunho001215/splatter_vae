@@ -50,7 +50,7 @@ def seal(out):
     subprocess.run(["git", "clone", "--shared", "--no-checkout", str(ROOT), str(code)], check=True)
     git(code, "checkout", "--detach", commit)
     listing = git(ROOT, "ls-files", "--stage", "-z").split(b"\0")
-    source_files, gitlinks = {}, {}
+    source_files, gitlinks, unmaterialized = {}, {}, {}
     for record in listing:
         if not record:
             continue
@@ -68,11 +68,23 @@ def seal(out):
             subprocess.run(["git", "clone", "--shared", "--no-checkout", str(source), str(code / name)], check=True)
             git(code / name, "checkout", "--detach", blob)
             gitlinks[name] = blob
-            for item in git(source, "ls-files", "-z").split(b"\0"):
+            for item in git(source, "ls-files", "--stage", "-z").split(b"\0"):
                 if item:
-                    child = code / name / item.decode()
+                    child_meta, child_name = item.split(b"\t", 1)
+                    child_mode, child_blob, _ = child_meta.decode().split()
+                    child_name = child_name.decode()
+                    child = code / name / child_name
+                    if child_mode == "160000":
+                        # Upstream RVT carries optional simulation gitlinks. The
+                        # existing real-world checkout does not materialize them.
+                        # Record absence honestly; never fetch them from a network.
+                        registration.require(
+                            not child.exists() or not any(child.iterdir()), "unexpected materialized nested submodule"
+                        )
+                        unmaterialized[f"{name}/{child_name}"] = child_blob
+                        continue
                     registration.require(child.is_file() and not child.is_symlink(), "nonregular submodule source")
-                    source_files[f"{name}/{item.decode()}"] = {"sha256": registration.sha(child.read_bytes())}
+                    source_files[f"{name}/{child_name}"] = {"sha256": registration.sha(child.read_bytes())}
         else:
             path = code / name
             registration.require(path.is_file() and not path.is_symlink(), "nonregular candidate source")
@@ -88,7 +100,13 @@ def seal(out):
             registration.require(not path.is_symlink(), "directory symlink refused")
             path.chmod(stat.S_IMODE(path.stat().st_mode) & ~0o222)
     code.chmod(stat.S_IMODE(code.stat().st_mode) & ~0o222)
-    snapshot = dict(commit=commit, code_root=str(code.resolve()), source_files=source_files, gitlinks=gitlinks)
+    snapshot = dict(
+        commit=commit,
+        code_root=str(code.resolve()),
+        source_files=source_files,
+        gitlinks=gitlinks,
+        unmaterialized_gitlinks=unmaterialized,
+    )
     path = out / "snapshot.json"
     path.write_text(json.dumps(snapshot, indent=2) + "\n")
     path.chmod(0o444)
