@@ -279,12 +279,7 @@ def evidence(spec, data_report, arrival_state=None):
     out["phaseA"] = (dispatcher_evidence(p["phase_a"], eps, STAGE_IDS["phaseA"]) if manifest
                      else _stage("pending", "after ingest"))
     a_done = out["phaseA"]["status"] == "done"
-    rgb_done = a_done
-    if "rgb_source" in p:
-        out["normalized"] = (dispatcher_evidence(p["rgb_source"], eps, dispatcher_stem("prepN")) if manifest
-                             else _stage("pending", "after ingest"))
-        rgb_done = out["normalized"]["status"] == "done"
-    out["rgb-publication"] = bundle_evidence(spec, "rgb", manifest) if rgb_done else _stage("pending", "after normalized" if "rgb_source" in p else "after Phase A")
+    out["rgb-publication"] = bundle_evidence(spec, "rgb", manifest) if a_done else _stage("pending", "after Phase A")
     out["rig"] = rig_evidence(spec) if a_done else _stage("pending", "after Phase A")
     out["phaseB"] = (dispatcher_evidence(p["phase_b"], eps, STAGE_IDS["phaseB"])
                      if out["rig"]["status"] == "done" else _stage("pending", "after the accepted rig"))
@@ -564,21 +559,13 @@ def next_steps(spec, ev):
             f"{producer} upload -- --view geometry"],
         "scene": [f"{producer} geometry-fetch   # fetches the train-only native measurement and accepted rig"],
     }
-    if TASK == "ball-hiding":
-        producer = f"{PY} scripts/ball_hiding.py --entry"
-        commands = {key: [x.replace("scripts/pick_and_place_v2.py", "scripts/ball_hiding.py")
-                           .replace("scripts/pnpv2.py", "scripts/ball_hiding.py") for x in rows]
-                    for key, rows in commands.items()}
-        commands["normalized"] = [f"{producer} phase-a-remote   # stage normalize + Phase A; launch nothing",
-            f"{PY} -m ops.jobs.rwprep_remote tick --config {w}/normalize/dispatcher.json --apply --loop",
-            f"{producer} rgb-remote   # depends only on normalized jobs"]
     out = {}
     for stage, (kind, needs) in STAGES.items():
         if kind != "external" or ev[stage]["status"] == "done":
             continue
         if all(ev[n]["status"] == "done" for n in needs):
             out[stage] = commands[stage]
-    for wave in (() if TASK == "ball-hiding" else ready_waves(ev)):
+    for wave in ready_waves(ev):
         out[f"wave:{wave}"] = [f"{PY} scripts/pnpv2.py register --wave {wave} --commit <main HEAD> --image <role image> "
                                "--release-source local   # dry run; add --execute from the adopted main"]
     return out

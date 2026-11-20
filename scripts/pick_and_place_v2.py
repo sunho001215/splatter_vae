@@ -46,7 +46,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import yaml  # noqa: E402
 
-from s4d.rwlearn.pnpv2_spec import PREP_DISK_GIB, SPEC, STEM, TASK, load_spec, read_arrival, values  # noqa: E402
+from s4d.rwlearn.pnpv2_spec import PREP_DISK_GIB, SPEC, TASK, load_spec, read_arrival, values  # noqa: E402
 
 
 def _atomic_json(path, doc):
@@ -96,7 +96,6 @@ def manifest(spec, a, argv):
     report = _check_data(spec, a)
     m = manifest_check(report["manifest"], spec)
     template = config(Path(__file__).resolve().parents[1] / "configs/realworld/prep/pick-and-place-v2.yaml", spec)
-    template["stages"]["train_data"]["task"] = TASK
     out = Path(p["ingest"])
     if out.exists():
         raise ValueError(f"{out} exists; the ingest bundle is immutable")
@@ -124,7 +123,7 @@ def publish_rgb(spec, a, argv):
     b = sub.parse_args(argv)
     p = values(spec)
     _check_data(spec, a)
-    print(json.dumps(publish(spec, p["manifest"], p.get("rgb_source", p["phase_a"]), execute=b.execute), indent=2))
+    print(json.dumps(publish(spec, p["manifest"], p["phase_a"], execute=b.execute), indent=2))
 
 
 def raw_proof(spec, a, argv):
@@ -198,7 +197,7 @@ def upload(spec, a, argv):
     import tempfile
 
     ATTACH_ROOT.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix=f"{STEM}-upload-{b.view}-", dir=ATTACH_ROOT) as tmp:
+    with tempfile.TemporaryDirectory(prefix=f"pnpv2-20261117-upload-{b.view}-", dir=ATTACH_ROOT) as tmp:
         for f in files:
             target = f"{remote}/{f.relative_to(local)}"
             digest = sha256(f)
@@ -272,12 +271,12 @@ def phase_a_remote(spec, a, argv):
     print(json.dumps(result))
 
 
-PHASE_A_BUNDLE = f"{STEM}-phaseA"
+PHASE_A_BUNDLE = "pnpv2-20261117-phaseA"
 
 
 def rwprep_remote_release(spec):
     release = Path(values(spec)["remote_processed"]).name
-    if release != STEM:
+    if release != "pnpv2-20261117":
         raise ValueError("pick-and-place-v2 writes only the pnpv2-20261117 processed release")
     return release
 
@@ -290,7 +289,7 @@ def rgb_remote(spec, a, argv):
 
     p = values(spec)
     _check_data(spec, a)
-    config = json.loads((Path(p.get("rgb_source", p["phase_a"])) / "dispatcher.json").read_text())
+    config = json.loads((Path(p["phase_a"]) / "dispatcher.json").read_text())
     jobs = json.loads(Path(config["jobs"]).read_text())
     out, link = _attachment(Path(p["work"]) / "rgb-remote", pnpv2_rgb.RGB_BUNDLE)
     out.mkdir(parents=True)
@@ -337,8 +336,8 @@ def rgb_fetch(spec, a, argv):
 
 
 REMOTE_RW = "/home/compu/kaist/sunho/realworld"
-CALIB_BUNDLE = f"{STEM}-calib"
-PHASE_B_BUNDLE = f"{STEM}-phaseB"
+CALIB_BUNDLE = "pnpv2-20261117-calib"
+PHASE_B_BUNDLE = "pnpv2-20261117-phaseB"
 # The established LoMa/romav2 upstream staged for the dsreset calibrations (read-only; torch-home links into
 # calib-loma / calib-dw, which the jobs therefore also mount read-only, as the drawer-open-v2 calibration does).
 CALIB_UPSTREAM = f"{REMOTE_RW}/configs/dsreset-upstream-20261114"
@@ -541,7 +540,7 @@ ENTRIES = {"manifest": manifest, "rig-map": rig_map, "publish-rgb": publish_rgb,
            "geometry-remote": geometry_remote, "geometry-fetch": geometry_fetch}
 
 
-def main(argv=None, *, cpu_only=False):
+def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--entry", choices=sorted(ENTRIES), required=True)
     parser.add_argument("--task-spec", type=Path, default=Path(SPEC))
@@ -557,8 +556,7 @@ def main(argv=None, *, cpu_only=False):
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     from _bootstrap import guard_gpus
 
-    if not cpu_only:
-        guard_gpus()
+    guard_gpus()
     from s4d.rwlearn.pnpv2_runtime import install
 
     install()

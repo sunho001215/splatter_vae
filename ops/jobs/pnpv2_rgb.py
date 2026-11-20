@@ -15,7 +15,7 @@ from pathlib import Path
 
 import yaml
 
-from s4d.rwlearn.pnpv2_spec import STEM, TASK, values
+from s4d.rwlearn.pnpv2_spec import TASK, values
 
 STAGE_COMPLETE = "normalized/_COMPLETE.json"
 
@@ -37,8 +37,7 @@ def sources(spec, manifest, phase_a):
     """{episode: Phase-A output root}, requiring the dispatcher's done state and the normalized completion record."""
     from ops.jobs.pnpv2_registration import STAGE_IDS, dispatcher_evidence
 
-    stem = f"{STEM}-prepN" if TASK == "ball-hiding" else STAGE_IDS["phaseA"]
-    stage = dispatcher_evidence(phase_a, {r["id"] for r in manifest["episodes"]}, stem)
+    stage = dispatcher_evidence(phase_a, {r["id"] for r in manifest["episodes"]}, STAGE_IDS["phaseA"])
     require(stage["status"] == "done", f"Phase A not complete: {stage['detail']}")
     roots = {}
     for job in json.loads((Path(phase_a) / "jobs.json").read_text()):
@@ -159,9 +158,8 @@ def publish_rgb(spec, manifest_path, phase_a, *, execute=False, inspect=None):
 # so the same export runs as a one-job remote bundle inside the prep image; only the small bundle documents come back.
 REMOTE_RW = "/home/compu/kaist/sunho/realworld"
 REMOTE_RAW = "/home/compu/kaist/sunho/data/real_world"
-RGB_BUNDLE = f"{STEM}-rgb"
-RGB_JOB = f"{STEM}-rgbpub-{TASK}-S"
-SOURCE_STEM = f"{STEM}-prepN-" if TASK == "ball-hiding" else f"{STEM}-prepA-"
+RGB_BUNDLE = "pnpv2-20261117-rgb"
+RGB_JOB = "pnpv2-20261117-rgbpub-pick-and-place-v2-S"
 DOCS = ("store.yaml", "manifest.json", "split_seed0.json", "gate_report.json", "outcomes.json", "contracts.json")
 
 
@@ -181,7 +179,7 @@ def phase_a_roots(bundle, episodes):
     jobs = json.loads((bundle / "jobs.json").read_text())
     state = json.loads((bundle / "state" / "state.json").read_text())["jobs"]
     require({j["episode"] for j in jobs} == set(episodes), "Phase-A bundle episodes differ from the manifest")
-    require(all(j["id"].startswith(SOURCE_STEM) for j in jobs), "Phase-A jobs must use the v2 stem")
+    require(all(j["id"].startswith("pnpv2-20261117-prepA-") for j in jobs), "Phase-A jobs must use the v2 stem")
     require(all((state.get(j["id"]) or {}).get("status") == "done" for j in jobs), "Phase A not complete")
     roots = {}
     for job in jobs:
@@ -230,8 +228,7 @@ def remote_job(spec, bundle_dir, phase_a_remote, phase_a_ids):
         id=RGB_JOB, priority=-4, gpu_profile="1g.24gb", gpu_gib=2, ram_gib=32, cpus=4, disk_gib=32,
         inputs={str(manifest): _sha(manifest)}, deps=[],
         external_states={f"{phase_a_remote}/state/state.json": list(phase_a_ids)},
-        steps=[{"kind": "python", "argv": (["-m", "ops.jobs.ball_hiding_worker", "rgb"] if TASK == "ball-hiding" else
-                                           ["-m", "ops.jobs.pnpv2_rgb", "remote"]) + ["--manifest",
+        steps=[{"kind": "python", "argv": ["-m", "ops.jobs.pnpv2_rgb", "remote", "--manifest",
                                            f"{remote}/manifest.json", "--phase-a", phase_a_remote,
                                            "--out", remote_out(spec)]}])
 

@@ -35,8 +35,8 @@ GIB = 2**30
 # Writable processed release -> required remote bundle-name prefix. Every other processed release stays read-only in
 # workers and planners. pick-and-place-v2 has its own release and job-id stem (v1 discontinuation prefixes).
 DEFAULT_RELEASE = 'dsreset-20261113'
-RELEASES = {'dsreset-20261113': 'dsreset-', 'pnpv2-20261117': 'pnpv2-20261117-', 'bh-20261120': 'bh-20261120-'}
-RELEASE_STEMS = {'pnpv2-20261117': 'pnpv2-20261117-', 'bh-20261120': 'bh-20261120-'}
+RELEASES = {'dsreset-20261113': 'dsreset-', 'pnpv2-20261117': 'pnpv2-20261117-'}
+RELEASE_STEMS = {'pnpv2-20261117': 'pnpv2-20261117-'}
 
 
 def release_of(config):
@@ -193,7 +193,7 @@ subprocess.run(['tar','-xf',src,'-C',dest],check=True)
 
 def protect_processed(args, root, release='dsreset-20261113'):
     """Only this new release is writable; symlink escapes hit read-only mounts."""
-    if release not in ('dsreset-20261113', 'pnpv2-20261117', 'bh-20261120'):
+    if release not in ('dsreset-20261113', 'pnpv2-20261117'):
         raise ValueError('unknown processed release')
     parent = Path(root) / 'processed'
     target = parent / release
