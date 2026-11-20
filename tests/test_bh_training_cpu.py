@@ -320,6 +320,7 @@ def valid_grant(tmp_path, graphs):
     grant = dict(
         kind="bh-isolated-targeted-v1",
         active=True,
+        local_gpus=list(isolated.LOCAL_GPUS),
         commit=row["planned_commit"],
         accepted_by="synthetic owner",
         full_suite_claimed=False,
@@ -354,8 +355,10 @@ def test_grant_integrity_rejects_changed_source_and_false_suite_claim(valid_gran
 
 def test_local_install_delegates_and_preserves_input_policy(monkeypatch, valid_grant):
     path, grant, code = valid_grant
-    from ops.jobs import realworld_local, scheduler
+    from ops.jobs import fair_share, local_devices, realworld_local, scheduler
 
+    monkeypatch.setattr(local_devices, "allows", lambda *a, **kw: True)
+    monkeypatch.setattr(fair_share, "allows", lambda *a, **kw: True)
     row = next(iter(grant["rows"].values()))["row"]
     called = []
     monkeypatch.setattr(scheduler, "_bh_isolated_installed", set(), raising=False)
@@ -370,11 +373,16 @@ def test_local_install_delegates_and_preserves_input_policy(monkeypatch, valid_g
     monkeypatch.setattr(scheduler, "launch", lambda job, *a, **kw: (job, kw))
     monkeypatch.setattr(scheduler, "record", lambda event, *a, **kw: event)
     assert isolated.install(path)
+    assert all(local_devices.allows(row, g) and fair_share.allows(row, g) for g in isolated.LOCAL_GPUS)
+    assert not local_devices.allows(row, "MIG-outside-GPU45")
+    assert local_devices.allows({"id": "old"}, "MIG-outside-GPU45")
+    with pytest.raises(ValueError, match="eight GPU4/5"):
+        scheduler.launch(row, "MIG-outside-GPU45", 1, args=["path-only"])
     assert realworld_local.localize({"id": "old"}, {}, roles={}) == ("delegated", "old")
     effective, record = realworld_local.localize(row, {}, roles={})
     assert effective == ["path-only"] and called[0][6] == code
     assert record["input_closure"] == {"verified": "digest"}
-    launch, options = scheduler.launch(row, "MIG-synthetic", 1, args=effective)
+    launch, options = scheduler.launch(row, isolated.LOCAL_GPUS[0], 1, args=effective)
     assert launch["script"] == "runs/setup/tools/bh_isolated_worker.py"
     assert options["args"] == [str(path), row["id"], "path-only"]
     event = scheduler.record(dict(event="launched", id=row["id"], host="local"))
